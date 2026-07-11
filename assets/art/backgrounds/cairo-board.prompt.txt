@@ -1,0 +1,6 @@
+Use case: stylized-concept
+Asset: vertical Godot game-board background.
+Text-free elevated Cairo with pyramids, old city, oasis, market, obelisks and open center.
+Clean HD hand-painted travel-journal and storybook diorama style.
+Low-saturation sand, parchment, pale sky blue, muted teal and restrained gold.
+No UI, dice, route tiles, characters, logo, letters or watermark.

@@ -1,0 +1,6 @@
+Use case: stylized-concept
+Asset: player token source.
+Relaxed explorer in friendly three-quarter top-down full-body pose.
+Cream shirt, muted teal scarf, sand hat and brown backpack.
+Clean HD hand-painted travel-journal game art, not pixel art.
+Flat solid magenta chroma-key background; no text, UI, shadow or watermark.
