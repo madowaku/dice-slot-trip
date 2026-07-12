@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "stage_id": "cairo",
+  "role_priority": ["TRIPLE", "STRAIGHT", "PAIR", "ALL_ODD", "ALL_EVEN", "TOTAL", "DEFAULT"],
+  "events": [
+    {
+      "event_id": "CAI-E01",
+      "district_id": "MARKET",
+      "display_name": "香辛料の風",
+      "event_type": "ARRIVAL_ROLL",
+      "rarity": "COMMON",
+      "weight": 100,
+      "first_text": "色とりどりの香辛料から、甘くて少し辛い風が流れてきた。",
+      "repeat_texts": ["前にも嗅いだ香りだ。今日は少しだけ、甘い。"],
+      "presentation": {"category": "discovery", "icon_id": "market", "expression_id": "curious", "sound_id": "event_discovery"},
+      "additional_dice_count": 0,
+      "can_trigger_boss": false,
+      "once_per_loop": false,
+      "cooldown_events": 0,
+      "tags": ["discovery", "coin", "item", "travel_note", "boss_hint"],
+      "outcomes": [
+        {"result_id": "cai_e01_pair", "condition": {"source_role": "PAIR"}, "result_text": "同じ香りの小袋が、ふたつ並んでいた。", "rewards": [{"type": "ITEM", "pool": "COMMON", "receive_count": 1}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e01_all_odd", "condition": {"source_role": "ALL_ODD"}, "result_text": "くしゃみの余韻まで、旅のメモに書き留めた。", "rewards": [{"type": "TRAVEL_NOTE", "note_id": "cairo_spice_wind_01"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e01_all_even", "condition": {"source_role": "ALL_EVEN"}, "result_text": "穏やかな香りが、遠くの気配を近づけた。", "rewards": [], "state_changes": [{"type": "BOSS_SCENT", "value": 1}], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e01_default", "condition": {"default": true}, "result_text": "香辛料屋を手伝い、少しお礼をもらった。", "rewards": [{"type": "COIN", "amount_key": "COIN_S"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"}
+      ]
+    },
+    {
+      "event_id": "CAI-E02",
+      "district_id": "MARKET",
+      "display_name": "冷たいミントティー",
+      "event_type": "CHOICE",
+      "rarity": "COMMON",
+      "weight": 100,
+      "first_text": "店主が、氷の浮いたミントティーを差し出した。",
+      "repeat_texts": ["涼しいグラスの向こうで、店主が静かに笑った。"],
+      "presentation": {"category": "choice", "icon_id": "market", "expression_id": "relaxed", "sound_id": "event_choice"},
+      "additional_dice_count": 0,
+      "can_trigger_boss": false,
+      "once_per_loop": false,
+      "cooldown_events": 0,
+      "tags": ["calm", "choice", "item", "boss_hint"],
+      "choices": [
+        {"choice_id": "drink", "label": "飲んで休む", "outcomes": [
+          {"result_id": "cai_e02_drink_even", "condition": {"source_role": "ALL_EVEN"}, "result_text": "喉の奥まで風が通り、遠くの気配まで感じられた。", "rewards": [{"type": "SKILL_RECOVER", "amount": 1}], "state_changes": [{"type": "BOSS_SCENT", "value": 1}], "follow_up": "RETURN_TO_BOARD"},
+          {"result_id": "cai_e02_drink", "condition": {"default": true}, "result_text": "喉の奥まで、風が通ったような気がした。", "rewards": [{"type": "SKILL_RECOVER", "amount": 1}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"}
+        ]},
+        {"choice_id": "take", "label": "持ち帰る", "outcomes": [
+          {"result_id": "cai_e02_take_pair", "condition": {"source_role": "PAIR"}, "result_text": "店主が似合いそうな包みを、ふたつ見せてくれた。", "rewards": [{"type": "ITEM", "pool": "COMMON", "choice_count": 2, "receive_count": 1}, {"type": "DICE_UNLOCK", "value": 1}], "state_changes": [], "follow_up": "SHOW_ITEM_CHOICE"},
+          {"result_id": "cai_e02_take", "condition": {"default": true}, "result_text": "香りを閉じ込めた小さな包みを持ち帰った。", "rewards": [{"type": "ITEM", "pool": "COMMON", "receive_count": 1}, {"type": "DICE_UNLOCK", "value": 1}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"}
+        ]}
+      ]
+    },
+    {
+      "event_id": "CAI-E03",
+      "district_id": "MARKET",
+      "display_name": "市場の三毛猫",
+      "event_type": "ARRIVAL_ROLL",
+      "rarity": "COMMON",
+      "weight": 100,
+      "first_text": "三毛猫が荷物の上から、こちらを値踏みしている。",
+      "repeat_texts": ["三毛猫は、また来たのかという顔でしっぽを揺らした。"],
+      "presentation": {"category": "boss_hint", "icon_id": "market", "expression_id": "curious", "sound_id": "event_boss_hint"},
+      "additional_dice_count": 0,
+      "can_trigger_boss": true,
+      "boss_trigger_condition": {"source_role": "TRIPLE"},
+      "once_per_loop": false,
+      "cooldown_events": 0,
+      "tags": ["boss_hint", "travel_note", "coin"],
+      "outcomes": [
+        {"result_id": "cai_e03_triple", "condition": {"source_role": "TRIPLE"}, "result_text": "猫が砂に残る大きな足跡へ案内してくれた。", "rewards": [{"type": "TRAVEL_NOTE", "note_id": "cairo_calico_cat_01"}], "state_changes": [{"type": "BOSS_ENCOUNTER_RESERVATION", "value": true}], "follow_up": "START_BOSS_ENCOUNTER"},
+        {"result_id": "cai_e03_pair", "condition": {"source_role": "PAIR"}, "result_text": "猫が同じ目のサイコロを、前足でころりと転がした。", "rewards": [{"type": "TRAVEL_NOTE", "note_id": "cairo_calico_cat_01"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e03_low_total", "condition": {"source_total_max": 10}, "result_text": "猫が近寄り、荷物の陰から小さなコインを押し出した。", "rewards": [{"type": "TRAVEL_NOTE", "note_id": "cairo_calico_cat_01"}, {"type": "COIN", "amount_key": "COIN_S"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e03_default", "condition": {"default": true}, "result_text": "猫の堂々とした座り方を、旅のメモに残した。", "rewards": [{"type": "TRAVEL_NOTE", "note_id": "cairo_calico_cat_01"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"}
+      ]
+    },
+    {
+      "event_id": "CAI-E08",
+      "district_id": "PYRAMID",
+      "display_name": "壁画の並び替え",
+      "event_type": "ARRIVAL_ROLL",
+      "rarity": "COMMON",
+      "weight": 100,
+      "first_text": "三枚の壁画に、サイコロとよく似た点が刻まれている。",
+      "repeat_texts": ["壁画の点は、前とは違う順番に見えた。"],
+      "presentation": {"category": "discovery", "icon_id": "pyramid", "expression_id": "focused", "sound_id": "event_discovery"},
+      "additional_dice_count": 0,
+      "can_trigger_boss": false,
+      "once_per_loop": false,
+      "cooldown_events": 0,
+      "tags": ["discovery", "coin", "item", "travel_note", "landmark"],
+      "outcomes": [
+        {"result_id": "cai_e08_triple", "condition": {"source_role": "TRIPLE"}, "result_text": "三枚が重なり、秘密の図柄がひとつ浮かんだ。", "rewards": [{"type": "POSTCARD", "postcard_id": "cairo_mural_secret_01"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e08_straight", "condition": {"source_role": "STRAIGHT"}, "result_text": "点を順にたどると、壁画の物語が読み解けた。", "rewards": [{"type": "TRAVEL_NOTE", "note_id": "cairo_mural_order_01"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e08_pair", "condition": {"source_role": "PAIR"}, "result_text": "そろった二枚の間から、小さな隠し棚が開いた。", "rewards": [{"type": "ITEM", "pool": "COMMON", "choice_count": 2, "receive_count": 1}], "state_changes": [], "follow_up": "SHOW_ITEM_CHOICE"},
+        {"result_id": "cai_e08_even", "condition": {"source_total_parity": "EVEN"}, "result_text": "壁画がきれいに並び、石の隙間からコインが落ちた。", "rewards": [{"type": "COIN", "amount_key": "COIN_M"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e08_odd", "condition": {"source_total_parity": "ODD"}, "result_text": "少しずれた壁画の奥から、大きな気配が伝わった。", "rewards": [], "state_changes": [{"type": "BOSS_SCENT", "value": 1}], "follow_up": "RETURN_TO_BOARD"}
+      ]
+    },
+    {
+      "event_id": "CAI-E10",
+      "district_id": "PYRAMID",
+      "display_name": "石棺の上の昼寝跡",
+      "event_type": "ARRIVAL_ROLL",
+      "rarity": "COMMON",
+      "weight": 100,
+      "first_text": "石棺の上に、巨大な猫が丸くなったようなくぼみがある。",
+      "repeat_texts": ["石棺のくぼみには、また新しい砂が積もっていた。"],
+      "presentation": {"category": "boss_hint", "icon_id": "pyramid", "expression_id": "curious", "sound_id": "event_boss_hint"},
+      "additional_dice_count": 0,
+      "can_trigger_boss": true,
+      "boss_trigger_condition": {"source_role": "TRIPLE"},
+      "once_per_loop": false,
+      "cooldown_events": 0,
+      "tags": ["boss_hint", "travel_note"],
+      "outcomes": [
+        {"result_id": "cai_e10_triple", "condition": {"source_role": "TRIPLE"}, "result_text": "三本の爪跡が新しい。近くで砂を踏む音がした。", "rewards": [], "state_changes": [{"type": "BOSS_ENCOUNTER_RESERVATION", "value": true}], "follow_up": "START_BOSS_ENCOUNTER"},
+        {"result_id": "cai_e10_pair", "condition": {"source_role": "PAIR"}, "result_text": "残ったぬくもりを覚えておけば、次はもっと近づけそうだ。", "rewards": [], "state_changes": [{"type": "NEXT_INTERACTION_BONUS", "value": 4}], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e10_all_odd", "condition": {"source_role": "ALL_ODD"}, "result_text": "くぼみはまだ温かい。気配はすぐ近くにある。", "rewards": [], "state_changes": [{"type": "BOSS_SCENT", "value": 2}], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e10_all_even", "condition": {"source_role": "ALL_EVEN"}, "result_text": "静かに形を写し取り、図鑑へ小さなメモを足した。", "rewards": [{"type": "TRAVEL_NOTE", "note_id": "cairo_sphinx_nap_mark_01"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e10_default", "condition": {"default": true}, "result_text": "風に消えかけた足跡が、石棺の向こうへ続いている。", "rewards": [], "state_changes": [{"type": "BOSS_SCENT", "value": 1}], "follow_up": "RETURN_TO_BOARD"}
+      ]
+    },
+    {
+      "event_id": "CAI-E11",
+      "district_id": "PYRAMID",
+      "display_name": "転がる黄金虫",
+      "event_type": "EXTRA_ROLL",
+      "rarity": "COMMON",
+      "weight": 100,
+      "first_text": "黄金色の甲虫が、丸い石を転がしながらこちらへ来た。",
+      "repeat_texts": ["黄金虫は慣れた様子で、サイコロの前に石を置いた。"],
+      "presentation": {"category": "dice_challenge", "icon_id": "pyramid", "expression_id": "excited", "sound_id": "event_dice_challenge"},
+      "additional_dice_count": 1,
+      "extra_roll_rules": {"evaluate_roles": false, "source_pair_value_bonus": 1, "value_max": 6, "moves_player": false},
+      "can_trigger_boss": false,
+      "once_per_loop": false,
+      "cooldown_events": 0,
+      "tags": ["dice_challenge", "coin", "item"],
+      "outcomes": [
+        {"result_id": "cai_e11_rare", "condition": {"effective_extra_value_min": 6}, "result_text": "黄金虫はぴたりと止まり、珍しい包みを残していった。", "rewards": [{"type": "ITEM", "pool": "RARE", "receive_count": 1}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e11_item", "condition": {"effective_extra_value_min": 5}, "result_text": "石の下から、旅に使えそうな小物が現れた。", "rewards": [{"type": "ITEM", "pool": "COMMON", "receive_count": 1}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e11_coin_m", "condition": {"effective_extra_value_min": 3}, "result_text": "黄金虫が転がした石の跡に、コインが並んでいた。", "rewards": [{"type": "COIN", "amount_key": "COIN_M"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e11_coin_s", "condition": {"default": true}, "result_text": "黄金虫が小さなコインを押し出し、砂へ潜った。", "rewards": [{"type": "COIN", "amount_key": "COIN_S"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"}
+      ]
+    },
+    {
+      "event_id": "CAI-E14",
+      "district_id": "OASIS",
+      "display_name": "水面に映る別の空",
+      "event_type": "ARRIVAL_ROLL",
+      "rarity": "COMMON",
+      "weight": 100,
+      "first_text": "水面には、今とは違う時間の空が映っている。",
+      "repeat_texts": ["水面の空は、今日もほんの少し先の時間を映していた。"],
+      "presentation": {"category": "calm", "icon_id": "oasis", "expression_id": "wonder", "sound_id": "event_calm"},
+      "additional_dice_count": 0,
+      "can_trigger_boss": false,
+      "once_per_loop": false,
+      "cooldown_events": 0,
+      "tags": ["calm", "travel_note", "landmark"],
+      "outcomes": [
+        {"result_id": "cai_e14_triple", "condition": {"source_role": "TRIPLE"}, "result_text": "三つの空が重なり、忘れられない一枚になった。", "rewards": [{"type": "POSTCARD", "postcard_id": "cairo_other_sky_01"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e14_straight", "condition": {"source_role": "STRAIGHT"}, "result_text": "流れる雲が、次の特別な場所を指し示した。", "rewards": [], "state_changes": [{"type": "MINIMAP_HIGHLIGHT", "target": "NEXT_STAGE_SPECIAL_TILE", "count": 1}], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e14_all_odd", "condition": {"source_role": "ALL_ODD"}, "result_text": "水面いっぱいに星空が広がり、夜のメモが増えた。", "rewards": [{"type": "TRAVEL_NOTE", "note_id": "cairo_reflected_night_sky_01"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e14_all_even", "condition": {"source_role": "ALL_EVEN"}, "result_text": "朝焼け色の水面を、旅のメモに残した。", "rewards": [{"type": "TRAVEL_NOTE", "note_id": "cairo_reflected_dawn_01"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e14_default", "condition": {"default": true}, "result_text": "今とは違う空の色を、忘れないうちに書き留めた。", "rewards": [{"type": "TRAVEL_NOTE", "note_id": "cairo_reflected_sky_01"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"}
+      ]
+    },
+    {
+      "event_id": "CAI-E20",
+      "district_id": "RUINS",
+      "display_name": "涼しい地下室",
+      "event_type": "CHOICE",
+      "rarity": "COMMON",
+      "weight": 100,
+      "first_text": "地下へ続く階段から、冷たい空気が流れてくる。",
+      "repeat_texts": ["地下への階段は、今日もひんやりした風を送っている。"],
+      "presentation": {"category": "choice", "icon_id": "ruins", "expression_id": "cautious", "sound_id": "event_choice"},
+      "additional_dice_count": 0,
+      "can_trigger_boss": false,
+      "once_per_loop": false,
+      "cooldown_events": 0,
+      "tags": ["choice", "coin", "item", "boss_hint"],
+      "choices": [
+        {"choice_id": "entrance", "label": "入口だけ調べる", "outcomes": [
+          {"result_id": "cai_e20_entrance", "condition": {"default": true}, "result_text": "入口の石段で、小さなコインを見つけた。", "rewards": [{"type": "COIN", "amount_key": "COIN_S"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"}
+        ]},
+        {"choice_id": "deeper", "label": "少し奥へ進む", "outcomes": [
+          {"result_id": "cai_e20_deeper_odd", "condition": {"source_role": "ALL_ODD"}, "result_text": "暗がりにふたつの包みがあり、ひとつを選べそうだ。", "rewards": [{"type": "ITEM", "pool": "COMMON", "choice_count": 2, "receive_count": 1}, {"type": "DICE_UNLOCK", "value": 1}], "state_changes": [], "follow_up": "SHOW_ITEM_CHOICE"},
+          {"result_id": "cai_e20_deeper_even", "condition": {"source_role": "ALL_EVEN"}, "result_text": "冷たい部屋に、大きな足跡と小さな道具が残っていた。", "rewards": [{"type": "ITEM", "pool": "COMMON", "receive_count": 1}], "state_changes": [{"type": "BOSS_SCENT", "value": 1}], "follow_up": "RETURN_TO_BOARD"},
+          {"result_id": "cai_e20_deeper", "condition": {"default": true}, "result_text": "少し奥の棚で、旅に使えそうな道具を見つけた。", "rewards": [{"type": "ITEM", "pool": "COMMON", "receive_count": 1}, {"type": "DICE_UNLOCK", "value": 1}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"}
+        ]}
+      ]
+    },
+    {
+      "event_id": "CAI-E29",
+      "district_id": "DUNES",
+      "display_name": "砂に埋もれた箱",
+      "event_type": "EXTRA_ROLL",
+      "rarity": "UNCOMMON",
+      "weight": 80,
+      "first_text": "砂の下から、小さな金具がのぞいている。",
+      "repeat_texts": ["風に動いた砂の下で、見覚えのある金具が光った。"],
+      "presentation": {"category": "dice_challenge", "icon_id": "dunes", "expression_id": "excited", "sound_id": "event_dice_challenge"},
+      "additional_dice_count": 3,
+      "extra_roll_rules": {"evaluate_roles": true, "moves_player": false},
+      "can_trigger_boss": false,
+      "once_per_loop": false,
+      "cooldown_events": 0,
+      "tags": ["dice_challenge", "coin", "item"],
+      "outcomes": [
+        {"result_id": "cai_e29_triple", "condition": {"extra_role": "TRIPLE"}, "result_text": "三つの目がそろうと、箱の奥に珍しい品が現れた。", "rewards": [{"type": "ITEM", "pool": "RARE", "receive_count": 1}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e29_straight", "condition": {"extra_role": "STRAIGHT"}, "result_text": "順に並ぶ目が錠を開き、ふたつの包みが現れた。", "rewards": [{"type": "ITEM", "pool": "COMMON", "choice_count": 2, "receive_count": 1}], "state_changes": [], "follow_up": "SHOW_ITEM_CHOICE"},
+        {"result_id": "cai_e29_pair", "condition": {"extra_role": "PAIR"}, "result_text": "そろった目の印の下に、コインが隠れていた。", "rewards": [{"type": "COIN", "amount_key": "COIN_M"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e29_all_odd", "condition": {"extra_role": "ALL_ODD"}, "result_text": "奇数の印を押すと、旅道具の包みが開いた。", "rewards": [{"type": "ITEM", "pool": "COMMON", "receive_count": 1}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e29_all_even", "condition": {"extra_role": "ALL_EVEN"}, "result_text": "偶数の印を押すと、旅道具の包みが開いた。", "rewards": [{"type": "ITEM", "pool": "COMMON", "receive_count": 1}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e29_default", "condition": {"default": true}, "result_text": "箱の底に、小さなコインが残っていた。", "rewards": [{"type": "COIN", "amount_key": "COIN_S"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"}
+      ]
+    },
+    {
+      "event_id": "CAI-E30",
+      "district_id": "DUNES",
+      "display_name": "砂丘のサイコロ祭り",
+      "event_type": "EXTRA_ROLL",
+      "rarity": "RARE",
+      "weight": 25,
+      "first_text": "砂の中から五つの古いサイコロが現れ、勝手に転がり始めた。",
+      "repeat_texts": ["古いサイコロが、祭りの続きを待つように砂から顔を出した。"],
+      "presentation": {"category": "rare", "icon_id": "dunes", "expression_id": "amazed", "sound_id": "event_rare"},
+      "additional_dice_count": 5,
+      "extra_roll_rules": {"evaluate_roles": true, "count_distinct_role_types": true, "detect_five_of_a_kind": true, "moves_player": false},
+      "can_trigger_boss": true,
+      "boss_trigger_condition": {"extra_role": "FIVE_OF_A_KIND"},
+      "once_per_loop": true,
+      "cooldown_events": 5,
+      "tags": ["rare", "dice_challenge", "coin", "item", "boss_hint"],
+      "outcomes": [
+        {"result_id": "cai_e30_five", "condition": {"extra_role": "FIVE_OF_A_KIND"}, "result_text": "砂丘が静まり、遠くで巨大な前足がゆっくり動いた。", "rewards": [], "state_changes": [{"type": "BOSS_ENCOUNTER_RESERVATION", "value": true}], "follow_up": "START_BOSS_ENCOUNTER"},
+        {"result_id": "cai_e30_roles_3", "condition": {"extra_role_type_count_min": 3}, "result_text": "三つ以上の役に祭りが沸き、珍しい品と濃い気配が残った。", "rewards": [{"type": "ITEM", "pool": "RARE_EVENT", "receive_count": 1}], "state_changes": [{"type": "BOSS_SCENT", "value": 2}], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e30_roles_2", "condition": {"extra_role_type_count_min": 2}, "result_text": "ふたつの役が重なり、選べるふたつの包みが現れた。", "rewards": [{"type": "ITEM", "pool": "COMMON", "choice_count": 2, "receive_count": 1}], "state_changes": [], "follow_up": "SHOW_ITEM_CHOICE"},
+        {"result_id": "cai_e30_roles_1", "condition": {"extra_role_type_count_min": 1}, "result_text": "ひとつの役が決まり、祭りのコインが舞い上がった。", "rewards": [{"type": "COIN", "amount_key": "COIN_M"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"},
+        {"result_id": "cai_e30_roles_0", "condition": {"default": true}, "result_text": "役はなくても祭りは続き、小さなお礼が砂に残った。", "rewards": [{"type": "COIN", "amount_key": "COIN_S"}], "state_changes": [], "follow_up": "RETURN_TO_BOARD"}
+      ]
+    }
+  ]
+}

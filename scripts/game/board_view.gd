@@ -14,7 +14,9 @@ const TILE_COLORS: Dictionary = {
 	&"SHOP": Color("#b87f61"),
 	&"REST": Color("#8fb39a"),
 	&"LANDMARK": Color("#d4a446"),
-	&"BOSS_SCENT": Color("#8b91b7")
+	&"BOSS_SCENT": Color("#8b91b7"),
+	&"STAGE_SPECIAL": Color("#4f9b98"),
+	&"RISK": Color("#c76552")
 }
 
 var tile_types: Array[StringName] = []
@@ -68,13 +70,35 @@ func _draw() -> void:
 	_draw_zoomed_neighborhood()
 
 func _draw_zoomed_neighborhood() -> void:
-	var focus := positions[current_tile]
-	var zoom := 2.45
-	draw_set_transform(size * 0.5 - focus * zoom, 0.0, Vector2(zoom, zoom))
-	_draw_route(true)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var caption_position := Vector2(16.0, 26.0)
-	draw_string(ThemeDB.fallback_font, caption_position, "現在地周辺", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#70563b"))
+	# The neighborhood is a legible board ribbon, not a magnified dotted map.
+	# The full 90-tile topology remains in the independent minimap.
+	draw_style_box(_board_panel(), Rect2(Vector2.ZERO, size))
+	draw_string(ThemeDB.fallback_font, Vector2(22, 34), "現在地周辺  %02d / 90" % (current_tile + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, INK)
+	var district_names := ["市場", "ピラミッド", "オアシス", "遺跡", "砂丘"]
+	draw_string(ThemeDB.fallback_font, Vector2(size.x - 150, 34), district_names[current_tile / 18], HORIZONTAL_ALIGNMENT_RIGHT, 128, 17, Color("#846c50"))
+	var shown_each_side := 5
+	var tile_width := maxf(48.0, (size.x - 34.0) / 11.0)
+	var tile_height := minf(106.0, maxf(78.0, size.y * 0.28))
+	var center_y := size.y * 0.58
+	for offset: int in range(-shown_each_side, shown_each_side + 1):
+		var index := posmod(current_tile + offset, TILE_COUNT)
+		var tile_type: StringName = tile_types[index] if index < tile_types.size() else &"NORMAL"
+		var x := size.x * 0.5 + float(offset) * tile_width - tile_width * 0.5
+		var y := center_y + absf(float(offset)) * 4.2 - tile_height * 0.5
+		var rect := Rect2(x + 2, y, tile_width - 4, tile_height)
+		var tile_style := _ribbon_tile_style(tile_type, offset == 0, offset == 1)
+		draw_style_box(tile_style, rect)
+		var number_color := Color.WHITE if offset == 0 or tile_type == &"RISK" else INK
+		draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, 27), "%02d" % (index + 1), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 17, number_color)
+		var mark := _tile_mark(tile_type)
+		if not mark.is_empty(): draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, 58), mark, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 23, number_color)
+		if offset == 1: draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, rect.size.y - 10), "NEXT", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color("#fff4dc") if tile_type == &"RISK" else Color("#356b6d"))
+	# Direction and token stay centered while the ribbon moves beneath them.
+	var center_rect_x := size.x * 0.5 - tile_width * 0.5
+	draw_circle(Vector2(size.x * 0.5, center_y + tile_height * 0.5 + 12), 23, Color("#277c80"))
+	draw_arc(Vector2(size.x * 0.5, center_y + tile_height * 0.5 + 12), 23, 0, TAU, 24, Color("#ffe5a4"), 4, true)
+	draw_texture_rect(PLAYER_TEXTURE, Rect2(Vector2(size.x * 0.5 - 40, center_y - tile_height * 0.5 - 94), Vector2(80, 108)), false)
+	draw_string(ThemeDB.fallback_font, Vector2(center_rect_x + tile_width, center_y - tile_height * 0.5 - 12), "▶", HORIZONTAL_ALIGNMENT_CENTER, tile_width, 22, Color("#7d5f36"))
 
 func _draw_minimap() -> void:
 	draw_style_box(_mini_panel(), Rect2(Vector2.ZERO, size))
@@ -96,6 +120,14 @@ func _draw_route(show_token_art: bool) -> void:
 				# A tiny three-toe footprint makes the low-saturation scent tile recognizable without text.
 				for offset: Vector2 in [Vector2(-2, -1), Vector2(0, -3), Vector2(2, -1)]:
 					draw_circle(positions[index] + offset, 1.4, INK)
+			elif tile_type == &"RISK":
+				# High-contrast warning mark remains legible in the zoom view while
+				# the red tile itself carries the same warning on the minimap.
+				draw_line(positions[index] + Vector2(0, -4), positions[index] + Vector2(0, 1), Color("#fff4dc"), 1.8, true)
+				draw_circle(positions[index] + Vector2(0, 4), 1.2, Color("#fff4dc"))
+			elif tile_type == &"STAGE_SPECIAL":
+				for direction: Vector2 in [Vector2(0, -4), Vector2(4, 0), Vector2(0, 4), Vector2(-4, 0)]:
+					draw_line(positions[index], positions[index] + direction, Color("#fff4dc"), 1.4, true)
 	var player_pos := positions[current_tile]
 	if show_token_art:
 		draw_circle(player_pos + Vector2(0, 6), 16.0, Color("#3b8b91"))
@@ -112,3 +144,41 @@ func _mini_panel() -> StyleBoxFlat:
 	panel.set_border_width_all(2)
 	panel.set_corner_radius_all(12)
 	return panel
+
+func _board_panel() -> StyleBoxFlat:
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = Color(0.96, 0.88, 0.72, 0.82)
+	panel.border_color = Color("#a67d43")
+	panel.set_border_width_all(2)
+	panel.set_corner_radius_all(18)
+	panel.shadow_color = Color(0.19, 0.12, 0.06, 0.24)
+	panel.shadow_size = 8
+	return panel
+
+func _ribbon_tile_style(tile_type: StringName, is_current: bool, is_next: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(TILE_COLORS.get(tile_type, SAND))
+	if tile_type == &"NORMAL": style.bg_color = Color("#f8ebcd")
+	style.border_color = Color("#5c4938") if not is_next else Color("#287b80")
+	style.set_border_width_all(4 if is_current else (3 if is_next else 2))
+	style.set_corner_radius_all(11)
+	if is_current:
+		style.bg_color = Color("#2f8588")
+		style.border_color = Color("#f1c86a")
+		style.shadow_color = Color(0.12, 0.08, 0.04, 0.3)
+		style.shadow_size = 7
+	return style
+
+func _tile_mark(tile_type: StringName) -> String:
+	match tile_type:
+		&"EVENT": return "?"
+		&"ITEM": return "◆"
+		&"COIN": return "●"
+		&"WARP": return "↻"
+		&"SHOP": return "店"
+		&"REST": return "☕"
+		&"LANDMARK": return "★"
+		&"BOSS_SCENT": return "足"
+		&"STAGE_SPECIAL": return "✦"
+		&"RISK": return "!"
+	return ""

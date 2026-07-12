@@ -3,7 +3,20 @@ extends RefCounted
 
 const TILE_COUNT: int = 90
 const TILE_TYPES: Array[StringName] = [
-	&"NORMAL", &"EVENT", &"ITEM", &"COIN", &"WARP", &"SHOP", &"REST", &"LANDMARK", &"BOSS_SCENT"
+	&"NORMAL", &"EVENT", &"ITEM", &"COIN", &"WARP", &"SHOP", &"REST", &"LANDMARK", &"BOSS_SCENT", &"STAGE_SPECIAL", &"RISK"
+]
+
+const CAIRO_TILES: Array[StringName] = [
+	# MARKET 0-17
+	&"LANDMARK", &"NORMAL", &"ITEM", &"COIN", &"EVENT", &"NORMAL", &"SHOP", &"ITEM", &"NORMAL", &"COIN", &"NORMAL", &"EVENT", &"SHOP", &"ITEM", &"NORMAL", &"REST", &"NORMAL", &"NORMAL",
+	# PYRAMID 18-35
+	&"STAGE_SPECIAL", &"NORMAL", &"ITEM", &"EVENT", &"LANDMARK", &"BOSS_SCENT", &"NORMAL", &"COIN", &"EVENT", &"RISK", &"NORMAL", &"ITEM", &"EVENT", &"NORMAL", &"WARP", &"NORMAL", &"NORMAL", &"NORMAL",
+	# OASIS 36-53
+	&"ITEM", &"NORMAL", &"REST", &"EVENT", &"NORMAL", &"COIN", &"NORMAL", &"REST", &"RISK", &"NORMAL", &"EVENT", &"ITEM", &"NORMAL", &"REST", &"NORMAL", &"NORMAL", &"NORMAL", &"NORMAL",
+	# RUINS 54-71
+	&"LANDMARK", &"NORMAL", &"EVENT", &"BOSS_SCENT", &"RISK", &"NORMAL", &"COIN", &"ITEM", &"NORMAL", &"WARP", &"EVENT", &"NORMAL", &"BOSS_SCENT", &"NORMAL", &"RISK", &"NORMAL", &"NORMAL", &"NORMAL",
+	# DUNES 72-89
+	&"STAGE_SPECIAL", &"NORMAL", &"ITEM", &"EVENT", &"WARP", &"NORMAL", &"COIN", &"BOSS_SCENT", &"RISK", &"NORMAL", &"EVENT", &"NORMAL", &"SHOP", &"NORMAL", &"NORMAL", &"ITEM", &"NORMAL", &"NORMAL"
 ]
 
 static func move(index: int, distance: int, tile_count: int = TILE_COUNT) -> Dictionary:
@@ -11,41 +24,32 @@ static func move(index: int, distance: int, tile_count: int = TILE_COUNT) -> Dic
 	return {"index": posmod(total, tile_count), "laps": floori(float(total) / float(tile_count))}
 
 static func build_tile_types() -> Array[StringName]:
-	var counts: Dictionary = {
-		# M3 adds four quiet foreshadowing spaces while keeping the existing slice's economy.
-		&"NORMAL": 46, &"EVENT": 14, &"ITEM": 8, &"COIN": 8,
-		&"WARP": 3, &"SHOP": 2, &"REST": 2, &"LANDMARK": 3, &"BOSS_SCENT": 4
-	}
-	var result: Array[StringName] = []
-	# A deterministic interleave keeps special spaces readable and data-testable.
-	for index: int in range(TILE_COUNT):
-		var preferred: StringName = &"NORMAL"
-		if index in [0, 30, 60]: preferred = &"LANDMARK"
-		elif index in [10, 36, 63, 84]: preferred = &"BOSS_SCENT"
-		elif index in [17, 47, 77]: preferred = &"WARP"
-		elif index in [24, 66]: preferred = &"SHOP"
-		elif index in [14, 54]: preferred = &"REST"
-		elif index % 9 == 4: preferred = &"ITEM"
-		elif index % 8 == 2: preferred = &"COIN"
-		elif index % 5 == 1: preferred = &"EVENT"
-		if int(counts.get(preferred, 0)) <= 0:
-			preferred = _next_available(counts)
-		result.append(preferred)
-		counts[preferred] = int(counts[preferred]) - 1
-	# Replace late NORMAL slots with any remaining special types.
-	for tile_type: StringName in TILE_TYPES:
-		while int(counts.get(tile_type, 0)) > 0:
-			for index: int in range(result.size() - 1, -1, -1):
-				if result[index] == &"NORMAL" and tile_type != &"NORMAL":
-					result[index] = tile_type
-					counts[tile_type] = int(counts[tile_type]) - 1
-					break
-			if tile_type == &"NORMAL":
-				break
-	return result
+	return CAIRO_TILES.duplicate()
 
-static func _next_available(counts: Dictionary) -> StringName:
-	for tile_type: StringName in TILE_TYPES:
-		if int(counts.get(tile_type, 0)) > 0:
-			return tile_type
-	return &"NORMAL"
+static func item_space_rewards_for_roll(roll: int, is_double: bool = false) -> Array[StringName]:
+	if is_double:
+		return [&"DICE_ADD_1", &"ITEM"]
+	var normalized := clampi(roll, 0, 99)
+	if normalized < 35: return [&"DICE_ADD_1"]
+	if normalized < 90: return [&"ITEM"]
+	return [&"ITEM_CHOICE"]
+
+static func circular_gaps(types: Array[StringName], target: StringName) -> Array[int]:
+	var indices: Array[int] = []
+	for index: int in range(types.size()):
+		if types[index] == target: indices.append(index)
+	var gaps: Array[int] = []
+	if indices.is_empty(): return gaps
+	for index: int in range(indices.size()):
+		gaps.append(posmod(indices[(index + 1) % indices.size()] - indices[index], types.size()))
+	return gaps
+
+static func minimum_circular_gap_for(types: Array[StringName], targets: Array[StringName]) -> int:
+	var indices: Array[int] = []
+	for index: int in range(types.size()):
+		if types[index] in targets: indices.append(index)
+	if indices.size() < 2: return types.size()
+	var minimum := types.size()
+	for index: int in range(indices.size()):
+		minimum = mini(minimum, posmod(indices[(index + 1) % indices.size()] - indices[index], types.size()))
+	return minimum
