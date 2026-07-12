@@ -6,6 +6,7 @@ const BossSystemScript = preload("res://scripts/game/boss_system.gd")
 const RewardResolverScript = preload("res://scripts/game/reward_resolver.gd")
 const EventSystemScript = preload("res://scripts/game/event_system.gd")
 const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3d.gd")
+const DiceAudioControllerScript = preload("res://scripts/game/dice_audio_controller.gd")
 
 var failures: int = 0
 
@@ -24,6 +25,10 @@ func _init() -> void:
 	_expect(is_equal_approx(face_orientations[2].z, PI * 0.5) and is_equal_approx(face_orientations[3].z, -PI * 0.5), "faces 3 and 4 are opposite")
 	var five_layout: Array[Vector3] = DicePresentation3DScript.layout_for_count(5)
 	_expect(five_layout.size() == 5 and five_layout.slice(0, 3).all(func(position: Vector3) -> bool: return position.z < 0) and five_layout.slice(3, 5).all(func(position: Vector3) -> bool: return position.z > 0), "five dice layout is three plus two")
+	var throw_start: Vector3 = DicePresentation3DScript.throw_offset(0.0, 0); var throw_peak: Vector3 = DicePresentation3DScript.throw_offset(0.5, 0); var throw_end: Vector3 = DicePresentation3DScript.throw_offset(1.0, 0)
+	_expect(throw_peak.y > throw_start.y and throw_peak.y > throw_end.y and throw_start.z > throw_end.z, "dice use a forward launch arc before settling")
+	_expect(DiceAudioControllerScript.PLAYER_POOL_SIZE == 9 and DiceAudioControllerScript.MAX_ROLL_VOICES == 2, "dice audio uses bounded shared pools")
+	_expect(DiceAudioControllerScript.next_variation_index(4, 2, 0) != 2 and DiceAudioControllerScript.next_variation_index(4, 2, 99) != 2, "dice audio avoids immediate variation repeats")
 	var wrapped: Dictionary = BoardModelScript.move(89, 4)
 	_expect(wrapped.index == 3 and wrapped.laps == 1, "89 to 0 lap")
 	var long_move: Dictionary = BoardModelScript.move(0, 378)

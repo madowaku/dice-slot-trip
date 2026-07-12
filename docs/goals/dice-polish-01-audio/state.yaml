@@ -1,0 +1,117 @@
+version: 2
+
+goal:
+  title: "DICE-POLISH-01 ダイス物理SE"
+  slug: "dice-polish-01-audio"
+  kind: specific
+  tranche: "物理SE、共有発音制御、桃鉄風投射軌道、設定・QAを完成させる"
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "仕様に沿う物理SEと投射軌道を実装し、回帰を検証する。"
+    inputs:
+      - "docs/DICE-POLISH-01 転がり・接触・着地SE 実装スライス.md"
+      - "scripts/game/dice_presentation_3d.gd"
+      - "scripts/app/main.gd"
+    constraints:
+      - "役音・振動・モデル・トレイテクスチャは変更しない。"
+    allowed_files:
+      - "assets/audio/dice/*"
+      - "scripts/game/dice_audio_controller.gd"
+      - "scripts/game/dice_presentation_3d.gd"
+      - "scripts/app/main.gd"
+      - "autoload/game_state.gd"
+      - "tests/run_tests.gd"
+      - "docs/reference/runtime-dice-polish-rolling.png"
+    verify:
+      - "Godot unit suite"
+      - "DICE_QA_AUDIO"
+      - "EARLY_STOP / STOP_ALL / EXTRA_DICE_CONTROLS"
+      - "M3_ROUTES / M4A_HARDENING"
+    stop_if:
+      - "音がゲームロジックへ影響する。"
+      - "音声プレイヤーが増殖する。"
+    receipt:
+      result: done
+      summary: "15 WAV、9-player共有pool、category別音量/pitch、variation履歴、roll/contact上限、land同期、mute/volume保存、DEBUG、前方投射arcを実装。"
+      changed_files:
+        - "assets/audio/dice/*.wav"
+        - "scripts/game/dice_audio_controller.gd"
+        - "scripts/game/dice_presentation_3d.gd"
+        - "scripts/app/main.gd"
+        - "autoload/game_state.gd"
+        - "tests/run_tests.gd"
+        - "docs/reference/runtime-dice-polish-rolling.png"
+      commands:
+        - cmd: "Godot 4.7 unit suite"
+          status: pass
+        - cmd: "DICE_QA_AUDIO"
+          status: pass
+        - cmd: "EARLY_STOP / STOP_ALL / EXTRA / M3 / M4A"
+          status: pass
+        - cmd: "ffprobe 15 WAV durations"
+          status: pass
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "物理SEスライスが発音上限、同期、疲労抑制、サイレント回帰を満たすか監査する。"
+    inputs:
+      - "T001 receipt"
+      - "Current dirty diff"
+      - "QA logs"
+      - "Runtime rolling capture"
+    constraints:
+      - "Do not implement."
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence"
+      - "P3 residual"
+    receipt:
+      result: complete
+      decision: "complete"
+      summary: "15 WAV、共有9-player pool、発音上限、land/lock同期、variation履歴、mute/volume保存、中断停止、100 roll安定、前方投射arc、全回帰を監査し完了。"
+      evidence:
+        - "15 WAV: 0.048-0.165s, normalized peak -5.0dB"
+        - "DICE_QA_AUDIO passed=true"
+        - "Godot unit failures=0"
+        - "EARLY_STOP / STOP_ALL / EXTRA / M3 / M4A passed"
+        - "runtime-dice-polish-rolling.png visually inspected"
+        - "Goal checker ok"
+      residual_p3:
+        - "Android内蔵スピーカーとイヤホンでのmix調整"
+        - "人手による20回連続ロール疲労評価"
+
+checks:
+  dirty_fingerprint: "dice-polish-01-audio-complete-uncommitted"
+  last_verification:
+    result: pass
+    task: "T999"
+    commands:
+      - "Godot unit failures=0"
+      - "DICE_QA_AUDIO passed=true"
+      - "Core regressions passed"
+      - "Judge T999 complete"

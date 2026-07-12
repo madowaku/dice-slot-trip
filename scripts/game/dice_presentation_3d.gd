@@ -19,7 +19,10 @@ var cube_materials: Array[StandardMaterial3D] = []
 var die_states: Array[int] = []
 var face_values: Array[int] = []
 var settle_elapsed: Array[float] = []
+var roll_elapsed: Array[float] = []
 var base_positions: Array[Vector3] = []
+var settle_start_positions: Array[Vector3] = []
+var settle_start_rotations: Array[Vector3] = []
 var active_count := 0
 var next_lock_index := -1
 var animation_time := 0.0
@@ -74,7 +77,7 @@ func _build_die(index: int) -> void:
 	for pip_index: int in range(pip_transforms.size()): multi.set_instance_transform(pip_index, pip_transforms[pip_index])
 	var pip_material := StandardMaterial3D.new(); pip_material.albedo_color = PIP_COLOR; pip_material.roughness = 0.78
 	pips.multimesh = multi; pips.material_override = pip_material; die.add_child(pips)
-	dice_roots.append(die); die_states.append(DieState.READY); face_values.append(1); settle_elapsed.append(SETTLE_DURATION); base_positions.append(Vector3.ZERO)
+	dice_roots.append(die); die_states.append(DieState.READY); face_values.append(1); settle_elapsed.append(SETTLE_DURATION); roll_elapsed.append(0.0); base_positions.append(Vector3.ZERO); settle_start_positions.append(Vector3.ZERO); settle_start_rotations.append(Vector3.ZERO)
 
 func _collect_face_pips(transforms: Array[Transform3D], value: int, normal: Vector3, horizontal: Vector3, vertical: Vector3) -> void:
 	var patterns: Array = [[], [Vector2.ZERO], [Vector2(-1, -1), Vector2(1, 1)], [Vector2(-1, -1), Vector2.ZERO, Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2.ZERO, Vector2(-1, 1), Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 0), Vector2(1, 0), Vector2(-1, 1), Vector2(1, 1)]]
@@ -102,6 +105,14 @@ static func layout_for_count(count: int) -> Array[Vector3]:
 		5: return [Vector3(-2.15, DIE_BASE_Y, -0.85), Vector3(0, DIE_BASE_Y, -0.85), Vector3(2.15, DIE_BASE_Y, -0.85), Vector3(-1.1, DIE_BASE_Y, 1.05), Vector3(1.1, DIE_BASE_Y, 1.05)]
 	return []
 
+static func throw_offset(progress: float, dice_index: int) -> Vector3:
+	var t := clampf(progress, 0.0, 1.0)
+	var lane := sin(float(dice_index) * 1.7 + 0.4) * 0.24 * (1.0 - t)
+	var forward := lerpf(1.55, -0.12, t)
+	var main_arc := sin(t * PI) * 1.18
+	var small_bounce := absf(sin(t * PI * 3.0)) * 0.14 * (1.0 - t)
+	return Vector3(lane, main_arc + small_bounce, forward)
+
 func present(values: Array[int], rolling: bool, locked_count: int) -> void:
 	active_count = mini(MAX_DICE, values.size())
 	var layout := layout_for_count(maxi(1, active_count))
@@ -114,9 +125,10 @@ func present(values: Array[int], rolling: bool, locked_count: int) -> void:
 		var new_value := clampi(values[index], 1, 6)
 		face_values[index] = new_value
 		if rolling and index >= locked_count:
+			if die_states[index] != DieState.ROLLING: roll_elapsed[index] = 0.0
 			die_states[index] = DieState.ROLLING
 		elif die_states[index] == DieState.ROLLING:
-			die_states[index] = DieState.SETTLING; settle_elapsed[index] = 0.0
+			die_states[index] = DieState.SETTLING; settle_elapsed[index] = 0.0; settle_start_positions[index] = die.position; settle_start_rotations[index] = die.rotation
 		elif not rolling and die_states[index] != DieState.SETTLING:
 			die_states[index] = DieState.READY
 		cube_materials[index].emission_enabled = index == next_lock_index
@@ -130,14 +142,17 @@ func _process(delta: float) -> void:
 		var die := dice_roots[index]
 		match die_states[index]:
 			DieState.ROLLING:
+				roll_elapsed[index] += delta
 				die.rotation += Vector3(7.8 + index * 0.3, 9.6 + index * 0.4, 5.2) * delta
-				var bounce := absf(sin(animation_time * 9.0 + index * 0.8)) * 0.48
-				die.position = base_positions[index] + Vector3(sin(animation_time * 7.0 + index) * 0.10, bounce, cos(animation_time * 6.0 + index) * 0.08)
+				var throw_progress := clampf(roll_elapsed[index] / (0.78 + float(index) * 0.035), 0.0, 1.0)
+				var residual_roll := Vector3(sin(animation_time * 7.0 + index) * 0.08, absf(sin(animation_time * 9.0 + index * 0.8)) * 0.12, 0)
+				die.position = base_positions[index] + throw_offset(throw_progress, index) + residual_roll * (1.0 - throw_progress * 0.7)
 			DieState.SETTLING:
 				settle_elapsed[index] += delta
 				var t := clampf(settle_elapsed[index] / SETTLE_DURATION, 0.0, 1.0)
-				die.rotation = orientation_for_face(face_values[index]) + Vector3(0, 0, sin(t * PI) * 0.12 * (1.0 - t))
-				die.position = base_positions[index] + Vector3(0, sin(t * PI) * 0.16, 0)
+				var eased := 1.0 - pow(1.0 - t, 3.0)
+				die.rotation = settle_start_rotations[index].lerp(orientation_for_face(face_values[index]), eased) + Vector3(0, 0, sin(t * PI) * 0.12 * (1.0 - t))
+				die.position = settle_start_positions[index].lerp(base_positions[index], eased) + Vector3(0, sin(t * PI) * 0.16, 0)
 				if t >= 1.0: die_states[index] = DieState.LOCKED
 			_:
 				die.rotation = orientation_for_face(face_values[index])

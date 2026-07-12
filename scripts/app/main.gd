@@ -31,6 +31,7 @@ const BoardViewScript = preload("res://scripts/game/board_view.gd")
 const BossSystemScript = preload("res://scripts/game/boss_system.gd")
 const EventSystemScript = preload("res://scripts/game/event_system.gd")
 const RewardResolverScript = preload("res://scripts/game/reward_resolver.gd")
+const DiceAudioControllerScript = preload("res://scripts/game/dice_audio_controller.gd")
 const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const CAIRO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/cairo-board.png")
 const SPHINX_TEXTURE: Texture2D = preload("res://assets/art/bosses/sleepy-sphinx.png")
@@ -46,6 +47,7 @@ var root_stack: VBoxContainer
 var board_view: BoardView
 var dice_row: HBoxContainer
 var dice_presentation: SubViewportContainer
+var dice_audio: Node
 var role_label: Label
 var memo_label: Label
 var roll_button: Button
@@ -116,6 +118,8 @@ func _ready() -> void:
 		call_deferred("_qa_m4a_hardening")
 	elif OS.get_environment("DICE_QA_DICE_PROGRESSION") == "1":
 		call_deferred("_qa_dice_progression")
+	elif OS.get_environment("DICE_QA_AUDIO") == "1":
+		call_deferred("_qa_dice_audio")
 	elif OS.get_environment("DICE_QA_CAPTURE_DICE") != "":
 		call_deferred("_qa_dice_capture", OS.get_environment("DICE_QA_CAPTURE_DICE"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_M4A") != "":
@@ -143,9 +147,11 @@ func _apply_theme() -> void:
 	theme = app_theme
 
 func _clear() -> void:
+	if is_instance_valid(dice_audio): dice_audio.stop_all()
 	for child: Node in get_children():
 		child.queue_free()
 	root_stack = null
+	dice_audio = null
 
 func _make_page() -> VBoxContainer:
 	_clear()
@@ -267,13 +273,33 @@ func show_title() -> void:
 	var utility := HBoxContainer.new()
 	utility.add_theme_constant_override("separation", 16)
 	var book := _button("図鑑", show_encyclopedia)
-	var settings := _button("設定", func() -> void: _show_message("設定", "音量と演出速度はM3以降で調整できます。"))
+	var settings := _button("設定", _show_settings_modal)
 	book.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	settings.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	utility.add_child(book)
 	utility.add_child(settings)
 	page.add_child(utility)
 	page.add_child(_body("オートセーブ対応", 18))
+
+func _show_settings_modal() -> void:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_title("音の設定", 34))
+	var master_label := _body("全体音量 %d%%" % roundi(GameState.master_volume * 100.0), 19)
+	var master_slider := HSlider.new(); master_slider.min_value = 0; master_slider.max_value = 100; master_slider.step = 1; master_slider.value = GameState.master_volume * 100.0; master_slider.custom_minimum_size.y = 42
+	master_slider.value_changed.connect(func(value: float) -> void: GameState.master_volume = value / 100.0; master_label.text = "全体音量 %d%%" % roundi(value); if is_instance_valid(dice_audio): dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted))
+	content.add_child(master_label); content.add_child(master_slider)
+	var se_label := _body("SE音量 %d%%" % roundi(GameState.se_volume * 100.0), 19)
+	var se_slider := HSlider.new(); se_slider.min_value = 0; se_slider.max_value = 100; se_slider.step = 1; se_slider.value = GameState.se_volume * 100.0; se_slider.custom_minimum_size.y = 42
+	se_slider.value_changed.connect(func(value: float) -> void: GameState.se_volume = value / 100.0; se_label.text = "SE音量 %d%%" % roundi(value); if is_instance_valid(dice_audio): dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted))
+	content.add_child(se_label); content.add_child(se_slider)
+	var dice_mute := CheckButton.new(); dice_mute.text = "ダイスSEをミュート"; dice_mute.button_pressed = GameState.dice_se_muted; dice_mute.custom_minimum_size.y = 52
+	dice_mute.toggled.connect(func(value: bool) -> void: GameState.dice_se_muted = value; if is_instance_valid(dice_audio): dice_audio.set_muted(value))
+	content.add_child(dice_mute)
+	content.add_child(_body("音量0でも出目・目押し・移動は変わりません。", 16))
+	var close := _button("保存して閉じる", func() -> void: return, true); close.toggle_mode = true; content.add_child(close)
+	await close.pressed
+	SaveManager.save_now(); _close_modal(modal.layer)
 
 func show_stage_select() -> void:
 	var page := _make_page()
@@ -311,6 +337,10 @@ func show_character_select() -> void:
 
 func show_game() -> void:
 	var page := _make_page()
+	dice_audio = DiceAudioControllerScript.new()
+	dice_audio.name = "DiceAudioController"
+	add_child(dice_audio)
+	dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted)
 	page.add_theme_constant_override("separation", 6)
 	var top_row := HBoxContainer.new()
 	top_row.add_theme_constant_override("separation", 8)
@@ -448,6 +478,7 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	moving = true
 	rolling_dice = true
 	locked_dice_count = 0
+	if is_instance_valid(dice_audio): dice_audio.begin_roll(count)
 	rolling_values.clear()
 	for index: int in range(count):
 		rolling_values.append(rng.randi_range(1, 6))
@@ -465,6 +496,9 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	# presentation settle continues independently for another 0.18 seconds.
 	for frame: int in range(26):
 		roll_visual_frame = frame
+		if is_instance_valid(dice_audio):
+			dice_audio.play_roll(1.0 - float(frame) / 25.0)
+			if frame in [4, 8, 12, 16]: dice_audio.play_contact(0.38 + float(frame) * 0.018)
 		for index: int in range(locked_dice_count, count):
 			rolling_values[index] = rng.randi_range(1, 6)
 		_render_dice(rolling_values, false)
@@ -479,6 +513,7 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		await get_tree().create_timer(0.13).timeout
 	rolling_dice = false
 	moving = false
+	if is_instance_valid(dice_audio): dice_audio.end_roll()
 	roll_button.text = "サイコロを振る"
 	stop_all_button.visible = false
 	if is_instance_valid(active_extra_left_stop): active_extra_left_stop.disabled = true
@@ -494,6 +529,7 @@ func _lock_next_die(automatic: bool) -> void:
 		rolling_values[index] = clampi(fixed_targets[index], 1, 6)
 	locked_dice_count += 1
 	_render_dice(rolling_values, false)
+	if is_instance_valid(dice_audio): dice_audio.play_land(index, 0.76 if not automatic else 0.62)
 	if not automatic:
 		last_roll_early_stopped = true
 		role_label.text = "%d個目を早止め" % locked_dice_count
@@ -1203,7 +1239,52 @@ func _build_debug_box() -> VBoxContainer:
 	var boss_toggle := _button("ボス接続ON/OFF", func() -> void: GameState.debug_boss_handoff_enabled = not GameState.debug_boss_handoff_enabled)
 	for control: Control in [extra_input, extra_apply, rare_unlock, boss_toggle]: control.size_flags_horizontal = Control.SIZE_EXPAND_FILL; event_debug_2.add_child(control)
 	box.add_child(event_debug_2)
+	var audio_debug := HBoxContainer.new()
+	for entry: Dictionary in [
+		{"name": "Launch SE", "category": "launch"}, {"name": "Roll SE", "category": "roll"},
+		{"name": "Contact SE", "category": "contact"}, {"name": "Land SE", "category": "land"},
+		{"name": "Lock SE", "category": "lock"}
+	]:
+		var audio_button := _button(entry.name, func() -> void: _debug_play_dice_audio(entry.category))
+		audio_button.custom_minimum_size.y = 42; audio_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; audio_debug.add_child(audio_button)
+	box.add_child(audio_debug)
+	var fatigue_debug := HBoxContainer.new()
+	for count: int in [1, 3, 5]:
+		var fatigue_button := _button("%d Dice ×20" % count, func() -> void: _debug_audio_twenty(count))
+		fatigue_button.custom_minimum_size.y = 42; fatigue_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; fatigue_debug.add_child(fatigue_button)
+	var mute_dice := _button("Mute Dice SE", _debug_toggle_dice_audio)
+	mute_dice.custom_minimum_size.y = 42; mute_dice.size_flags_horizontal = Control.SIZE_EXPAND_FILL; fatigue_debug.add_child(mute_dice)
+	var voices := _button("Active Voices", func() -> void:
+		if is_instance_valid(dice_audio): _show_message("Dice Audio", "Active voices: %d / Pool: %d" % [dice_audio.active_voice_count(), int(dice_audio.receipt().pool_size)]))
+	voices.custom_minimum_size.y = 42; voices.size_flags_horizontal = Control.SIZE_EXPAND_FILL; fatigue_debug.add_child(voices)
+	box.add_child(fatigue_debug)
 	return box
+
+func _debug_play_dice_audio(category: String) -> void:
+	if not is_instance_valid(dice_audio): return
+	match category:
+		"launch": dice_audio.begin_roll(1)
+		"roll": dice_audio.play_roll(1.0)
+		"contact": dice_audio.play_contact(0.6)
+		"land": dice_audio.play_land(Time.get_ticks_msec(), 0.72)
+		"lock": dice_audio.play_lock()
+
+func _debug_toggle_dice_audio() -> void:
+	GameState.dice_se_muted = not GameState.dice_se_muted
+	if is_instance_valid(dice_audio): dice_audio.set_muted(GameState.dice_se_muted)
+	SaveManager.save_now()
+
+func _debug_audio_twenty(count: int) -> void:
+	if not is_instance_valid(dice_audio): return
+	for roll_index: int in range(20):
+		dice_audio.begin_roll(count)
+		for pulse: int in range(3):
+			dice_audio.play_roll(1.0 - float(pulse) * 0.3)
+			if pulse == 1: dice_audio.play_contact(0.5)
+			await get_tree().create_timer(0.055).timeout
+		for die_index: int in range(count): dice_audio.play_land(die_index, 0.62)
+		await get_tree().create_timer(0.16).timeout
+		dice_audio.end_roll()
 
 func _debug_set_boss_gauge(value: int) -> void:
 	GameState.ensure_boss_data()
@@ -1609,6 +1690,40 @@ func _qa_extra_dice_controls() -> void:
 		while rolling_dice: await get_tree().process_frame
 	print("QA_EXTRA_DICE_CONTROLS counts=1,3,5 passed=%s" % passed)
 	if not passed: push_error("Extra dice stop controls QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_dice_audio() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	GameState.reset_run(); GameState.master_volume = 1.0; GameState.se_volume = 1.0; GameState.dice_se_muted = false; show_game()
+	var pool_before := int(dice_audio.receipt().pool_size)
+	dice_audio.begin_roll(5)
+	dice_audio.play_launch() # Must not duplicate the begin-roll launch.
+	for pulse: int in range(8):
+		dice_audio.play_roll(1.0 - float(pulse) / 9.0)
+		await get_tree().create_timer(0.082).timeout
+	for contact_index: int in range(10): dice_audio.play_contact(0.5)
+	for die_index: int in range(5): dice_audio.play_land(die_index, 0.64)
+	for die_index: int in range(5): dice_audio.play_land(die_index, 0.64) # Duplicate locks are ignored.
+	await get_tree().create_timer(0.28).timeout
+	dice_audio.end_roll()
+	var mixed: Dictionary = dice_audio.receipt()
+	var counts: Dictionary = mixed.play_counts
+	var physical_counts_ok := int(counts.launch) == 1 and int(counts.roll) > 0 and int(counts.roll) <= 8 and int(counts.contact) > 0 and int(counts.contact) <= 4 and int(mixed.contacts_this_roll) == 4 and int(counts.land) == 5 and int(counts.lock) > 0 and int(counts.lock) <= 5
+	var bounded := int(mixed.pool_size) == DiceAudioControllerScript.PLAYER_POOL_SIZE and int(mixed.rolling_pool) == 2 and int(mixed.contact_pool) == 2 and int(mixed.landing_pool) == 3
+	var before_mute := counts.duplicate(true)
+	dice_audio.set_muted(true); dice_audio.begin_roll(3); dice_audio.play_roll(1.0); dice_audio.play_contact(); dice_audio.play_land(0); await get_tree().process_frame
+	var mute_ok: bool = dice_audio.receipt().play_counts == before_mute and int(dice_audio.active_voice_count()) == 0
+	dice_audio.set_muted(false)
+	for roll_index: int in range(100): dice_audio.begin_roll(1); dice_audio.end_roll()
+	var pool_stable := int(dice_audio.receipt().pool_size) == pool_before
+	GameState.master_volume = 0.75; GameState.se_volume = 0.35; GameState.dice_se_muted = true
+	var settings := GameState.to_dictionary(); GameState.master_volume = 1.0; GameState.se_volume = 1.0; GameState.dice_se_muted = false; GameState.apply_dictionary(settings)
+	var settings_ok := is_equal_approx(GameState.master_volume, 0.75) and is_equal_approx(GameState.se_volume, 0.35) and GameState.dice_se_muted
+	var passed: bool = physical_counts_ok and bounded and mute_ok and pool_stable and settings_ok
+	print("QA_DICE_AUDIO launch=%d roll=%d contact=%d land=%d lock=%d pool=%d mute=%s stable=%s settings=%s passed=%s" % [int(counts.launch), int(counts.roll), int(counts.contact), int(counts.land), int(counts.lock), int(mixed.pool_size), mute_ok, pool_stable, settings_ok, passed])
+	dice_audio.stop_all(); await get_tree().create_timer(0.08).timeout
+	GameState.apply_dictionary(original); SaveManager.save_now()
+	if not passed: push_error("Dice audio QA failed.")
 	get_tree().quit(0 if passed else 1)
 
 func _qa_progression_capture(kind: String, path: String) -> void:

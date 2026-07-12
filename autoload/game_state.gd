@@ -53,6 +53,9 @@ var pending_dice_rewards: Array[Dictionary] = []
 var temporary_roll_dice_count: int = 0
 var dice_slot_chain_count: int = 0
 var last_roll_dice_count: int = 0
+var master_volume: float = 1.0
+var se_volume: float = 1.0
+var dice_se_muted: bool = false
 
 ## Transitional code compatibility; v5 saves only current_dice_count.
 var unlocked_dice_count: int:
@@ -195,6 +198,9 @@ func to_dictionary() -> Dictionary:
 		,"temporary_roll_dice_count": temporary_roll_dice_count
 		,"dice_slot_chain_count": dice_slot_chain_count
 		,"last_roll_dice_count": last_roll_dice_count
+		,"master_volume": clampf(master_volume, 0.0, 1.0)
+		,"se_volume": clampf(se_volume, 0.0, 1.0)
+		,"dice_se_muted": dice_se_muted
 	}
 
 func apply_dictionary(data: Dictionary) -> void:
@@ -253,6 +259,9 @@ func apply_dictionary(data: Dictionary) -> void:
 	temporary_roll_dice_count = maxi(0, int(data.get("temporary_roll_dice_count", 0))) if save_version >= 5 else 0
 	dice_slot_chain_count = maxi(0, int(data.get("dice_slot_chain_count", 0))) if save_version >= 5 else 0
 	last_roll_dice_count = maxi(0, int(data.get("last_roll_dice_count", 0))) if save_version >= 5 else 0
+	master_volume = clampf(float(data.get("master_volume", 1.0)), 0.0, 1.0)
+	se_volume = clampf(float(data.get("se_volume", 1.0)), 0.0, 1.0)
+	dice_se_muted = bool(data.get("dice_se_muted", false))
 	# v1 saves had only boss_bond. Their first individual is safely migrated here.
 	if current_boss.is_empty():
 		current_boss = BossSystemScript.initial_individual(boss_sequence)
