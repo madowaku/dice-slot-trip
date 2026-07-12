@@ -19,12 +19,21 @@ const CAIRO_TILES: Array[StringName] = [
 	&"STAGE_SPECIAL", &"NORMAL", &"ITEM", &"EVENT", &"WARP", &"NORMAL", &"COIN", &"BOSS_SCENT", &"RISK", &"NORMAL", &"EVENT", &"NORMAL", &"SHOP", &"NORMAL", &"NORMAL", &"ITEM", &"NORMAL", &"NORMAL"
 ]
 
+const CAIRO_LANDMARKS_BY_TILE: Dictionary = {
+	0: "CAI_LANDMARK_01",
+	22: "CAI_LANDMARK_02",
+	54: "CAI_LANDMARK_03",
+}
+
 static func move(index: int, distance: int, tile_count: int = TILE_COUNT) -> Dictionary:
 	var total: int = index + distance
 	return {"index": posmod(total, tile_count), "laps": floori(float(total) / float(tile_count))}
 
 static func build_tile_types() -> Array[StringName]:
 	return CAIRO_TILES.duplicate()
+
+static func landmark_id_for_tile(tile_index: int) -> String:
+	return str(CAIRO_LANDMARKS_BY_TILE.get(posmod(tile_index, TILE_COUNT), ""))
 
 static func item_space_rewards_for_roll(roll: int, is_double: bool = false) -> Array[StringName]:
 	if is_double:

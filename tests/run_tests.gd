@@ -7,6 +7,9 @@ const RewardResolverScript = preload("res://scripts/game/reward_resolver.gd")
 const EventSystemScript = preload("res://scripts/game/event_system.gd")
 const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const DiceAudioControllerScript = preload("res://scripts/game/dice_audio_controller.gd")
+const LapSystemScript = preload("res://scripts/game/lap_system.gd")
+const LandmarkSystemScript = preload("res://scripts/game/landmark_system.gd")
+const LandmarkScenicViewScript = preload("res://scripts/game/landmark_scenic_view.gd")
 
 var failures: int = 0
 
@@ -60,6 +63,39 @@ func _init() -> void:
 	_expect(BoardModelScript.item_space_rewards_for_roll(35) == [&"ITEM"] and BoardModelScript.item_space_rewards_for_roll(89) == [&"ITEM"], "item roll 35-89 gives item")
 	_expect(BoardModelScript.item_space_rewards_for_roll(90) == [&"ITEM_CHOICE"] and BoardModelScript.item_space_rewards_for_roll(99) == [&"ITEM_CHOICE"], "item roll 90-99 gives choice")
 	_expect(BoardModelScript.item_space_rewards_for_roll(50, true) == [&"DICE_ADD_1", &"ITEM"], "DOUBLE item guarantees die plus item")
+	for scenic_level: int in range(4):
+		var scenic_path := LandmarkScenicViewScript.asset_path_for_level(scenic_level)
+		var scenic_image := Image.load_from_file(ProjectSettings.globalize_path(scenic_path))
+		_expect(scenic_image != null and scenic_image.get_size() == Vector2i(1024, 512), "spice scenic Lv%d is 1024x512" % scenic_level)
+		_expect(scenic_image != null and scenic_image.get_pixel(0, 0).a < 0.05 and scenic_image.get_pixel(1023, 0).a < 0.05, "spice scenic Lv%d has transparent corners" % scenic_level)
+	# LAP-01 + LANDMARK-01: pure data and idempotent reward application.
+	var landmarks := LandmarkSystemScript.definitions()
+	_expect(landmarks.size() == 3, "three data-driven Cairo landmarks")
+	_expect(BoardModelScript.landmark_id_for_tile(0) == "CAI_LANDMARK_01" and BoardModelScript.landmark_id_for_tile(22) == "CAI_LANDMARK_02" and BoardModelScript.landmark_id_for_tile(54) == "CAI_LANDMARK_03", "landmark tile ids")
+	var landmark_state := _lap_landmark_state()
+	var landmark_1 := LandmarkSystemScript.resolve_stop(landmark_state, 0, "lm-1", landmarks)
+	var landmark_1_once := RewardResolverScript.apply(landmark_state, landmark_1)
+	var landmark_1_twice := RewardResolverScript.apply(landmark_state, landmark_1)
+	_expect(landmark_1_once.applied and not landmark_1_twice.applied and int(landmark_state.landmark_levels.CAI_LANDMARK_01) == 1 and int(landmark_state.coins) == 20, "landmark Lv1 coin reward idempotent")
+	var landmark_2 := LandmarkSystemScript.resolve_stop(landmark_state, 0, "lm-2", landmarks)
+	RewardResolverScript.apply(landmark_state, landmark_2); var dice_after_level_2 := int(landmark_state.current_dice_count); RewardResolverScript.apply(landmark_state, landmark_2)
+	_expect(int(landmark_state.landmark_levels.CAI_LANDMARK_01) == 2 and dice_after_level_2 == 2 and int(landmark_state.current_dice_count) == 2, "landmark Lv2 die reward once")
+	var landmark_3 := LandmarkSystemScript.resolve_stop(landmark_state, 0, "lm-3", landmarks)
+	RewardResolverScript.apply(landmark_state, landmark_3); var cards_after_level_3: Array = landmark_state.registered_postcards.duplicate(); var bonus_after_level_3 := int(landmark_state.current_lap_bonus); RewardResolverScript.apply(landmark_state, landmark_3)
+	_expect(int(landmark_state.landmark_levels.CAI_LANDMARK_01) == 3 and cards_after_level_3 == ["cairo_spice_market_complete"] and landmark_state.registered_postcards == cards_after_level_3 and int(landmark_state.current_lap_bonus) == bonus_after_level_3, "landmark Lv3 postcard and lap bonus once")
+	var completed_stop := LandmarkSystemScript.resolve_stop(landmark_state, 0, "lm-4", landmarks); RewardResolverScript.apply(landmark_state, completed_stop)
+	_expect(int(landmark_state.landmark_levels.CAI_LANDMARK_01) == 3 and not bool(completed_stop.result.developed), "completed landmark stays Lv3")
+	var triple_odd_roles := DiceLogicScript.evaluate([5, 5, 5])
+	var all_odd_roles := DiceLogicScript.evaluate([1, 3, 5])
+	var all_even_roles := DiceLogicScript.evaluate([2, 4, 6])
+	_expect(LapSystemScript.role_bonus_for(triple_odd_roles, 3) == 30, "lap role bonus uses main priority")
+	_expect(LapSystemScript.role_bonus_for(all_odd_roles, 3) == 20, "actual ALL ODD output adds 20 lap bonus")
+	_expect(LapSystemScript.role_bonus_for(all_even_roles, 3) == 12, "actual ALL EVEN output adds 12 lap bonus")
+	landmark_state.current_lap_roll_count = 12
+	var lap_resolution := LapSystemScript.resolve(landmark_state, "lap-unit", "NORMAL")
+	var lap_once := RewardResolverScript.apply(landmark_state, lap_resolution); var points_after_lap := int(landmark_state.total_lap_points); var coins_after_lap := int(landmark_state.coins); var lap_twice := RewardResolverScript.apply(landmark_state, lap_resolution)
+	_expect(lap_once.applied and not lap_twice.applied and points_after_lap >= 100 and int(landmark_state.total_lap_points) == points_after_lap and int(landmark_state.coins) == coins_after_lap, "lap points and legacy coins commit once")
+	_expect(int(landmark_state.laps) == 1 and int(landmark_state.total_laps) == 1 and landmark_state.events_seen_this_loop.is_empty() and not landmark_state.rare_event_used_this_loop, "lap common commit resets loop state")
 	# M3: deterministic, UI-free travel-companion rules.
 	var bosses := BossSystemScript.definitions()
 	_expect(bosses.size() >= 3, "three Cairo individuals")
@@ -124,7 +160,7 @@ func _init() -> void:
 		var v5_round_trip: Dictionary = state_node.to_dictionary().duplicate(true)
 		state_node.current_dice_count = 1
 		state_node.apply_dictionary(v5_round_trip)
-		_expect(int(state_node.current_dice_count) == 2 and int(state_node.to_dictionary().version) == 5, "v5 restores current dice")
+		_expect(int(state_node.current_dice_count) == 2 and int(state_node.to_dictionary().version) == 6, "v6 restores current dice")
 		var before_extra := int(state_node.current_dice_count)
 		state_node.apply_dice_roll_transition(5, DiceLogicScript.evaluate_many([1, 2, 3, 4, 5]))
 		_expect(int(state_node.current_dice_count) == before_extra, "temporary five dice preserves current")
@@ -217,3 +253,27 @@ func _event_state() -> Dictionary:
 
 func _reward_state() -> Dictionary:
 	return {"coins": 0, "presence": 0, "inventory": {}, "registered_travel_notes": [], "registered_postcards": [], "applied_resolution_ids": [], "pending_boss_handoff": false, "character_skill_charge": 1}
+
+func _lap_landmark_state() -> Dictionary:
+	return {
+		"coins": 0,
+		"souvenirs": 0,
+		"presence": 0,
+		"inventory": {},
+		"registered_postcards": [],
+		"applied_resolution_ids": [],
+		"current_dice_count": 1,
+		"landmark_levels": {"CAI_LANDMARK_01": 0, "CAI_LANDMARK_02": 0, "CAI_LANDMARK_03": 0},
+		"current_lap_bonus": 0,
+		"current_lap_roll_count": 0,
+		"current_lap_penalty_count": 0,
+		"total_lap_points": 0,
+		"best_lap_score": 0,
+		"laps": 0,
+		"total_laps": 0,
+		"stamps": [],
+		"memos": [],
+		"events_seen_this_loop": ["CAI-E30"],
+		"rare_event_used_this_loop": true,
+		"events_since_rare": 0,
+	}

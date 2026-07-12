@@ -2,9 +2,15 @@ class_name BoardView
 extends Control
 
 const TILE_COUNT: int = 90
+const LANDMARK_IDS_BY_TILE: Dictionary = {
+	0: "CAI_LANDMARK_01",
+	22: "CAI_LANDMARK_02",
+	54: "CAI_LANDMARK_03",
+}
 const INK: Color = Color("#5c4938")
 const SAND: Color = Color("#ead8b5")
 const PLAYER_TEXTURE: Texture2D = preload("res://assets/art/characters/relaxed-traveler.png")
+const LandmarkScenicViewScript = preload("res://scripts/game/landmark_scenic_view.gd")
 const TILE_COLORS: Dictionary = {
 	&"NORMAL": Color("#f2e5c9"),
 	&"EVENT": Color("#d99572"),
@@ -24,19 +30,31 @@ var current_tile: int = 0
 var route: Path2D
 var positions: Array[Vector2] = []
 var is_minimap: bool = false
+var landmark_levels: Dictionary = {}
+var scenic_texture: Texture2D
+var scenic_level: int = -1
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	resized.connect(_rebuild_route)
 	_rebuild_route()
+	_refresh_scenic()
 
-func configure(types: Array[StringName], tile_index: int) -> void:
+func configure(types: Array[StringName], tile_index: int, levels: Dictionary = {}) -> void:
 	tile_types = types
 	current_tile = tile_index
+	landmark_levels = levels.duplicate(true)
+	_refresh_scenic()
 	queue_redraw()
 
 func set_current_tile(value: int) -> void:
 	current_tile = posmod(value, TILE_COUNT)
+	_refresh_scenic()
+	queue_redraw()
+
+func set_landmark_levels(levels: Dictionary) -> void:
+	landmark_levels = levels.duplicate(true)
+	_refresh_scenic()
 	queue_redraw()
 
 func _rebuild_route() -> void:
@@ -61,6 +79,15 @@ func _rebuild_route() -> void:
 		positions.append(curve.sample_baked(length * float(index) / float(TILE_COUNT)))
 	queue_redraw()
 
+func _refresh_scenic() -> void:
+	# T005 ships the MARKET district first. Other districts keep the original
+	# parchment until their own landmark art is available.
+	var distance_to_market := mini(absi(current_tile), TILE_COUNT - absi(current_tile))
+	var shows_spice_market := not is_minimap and distance_to_market <= 5
+	scenic_level = _landmark_level(0) if shows_spice_market else -1
+	scenic_texture = LandmarkScenicViewScript.texture_for_level(scenic_level) if shows_spice_market else null
+	queue_redraw()
+
 func _draw() -> void:
 	if positions.size() != TILE_COUNT:
 		return
@@ -73,9 +100,15 @@ func _draw_zoomed_neighborhood() -> void:
 	# The neighborhood is a legible board ribbon, not a magnified dotted map.
 	# The full 90-tile topology remains in the independent minimap.
 	draw_style_box(_board_panel(), Rect2(Vector2.ZERO, size))
+	if scenic_texture != null:
+		var slot_width := maxf(1.0, size.x - 44.0)
+		var slot_height := minf(slot_width * 0.5, maxf(1.0, size.y * 0.72))
+		draw_texture_rect(scenic_texture, Rect2(22.0, 42.0, slot_width, slot_height), false, Color(1.0, 0.98, 0.91, 0.94))
 	draw_string(ThemeDB.fallback_font, Vector2(22, 34), "現在地周辺  %02d / 90" % (current_tile + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, INK)
 	var district_names := ["市場", "ピラミッド", "オアシス", "遺跡", "砂丘"]
 	draw_string(ThemeDB.fallback_font, Vector2(size.x - 150, 34), district_names[current_tile / 18], HORIZONTAL_ALIGNMENT_RIGHT, 128, 17, Color("#846c50"))
+	if scenic_level >= 0:
+		draw_string(ThemeDB.fallback_font, Vector2(size.x * 0.5 - 130.0, 62.0), "香辛料市場通り　Lv.%d" % scenic_level, HORIZONTAL_ALIGNMENT_CENTER, 260.0, 16, Color("#6f5030"))
 	var shown_each_side := 5
 	var tile_width := maxf(48.0, (size.x - 34.0) / 11.0)
 	var tile_height := minf(106.0, maxf(78.0, size.y * 0.28))
@@ -92,6 +125,9 @@ func _draw_zoomed_neighborhood() -> void:
 		draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, 27), "%02d" % (index + 1), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 17, number_color)
 		var mark := _tile_mark(tile_type)
 		if not mark.is_empty(): draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, 58), mark, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 23, number_color)
+		if tile_type == &"LANDMARK":
+			var landmark_level := _landmark_level(index)
+			draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, 78), "Lv.%d" % landmark_level, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 12, number_color)
 		if offset == 1: draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, rect.size.y - 10), "NEXT", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color("#fff4dc") if tile_type == &"RISK" else Color("#356b6d"))
 	# Direction and token stay centered while the ribbon moves beneath them.
 	var center_rect_x := size.x * 0.5 - tile_width * 0.5
@@ -114,6 +150,12 @@ func _draw_route(show_token_art: bool) -> void:
 		var tile_type: StringName = tile_types[index] if index < tile_types.size() else &"NORMAL"
 		var tile_radius := (6.0 if tile_type == &"NORMAL" else 8.0) if show_token_art else (2.3 if tile_type == &"NORMAL" else 3.4)
 		draw_circle(positions[index], tile_radius, TILE_COLORS.get(tile_type, SAND))
+		if tile_type == &"LANDMARK":
+			var landmark_level := _landmark_level(index)
+			var pip_y := 7.0 if not show_token_art else 13.0
+			for pip: int in range(3):
+				var pip_color := Color("#d6aa4d") if pip < landmark_level else Color(0.35, 0.29, 0.22, 0.34)
+				draw_circle(positions[index] + Vector2(float(pip - 1) * 3.4, pip_y), 1.25 if not show_token_art else 2.0, pip_color)
 		if tile_type != &"NORMAL" and show_token_art:
 			draw_arc(positions[index], tile_radius, 0.0, TAU, 14, INK, 1.2, true)
 			if tile_type == &"BOSS_SCENT":
@@ -147,7 +189,7 @@ func _mini_panel() -> StyleBoxFlat:
 
 func _board_panel() -> StyleBoxFlat:
 	var panel := StyleBoxFlat.new()
-	panel.bg_color = Color(0.96, 0.88, 0.72, 0.82)
+	panel.bg_color = Color(0.96, 0.88, 0.72, 0.76 if scenic_level >= 0 else 0.82)
 	panel.border_color = Color("#a67d43")
 	panel.set_border_width_all(2)
 	panel.set_corner_radius_all(18)
@@ -182,3 +224,7 @@ func _tile_mark(tile_type: StringName) -> String:
 		&"STAGE_SPECIAL": return "✦"
 		&"RISK": return "!"
 	return ""
+
+func _landmark_level(tile_index: int) -> int:
+	var landmark_id := str(LANDMARK_IDS_BY_TILE.get(tile_index, ""))
+	return clampi(int(landmark_levels.get(landmark_id, 0)), 0, 3)

@@ -31,6 +31,8 @@ const BoardViewScript = preload("res://scripts/game/board_view.gd")
 const BossSystemScript = preload("res://scripts/game/boss_system.gd")
 const EventSystemScript = preload("res://scripts/game/event_system.gd")
 const RewardResolverScript = preload("res://scripts/game/reward_resolver.gd")
+const LapSystemScript = preload("res://scripts/game/lap_system.gd")
+const LandmarkSystemScript = preload("res://scripts/game/landmark_system.gd")
 const DiceAudioControllerScript = preload("res://scripts/game/dice_audio_controller.gd")
 const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const CAIRO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/cairo-board.png")
@@ -62,6 +64,7 @@ var rolls_label: Label
 var coin_label: Label
 var stamp_label: Label
 var minimap_view: BoardView
+var landmark_level_label: Label
 var debug_box: VBoxContainer
 var dice_mode: int = 3
 var dice_values: Array[int] = []
@@ -128,13 +131,21 @@ func _ready() -> void:
 		call_deferred("_qa_risk_space", OS.get_environment("DICE_QA_RISK"))
 	elif OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD") != "":
 		call_deferred("_qa_premium_board_capture", OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD"))
+	elif OS.get_environment("DICE_QA_LAP_LANDMARK") == "1":
+		call_deferred("_qa_lap_landmark")
+	elif OS.get_environment("DICE_QA_SPICE_SCENIC") == "1":
+		call_deferred("_qa_spice_scenic")
+	elif OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC") != "":
+		call_deferred("_qa_spice_scenic_capture", OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK") != "":
+		call_deferred("_qa_lap_landmark_capture", OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif GameState.pending_boss_handoff:
 		call_deferred("_resume_pending_boss_handoff")
 	elif not GameState.active_event_state.is_empty():
 		call_deferred("_resume_active_event")
 	elif OS.get_environment("DICE_QA_CAPTURE_M3") != "":
 		call_deferred("_qa_m3_capture", OS.get_environment("DICE_QA_CAPTURE_M3"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
-	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
+	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
 		call_deferred("_qa_capture_viewport", OS.get_environment("DICE_QA_CAPTURE_PATH"))
 
 func _apply_theme() -> void:
@@ -371,14 +382,14 @@ func show_game() -> void:
 
 	var map_card := PanelContainer.new(); map_card.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.89, 0.75, 0.94), Color("#a47a3c"), 18)); map_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var map_box := VBoxContainer.new(); map_box.add_theme_constant_override("separation", 2)
-	var map_title := _body("全体マップ", 14); map_title.add_theme_color_override("font_color", MUTED); map_box.add_child(map_title)
-	minimap_view = BoardViewScript.new(); minimap_view.is_minimap = true; minimap_view.custom_minimum_size = Vector2(180, 82); minimap_view.size_flags_vertical = Control.SIZE_EXPAND_FILL; minimap_view.configure(tile_types, GameState.current_tile_index); map_box.add_child(minimap_view)
+	landmark_level_label = _body("", 14); landmark_level_label.add_theme_color_override("font_color", MUTED); map_box.add_child(landmark_level_label)
+	minimap_view = BoardViewScript.new(); minimap_view.is_minimap = true; minimap_view.custom_minimum_size = Vector2(180, 82); minimap_view.size_flags_vertical = Control.SIZE_EXPAND_FILL; minimap_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels); map_box.add_child(minimap_view)
 	map_card.add_child(map_box); overview.add_child(map_card); page.add_child(overview)
 
 	board_view = BoardViewScript.new()
 	board_view.custom_minimum_size = Vector2(0, 390)
 	board_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	board_view.configure(tile_types, GameState.current_tile_index)
+	board_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels)
 	page.add_child(board_view)
 	var memo_panel := PanelContainer.new(); memo_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.97, 0.91, 0.79, 0.92), Color("#b28a52"), 14))
 	memo_label = _body("風が砂の上に細い道を描いている。", 16); memo_label.custom_minimum_size.y = 30; memo_panel.add_child(memo_label); page.add_child(memo_panel)
@@ -605,6 +616,8 @@ func _resolve_roll(values: Array[int]) -> void:
 	roll_button.disabled = true
 	var rolled_dice_count := dice_mode
 	var roles: Dictionary = DiceLogicScript.evaluate_current(values, rolled_dice_count)
+	GameState.current_lap_roll_count += 1
+	GameState.current_lap_bonus += LapSystemScript.role_bonus_for(roles, rolled_dice_count)
 	var labels: Array = roles.get("labels", [])
 	if not labels.is_empty():
 		role_label.text = " + ".join(labels)
@@ -625,25 +638,42 @@ func _resolve_roll(values: Array[int]) -> void:
 	if GameState.next_move_bonus > 0:
 		distance += GameState.next_move_bonus
 		GameState.next_move_bonus = 0
+	var crossed_laps := 0
 	for step: int in range(distance):
 		var next_index := posmod(GameState.current_tile_index + 1, BoardModelScript.TILE_COUNT)
 		if next_index == 0:
-			GameState.lap_count += 1
-			_reset_event_loop_state()
-			GameState.lap_stamps.append("CAIRO-%02d" % GameState.lap_count)
-			GameState.coins += 5
-			GameState.travel_memos.append("カイロを一周。砂時計のスタンプを押した。")
+			crossed_laps += 1
 		GameState.current_tile_index = next_index
 		board_view.set_current_tile(next_index)
 		minimap_view.set_current_tile(next_index)
 		await get_tree().create_timer(0.035).timeout
 	GameState.rolls_used += 1
+	# Most destinations start in the fresh event loop. Tile 0 is also a
+	# LANDMARK, so its STOP reward is resolved first and folded into that lap.
+	if crossed_laps > 0 and GameState.current_tile_index != 0:
+		await _commit_lap_crossings(crossed_laps, "NORMAL")
 	await _resolve_landing(tile_types[GameState.current_tile_index], roles)
+	if crossed_laps > 0 and GameState.current_tile_index == 0:
+		await _commit_lap_crossings(crossed_laps, "NORMAL")
 	dice_mode = clampi(GameState.current_dice_count, 1, 3)
 	SaveManager.save_now()
 	_refresh_hud()
 	moving = false
 	roll_button.disabled = false
+
+func _commit_lap_crossings(count: int, source: String) -> void:
+	for crossing_index: int in range(maxi(0, count)):
+		var previous: Dictionary = GameState.last_lap_result
+		if crossing_index == 0 and int(previous.get("journey_roll_index", -1)) == GameState.rolls_used and str(previous.get("source", "")) == source:
+			continue
+		var state := GameState.to_dictionary()
+		var resolution_id := "lap:%08d:%s:%d:%d" % [GameState.total_laps + 1, source.to_lower(), GameState.rolls_used, crossing_index]
+		var resolution := LapSystemScript.resolve(state, resolution_id, source)
+		var applied := RewardResolverScript.apply(state, resolution, GameState.reward_apply_log)
+		GameState.apply_dictionary(state)
+		SaveManager.save_now()
+		if bool(applied.get("applied", false)):
+			await _show_lap_result_modal(resolution.get("result", {}))
 
 func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 	var memo := ""
@@ -685,13 +715,13 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 			memo = "古い旅コインを拾った。+6"
 		&"WARP":
 			memo = "風の道に乗って、6マス先へ。"
+			GameState.current_lap_bonus += LapSystemScript.WARP_LAP_BONUS
 			var warp: Dictionary = BoardModelScript.move(GameState.current_tile_index, 6)
 			GameState.current_tile_index = int(warp.index)
 			var warp_laps := int(warp.laps)
-			GameState.lap_count += warp_laps
-			if warp_laps > 0: _reset_event_loop_state()
 			board_view.set_current_tile(GameState.current_tile_index)
 			minimap_view.set_current_tile(GameState.current_tile_index)
+			if warp_laps > 0: await _commit_lap_crossings(warp_laps, "WARP")
 		&"SHOP":
 			if GameState.coins >= 3:
 				GameState.coins -= 3
@@ -703,9 +733,16 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 			GameState.boss_presence = mini(5, GameState.boss_presence + 1)
 			memo = "オアシスでひと休み。足跡が少し近づいた。"
 		&"LANDMARK":
-			GameState.souvenirs += 1
-			GameState.boss_presence = mini(5, GameState.boss_presence + 2)
-			memo = "遺跡の影を見上げた。旅の記憶 +1"
+			var landmark_state := GameState.to_dictionary()
+			var landmark_resolution_id := "landmark:%08d:%d:%d" % [GameState.total_laps, GameState.rolls_used, GameState.current_tile_index]
+			var landmark_resolution := LandmarkSystemScript.resolve_stop(landmark_state, GameState.current_tile_index, landmark_resolution_id)
+			var landmark_applied := RewardResolverScript.apply(landmark_state, landmark_resolution, GameState.reward_apply_log)
+			GameState.apply_dictionary(landmark_state)
+			SaveManager.save_now()
+			var landmark_result: Dictionary = landmark_resolution.get("result", {})
+			memo = "%s Lv.%d　旅の記憶 +1" % [str(landmark_result.get("name", "カイロの名所")), int(landmark_result.get("new_level", 0))]
+			if bool(landmark_applied.get("applied", false)):
+				await _show_landmark_result_modal(landmark_result, landmark_applied.get("summary", []))
 		&"BOSS_SCENT":
 			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 2)
 			memo = ["砂の上に、大きな足跡が残っている。", "遠くから、低いあくびが聞こえた。", "誰かがここで、しばらく昼寝をしていたらしい。 "][rng.randi_range(0, 2)]
@@ -741,6 +778,49 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 		else:
 			GameState.boss_relief = mini(BossSystemScript.RELIEF_FORCE_AFTER, GameState.boss_relief + 1)
 			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
+
+func _build_landmark_result_modal(result: Dictionary, summary: Array) -> Dictionary:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	var developed := bool(result.get("developed", false))
+	content.add_child(_body("LANDMARK", 15))
+	content.add_child(_title(str(result.get("name", "カイロの名所")), 32))
+	content.add_child(_body("Lv.%d → Lv.%d" % [int(result.get("old_level", 0)), int(result.get("new_level", 0))] if developed else "Lv.3　完成した景色を再訪", 23))
+	content.add_child(_body("　".join(summary) if not summary.is_empty() else "旅の記憶に残した。", 18))
+	var close := _button("旅を続ける", func() -> void: return, true)
+	close.name = "landmark_result_close"
+	close.toggle_mode = true
+	content.add_child(close)
+	modal["close"] = close
+	return modal
+
+func _show_landmark_result_modal(result: Dictionary, summary: Array) -> void:
+	var modal := _build_landmark_result_modal(result, summary)
+	await _wait_brief_result(modal, 0.62)
+
+func _build_lap_result_modal(result: Dictionary) -> Dictionary:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_body("LAP %d COMPLETE" % int(result.get("lap_number", GameState.lap_count)), 18))
+	content.add_child(_title("LAP POINT +%d" % int(result.get("points", 100)), 34))
+	content.add_child(_body("基本 %d　＋　ラップボーナス %d\nラップスコア %d　（%dロール）" % [int(result.get("base_points", 100)), int(result.get("lap_bonus", 0)), int(result.get("score", 0)), int(result.get("roll_count", 0))], 19))
+	var close := _button("次の一周へ", func() -> void: return, true)
+	close.name = "lap_result_close"
+	close.toggle_mode = true
+	content.add_child(close)
+	modal["close"] = close
+	return modal
+
+func _show_lap_result_modal(result: Dictionary) -> void:
+	var modal := _build_lap_result_modal(result)
+	await _wait_brief_result(modal, 0.62)
+
+func _wait_brief_result(modal: Dictionary, duration: float) -> void:
+	var close: Button = modal.close
+	var deadline := Time.get_ticks_msec() + roundi(duration * 1000.0)
+	while not close.button_pressed and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	_close_modal(modal.layer)
 
 func _show_item_space_choice() -> String:
 	var modal := _make_modal()
@@ -944,9 +1024,13 @@ func _resume_active_event() -> void:
 func _refresh_hud() -> void:
 	if lap_label == null:
 		return
-	lap_label.text = "周回 %d" % GameState.lap_count
+	lap_label.text = "LAP POINT\n%d" % GameState.total_lap_points
 	coin_label.text = "旅コイン %d" % GameState.coins
-	rolls_label.text = "ターン %d / 36　現在 %dマス　次回 %dダイス" % [GameState.rolls_used, GameState.current_tile_index + 1, clampi(GameState.current_dice_count, 1, 3)]
+	rolls_label.text = "LAP %d　ターン %d / 36　現在 %dマス　次回 %dダイス" % [GameState.lap_count, GameState.rolls_used, GameState.current_tile_index + 1, clampi(GameState.current_dice_count, 1, 3)]
+	if is_instance_valid(landmark_level_label):
+		landmark_level_label.text = "全体マップ　名所 Lv.%d・%d・%d" % [int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_02", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_03", 0))]
+	if is_instance_valid(board_view): board_view.set_landmark_levels(GameState.landmark_levels)
+	if is_instance_valid(minimap_view): minimap_view.set_landmark_levels(GameState.landmark_levels)
 	GameState.ensure_boss_data()
 	var footprints := "・".repeat(5 - GameState.boss_presence) + "●".repeat(GameState.boss_presence)
 	boss_label.text = str(GameState.current_boss.get("name", "眠そうなスフィンクス"))
@@ -1855,6 +1939,147 @@ func _qa_risk_space(kind: String) -> void:
 	print("QA_RISK kind=%s before=%d after=%d coins_delta=%d modal_closed=%s passed=%s" % [kind, before_count, count_before_close, coins_before_close - before_coins, not modal_open, passed])
 	if not passed: push_error("Risk-space QA failed.")
 	get_tree().quit(0 if passed else 1)
+
+func _qa_lap_landmark() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	GameState.reset_run()
+	GameState.total_lap_points = 0
+	GameState.total_laps = 0
+	GameState.best_lap_score = 0
+	GameState.landmark_levels = GameState.DEFAULT_LANDMARK_LEVELS.duplicate(true)
+	GameState.stage_development = 0
+	GameState.registered_postcards.clear()
+	GameState.applied_resolution_ids.clear()
+	GameState.reward_apply_log.clear()
+	GameState.current_tile_index = 89
+	GameState.current_dice_count = 1
+	show_game()
+	await _resolve_roll([1])
+	var normal_once := GameState.lap_count == 1 and GameState.total_laps == 1 and GameState.total_lap_points == 108
+	var tile_zero_once := int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)) == 1 and GameState.souvenirs == 1 and GameState.coins == 47
+	var normal_loop_reset := not GameState.rare_event_used_this_loop and GameState.events_seen_this_loop.is_empty() and GameState.events_since_rare == 99
+	var levels_after_normal := GameState.landmark_levels.duplicate(true)
+	var points_before_warp := GameState.total_lap_points
+	GameState.reset_run()
+	GameState.current_tile_index = 87
+	show_game()
+	await _resolve_landing(&"WARP", {"main": &"", "support": &"", "labels": []})
+	var warp_once := GameState.lap_count == 1 and GameState.current_tile_index == 3 and GameState.total_lap_points == points_before_warp + 108
+	var warp_no_landmark := GameState.landmark_levels == levels_after_normal
+	var warp_loop_reset := not GameState.rare_event_used_this_loop and GameState.events_seen_this_loop.is_empty() and GameState.events_since_rare == 99
+
+	var idempotent_state := GameState.to_dictionary()
+	idempotent_state["landmark_levels"] = GameState.DEFAULT_LANDMARK_LEVELS.duplicate(true)
+	idempotent_state["current_dice_count"] = 1
+	idempotent_state["coins"] = 0
+	idempotent_state["registered_postcards"] = []
+	idempotent_state["current_lap_bonus"] = 0
+	idempotent_state["applied_resolution_ids"] = []
+	var landmark_duplicate_stable: bool = true
+	for level_index: int in range(3):
+		var landmark_resolution := LandmarkSystemScript.resolve_stop(idempotent_state, 0, "qa-landmark-%d" % level_index)
+		RewardResolverScript.apply(idempotent_state, landmark_resolution)
+		var landmark_snapshot := {
+			"coins": int(idempotent_state.coins),
+			"dice": int(idempotent_state.current_dice_count),
+			"postcards": (idempotent_state.registered_postcards as Array).duplicate(),
+			"bonus": int(idempotent_state.current_lap_bonus),
+		}
+		RewardResolverScript.apply(idempotent_state, landmark_resolution)
+		if landmark_snapshot != {"coins": int(idempotent_state.coins), "dice": int(idempotent_state.current_dice_count), "postcards": (idempotent_state.registered_postcards as Array).duplicate(), "bonus": int(idempotent_state.current_lap_bonus)}:
+			landmark_duplicate_stable = false
+			push_error("Landmark idempotency snapshot changed.")
+	var landmark_idempotent: bool = landmark_duplicate_stable and int(idempotent_state.landmark_levels.CAI_LANDMARK_01) == 3 and idempotent_state.registered_postcards == ["cairo_spice_market_complete"]
+	var lap_resolution := LapSystemScript.resolve(idempotent_state, "qa-lap-idempotent", "NORMAL")
+	RewardResolverScript.apply(idempotent_state, lap_resolution)
+	var lap_snapshot := {"points": int(idempotent_state.total_lap_points), "coins": int(idempotent_state.coins), "dice": int(idempotent_state.current_dice_count), "postcards": (idempotent_state.registered_postcards as Array).duplicate()}
+	var lap_second := RewardResolverScript.apply(idempotent_state, lap_resolution)
+	var lap_idempotent := not bool(lap_second.applied) and lap_snapshot == {"points": int(idempotent_state.total_lap_points), "coins": int(idempotent_state.coins), "dice": int(idempotent_state.current_dice_count), "postcards": (idempotent_state.registered_postcards as Array).duplicate()}
+
+	GameState.total_lap_points = 432
+	GameState.landmark_levels = {"CAI_LANDMARK_01": 3, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	GameState.current_lap_bonus = 28
+	var saved := SaveManager.save_now()
+	GameState.total_lap_points = 0; GameState.landmark_levels = GameState.DEFAULT_LANDMARK_LEVELS.duplicate(true); GameState.current_lap_bonus = 0
+	var restored := SaveManager.load_now() and GameState.total_lap_points == 432 and int(GameState.landmark_levels.CAI_LANDMARK_01) == 3 and int(GameState.landmark_levels.CAI_LANDMARK_02) == 2 and GameState.current_lap_bonus == 28
+	var legacy := GameState.to_dictionary().duplicate(true)
+	legacy["version"] = 5
+	for key: String in ["total_lap_points", "current_lap_bonus", "current_lap_roll_count", "current_lap_clean", "current_lap_penalty_count", "clean_streak", "flow_level", "flow_triggered_this_turn", "flow_reward_3_claimed_this_lap", "flow_reward_5_claimed_this_lap", "even_guard_active", "best_lap_score", "best_clean_streak", "best_flow_level", "total_laps", "highest_laps_in_one_journey", "pending_lap_rewards", "lap_resolution_id", "lap_reward_committed", "last_lap_result", "landmark_levels", "landmark_revisit_stamps", "landmark_collection_flags", "landmark_completion_flags", "stage_development", "stage_development_milestones_claimed", "stage_collection_count", "stage_collection_completed", "pending_landmark_rewards", "landmark_resolution_id", "landmark_reward_committed"]:
+		legacy.erase(key)
+	legacy["current_dice_count"] = 2
+	legacy["master_volume"] = 0.37
+	GameState.apply_dictionary(legacy)
+	var migration := GameState.total_lap_points == 0 and GameState.landmark_levels == GameState.DEFAULT_LANDMARK_LEVELS and GameState.current_dice_count == 2 and is_equal_approx(GameState.master_volume, 0.37) and not GameState.current_boss.is_empty()
+	var passed: bool = normal_once and tile_zero_once and normal_loop_reset and warp_once and warp_no_landmark and warp_loop_reset and landmark_idempotent and lap_idempotent and saved and restored and migration
+	print("QA_LAP_LANDMARK normal=%s tile0=%s warp=%s warp_no_landmark=%s idempotent=%s/%s save=%s migration=%s passed=%s" % [normal_once and normal_loop_reset, tile_zero_once, warp_once and warp_loop_reset, warp_no_landmark, landmark_idempotent, lap_idempotent, restored, migration, passed])
+	GameState.apply_dictionary(original); SaveManager.save_now()
+	if not passed: push_error("LAP/LANDMARK deterministic QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_lap_landmark_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.total_lap_points = 12450
+	GameState.lap_count = 2
+	GameState.landmark_levels = {"CAI_LANDMARK_01": 3, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	GameState.stage_development = 6
+	GameState.current_tile_index = 22
+	show_game()
+	if kind == "landmark":
+		_build_landmark_result_modal({"name": "夕映えの展望広場", "old_level": 1, "new_level": 2, "developed": true}, ["名所 Lv.2", "追加ダイス +1", "ラップボーナス +8"])
+	elif kind == "lap":
+		_build_lap_result_modal({"lap_number": 3, "base_points": 100, "lap_bonus": 46, "points": 146, "score": 206, "roll_count": 12})
+	for ignored: int in range(12): await get_tree().process_frame
+	await get_tree().create_timer(0.22).timeout
+	var result := _save_opaque_capture(path)
+	print("QA_LAP_LANDMARK_CAPTURE kind=%s path=%s result=%s" % [kind, path, result])
+	get_tree().quit(0 if result == OK else 1)
+
+func _qa_spice_scenic() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	var assets_ok := true
+	for level: int in range(4):
+		var asset_path := "res://assets/art/landmarks/cairo/spice_market_lv%d.png" % level
+		var image := Image.load_from_file(ProjectSettings.globalize_path(asset_path))
+		var valid := image != null and image.get_size() == Vector2i(1024, 512) and image.get_pixel(0, 0).a < 0.05 and image.get_pixel(1023, 0).a < 0.05
+		assets_ok = assets_ok and valid
+	GameState.reset_run()
+	GameState.current_tile_index = 0
+	show_game()
+	var levels_ok := true
+	for level: int in range(4):
+		GameState.landmark_levels["CAI_LANDMARK_01"] = level
+		board_view.set_landmark_levels(GameState.landmark_levels)
+		await get_tree().process_frame
+		var expected_path := "res://assets/art/landmarks/cairo/spice_market_lv%d.png" % level
+		levels_ok = levels_ok and board_view.scenic_level == level and board_view.mouse_filter == Control.MOUSE_FILTER_IGNORE and board_view.scenic_texture != null and board_view.scenic_texture.resource_path == expected_path
+	GameState.current_tile_index = 6
+	board_view.set_current_tile(6)
+	await get_tree().process_frame
+	var hidden_outside_neighborhood := board_view.scenic_texture == null
+	GameState.current_tile_index = 89
+	board_view.set_current_tile(89)
+	await get_tree().process_frame
+	var visible_across_loop := board_view.scenic_texture != null
+	var passed := assets_ok and levels_ok and hidden_outside_neighborhood and visible_across_loop
+	print("QA_SPICE_SCENIC assets=%s levels=%s hidden=%s wrapped=%s passed=%s" % [assets_ok, levels_ok, hidden_outside_neighborhood, visible_across_loop, passed])
+	GameState.apply_dictionary(original)
+	if not passed: push_error("Spice scenic QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_spice_scenic_capture(level_text: String, path: String) -> void:
+	GameState.reset_run()
+	var level := clampi(int(level_text), 0, 3)
+	GameState.total_lap_points = 12450
+	GameState.lap_count = 2
+	GameState.current_tile_index = 0
+	GameState.landmark_levels = {"CAI_LANDMARK_01": level, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	GameState.stage_development = level + 3
+	show_game()
+	for ignored: int in range(12): await get_tree().process_frame
+	await get_tree().create_timer(0.28).timeout
+	var result := _save_opaque_capture(path)
+	print("QA_SPICE_SCENIC_CAPTURE level=%d path=%s result=%s" % [level, path, result])
+	get_tree().quit(0 if result == OK else 1)
 
 func _qa_premium_board_capture(path: String) -> void:
 	GameState.reset_run(); GameState.current_dice_count = 2; GameState.current_tile_index = 58; show_game()

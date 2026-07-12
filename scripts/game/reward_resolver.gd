@@ -20,6 +20,60 @@ static func _apply_one(state: Dictionary, effect: Dictionary, summary: Array[Str
 		"COIN":
 			var amount := int(effect.get("amount", COINS.get(str(effect.get("amount_key", "COIN_S")), 3)))
 			state["coins"] = mini(COIN_MAX, int(state.get("coins", 0)) + amount); summary.append("旅コイン +%d" % amount)
+		"LAP_BONUS":
+			var lap_amount := maxi(0, int(effect.get("amount", 0)))
+			state["current_lap_bonus"] = maxi(0, int(state.get("current_lap_bonus", 0)) + lap_amount)
+			summary.append("ラップボーナス +%d" % lap_amount)
+		"SOUVENIR":
+			var souvenir_amount := maxi(0, int(effect.get("amount", 1)))
+			state["souvenirs"] = maxi(0, int(state.get("souvenirs", 0)) + souvenir_amount)
+			summary.append("旅の記憶 +%d" % souvenir_amount)
+		"LANDMARK_LEVEL":
+			var landmark_id := str(effect.get("landmark_id", ""))
+			var levels: Dictionary = (state.get("landmark_levels", {}) as Dictionary).duplicate(true)
+			levels[landmark_id] = clampi(int(effect.get("level", levels.get(landmark_id, 0))), 0, 3)
+			state["landmark_levels"] = levels
+			var development := 0
+			for level: Variant in levels.values(): development += clampi(int(level), 0, 3)
+			state["stage_development"] = clampi(development, 0, 9)
+			summary.append("名所 Lv.%d" % int(levels[landmark_id]))
+		"LANDMARK_COMMIT":
+			state["landmark_resolution_id"] = str(effect.get("resolution_id", ""))
+			state["landmark_reward_committed"] = true
+		"LAP_COMMIT":
+			var lap_number := int(effect.get("lap_number", int(state.get("laps", 0)) + 1))
+			var total_lap_number := int(effect.get("total_lap_number", int(state.get("total_laps", 0)) + 1))
+			var points := maxi(100, int(effect.get("points", 100)))
+			var score := maxi(0, int(effect.get("score", 0)))
+			state["laps"] = lap_number
+			state["total_laps"] = total_lap_number
+			state["highest_laps_in_one_journey"] = maxi(int(state.get("highest_laps_in_one_journey", 0)), lap_number)
+			state["total_lap_points"] = maxi(0, int(state.get("total_lap_points", 0)) + points)
+			state["best_lap_score"] = maxi(int(state.get("best_lap_score", 0)), score)
+			state["coins"] = mini(COIN_MAX, int(state.get("coins", 0)) + maxi(0, int(effect.get("coins", 15))))
+			state["current_lap_bonus"] = 0
+			state["current_lap_roll_count"] = 0
+			state["current_lap_clean"] = true
+			state["current_lap_penalty_count"] = 0
+			state["flow_reward_3_claimed_this_lap"] = false
+			state["flow_reward_5_claimed_this_lap"] = false
+			state["lap_resolution_id"] = str(effect.get("resolution_id", ""))
+			state["lap_reward_committed"] = true
+			state["last_lap_result"] = (effect.get("result", {}) as Dictionary).duplicate(true)
+			var stamps: Array = state.get("stamps", [])
+			var stamp := "CAIRO-%02d" % lap_number
+			if stamp not in stamps: stamps.append(stamp)
+			state["stamps"] = stamps
+			var memos: Array = state.get("memos", [])
+			memos.append("カイロを一周。砂時計のスタンプを押した。")
+			state["memos"] = memos
+			# M4A's once-per-loop state changes at the same durable commit as
+			# points and legacy coins, regardless of NORMAL or WARP source.
+			state["events_seen_this_loop"] = []
+			state["rare_event_used_this_loop"] = false
+			state["events_since_rare"] = 99
+			summary.append("LAP POINT +%d" % points)
+			summary.append("旅コイン +%d" % maxi(0, int(effect.get("coins", 15))))
 		"ITEM":
 			var rarity := str(effect.get("rarity", _item_rarity(str(effect.get("pool", "COMMON")), str(state.get("applied_resolution_ids", []).size()))))
 			var item := str(effect.get("item_id", ITEMS.get(rarity, "mint_tea")))

@@ -2,6 +2,11 @@ extends Node
 
 const DEFAULT_STAGE: StringName = &"cairo_hourglass"
 const DEFAULT_CHARACTER: StringName = &"relaxed"
+const DEFAULT_LANDMARK_LEVELS: Dictionary = {
+	"CAI_LANDMARK_01": 0,
+	"CAI_LANDMARK_02": 0,
+	"CAI_LANDMARK_03": 0,
+}
 const BossSystemScript = preload("res://scripts/game/boss_system.gd")
 const DiceLogicScript = preload("res://scripts/core/dice_logic.gd")
 
@@ -56,6 +61,43 @@ var last_roll_dice_count: int = 0
 var master_volume: float = 1.0
 var se_volume: float = 1.0
 var dice_se_muted: bool = false
+
+# LAP-01. CLEAN/FLOW fields are persisted as neutral v6 defaults so their
+# later slices can migrate without rewriting the lap-point foundation.
+var total_lap_points: int = 0
+var current_lap_bonus: int = 0
+var current_lap_roll_count: int = 0
+var current_lap_clean: bool = true
+var current_lap_penalty_count: int = 0
+var clean_streak: int = 0
+var flow_level: int = 0
+var flow_triggered_this_turn: bool = false
+var flow_reward_3_claimed_this_lap: bool = false
+var flow_reward_5_claimed_this_lap: bool = false
+var even_guard_active: bool = false
+var best_lap_score: int = 0
+var best_clean_streak: int = 0
+var best_flow_level: int = 0
+var total_laps: int = 0
+var highest_laps_in_one_journey: int = 0
+var pending_lap_rewards: Array[Dictionary] = []
+var lap_resolution_id: String = ""
+var lap_reward_committed: bool = false
+var last_lap_result: Dictionary = {}
+
+# LANDMARK-01. Collection/revisit behavior is intentionally deferred, but the
+# v6 neutral fields keep later additions backward compatible.
+var landmark_levels: Dictionary = DEFAULT_LANDMARK_LEVELS.duplicate(true)
+var landmark_revisit_stamps: Dictionary = {}
+var landmark_collection_flags: Dictionary = {}
+var landmark_completion_flags: Dictionary = {}
+var stage_development: int = 0
+var stage_development_milestones_claimed: Array[int] = []
+var stage_collection_count: int = 0
+var stage_collection_completed: bool = false
+var pending_landmark_rewards: Array[Dictionary] = []
+var landmark_resolution_id: String = ""
+var landmark_reward_committed: bool = false
 
 ## Transitional code compatibility; v5 saves only current_dice_count.
 var unlocked_dice_count: int:
@@ -117,6 +159,14 @@ func reset_run() -> void:
 	temporary_roll_dice_count = 0
 	dice_slot_chain_count = 0
 	last_roll_dice_count = 0
+	current_lap_bonus = 0
+	current_lap_roll_count = 0
+	current_lap_clean = true
+	current_lap_penalty_count = 0
+	flow_triggered_this_turn = false
+	flow_reward_3_claimed_this_lap = false
+	flow_reward_5_claimed_this_lap = false
+	last_lap_result.clear()
 	ensure_boss_data()
 
 func ensure_boss_data() -> void:
@@ -156,7 +206,7 @@ func begin_next_boss() -> void:
 func to_dictionary() -> Dictionary:
 	ensure_boss_data()
 	return {
-		"version": 5,
+		"version": 6,
 		"stage_id": String(selected_stage_id),
 		"character_id": String(selected_character_id),
 		"tile": current_tile_index,
@@ -201,6 +251,37 @@ func to_dictionary() -> Dictionary:
 		,"master_volume": clampf(master_volume, 0.0, 1.0)
 		,"se_volume": clampf(se_volume, 0.0, 1.0)
 		,"dice_se_muted": dice_se_muted
+		,"total_lap_points": maxi(0, total_lap_points)
+		,"current_lap_bonus": maxi(0, current_lap_bonus)
+		,"current_lap_roll_count": maxi(0, current_lap_roll_count)
+		,"current_lap_clean": current_lap_clean
+		,"current_lap_penalty_count": maxi(0, current_lap_penalty_count)
+		,"clean_streak": clampi(clean_streak, 0, 5)
+		,"flow_level": clampi(flow_level, 0, 5)
+		,"flow_triggered_this_turn": flow_triggered_this_turn
+		,"flow_reward_3_claimed_this_lap": flow_reward_3_claimed_this_lap
+		,"flow_reward_5_claimed_this_lap": flow_reward_5_claimed_this_lap
+		,"even_guard_active": even_guard_active
+		,"best_lap_score": maxi(0, best_lap_score)
+		,"best_clean_streak": maxi(0, best_clean_streak)
+		,"best_flow_level": maxi(0, best_flow_level)
+		,"total_laps": maxi(0, total_laps)
+		,"highest_laps_in_one_journey": maxi(0, highest_laps_in_one_journey)
+		,"pending_lap_rewards": pending_lap_rewards.duplicate(true)
+		,"lap_resolution_id": lap_resolution_id
+		,"lap_reward_committed": lap_reward_committed
+		,"last_lap_result": last_lap_result.duplicate(true)
+		,"landmark_levels": landmark_levels.duplicate(true)
+		,"landmark_revisit_stamps": landmark_revisit_stamps.duplicate(true)
+		,"landmark_collection_flags": landmark_collection_flags.duplicate(true)
+		,"landmark_completion_flags": landmark_completion_flags.duplicate(true)
+		,"stage_development": clampi(stage_development, 0, 9)
+		,"stage_development_milestones_claimed": stage_development_milestones_claimed.duplicate()
+		,"stage_collection_count": maxi(0, stage_collection_count)
+		,"stage_collection_completed": stage_collection_completed
+		,"pending_landmark_rewards": pending_landmark_rewards.duplicate(true)
+		,"landmark_resolution_id": landmark_resolution_id
+		,"landmark_reward_committed": landmark_reward_committed
 	}
 
 func apply_dictionary(data: Dictionary) -> void:
@@ -262,6 +343,43 @@ func apply_dictionary(data: Dictionary) -> void:
 	master_volume = clampf(float(data.get("master_volume", 1.0)), 0.0, 1.0)
 	se_volume = clampf(float(data.get("se_volume", 1.0)), 0.0, 1.0)
 	dice_se_muted = bool(data.get("dice_se_muted", false))
+	total_lap_points = maxi(0, int(data.get("total_lap_points", 0)))
+	current_lap_bonus = maxi(0, int(data.get("current_lap_bonus", 0)))
+	current_lap_roll_count = maxi(0, int(data.get("current_lap_roll_count", 0)))
+	current_lap_clean = bool(data.get("current_lap_clean", true))
+	current_lap_penalty_count = maxi(0, int(data.get("current_lap_penalty_count", 0)))
+	clean_streak = clampi(int(data.get("clean_streak", 0)), 0, 5)
+	flow_level = clampi(int(data.get("flow_level", 0)), 0, 5)
+	flow_triggered_this_turn = bool(data.get("flow_triggered_this_turn", false))
+	flow_reward_3_claimed_this_lap = bool(data.get("flow_reward_3_claimed_this_lap", false))
+	flow_reward_5_claimed_this_lap = bool(data.get("flow_reward_5_claimed_this_lap", false))
+	even_guard_active = bool(data.get("even_guard_active", false))
+	best_lap_score = maxi(0, int(data.get("best_lap_score", 0)))
+	best_clean_streak = maxi(0, int(data.get("best_clean_streak", 0)))
+	best_flow_level = maxi(0, int(data.get("best_flow_level", 0)))
+	total_laps = maxi(0, int(data.get("total_laps", data.get("laps", 0))))
+	highest_laps_in_one_journey = maxi(0, int(data.get("highest_laps_in_one_journey", data.get("laps", 0))))
+	pending_lap_rewards.clear()
+	for reward: Variant in data.get("pending_lap_rewards", []):
+		if reward is Dictionary: pending_lap_rewards.append((reward as Dictionary).duplicate(true))
+	lap_resolution_id = str(data.get("lap_resolution_id", ""))
+	lap_reward_committed = bool(data.get("lap_reward_committed", false))
+	last_lap_result = (data.get("last_lap_result", {}) as Dictionary).duplicate(true)
+	landmark_levels = DEFAULT_LANDMARK_LEVELS.duplicate(true)
+	for landmark_id: Variant in (data.get("landmark_levels", {}) as Dictionary):
+		landmark_levels[str(landmark_id)] = clampi(int((data.get("landmark_levels", {}) as Dictionary)[landmark_id]), 0, 3)
+	landmark_revisit_stamps = (data.get("landmark_revisit_stamps", {}) as Dictionary).duplicate(true)
+	landmark_collection_flags = (data.get("landmark_collection_flags", {}) as Dictionary).duplicate(true)
+	landmark_completion_flags = (data.get("landmark_completion_flags", {}) as Dictionary).duplicate(true)
+	stage_development = clampi(int(data.get("stage_development", 0)), 0, 9)
+	stage_development_milestones_claimed.assign(data.get("stage_development_milestones_claimed", []))
+	stage_collection_count = maxi(0, int(data.get("stage_collection_count", 0)))
+	stage_collection_completed = bool(data.get("stage_collection_completed", false))
+	pending_landmark_rewards.clear()
+	for reward: Variant in data.get("pending_landmark_rewards", []):
+		if reward is Dictionary: pending_landmark_rewards.append((reward as Dictionary).duplicate(true))
+	landmark_resolution_id = str(data.get("landmark_resolution_id", ""))
+	landmark_reward_committed = bool(data.get("landmark_reward_committed", false))
 	# v1 saves had only boss_bond. Their first individual is safely migrated here.
 	if current_boss.is_empty():
 		current_boss = BossSystemScript.initial_individual(boss_sequence)
