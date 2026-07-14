@@ -135,6 +135,8 @@ func _ready() -> void:
 		call_deferred("_qa_premium_board_capture", OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD"))
 	elif OS.get_environment("DICE_QA_LAP_LANDMARK") == "1":
 		call_deferred("_qa_lap_landmark")
+	elif OS.get_environment("DICE_QA_CLEAN_LAP") == "1":
+		call_deferred("_qa_clean_lap")
 	elif OS.get_environment("DICE_QA_TOURMAP") == "1":
 		call_deferred("_qa_tourmap")
 	elif OS.get_environment("DICE_QA_SPICE_SCENIC") == "1":
@@ -143,6 +145,8 @@ func _ready() -> void:
 		call_deferred("_qa_spice_scenic_capture", OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK") != "":
 		call_deferred("_qa_lap_landmark_capture", OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_CAPTURE_CLEAN") != "":
+		call_deferred("_qa_clean_capture", OS.get_environment("DICE_QA_CAPTURE_CLEAN"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_TOURMAP") != "":
 		call_deferred("_qa_tourmap_capture", OS.get_environment("DICE_QA_CAPTURE_TOURMAP"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif GameState.pending_boss_handoff:
@@ -151,7 +155,7 @@ func _ready() -> void:
 		call_deferred("_resume_active_event")
 	elif OS.get_environment("DICE_QA_CAPTURE_M3") != "":
 		call_deferred("_qa_m3_capture", OS.get_environment("DICE_QA_CAPTURE_M3"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
-	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
+	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CLEAN").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
 		call_deferred("_qa_capture_viewport", OS.get_environment("DICE_QA_CAPTURE_PATH"))
 
 func _apply_theme() -> void:
@@ -636,6 +640,7 @@ func _resolve_roll(values: Array[int]) -> void:
 		role_label.text = "静かな一投"
 	if roles.get("support", &"") == DiceLogicScript.ALL_EVEN:
 		GameState.coins += 3
+		GameState.even_guard_active = true
 	if roles.get("main", &"") == DiceLogicScript.TRIPLE:
 		GameState.boss_presence = 5
 	# Consume the rolled state before landing rewards. An item/event DICE_ADD_1
@@ -644,8 +649,8 @@ func _resolve_roll(values: Array[int]) -> void:
 	var distance: int = 0
 	for value: int in values:
 		distance += value
-	if GameState.next_move_bonus > 0:
-		distance += GameState.next_move_bonus
+	if GameState.next_move_bonus != 0:
+		distance = maxi(0, distance + GameState.next_move_bonus)
 		GameState.next_move_bonus = 0
 	var crossed_laps := 0
 	for step: int in range(distance):
@@ -812,7 +817,13 @@ func _build_lap_result_modal(result: Dictionary) -> Dictionary:
 	var content: VBoxContainer = modal.content
 	content.add_child(_body("LAP %d COMPLETE" % int(result.get("lap_number", GameState.lap_count)), 18))
 	content.add_child(_title("LAP POINT +%d" % int(result.get("points", 100)), 34))
-	content.add_child(_body("基本 %d　＋　ラップボーナス %d\nラップスコア %d　（%dロール）" % [int(result.get("base_points", 100)), int(result.get("lap_bonus", 0)), int(result.get("score", 0)), int(result.get("roll_count", 0))], 19))
+	var clean_text := "CLEAN STREAK %d　×%.2f" % [int(result.get("clean_streak", 0)), float(result.get("multiplier", 1.0))] if bool(result.get("clean", true)) else "CLEAN失敗　×1.00"
+	content.add_child(_body("基本 %d　＋　ラップボーナス %d\n%s　→　獲得 %d\nラップスコア %d　（%dロール）" % [int(result.get("base_points", 100)), int(result.get("lap_bonus", 0)), clean_text, int(result.get("points", 100)), int(result.get("score", 0)), int(result.get("roll_count", 0))], 19))
+	var milestone := int(result.get("milestone", 0))
+	if milestone in [2, 3, 5]:
+		var reward_text: String = str({2: "旅コイン +12", 3: "追加ダイス +1", 5: "DICE KEEP"}.get(milestone, ""))
+		content.add_child(_body("CLEAN %d 到達ボーナス　%s" % [milestone, reward_text], 18))
+	content.add_child(_body(str(result.get("next_clean_goal", LapSystemScript.next_clean_goal_for(int(result.get("clean_streak", 0))))), 17))
 	var close := _button("次の一周へ", func() -> void: return, true)
 	close.name = "lap_result_close"
 	close.toggle_mode = true
@@ -847,21 +858,20 @@ func _show_item_space_choice() -> String:
 
 func _show_risk_space_modal() -> String:
 	var base_dice_before := GameState.current_dice_count
+	var risk_tile := GameState.current_tile_index
+	var risk_name := RewardResolverScript.risk_name_for_tile(risk_tile)
 	var modal := _make_modal()
 	var content: VBoxContainer = modal.content
-	content.add_child(_title("砂塵の抜け道", 32))
-	content.add_child(_body("安全な足場を進むか、砂の向こうへ3ダイスを投げるか。\n挑戦しても今のダイスは失いません。", 20))
-	var safe := _button("安全策　追加ダイス +1", func() -> void: return, true); safe.name = "risk_safe"; safe.toggle_mode = true
-	var challenge := _button("挑戦　追加3ダイス", func() -> void: return); challenge.name = "risk_challenge"; challenge.toggle_mode = true
+	content.add_child(_title(risk_name, 32))
+	content.add_child(_body("受け流すか、3ダイスの目押しで突破するか。\n役が成立すれば不利益を防ぎ、今のダイスも失いません。", 20))
+	var safe := _button("受け流す", func() -> void: return, true); safe.name = "risk_safe"; safe.toggle_mode = true
+	var challenge := _button("目押しで突破　追加3ダイス", func() -> void: return); challenge.name = "risk_challenge"; challenge.toggle_mode = true
 	content.add_child(safe); content.add_child(challenge)
 	var chosen := await _wait_for_action([safe, challenge])
 	safe.disabled = true; challenge.disabled = true
 	var memo := ""
 	if chosen == 0:
-		var before := GameState.current_dice_count
-		var before_coins := GameState.coins
-		var after := GameState.add_dice()
-		memo = "リスクマスの安全策。追加ダイス %d→%d" % [before, after] if after > before else "安全策の余剰ダイスを旅コイン +%dへ変換" % (GameState.coins - before_coins)
+		memo = _apply_risk_harm(risk_tile)
 	else:
 		fixed_targets = GameState.debug_fixed_extra_rolls.duplicate(); GameState.debug_fixed_extra_rolls.clear()
 		var extra_values := await _animate_dice_roll(3, content)
@@ -879,7 +889,7 @@ func _show_risk_space_modal() -> String:
 		elif support_role == DiceLogicScript.ALL_ODD:
 			GameState.coins += 30; memo = "挑戦成功：ALL ODD。旅コイン +30"
 		else:
-			GameState.coins += 5; memo = "砂の流れを読んだ。小さな旅コイン +5"
+			memo = _apply_risk_harm(risk_tile)
 	# The risk branch may add dice, but never removes the state held on arrival.
 	GameState.current_dice_count = maxi(base_dice_before, GameState.current_dice_count)
 	content.add_child(_body(memo, 20))
@@ -887,6 +897,17 @@ func _show_risk_space_modal() -> String:
 	await close.pressed
 	_close_modal(modal.layer)
 	return memo
+
+func _apply_risk_harm(tile_index: int) -> String:
+	var state := GameState.to_dictionary()
+	var resolution_id := "risk:%08d:%d:%d" % [GameState.total_laps, GameState.rolls_used, tile_index]
+	var resolution := RewardResolverScript.resolve_risk(state, resolution_id, tile_index)
+	var applied := RewardResolverScript.apply(state, resolution, GameState.reward_apply_log)
+	GameState.apply_dictionary(state)
+	board_view.set_current_tile(GameState.current_tile_index)
+	minimap_view.set_current_tile(GameState.current_tile_index)
+	var summary: Array = applied.get("summary", [])
+	return str(summary[0]) if not summary.is_empty() else "%s：処理済み" % RewardResolverScript.risk_name_for_tile(tile_index)
 
 func _event_by_id(event_id: String) -> Dictionary:
 	for event: Dictionary in event_definitions:
@@ -1030,10 +1051,22 @@ func _resume_active_event() -> void:
 	var roles: Dictionary = arrival.get("source_roles", DiceLogicScript.evaluate(dice_values))
 	await _show_event_modal(roles)
 
+func _compact_clean_hud(points: int, is_clean: bool, streak: int) -> String:
+	var current := clampi(streak, 0, LapSystemScript.MAX_CLEAN_STREAK)
+	if not is_clean:
+		var recovery_target := maxi(1, current)
+		return "LAP POINT %d\nCLEAN失敗　STREAK %d\nRECOVER %d（次周）" % [points, current, recovery_target]
+	if current >= LapSystemScript.MAX_CLEAN_STREAK:
+		return "LAP POINT %d\nCLEAN STREAK MAX\nCLEAN維持中" % points
+	for target: int in [2, 3, 5]:
+		if current < target:
+			return "LAP POINT %d\nCLEAN STREAK %d\nNEXT %d（あと%d周）" % [points, current, target, target - current]
+	return "LAP POINT %d\nCLEAN STREAK %d\nCLEAN維持中" % [points, current]
+
 func _refresh_hud() -> void:
 	if lap_label == null:
 		return
-	lap_label.text = "LAP POINT\n%d" % GameState.total_lap_points
+	lap_label.text = _compact_clean_hud(GameState.total_lap_points, GameState.current_lap_clean, GameState.clean_streak)
 	coin_label.text = "旅コイン %d" % GameState.coins
 	rolls_label.text = "LAP %d　ターン %d / 36　現在 %dマス　次回 %dダイス" % [GameState.lap_count, GameState.rolls_used, GameState.current_tile_index + 1, clampi(GameState.current_dice_count, 1, 3)]
 	if is_instance_valid(landmark_level_label):
@@ -1975,10 +2008,10 @@ func _qa_dice_capture(kind: String, path: String) -> void:
 	get_tree().quit(0 if result == OK else 1)
 
 func _qa_risk_space(kind: String) -> void:
-	GameState.reset_run(); GameState.current_dice_count = 2; GameState.current_tile_index = 58; show_game()
+	GameState.reset_run(); GameState.applied_resolution_ids.clear(); GameState.current_dice_count = 2; GameState.current_tile_index = 58; GameState.flow_level = 3; show_game()
 	var before_count := GameState.current_dice_count
 	var before_coins := GameState.coins
-	if kind == "challenge": GameState.debug_fixed_extra_rolls.assign([1, 2, 6])
+	if kind == "challenge": GameState.debug_fixed_extra_rolls.assign([1, 3, 5])
 	_show_risk_space_modal()
 	var button_name := "risk_challenge" if kind == "challenge" else "risk_safe"
 	while find_children(button_name, "Button", true, false).is_empty(): await get_tree().process_frame
@@ -1989,9 +2022,9 @@ func _qa_risk_space(kind: String) -> void:
 	(find_children("risk_close", "Button", true, false)[0] as Button).pressed.emit()
 	while modal_open: await get_tree().process_frame
 	var passed := count_before_close >= before_count
-	if kind == "safe": passed = passed and count_before_close == 3
-	else: passed = passed and count_before_close == 2 and coins_before_close == before_coins + 5
-	print("QA_RISK kind=%s before=%d after=%d coins_delta=%d modal_closed=%s passed=%s" % [kind, before_count, count_before_close, coins_before_close - before_coins, not modal_open, passed])
+	if kind == "safe": passed = passed and count_before_close == 2 and GameState.current_tile_index == 55 and not GameState.current_lap_clean and GameState.current_lap_penalty_count == 1
+	else: passed = passed and count_before_close == 2 and coins_before_close == before_coins + 30 and GameState.current_lap_clean and GameState.flow_level == 3
+	print("QA_RISK kind=%s before=%d after=%d coins_delta=%d clean=%s tile=%d modal_closed=%s passed=%s" % [kind, before_count, count_before_close, coins_before_close - before_coins, GameState.current_lap_clean, GameState.current_tile_index, not modal_open, passed])
 	if not passed: push_error("Risk-space QA failed.")
 	get_tree().quit(0 if passed else 1)
 
@@ -2033,6 +2066,96 @@ func _qa_tourmap_capture(kind: String, path: String) -> void:
 	print("QA_TOURMAP_CAPTURE kind=%s market_level=%d path=%s result=%s" % [kind, market_level, path, result])
 	get_tree().quit(0 if result == OK else 1)
 
+func _qa_clean_lap() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	var state := original.duplicate(true)
+	state["applied_resolution_ids"] = []
+	state["total_lap_points"] = 0
+	state["current_lap_bonus"] = 20
+	state["current_lap_roll_count"] = 12
+	state["current_lap_clean"] = true
+	state["current_lap_penalty_count"] = 0
+	state["clean_streak"] = 0
+	state["best_clean_streak"] = 0
+	state["coins"] = 0
+	state["current_dice_count"] = 1
+	var first := LapSystemScript.resolve(state, "qa-clean-1")
+	RewardResolverScript.apply(state, first)
+	state["current_lap_bonus"] = 0
+	state["current_lap_roll_count"] = 12
+	var second := LapSystemScript.resolve(state, "qa-clean-2")
+	RewardResolverScript.apply(state, second)
+	var milestone_snapshot := {"points": int(state.total_lap_points), "coins": int(state.coins), "streak": int(state.clean_streak)}
+	var duplicate := RewardResolverScript.apply(state, second)
+	var clean_ok := int(first.result.points) == 138 and int(second.result.points) == 130 and int(second.result.score) == 208 and int(second.result.milestone) == 2 and int(state.coins) == 42 and milestone_snapshot == {"points": int(state.total_lap_points), "coins": int(state.coins), "streak": int(state.clean_streak)} and not bool(duplicate.applied) and int(state.clean_streak) == 2
+	state["current_lap_clean"] = false
+	var dirty := LapSystemScript.resolve(state, "qa-clean-dirty")
+	RewardResolverScript.apply(state, dirty)
+	var dirty_ok := int(dirty.result.points) == 100 and is_equal_approx(float(dirty.result.multiplier), 1.0) and int(state.clean_streak) == 1
+	var streak_3_state := original.duplicate(true); streak_3_state["applied_resolution_ids"] = []; streak_3_state["clean_streak"] = 2; streak_3_state["current_lap_clean"] = true; streak_3_state["current_dice_count"] = 1
+	var streak_3 := LapSystemScript.resolve(streak_3_state, "qa-clean-3"); RewardResolverScript.apply(streak_3_state, streak_3)
+	var streak_3_duplicate := RewardResolverScript.apply(streak_3_state, streak_3)
+	var streak_3_ok := int(streak_3.result.milestone) == 3 and int(streak_3_state.current_dice_count) == 2 and not bool(streak_3_duplicate.applied)
+	var streak_5_state := original.duplicate(true); streak_5_state["applied_resolution_ids"] = []; streak_5_state["clean_streak"] = 4; streak_5_state["current_lap_clean"] = true; streak_5_state["dice_keep_active"] = false
+	var streak_5 := LapSystemScript.resolve(streak_5_state, "qa-clean-5"); RewardResolverScript.apply(streak_5_state, streak_5)
+	var streak_5_duplicate := RewardResolverScript.apply(streak_5_state, streak_5)
+	var streak_5_ok := int(streak_5.result.milestone) == 5 and bool(streak_5_state.dice_keep_active) and not bool(streak_5_duplicate.applied)
+	var streak_max := LapSystemScript.resolve(streak_5_state, "qa-clean-max"); RewardResolverScript.apply(streak_5_state, streak_max)
+	var streak_max_points := int(streak_5_state.total_lap_points)
+	var streak_max_duplicate := RewardResolverScript.apply(streak_5_state, streak_max)
+	var streak_max_ok := int(streak_max.result.clean_streak) == 5 and int(streak_max.result.milestone) == 0 and (streak_max.rewards as Array).is_empty() and not bool(streak_max_duplicate.applied) and int(streak_5_state.total_lap_points) == streak_max_points
+	var reentry_state := original.duplicate(true); reentry_state["applied_resolution_ids"] = []; reentry_state["clean_streak"] = 5; reentry_state["current_lap_clean"] = false; reentry_state["dice_keep_active"] = false
+	var streak_drop := LapSystemScript.resolve(reentry_state, "qa-clean-drop"); RewardResolverScript.apply(reentry_state, streak_drop)
+	reentry_state["current_lap_clean"] = true
+	var streak_reentry := LapSystemScript.resolve(reentry_state, "qa-clean-reentry"); RewardResolverScript.apply(reentry_state, streak_reentry)
+	var streak_reentry_duplicate := RewardResolverScript.apply(reentry_state, streak_reentry)
+	var reentry_ok := int(streak_drop.result.clean_streak) == 4 and int(streak_reentry.result.milestone) == 5 and bool(reentry_state.dice_keep_active) and not bool(streak_reentry_duplicate.applied)
+	var boundaries_ok := streak_3_ok and streak_5_ok and streak_max_ok and reentry_ok
+	var risk_ok := true
+	var risk_state := {"coins": 20, "presence": 2, "tile": 58, "next_move_bonus": 0, "flow_level": 4, "current_lap_clean": true, "current_lap_penalty_count": 0, "even_guard_active": false, "applied_resolution_ids": []}
+	for risk_tile: int in [27, 44, 58, 68, 80]:
+		var penalties_before := int(risk_state.current_lap_penalty_count)
+		RewardResolverScript.apply(risk_state, RewardResolverScript.resolve_risk(risk_state, "qa-risk-%d" % risk_tile, risk_tile))
+		risk_ok = risk_ok and not bool(risk_state.current_lap_clean) and int(risk_state.current_lap_penalty_count) == penalties_before + 1
+		risk_state["current_lap_clean"] = true
+	risk_ok = risk_ok and int(risk_state.next_move_bonus) == -2 and int(risk_state.coins) == 12 and int(risk_state.tile) == 55 and int(risk_state.flow_level) == 0 and int(risk_state.presence) == 1
+	var noop := risk_state.duplicate(true); noop["coins"] = 0; noop["even_guard_active"] = true; noop["current_lap_clean"] = true; noop["current_lap_penalty_count"] = 0; noop["applied_resolution_ids"] = []
+	RewardResolverScript.apply(noop, RewardResolverScript.resolve_risk(noop, "qa-risk-noop", 44))
+	var noop_ok := bool(noop.current_lap_clean) and bool(noop.even_guard_active) and int(noop.current_lap_penalty_count) == 0
+	var guarded := noop.duplicate(true); guarded["coins"] = 20; guarded["applied_resolution_ids"] = []
+	RewardResolverScript.apply(guarded, RewardResolverScript.resolve_risk(guarded, "qa-risk-guard", 44))
+	var guard_ok := int(guarded.coins) == 20 and bool(guarded.current_lap_clean) and not bool(guarded.even_guard_active)
+	GameState.apply_dictionary(original)
+	GameState.current_lap_clean = false; GameState.current_lap_penalty_count = 3; GameState.clean_streak = 4; GameState.even_guard_active = true
+	var saved := SaveManager.save_now()
+	GameState.current_lap_clean = true; GameState.current_lap_penalty_count = 0; GameState.clean_streak = 0; GameState.even_guard_active = false
+	var restored := SaveManager.load_now() and not GameState.current_lap_clean and GameState.current_lap_penalty_count == 3 and GameState.clean_streak == 4 and GameState.even_guard_active
+	var v5_clean_missing := original.duplicate(true); v5_clean_missing["version"] = 5
+	for clean_key: String in ["current_lap_clean", "current_lap_penalty_count", "clean_streak", "even_guard_active", "best_clean_streak"]: v5_clean_missing.erase(clean_key)
+	GameState.apply_dictionary(v5_clean_missing)
+	var migration_ok := GameState.current_lap_clean and GameState.current_lap_penalty_count == 0 and GameState.clean_streak == 0 and not GameState.even_guard_active and GameState.best_clean_streak == 0 and int(GameState.to_dictionary().version) == 6
+	var passed := clean_ok and dirty_ok and boundaries_ok and risk_ok and noop_ok and guard_ok and saved and restored and migration_ok
+	print("QA_CLEAN_LAP clean=%s dirty=%s boundaries=%s risks=%s noop=%s guard=%s save=%s migration=%s passed=%s" % [clean_ok, dirty_ok, boundaries_ok, risk_ok, noop_ok, guard_ok, restored, migration_ok, passed])
+	GameState.apply_dictionary(original); SaveManager.save_now()
+	if not passed: push_error("CLEAN deterministic QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_clean_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.total_lap_points = 12450
+	GameState.lap_count = 3
+	GameState.clean_streak = 2
+	GameState.current_lap_clean = kind != "dirty"
+	GameState.current_tile_index = 43
+	show_game()
+	if kind == "lap":
+		_build_lap_result_modal({"lap_number": 4, "base_points": 100, "lap_bonus": 85, "clean": true, "clean_streak": 3, "multiplier": 1.5, "points": 277, "score": 337, "roll_count": 11, "next_clean_goal": "あと2回でCLEAN STREAK 5"})
+	for ignored: int in range(12): await get_tree().process_frame
+	await get_tree().create_timer(0.22).timeout
+	var result := _save_opaque_capture(path)
+	print("QA_CLEAN_CAPTURE kind=%s path=%s result=%s" % [kind, path, result])
+	get_tree().quit(0 if result == OK else 1)
+
 func _qa_lap_landmark() -> void:
 	var original := GameState.to_dictionary().duplicate(true)
 	GameState.reset_run()
@@ -2046,18 +2169,20 @@ func _qa_lap_landmark() -> void:
 	GameState.reward_apply_log.clear()
 	GameState.current_tile_index = 89
 	GameState.current_dice_count = 1
+	GameState.clean_streak = 0
 	show_game()
 	await _resolve_roll([1])
-	var normal_once := GameState.lap_count == 1 and GameState.total_laps == 1 and GameState.total_lap_points == 108
+	var normal_once := GameState.lap_count == 1 and GameState.total_laps == 1 and GameState.total_lap_points == 124
 	var tile_zero_once := int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)) == 1 and GameState.souvenirs == 1 and GameState.coins == 47
 	var normal_loop_reset := not GameState.rare_event_used_this_loop and GameState.events_seen_this_loop.is_empty() and GameState.events_since_rare == 99
 	var levels_after_normal := GameState.landmark_levels.duplicate(true)
 	var points_before_warp := GameState.total_lap_points
 	GameState.reset_run()
 	GameState.current_tile_index = 87
+	GameState.clean_streak = 0
 	show_game()
 	await _resolve_landing(&"WARP", {"main": &"", "support": &"", "labels": []})
-	var warp_once := GameState.lap_count == 1 and GameState.current_tile_index == 3 and GameState.total_lap_points == points_before_warp + 108
+	var warp_once := GameState.lap_count == 1 and GameState.current_tile_index == 3 and GameState.total_lap_points == points_before_warp + 124
 	var warp_no_landmark := GameState.landmark_levels == levels_after_normal
 	var warp_loop_reset := not GameState.rare_event_used_this_loop and GameState.events_seen_this_loop.is_empty() and GameState.events_since_rare == 99
 

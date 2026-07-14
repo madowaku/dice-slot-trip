@@ -121,6 +121,59 @@ func _init() -> void:
 	var lap_once := RewardResolverScript.apply(landmark_state, lap_resolution); var points_after_lap := int(landmark_state.total_lap_points); var coins_after_lap := int(landmark_state.coins); var lap_twice := RewardResolverScript.apply(landmark_state, lap_resolution)
 	_expect(lap_once.applied and not lap_twice.applied and points_after_lap >= 100 and int(landmark_state.total_lap_points) == points_after_lap and int(landmark_state.coins) == coins_after_lap, "lap points and legacy coins commit once")
 	_expect(int(landmark_state.laps) == 1 and int(landmark_state.total_laps) == 1 and landmark_state.events_seen_this_loop.is_empty() and not landmark_state.rare_event_used_this_loop, "lap common commit resets loop state")
+	# CLEAN: updated streak drives the multiplier and milestone rewards share the
+	# same idempotent lap resolution.
+	var clean_state := _lap_landmark_state()
+	clean_state.current_lap_bonus = 20
+	var clean_1 := LapSystemScript.resolve(clean_state, "clean-1")
+	RewardResolverScript.apply(clean_state, clean_1)
+	_expect(int(clean_1.result.points) == 138 and int(clean_state.clean_streak) == 1, "first clean lap uses updated streak x1.15")
+	clean_state.current_lap_bonus = 0
+	clean_state.current_lap_roll_count = 12
+	var clean_2 := LapSystemScript.resolve(clean_state, "clean-2")
+	var clean_2_once := RewardResolverScript.apply(clean_state, clean_2)
+	var clean_2_coins := int(clean_state.coins)
+	var clean_2_twice := RewardResolverScript.apply(clean_state, clean_2)
+	_expect(clean_2_once.applied and not clean_2_twice.applied and int(clean_2.result.points) == 130 and int(clean_2.result.score) == 208 and int(clean_2.result.milestone) == 2 and int(clean_state.clean_streak) == 2 and clean_2_coins == 42 and int(clean_state.coins) == clean_2_coins, "CLEAN 2 reward and lap commit are atomic")
+	clean_state.current_lap_clean = false
+	var dirty := LapSystemScript.resolve(clean_state, "clean-dirty")
+	RewardResolverScript.apply(clean_state, dirty)
+	_expect(int(dirty.result.points) == 100 and is_equal_approx(float(dirty.result.multiplier), 1.0) and int(clean_state.clean_streak) == 1, "dirty lap uses x1 and lowers streak one step")
+	var clean_3_state := _lap_landmark_state(); clean_3_state.clean_streak = 2; clean_3_state.current_lap_roll_count = 12
+	var clean_3 := LapSystemScript.resolve(clean_3_state, "clean-3")
+	RewardResolverScript.apply(clean_3_state, clean_3)
+	var clean_3_snapshot := {"dice": int(clean_3_state.current_dice_count), "streak": int(clean_3_state.clean_streak)}
+	var clean_3_duplicate := RewardResolverScript.apply(clean_3_state, clean_3)
+	_expect(int(clean_3.result.milestone) == 3 and clean_3_state.current_dice_count == 2 and not bool(clean_3_duplicate.applied) and clean_3_snapshot == {"dice": int(clean_3_state.current_dice_count), "streak": int(clean_3_state.clean_streak)}, "CLEAN 3 DICE_ADD_1 is idempotent")
+	var clean_5_state := _lap_landmark_state(); clean_5_state.clean_streak = 4; clean_5_state["dice_keep_active"] = false
+	var clean_5 := LapSystemScript.resolve(clean_5_state, "clean-5")
+	RewardResolverScript.apply(clean_5_state, clean_5)
+	var clean_5_duplicate := RewardResolverScript.apply(clean_5_state, clean_5)
+	_expect(int(clean_5.result.milestone) == 5 and bool(clean_5_state.dice_keep_active) and not bool(clean_5_duplicate.applied), "CLEAN 5 DICE_KEEP is idempotent")
+	var clean_max := LapSystemScript.resolve(clean_5_state, "clean-max")
+	RewardResolverScript.apply(clean_5_state, clean_max)
+	var clean_max_points := int(clean_5_state.total_lap_points)
+	var clean_max_duplicate := RewardResolverScript.apply(clean_5_state, clean_max)
+	_expect(int(clean_max.result.clean_streak) == 5 and int(clean_max.result.milestone) == 0 and (clean_max.rewards as Array).is_empty() and not bool(clean_max_duplicate.applied) and int(clean_5_state.total_lap_points) == clean_max_points, "CLEAN 5 to 5 does not retrigger and is idempotent")
+	var reentry_state := _lap_landmark_state(); reentry_state.clean_streak = 5; reentry_state.current_lap_clean = false; reentry_state["dice_keep_active"] = false
+	var clean_drop := LapSystemScript.resolve(reentry_state, "clean-drop"); RewardResolverScript.apply(reentry_state, clean_drop)
+	reentry_state.current_lap_clean = true
+	var clean_reentry := LapSystemScript.resolve(reentry_state, "clean-reentry"); RewardResolverScript.apply(reentry_state, clean_reentry)
+	var reentry_duplicate := RewardResolverScript.apply(reentry_state, clean_reentry)
+	_expect(int(clean_drop.result.clean_streak) == 4 and int(clean_reentry.result.milestone) == 5 and bool(reentry_state.dice_keep_active) and not bool(reentry_duplicate.applied), "dirty 5 to 4 then clean 4 to 5 rewards re-entry once")
+	var risk_state := _risk_state()
+	for tile_index: int in [27, 44, 58, 68, 80]:
+		var before_penalties := int(risk_state.current_lap_penalty_count)
+		RewardResolverScript.apply(risk_state, RewardResolverScript.resolve_risk(risk_state, "risk-%d" % tile_index, tile_index))
+		_expect(not bool(risk_state.current_lap_clean) and int(risk_state.current_lap_penalty_count) == before_penalties + 1, "risk %d actual harm marks CLEAN once" % tile_index)
+		risk_state.current_lap_clean = true
+	_expect(int(risk_state.next_move_bonus) == -2 and int(risk_state.coins) == 12 and int(risk_state.tile) == 55 and int(risk_state.flow_level) == 0 and int(risk_state.presence) == 1, "five Cairo risk effects apply")
+	var noop_state := _risk_state(); noop_state.coins = 0; noop_state.current_lap_clean = true; noop_state.even_guard_active = true
+	RewardResolverScript.apply(noop_state, RewardResolverScript.resolve_risk(noop_state, "risk-noop", 44))
+	_expect(bool(noop_state.current_lap_clean) and bool(noop_state.even_guard_active) and int(noop_state.current_lap_penalty_count) == 0, "risk no-op preserves CLEAN and guard")
+	var guard_state := _risk_state(); guard_state.even_guard_active = true
+	RewardResolverScript.apply(guard_state, RewardResolverScript.resolve_risk(guard_state, "risk-guard", 44))
+	_expect(int(guard_state.coins) == 20 and bool(guard_state.current_lap_clean) and not bool(guard_state.even_guard_active), "ALL EVEN guard blocks one effective risk")
 	# M3: deterministic, UI-free travel-companion rules.
 	var bosses := BossSystemScript.definitions()
 	_expect(bosses.size() >= 3, "three Cairo individuals")
@@ -197,6 +250,12 @@ func _init() -> void:
 		old_state["unlocked_dice_count"] = 3
 		state_node.apply_dictionary(old_state)
 		_expect(int(state_node.current_dice_count) == 2, "v4 three-dice save migrates once to DOUBLE CHANCE")
+		var v5_clean_missing := state_original.duplicate(true)
+		v5_clean_missing["version"] = 5
+		for clean_key: String in ["current_lap_clean", "current_lap_penalty_count", "clean_streak", "even_guard_active", "best_clean_streak"]:
+			v5_clean_missing.erase(clean_key)
+		state_node.apply_dictionary(v5_clean_missing)
+		_expect(state_node.current_lap_clean and state_node.current_lap_penalty_count == 0 and state_node.clean_streak == 0 and not state_node.even_guard_active and state_node.best_clean_streak == 0 and int(state_node.to_dictionary().version) == 6, "v5 missing CLEAN fields migrates to neutral v6 defaults")
 		state_node.apply_dictionary(state_original)
 	# M4A: data-driven event foundation.
 	var events := EventSystemScript.definitions()
@@ -292,6 +351,9 @@ func _lap_landmark_state() -> Dictionary:
 		"current_lap_bonus": 0,
 		"current_lap_roll_count": 0,
 		"current_lap_penalty_count": 0,
+		"current_lap_clean": true,
+		"clean_streak": 0,
+		"best_clean_streak": 0,
 		"total_lap_points": 0,
 		"best_lap_score": 0,
 		"laps": 0,
@@ -301,4 +363,17 @@ func _lap_landmark_state() -> Dictionary:
 		"events_seen_this_loop": ["CAI-E30"],
 		"rare_event_used_this_loop": true,
 		"events_since_rare": 0,
+	}
+
+func _risk_state() -> Dictionary:
+	return {
+		"coins": 20,
+		"presence": 2,
+		"tile": 58,
+		"next_move_bonus": 0,
+		"flow_level": 4,
+		"current_lap_clean": true,
+		"current_lap_penalty_count": 0,
+		"even_guard_active": false,
+		"applied_resolution_ids": [],
 	}

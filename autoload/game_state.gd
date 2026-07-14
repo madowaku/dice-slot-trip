@@ -62,8 +62,8 @@ var master_volume: float = 1.0
 var se_volume: float = 1.0
 var dice_se_muted: bool = false
 
-# LAP-01. CLEAN/FLOW fields are persisted as neutral v6 defaults so their
-# later slices can migrate without rewriting the lap-point foundation.
+# LAP/CLEAN state remains in save v6; FLOW fields stay neutral until its own
+# implementation slice.
 var total_lap_points: int = 0
 var current_lap_bonus: int = 0
 var current_lap_roll_count: int = 0
@@ -163,6 +163,7 @@ func reset_run() -> void:
 	current_lap_roll_count = 0
 	current_lap_clean = true
 	current_lap_penalty_count = 0
+	even_guard_active = false
 	flow_triggered_this_turn = false
 	flow_reward_3_claimed_this_lap = false
 	flow_reward_5_claimed_this_lap = false
