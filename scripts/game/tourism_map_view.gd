@@ -28,6 +28,8 @@ const MARKET_PROP_REGIONS: Dictionary = {
 }
 
 var dice_count: int = 1
+var highlighted_destination_tile: int = -1
+var highlighted_destination_value: int = 0
 
 static func normalized_view_mode(value: String) -> String:
 	return VIEW_MODE_TOURISM if value.strip_edges().to_lower() == VIEW_MODE_TOURISM else VIEW_MODE_CLASSIC
@@ -138,6 +140,47 @@ static func aspect_fit_rect(source_size: Vector2, bounds: Rect2) -> Rect2:
 static func map_dice_reserved_rect(view_size: Vector2) -> Rect2:
 	return Rect2(view_size * Vector2(0.22, 0.43), view_size * Vector2(0.56, 0.28))
 
+static func map_dice_landing_rect(view_size: Vector2) -> Rect2:
+	# Prefer a quiet sand pocket around the route instead of assuming the same
+	# side is clear at every aspect ratio. This is presentation geometry only.
+	var landing_size := Vector2(minf(128.0, view_size.x * 0.36), minf(96.0, view_size.y * 0.38))
+	# Score a coarse deterministic grid toward the lower-left sand pocket. This
+	# keeps the die away from the landmark illustration while still adapting to
+	# compact map cards and the curved route.
+	var preferred_center := Vector2(view_size.x * 0.18, view_size.y * 0.58)
+	var best := Rect2()
+	var best_score := INF
+	for y: int in range(5, maxi(int(view_size.y - landing_size.y), 6), 5):
+		for x: int in range(5, maxi(int(view_size.x - landing_size.x), 6), 5):
+			var candidate := Rect2(Vector2(x, y), landing_size)
+			if not _landing_candidate_is_clear(candidate, view_size):
+				continue
+			var score := candidate.get_center().distance_squared_to(preferred_center)
+			if score < best_score:
+				best = candidate
+				best_score = score
+	if best.has_area():
+		return best
+	return Rect2(Vector2(5.0, view_size.y * 0.20), landing_size)
+
+static func _landing_candidate_is_clear(candidate: Rect2, view_size: Vector2) -> bool:
+	if not Rect2(Vector2.ZERO, view_size).encloses(candidate) or candidate.intersects(player_rect(view_size)):
+		return false
+	var rects := tile_rects(view_size)
+	for offset: int in range(0, 7):
+		if candidate.intersects(rects[offset - FIRST_OFFSET].grow(2.0)):
+			return false
+	return true
+
+static func landing_zone_is_clear(view_size: Vector2) -> bool:
+	return _landing_candidate_is_clear(map_dice_landing_rect(view_size), view_size)
+
+static func destination_rect(view_size: Vector2, current_index: int, destination_index: int) -> Rect2:
+	var offset := posmod(destination_index - current_index, TILE_COUNT)
+	if offset < FIRST_OFFSET or offset > LAST_OFFSET:
+		return Rect2()
+	return tile_rects(view_size)[offset - FIRST_OFFSET]
+
 static func market_prop_specs(view_size: Vector2, tile_index: int, landmark_level: int) -> Array[Dictionary]:
 	if tile_index < 0 or tile_index / 18 != 0 or landmark_level < 0:
 		return []
@@ -169,6 +212,16 @@ static func prop_specs_are_clear(specs: Array[Dictionary], view_size: Vector2) -
 
 func set_dice_count(value: int) -> void:
 	dice_count = clampi(value, 1, 5)
+	queue_redraw()
+
+func highlight_destination(tile_index: int, die_value: int) -> void:
+	highlighted_destination_tile = posmod(tile_index, TILE_COUNT)
+	highlighted_destination_value = clampi(die_value, 0, 6)
+	queue_redraw()
+
+func clear_destination_highlight() -> void:
+	highlighted_destination_tile = -1
+	highlighted_destination_value = 0
 	queue_redraw()
 
 func _draw() -> void:
@@ -224,6 +277,9 @@ func _draw_tourism_map() -> void:
 			draw_string(ThemeDB.fallback_font, rect.position + Vector2(rect.size.x - 8.5, 5.5), str(offset), HORIZONTAL_ALIGNMENT_CENTER, 13.0, 9, Color.WHITE)
 		if tile_type == &"LANDMARK":
 			draw_string(ThemeDB.fallback_font, rect.position + Vector2(-3, rect.size.y + 10), "Lv.%d" % _landmark_level(tile_index), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x + 6, 9, Color("#684829"))
+		if tile_index == highlighted_destination_tile:
+			draw_arc(center, radius + 5.0, 0, TAU, 28, Color("#fff0a8"), 5.0, true)
+			draw_string(ThemeDB.fallback_font, rect.position + Vector2(-8.0, -7.0), "+%d" % highlighted_destination_value, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x + 16.0, 12, Color("#704828"))
 
 	var current_rect: Rect2 = rects[-FIRST_OFFSET]
 	var token_rect := player_rect(size)

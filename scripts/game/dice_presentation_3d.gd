@@ -26,10 +26,15 @@ var settle_start_rotations: Array[Vector3] = []
 var active_count := 0
 var next_lock_index := -1
 var animation_time := 0.0
+var surface: MeshInstance3D
+var overlay_compact := false
+var tray_surface_visible := true
+var render_enabled := true
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	custom_minimum_size = Vector2(0, 176)
+	if not overlay_compact:
+		custom_minimum_size = Vector2(0, 176)
 	stretch = true
 	_build_world()
 	set_process(true)
@@ -39,7 +44,7 @@ func _build_world() -> void:
 	viewport.name = "DiceSubViewport"
 	viewport.size = VIEWPORT_SIZE
 	viewport.transparent_bg = true
-	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS if render_enabled else SubViewport.UPDATE_DISABLED
 	add_child(viewport)
 	world_root = Node3D.new(); world_root.name = "DiceWorld"; viewport.add_child(world_root)
 
@@ -51,11 +56,16 @@ func _build_world() -> void:
 	var key := DirectionalLight3D.new(); key.name = "WarmKey"; key.light_color = Color("#ffe1ad"); key.light_energy = 1.02; key.shadow_enabled = true; key.rotation_degrees = Vector3(-52, -28, 0); world_root.add_child(key)
 	var fill := OmniLight3D.new(); fill.name = "SoftFill"; fill.light_color = Color("#bcd9dc"); fill.light_energy = 0.45; fill.omni_range = 12.0; fill.position = Vector3(-4, 4, 5); world_root.add_child(fill)
 
-	var tray := MeshInstance3D.new(); tray.name = "SoftShadowTray"
+	var tray := MeshInstance3D.new(); tray.name = "SoftShadowTray"; surface = tray
 	var tray_mesh := PlaneMesh.new(); tray_mesh.size = Vector2(10.5, 5.4); tray.mesh = tray_mesh
 	var tray_material := StandardMaterial3D.new(); tray_material.albedo_color = Color("#806c4e"); tray_material.roughness = 0.96; tray.material_override = tray_material
-	tray.position = Vector3(0, -0.02, 0); world_root.add_child(tray)
+	tray.position = Vector3(0, -0.02, 0); tray.visible = tray_surface_visible; world_root.add_child(tray)
 	for index: int in range(MAX_DICE): _build_die(index)
+
+func set_tray_visible(value: bool) -> void:
+	tray_surface_visible = value
+	if is_instance_valid(surface):
+		surface.visible = value
 
 func _build_die(index: int) -> void:
 	var die := Node3D.new(); die.name = "Die3D_%d" % index; die.visible = false; world_root.add_child(die)
@@ -166,4 +176,4 @@ func state_name(index: int) -> String:
 	return DieState.keys()[die_states[index]]
 
 func pool_receipt() -> Dictionary:
-	return {"viewport_size": viewport.size if viewport != null else Vector2i.ZERO, "pool_size": dice_roots.size(), "active_count": active_count, "root_child_count": world_root.get_child_count() if world_root != null else 0}
+	return {"viewport_size": viewport.size if viewport != null else Vector2i.ZERO, "pool_size": dice_roots.size(), "active_count": active_count, "root_child_count": world_root.get_child_count() if world_root != null else 0, "tray_visible": surface.visible if is_instance_valid(surface) else tray_surface_visible}

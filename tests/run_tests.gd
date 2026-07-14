@@ -11,6 +11,7 @@ const LapSystemScript = preload("res://scripts/game/lap_system.gd")
 const LandmarkSystemScript = preload("res://scripts/game/landmark_system.gd")
 const LandmarkScenicViewScript = preload("res://scripts/game/landmark_scenic_view.gd")
 const TourismMapViewScript = preload("res://scripts/game/tourism_map_view.gd")
+const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
 
 var failures: int = 0
 
@@ -67,6 +68,17 @@ func _init() -> void:
 	var market_props_lv3: Array[Dictionary] = TourismMapViewScript.market_prop_specs(Vector2(360, 250), 0, 3)
 	_expect(market_props_lv0.size() == 4 and market_props_lv3.size() == 6 and TourismMapViewScript.market_prop_specs(Vector2(360, 250), 18, 3).is_empty(), "hybrid props stay market-only and preserve landmark growth")
 	_expect(TourismMapViewScript.prop_specs_are_clear(market_props_lv0, Vector2(360, 250)) and TourismMapViewScript.prop_specs_are_clear(market_props_lv3, Vector2(360, 250)), "hybrid props avoid route tiles player and map-dice reserve")
+	var screen_map := Rect2(0, 120, 360, 250)
+	var landing_screen := MapDiceOverlayScript.landing_rect_in_screen(screen_map, TourismMapViewScript.map_dice_landing_rect(screen_map.size))
+	var arc_start := Vector2(180, 610); var arc_end := landing_screen.get_center(); var arc_peak := MapDiceOverlayScript.arc_position(arc_start, arc_end, 0.5)
+	_expect(screen_map.encloses(landing_screen) and landing_screen.size.x > 0.0 and landing_screen.size.y > 0.0 and TourismMapViewScript.landing_zone_is_clear(screen_map.size), "map dice landing zone stays inside tourism map and clear of player/reachable tiles")
+	_expect(arc_peak.y < arc_start.lerp(arc_end, 0.5).y - 80.0 and MapDiceOverlayScript.arc_position(arc_start, arc_end, 0.0) == arc_start and MapDiceOverlayScript.arc_position(arc_start, arc_end, 1.0).is_equal_approx(arc_end), "map die launch uses a continuous readable arc")
+	_expect(MapDiceOverlayScript.uses_map_presentation(true, 1) and not MapDiceOverlayScript.uses_map_presentation(false, 1) and not MapDiceOverlayScript.uses_map_presentation(true, 2), "map die presentation routes only Tourism one-die rolls")
+	_expect(MapDiceOverlayScript.can_request_stop(MapDiceOverlayScript.Phase.ROLLING_ON_MAP, false) and not MapDiceOverlayScript.can_request_stop(MapDiceOverlayScript.Phase.ROLLING_ON_MAP, true) and not MapDiceOverlayScript.can_request_stop(MapDiceOverlayScript.Phase.LAUNCHING_TO_MAP, false), "map die early stop gate accepts one rolling request only")
+	_expect(MapDiceOverlayScript.is_visual_rolling(true, 0, 1) and not MapDiceOverlayScript.is_visual_rolling(true, 1, 1) and not MapDiceOverlayScript.is_visual_rolling(false, 0, 1), "map die billboard stops as soon as the one die locks")
+	var destination_wrap := TourismMapViewScript.destination_rect(Vector2(360, 250), 89, 2)
+	var destination_far := TourismMapViewScript.destination_rect(Vector2(360, 250), 89, 20)
+	_expect(destination_wrap.has_area() and destination_wrap == tour_rects[7] and not destination_far.has_area(), "map destination highlight wraps 90 to 03 and rejects offscreen targets")
 	var market_prop_ids: Dictionary = {}
 	for spec: Dictionary in market_props_lv3: market_prop_ids[str(spec.id)] = true
 	_expect(market_prop_ids.size() <= 8 and TourismMapViewScript.MARKET_PROP_TEXTURES.size() <= 8, "hybrid pack selection and visible props stay within eight")

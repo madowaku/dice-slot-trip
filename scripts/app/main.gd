@@ -36,6 +36,7 @@ const LapSystemScript = preload("res://scripts/game/lap_system.gd")
 const LandmarkSystemScript = preload("res://scripts/game/landmark_system.gd")
 const DiceAudioControllerScript = preload("res://scripts/game/dice_audio_controller.gd")
 const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3d.gd")
+const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
 const CAIRO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/cairo-board.png")
 const SPHINX_TEXTURE: Texture2D = preload("res://assets/art/bosses/sleepy-sphinx.png")
 
@@ -51,6 +52,7 @@ var board_view: BoardView
 var board_view_mode: String = "classic"
 var dice_row: HBoxContainer
 var dice_presentation: SubViewportContainer
+var map_dice_overlay: MapDiceOverlay
 var dice_audio: Node
 var role_label: Label
 var memo_label: Label
@@ -86,6 +88,7 @@ var last_roll_early_stopped: bool = false
 var roll_visual_frame: int = 0
 var active_extra_left_stop: Button
 var active_extra_all_stop: Button
+var qa_map_die_visible_stop_ok := false
 
 func _ready() -> void:
 	rng.seed = 20260711
@@ -139,6 +142,8 @@ func _ready() -> void:
 		call_deferred("_qa_clean_lap")
 	elif OS.get_environment("DICE_QA_TOURMAP") == "1":
 		call_deferred("_qa_tourmap")
+	elif OS.get_environment("DICE_QA_TOURMAP_DIE") == "1":
+		call_deferred("_qa_tourmap_die")
 	elif OS.get_environment("DICE_QA_SPICE_SCENIC") == "1":
 		call_deferred("_qa_spice_scenic")
 	elif OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC") != "":
@@ -149,13 +154,15 @@ func _ready() -> void:
 		call_deferred("_qa_clean_capture", OS.get_environment("DICE_QA_CAPTURE_CLEAN"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_TOURMAP") != "":
 		call_deferred("_qa_tourmap_capture", OS.get_environment("DICE_QA_CAPTURE_TOURMAP"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE") != "":
+		call_deferred("_qa_tourmap_die_capture", OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif GameState.pending_boss_handoff:
 		call_deferred("_resume_pending_boss_handoff")
 	elif not GameState.active_event_state.is_empty():
 		call_deferred("_resume_active_event")
 	elif OS.get_environment("DICE_QA_CAPTURE_M3") != "":
 		call_deferred("_qa_m3_capture", OS.get_environment("DICE_QA_CAPTURE_M3"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
-	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CLEAN").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
+	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CLEAN").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
 		call_deferred("_qa_capture_viewport", OS.get_environment("DICE_QA_CAPTURE_PATH"))
 
 func _apply_theme() -> void:
@@ -446,6 +453,10 @@ func show_game() -> void:
 	debug_box = _build_debug_box()
 	debug_box.visible = false
 	page.add_child(debug_box)
+	map_dice_overlay = MapDiceOverlayScript.new()
+	map_dice_overlay.name = "MapDiceOverlay"
+	map_dice_overlay.early_stop_requested.connect(func() -> void: _lock_next_die(false))
+	add_child(map_dice_overlay)
 	_set_mode(clampi(GameState.current_dice_count, 1, 3))
 	_refresh_dice_mode_buttons()
 	_refresh_hud()
@@ -488,6 +499,8 @@ func _on_roll_pressed() -> void:
 	GameState.fixed_rolls.clear()
 	last_roll_early_stopped = false
 	dice_values = await _animate_dice_roll(dice_mode)
+	if dice_values.is_empty():
+		return
 	if dice_mode == 5:
 		selected_indices = DiceLogicScript.recommended_indices(dice_values)
 		_render_dice(dice_values, true)
@@ -506,8 +519,17 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	rolling_values.clear()
 	for index: int in range(count):
 		rolling_values.append(rng.randi_range(1, 6))
+	var map_overlay_roll := _uses_map_dice_overlay(count)
+	if map_overlay_roll:
+		var tray_rect := _map_dice_tray_anchor_rect()
+		dice_presentation.visible = false
+		var map_rect := board_view.get_global_rect()
+		await map_dice_overlay.begin_launch(rolling_values, tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size))
+		if not map_dice_overlay.is_active():
+			_abort_map_dice_roll()
+			return []
 	roll_button.text = "タップで左から止める"
-	stop_all_button.visible = extra_controls_parent == null
+	stop_all_button.visible = extra_controls_parent == null and not map_overlay_roll
 	if extra_controls_parent != null:
 		var controls := HBoxContainer.new(); controls.name = "extra_dice_stop_controls"; controls.add_theme_constant_override("separation", 10)
 		active_extra_left_stop = _button("左から1個停止", func() -> void: _lock_next_die(false), true)
@@ -519,6 +541,9 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	# 0.8-1.3 seconds for an untouched roll across 1/2/3/5 dice. The final
 	# presentation settle continues independently for another 0.18 seconds.
 	for frame: int in range(26):
+		if map_overlay_roll and not map_dice_overlay.is_active():
+			_abort_map_dice_roll()
+			return []
 		roll_visual_frame = frame
 		if is_instance_valid(dice_audio):
 			dice_audio.play_roll(1.0 - float(frame) / 25.0)
@@ -536,14 +561,53 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		_lock_next_die(true)
 		await get_tree().create_timer(0.13).timeout
 	rolling_dice = false
-	moving = false
+	_render_dice(rolling_values, false)
 	if is_instance_valid(dice_audio): dice_audio.end_roll()
+	if map_overlay_roll:
+		var preview_distance := maxi(0, int(rolling_values[0]) + GameState.next_move_bonus)
+		var destination := posmod(GameState.current_tile_index + preview_distance, BoardModelScript.TILE_COUNT)
+		(board_view as TourismMapView).highlight_destination(destination, int(rolling_values[0]))
+		await map_dice_overlay.hold_and_return(int(rolling_values[0]))
+		(board_view as TourismMapView).clear_destination_highlight()
+		dice_presentation.visible = true
+		_render_dice(rolling_values, false)
+	moving = false
 	roll_button.text = "サイコロを振る"
 	stop_all_button.visible = false
 	if is_instance_valid(active_extra_left_stop): active_extra_left_stop.disabled = true
 	if is_instance_valid(active_extra_all_stop): active_extra_all_stop.disabled = true
 	active_extra_left_stop = null; active_extra_all_stop = null
 	return rolling_values.duplicate()
+
+func _uses_map_dice_overlay(count: int) -> bool:
+	return is_instance_valid(map_dice_overlay) and MapDiceOverlayScript.uses_map_presentation(board_view is TourismMapView, count)
+
+func _map_dice_tray_anchor_rect() -> Rect2:
+	var source := dice_presentation.get_global_rect()
+	var center_x := roll_button.get_global_rect().get_center().x
+	var center_y := source.get_center().y
+	if source.size.y <= 1.0:
+		center_y = roll_button.get_global_rect().position.y - 72.0
+	return Rect2(Vector2(center_x, center_y) - MapDiceOverlayScript.PRESENTATION_SIZE * 0.5, MapDiceOverlayScript.PRESENTATION_SIZE)
+
+func _abort_map_dice_roll() -> void:
+	# The gameplay roll has not committed yet. Put any deterministic/debug
+	# targets back so interruption cannot silently consume them.
+	if not fixed_targets.is_empty():
+		GameState.fixed_rolls = fixed_targets.duplicate()
+		fixed_targets.clear()
+	rolling_dice = false
+	moving = false
+	locked_dice_count = 0
+	rolling_values.clear()
+	if is_instance_valid(dice_audio):
+		dice_audio.stop_all_roll_sounds()
+	if is_instance_valid(map_dice_overlay):
+		map_dice_overlay.cancel_to_tray()
+	if is_instance_valid(dice_presentation):
+		dice_presentation.visible = true
+	roll_button.text = "サイコロを振る"
+	stop_all_button.visible = false
 
 func _lock_next_die(automatic: bool) -> void:
 	if not rolling_dice or locked_dice_count >= rolling_values.size():
@@ -565,7 +629,9 @@ func _stop_all_dice() -> void:
 	role_label.text = "残り%d個を現在の目で一括停止" % remaining
 
 func _render_dice(values: Array[int], selectable: bool) -> void:
-	if is_instance_valid(dice_presentation):
+	if is_instance_valid(map_dice_overlay) and map_dice_overlay.is_active() and dice_mode == 1 and board_view is TourismMapView:
+		map_dice_overlay.present(values, rolling_dice, locked_dice_count)
+	elif is_instance_valid(dice_presentation):
 		dice_presentation.present(values, rolling_dice, locked_dice_count)
 	dice_row.visible = selectable or not is_instance_valid(dice_presentation)
 	for child: Node in dice_row.get_children():
@@ -2052,6 +2118,95 @@ func _qa_tourmap() -> void:
 	if not passed: push_error("TOURMAP deterministic QA failed.")
 	get_tree().quit(0 if passed else 1)
 
+func _qa_tourmap_die() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	GameState.reset_run()
+	GameState.current_dice_count = 1
+	GameState.current_tile_index = 89
+	show_game()
+	_set_board_view_mode("tourism")
+	var start_tile := GameState.current_tile_index
+	var values_valid := true
+	var early_stop_ok := false
+	qa_map_die_visible_stop_ok = false
+	for roll_index: int in range(20):
+		if roll_index == 0:
+			call_deferred("_qa_request_map_die_stop")
+		var values := await _animate_dice_roll(1)
+		values_valid = values_valid and values.size() == 1 and int(values[0]) in range(1, 7)
+		if roll_index == 0:
+			early_stop_ok = last_roll_early_stopped
+	var receipt: Dictionary = map_dice_overlay.receipt()
+	var bounded := int(receipt.presentation_nodes) == 1 and int(receipt.dice_pool_size) == 5 and int(receipt.launch_count) == 20 and int(receipt.completion_count) == 20
+	var idle := str(receipt.phase) == "TRAY_IDLE" and not map_dice_overlay.visible and dice_presentation.visible and not moving and not rolling_dice
+	var no_commit := GameState.current_tile_index == start_tile and GameState.rolls_used == 0
+	var audio_receipt: Dictionary = dice_audio.receipt()
+	var audio_bounded := int(audio_receipt.pool_size) == DiceAudioControllerScript.PLAYER_POOL_SIZE and int(audio_receipt.active_voices) == 0
+	var passed := values_valid and early_stop_ok and qa_map_die_visible_stop_ok and int(receipt.stop_request_count) == 1 and bounded and audio_bounded and idle and no_commit
+	print("QA_TOURMAP_DIE values=%s early=%s visible_stop=%s bounded=%s audio=%s idle=%s no_commit=%s receipt=%s passed=%s" % [values_valid, early_stop_ok, qa_map_die_visible_stop_ok, bounded, audio_bounded, idle, no_commit, receipt, passed])
+	GameState.apply_dictionary(original)
+	if not passed: push_error("TOURMAP-03A overlay QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_request_map_die_stop() -> void:
+	while is_instance_valid(map_dice_overlay) and map_dice_overlay.phase != MapDiceOverlay.Phase.ROLLING_ON_MAP:
+		await get_tree().process_frame
+	if is_instance_valid(map_dice_overlay):
+		map_dice_overlay.request_early_stop()
+		qa_map_die_visible_stop_ok = map_dice_overlay.phase == MapDiceOverlay.Phase.STOPPING and not map_dice_overlay.display.rolling
+		map_dice_overlay.request_early_stop()
+
+func _qa_tourmap_die_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.current_dice_count = 1
+	GameState.current_tile_index = 0
+	GameState.landmark_levels = {"CAI_LANDMARK_01": 3, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	show_game()
+	_set_board_view_mode("tourism")
+	for ignored: int in range(12):
+		await get_tree().process_frame
+	if kind in ["rolling", "result"]:
+		var map_rect := board_view.get_global_rect()
+		var tray_rect := _map_dice_tray_anchor_rect()
+		dice_presentation.visible = false
+		await map_dice_overlay.begin_launch([4], tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size))
+		map_dice_overlay.present([4], kind == "rolling", 0 if kind == "rolling" else 1)
+		# Freeze only the QA readback frame. The Compatibility renderer can return
+		# a partial backbuffer while a CanvasItem is changing during get_image().
+		if kind == "rolling":
+			map_dice_overlay.display.rolling = false
+			map_dice_overlay.display.set_process(false)
+			map_dice_overlay.presentation.set_process(false)
+		if kind == "result":
+			var destination := posmod(GameState.current_tile_index + 4, BoardModelScript.TILE_COUNT)
+			(board_view as TourismMapView).highlight_destination(destination, 4)
+			map_dice_overlay.begin_result_hold(4)
+	for ignored: int in range(8):
+		await get_tree().process_frame
+	await get_tree().create_timer(0.22).timeout
+	var result := ERR_CANT_CREATE
+	var capture_attempts := 0
+	for attempt: int in range(5):
+		capture_attempts = attempt + 1
+		result = _save_opaque_capture(path)
+		if result == OK and _capture_has_full_ui(path):
+			break
+		for ignored: int in range(6):
+			await get_tree().process_frame
+		await get_tree().create_timer(0.12).timeout
+	var capture_valid := result == OK and _capture_has_full_ui(path)
+	print("QA_TOURMAP_DIE_CAPTURE kind=%s phase=%s receipt=%s attempts=%d valid=%s path=%s result=%s" % [kind, MapDiceOverlay.Phase.keys()[map_dice_overlay.phase], map_dice_overlay.receipt(), capture_attempts, capture_valid, path, result])
+	get_tree().quit(0 if capture_valid else 1)
+
+func _capture_has_full_ui(path: String) -> bool:
+	var image := Image.load_from_file(path)
+	if image == null or image.get_size() != Vector2i(360, 640):
+		return false
+	for point: Vector2i in [Vector2i(180, 20), Vector2i(20, 82), Vector2i(340, 82), Vector2i(20, 560), Vector2i(180, 620)]:
+		if image.get_pixelv(point).get_luminance() < 0.08:
+			return false
+	return true
+
 func _qa_tourmap_capture(kind: String, path: String) -> void:
 	GameState.reset_run()
 	GameState.current_dice_count = 1
@@ -2315,10 +2470,17 @@ func _qa_capture_viewport(path: String) -> void:
 	get_tree().quit(0 if result == OK else 1)
 
 func _save_opaque_capture(path: String) -> Error:
-	var source := get_viewport().get_texture().get_image()
+	var viewport_texture := get_viewport().get_texture()
+	if viewport_texture == null:
+		return ERR_CANT_CREATE
+	var source := viewport_texture.get_image()
+	if source == null:
+		return ERR_CANT_CREATE
 	if source.get_size() != Vector2i(360, 640): source.resize(360, 640, Image.INTERPOLATE_LANCZOS)
 	var opaque := Image.create(360, 640, false, Image.FORMAT_RGBA8)
 	opaque.fill(BG)
 	opaque.blend_rect(source, Rect2i(Vector2i.ZERO, source.get_size()), Vector2i.ZERO)
 	opaque.convert(Image.FORMAT_RGB8)
+	if path.get_extension().to_lower() in ["jpg", "jpeg"]:
+		return opaque.save_jpg(path, 0.96)
 	return opaque.save_png(path)
