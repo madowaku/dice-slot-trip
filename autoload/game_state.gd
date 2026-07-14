@@ -62,6 +62,10 @@ var master_volume: float = 1.0
 var se_volume: float = 1.0
 var dice_se_muted: bool = false
 
+## TOURMAP-03B durable roll transaction.  Visual positions are intentionally
+## omitted; only gameplay facts needed to resume after an app restart persist.
+var roll_transaction: Dictionary = {}
+
 # LAP/CLEAN state remains in save v6; FLOW fields stay neutral until its own
 # implementation slice.
 var total_lap_points: int = 0
@@ -168,7 +172,132 @@ func reset_run() -> void:
 	flow_reward_3_claimed_this_lap = false
 	flow_reward_5_claimed_this_lap = false
 	last_lap_result.clear()
+	roll_transaction.clear()
 	ensure_boss_data()
+
+func begin_roll_transaction(values: Array, dice_count: int, start_tile: int) -> bool:
+	if not roll_transaction.is_empty():
+		return false
+	var transaction_id := "roll:%08d:%d" % [rolls_used, Time.get_ticks_msec()]
+	roll_transaction = {
+		"phase": "PRE_ROLL",
+		"roll_phase": "PRE_ROLL",
+		"roll_id": transaction_id,
+		"roll_transaction_id": transaction_id,
+		"values": values.duplicate(),
+		"final_dice_values": values.duplicate(),
+		"dice_count": clampi(dice_count, 1, 5),
+		"start_tile": posmod(start_tile, 90),
+		"target_tile_index": -1,
+		"result_committed": false,
+		"movement_committed": false,
+		"space_effect_committed": false,
+		"early_stopped": false,
+		"encounter_phase": "NONE",
+	}
+	return true
+
+func mark_roll_started(values: Array) -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "PRE_ROLL":
+		return false
+	roll_transaction["phase"] = "ROLLING"
+	roll_transaction["roll_phase"] = "ROLLING"
+	roll_transaction["values"] = values.duplicate()
+	return true
+
+func commit_roll_result(values: Array, dice_count: int, roles: Dictionary, distance: int, destination: int, crossed_laps: int, early_stopped: bool) -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) not in ["PRE_ROLL", "ROLLING"]:
+		return false
+	roll_transaction["phase"] = "RESULT_COMMITTED"
+	roll_transaction["roll_phase"] = "RESULT_COMMITTED"
+	roll_transaction["values"] = values.duplicate()
+	roll_transaction["final_dice_values"] = values.duplicate()
+	roll_transaction["dice_count"] = clampi(dice_count, 1, 5)
+	roll_transaction["roles"] = roles.duplicate(true)
+	roll_transaction["role_result"] = roles.duplicate(true)
+	roll_transaction["distance"] = maxi(0, distance)
+	roll_transaction["destination"] = posmod(destination, 90)
+	roll_transaction["target_tile_index"] = posmod(destination, 90)
+	roll_transaction["crossed_laps"] = maxi(0, crossed_laps)
+	roll_transaction["result_committed"] = true
+	roll_transaction["early_stopped"] = early_stopped
+	return true
+
+func commit_roll_movement(destination: int) -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "RESULT_COMMITTED":
+		return false
+	roll_transaction["phase"] = "MOVEMENT_COMMITTED"
+	roll_transaction["roll_phase"] = "MOVEMENT_COMMITTED"
+	roll_transaction["destination"] = posmod(destination, 90)
+	roll_transaction["target_tile_index"] = posmod(destination, 90)
+	roll_transaction["movement_committed"] = true
+	return true
+
+func commit_roll_space_effect() -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "MOVEMENT_COMMITTED":
+		return false
+	roll_transaction["phase"] = "SPACE_EFFECT_COMMITTED"
+	roll_transaction["roll_phase"] = "SPACE_EFFECT_COMMITTED"
+	roll_transaction["space_effect_committed"] = true
+	return true
+
+func mark_roll_turn_resolved() -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "SPACE_EFFECT_COMMITTED":
+		return false
+	roll_transaction["phase"] = "TURN_RESOLVED"
+	roll_transaction["roll_phase"] = "TURN_RESOLVED"
+	return true
+
+func mark_roll_encounter_handoff(pair_bonus: bool, double_bonus: int) -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "MOVEMENT_COMMITTED":
+		return false
+	if str(roll_transaction.get("encounter_phase", "NONE")) != "NONE":
+		return false
+	roll_transaction["encounter_phase"] = "HANDOFF_PENDING"
+	roll_transaction["encounter_pair_bonus"] = pair_bonus
+	roll_transaction["encounter_double_bonus"] = maxi(0, double_bonus)
+	return true
+
+func mark_roll_encounter_open(pair_bonus: bool, double_bonus: int) -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "MOVEMENT_COMMITTED":
+		return false
+	var encounter_phase := str(roll_transaction.get("encounter_phase", "NONE"))
+	if encounter_phase not in ["NONE", "HANDOFF_PENDING"]:
+		return false
+	roll_transaction["encounter_phase"] = "MODAL_OPEN"
+	roll_transaction["encounter_pair_bonus"] = pair_bonus
+	roll_transaction["encounter_double_bonus"] = maxi(0, double_bonus)
+	return true
+
+func commit_roll_encounter_interaction(joined_now: bool, definition_id: String) -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "MOVEMENT_COMMITTED":
+		return false
+	if str(roll_transaction.get("encounter_phase", "NONE")) != "MODAL_OPEN":
+		return false
+	roll_transaction["encounter_phase"] = "INTERACTION_COMMITTED"
+	roll_transaction["encounter_joined_now"] = joined_now
+	roll_transaction["encounter_definition_id"] = definition_id
+	return true
+
+func commit_roll_encounter_registration(obtained: Dictionary) -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "MOVEMENT_COMMITTED":
+		return false
+	if str(roll_transaction.get("encounter_phase", "NONE")) != "INTERACTION_COMMITTED" or not bool(roll_transaction.get("encounter_joined_now", false)):
+		return false
+	roll_transaction["encounter_phase"] = "REGISTRATION_COMMITTED"
+	roll_transaction["encounter_obtained"] = obtained.duplicate(true)
+	return true
+
+func complete_roll_encounter() -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "MOVEMENT_COMMITTED":
+		return false
+	if str(roll_transaction.get("encounter_phase", "NONE")) not in ["INTERACTION_COMMITTED", "REGISTRATION_COMMITTED"]:
+		return false
+	roll_transaction["encounter_phase"] = "COMPLETE"
+	return true
+
+func clear_roll_transaction() -> void:
+	roll_transaction.clear()
 
 func ensure_boss_data() -> void:
 	if current_boss.is_empty():
@@ -252,6 +381,7 @@ func to_dictionary() -> Dictionary:
 		,"master_volume": clampf(master_volume, 0.0, 1.0)
 		,"se_volume": clampf(se_volume, 0.0, 1.0)
 		,"dice_se_muted": dice_se_muted
+		,"roll_transaction": roll_transaction.duplicate(true)
 		,"total_lap_points": maxi(0, total_lap_points)
 		,"current_lap_bonus": maxi(0, current_lap_bonus)
 		,"current_lap_roll_count": maxi(0, current_lap_roll_count)
@@ -344,6 +474,25 @@ func apply_dictionary(data: Dictionary) -> void:
 	master_volume = clampf(float(data.get("master_volume", 1.0)), 0.0, 1.0)
 	se_volume = clampf(float(data.get("se_volume", 1.0)), 0.0, 1.0)
 	dice_se_muted = bool(data.get("dice_se_muted", false))
+	roll_transaction = (data.get("roll_transaction", {}) as Dictionary).duplicate(true)
+	if not roll_transaction.is_empty():
+		var transaction_phase := str(roll_transaction.get("phase", roll_transaction.get("roll_phase", "")))
+		if transaction_phase not in ["PRE_ROLL", "ROLLING", "RESULT_COMMITTED", "MOVEMENT_COMMITTED", "SPACE_EFFECT_COMMITTED", "TURN_RESOLVED"]:
+			roll_transaction.clear()
+		else:
+			roll_transaction["phase"] = transaction_phase
+			roll_transaction["roll_phase"] = transaction_phase
+			roll_transaction["dice_count"] = clampi(int(roll_transaction.get("dice_count", 1)), 1, 5)
+			roll_transaction["start_tile"] = posmod(int(roll_transaction.get("start_tile", current_tile_index)), 90)
+			var loaded_target := int(roll_transaction.get("target_tile_index", roll_transaction.get("destination", -1)))
+			if loaded_target >= 0:
+				loaded_target = posmod(loaded_target, 90)
+			roll_transaction["target_tile_index"] = loaded_target
+			roll_transaction["destination"] = loaded_target
+			var encounter_phase := str(roll_transaction.get("encounter_phase", "NONE"))
+			if encounter_phase not in ["NONE", "HANDOFF_PENDING", "MODAL_OPEN", "INTERACTION_COMMITTED", "REGISTRATION_COMMITTED", "COMPLETE"]:
+				encounter_phase = "NONE"
+			roll_transaction["encounter_phase"] = encounter_phase
 	total_lap_points = maxi(0, int(data.get("total_lap_points", 0)))
 	current_lap_bonus = maxi(0, int(data.get("current_lap_bonus", 0)))
 	current_lap_roll_count = maxi(0, int(data.get("current_lap_roll_count", 0)))

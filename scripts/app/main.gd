@@ -144,6 +144,8 @@ func _ready() -> void:
 		call_deferred("_qa_tourmap")
 	elif OS.get_environment("DICE_QA_TOURMAP_DIE") == "1":
 		call_deferred("_qa_tourmap_die")
+	elif OS.get_environment("DICE_QA_ROLL_TRANSACTION") == "1":
+		call_deferred("_qa_roll_transaction")
 	elif OS.get_environment("DICE_QA_SPICE_SCENIC") == "1":
 		call_deferred("_qa_spice_scenic")
 	elif OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC") != "":
@@ -156,10 +158,12 @@ func _ready() -> void:
 		call_deferred("_qa_tourmap_capture", OS.get_environment("DICE_QA_CAPTURE_TOURMAP"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE") != "":
 		call_deferred("_qa_tourmap_die_capture", OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
-	elif GameState.pending_boss_handoff:
-		call_deferred("_resume_pending_boss_handoff")
 	elif not GameState.active_event_state.is_empty():
 		call_deferred("_resume_active_event")
+	elif GameState.pending_boss_handoff:
+		call_deferred("_resume_pending_boss_handoff")
+	elif not GameState.roll_transaction.is_empty():
+		call_deferred("_resume_roll_transaction")
 	elif OS.get_environment("DICE_QA_CAPTURE_M3") != "":
 		call_deferred("_qa_m3_capture", OS.get_environment("DICE_QA_CAPTURE_M3"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CLEAN").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
@@ -294,8 +298,9 @@ func show_title() -> void:
 	var continue_button := _button("つづきから", func() -> void:
 		SaveManager.load_now()
 		show_game()
-		if GameState.pending_boss_handoff: call_deferred("_resume_pending_boss_handoff")
-		elif not GameState.active_event_state.is_empty(): call_deferred("_resume_active_event"))
+		if not GameState.active_event_state.is_empty(): call_deferred("_resume_active_event")
+		elif GameState.pending_boss_handoff: call_deferred("_resume_pending_boss_handoff")
+		elif not GameState.roll_transaction.is_empty(): call_deferred("_resume_roll_transaction"))
 	continue_button.disabled = not SaveManager.has_save()
 	page.add_child(continue_button)
 	var utility := HBoxContainer.new()
@@ -498,6 +503,8 @@ func _on_roll_pressed() -> void:
 	fixed_targets = GameState.fixed_rolls.duplicate()
 	GameState.fixed_rolls.clear()
 	last_roll_early_stopped = false
+	GameState.begin_roll_transaction([], dice_mode, GameState.current_tile_index)
+	SaveManager.save_now()
 	dice_values = await _animate_dice_roll(dice_mode)
 	if dice_values.is_empty():
 		return
@@ -519,6 +526,9 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	rolling_values.clear()
 	for index: int in range(count):
 		rolling_values.append(rng.randi_range(1, 6))
+	if not GameState.roll_transaction.is_empty() and str(GameState.roll_transaction.get("phase", "")) == "PRE_ROLL":
+		GameState.mark_roll_started(rolling_values)
+		SaveManager.save_now()
 	var map_overlay_roll := _uses_map_dice_overlay(count)
 	if map_overlay_roll:
 		var tray_rect := _map_dice_tray_anchor_rect()
@@ -596,6 +606,8 @@ func _abort_map_dice_roll() -> void:
 	if not fixed_targets.is_empty():
 		GameState.fixed_rolls = fixed_targets.duplicate()
 		fixed_targets.clear()
+	GameState.clear_roll_transaction()
+	SaveManager.save_now()
 	rolling_dice = false
 	moving = false
 	locked_dice_count = 0
@@ -693,7 +705,20 @@ func _confirm_five() -> void:
 func _resolve_roll(values: Array[int]) -> void:
 	moving = true
 	roll_button.disabled = true
+	# A committed transaction can be resumed without re-applying roles, dice
+	# transitions, lap bonuses, or next-move bonuses.
+	if not GameState.roll_transaction.is_empty():
+		var existing_phase := str(GameState.roll_transaction.get("phase", GameState.roll_transaction.get("roll_phase", "")))
+		if existing_phase in ["RESULT_COMMITTED", "MOVEMENT_COMMITTED", "SPACE_EFFECT_COMMITTED"]:
+			dice_values = _transaction_values(GameState.roll_transaction)
+			dice_mode = clampi(int(GameState.roll_transaction.get("dice_count", dice_mode)), 1, 5)
+			last_roll_early_stopped = bool(GameState.roll_transaction.get("early_stopped", false))
+			await _continue_roll_transaction()
+			return
+		elif existing_phase not in ["PRE_ROLL", "ROLLING"]:
+			GameState.clear_roll_transaction()
 	var rolled_dice_count := dice_mode
+	var start_tile := GameState.current_tile_index
 	var roles: Dictionary = DiceLogicScript.evaluate_current(values, rolled_dice_count)
 	GameState.current_lap_roll_count += 1
 	GameState.current_lap_bonus += LapSystemScript.role_bonus_for(roles, rolled_dice_count)
@@ -720,26 +745,174 @@ func _resolve_roll(values: Array[int]) -> void:
 		GameState.next_move_bonus = 0
 	var crossed_laps := 0
 	for step: int in range(distance):
-		var next_index := posmod(GameState.current_tile_index + 1, BoardModelScript.TILE_COUNT)
-		if next_index == 0:
+		if posmod(start_tile + step + 1, BoardModelScript.TILE_COUNT) == 0:
 			crossed_laps += 1
-		GameState.current_tile_index = next_index
-		board_view.set_current_tile(next_index)
-		minimap_view.set_current_tile(next_index)
-		await get_tree().create_timer(0.035).timeout
-	GameState.rolls_used += 1
+	var destination := posmod(start_tile + distance, BoardModelScript.TILE_COUNT)
+	if GameState.roll_transaction.is_empty():
+		GameState.begin_roll_transaction(values, rolled_dice_count, start_tile)
+	GameState.commit_roll_result(values, rolled_dice_count, roles, distance, destination, crossed_laps, last_roll_early_stopped)
+	SaveManager.save_now()
+	await _continue_roll_transaction()
+
+func _transaction_values(transaction: Dictionary) -> Array[int]:
+	var values: Array[int] = []
+	var source_values: Array = transaction.get("final_dice_values", transaction.get("values", []))
+	if source_values.is_empty():
+		source_values = transaction.get("values", [])
+	for value: Variant in source_values:
+		values.append(clampi(int(value), 1, 6))
+	return values
+
+func _continue_roll_transaction() -> void:
+	var transaction: Dictionary = GameState.roll_transaction
+	var phase := str(transaction.get("phase", transaction.get("roll_phase", "")))
+	if phase == "PRE_ROLL" or phase == "ROLLING":
+		# No gameplay result was durable yet, so the interrupted roll is a safe
+		# no-op. This also restores the pre-03B behavior for old saves.
+		GameState.clear_roll_transaction()
+		SaveManager.save_now()
+		moving = false
+		roll_button.disabled = false
+		return
+	var values := _transaction_values(transaction)
+	var roles: Dictionary = (transaction.get("role_result", transaction.get("roles", {})) as Dictionary).duplicate(true)
+	var destination := posmod(int(transaction.get("target_tile_index", transaction.get("destination", GameState.current_tile_index))), BoardModelScript.TILE_COUNT)
+	var crossed_laps := maxi(0, int(transaction.get("crossed_laps", 0)))
+	dice_values = values.duplicate()
+	last_roll_early_stopped = bool(transaction.get("early_stopped", false))
+	var labels: Array = roles.get("labels", [])
+	if not labels.is_empty():
+		role_label.text = " + ".join(labels)
+	if phase == "RESULT_COMMITTED":
+		var start_tile := posmod(int(transaction.get("start_tile", GameState.current_tile_index)), BoardModelScript.TILE_COUNT)
+		GameState.current_tile_index = start_tile
+		board_view.set_current_tile(start_tile)
+		minimap_view.set_current_tile(start_tile)
+		var distance := maxi(0, int(transaction.get("distance", 0)))
+		for step: int in range(distance):
+			var next_index := posmod(GameState.current_tile_index + 1, BoardModelScript.TILE_COUNT)
+			GameState.current_tile_index = next_index
+			board_view.set_current_tile(next_index)
+			minimap_view.set_current_tile(next_index)
+			await get_tree().create_timer(0.035).timeout
+		GameState.current_tile_index = destination
+		GameState.rolls_used += 1
+		GameState.commit_roll_movement(destination)
+		SaveManager.save_now()
 	# Most destinations start in the fresh event loop. Tile 0 is also a
 	# LANDMARK, so its STOP reward is resolved first and folded into that lap.
 	if crossed_laps > 0 and GameState.current_tile_index != 0:
 		await _commit_lap_crossings(crossed_laps, "NORMAL")
-	await _resolve_landing(tile_types[GameState.current_tile_index], roles)
+	if phase != "SPACE_EFFECT_COMMITTED":
+		await _resolve_landing(tile_types[GameState.current_tile_index], roles)
+		GameState.commit_roll_space_effect()
+		SaveManager.save_now()
 	if crossed_laps > 0 and GameState.current_tile_index == 0:
 		await _commit_lap_crossings(crossed_laps, "NORMAL")
 	dice_mode = clampi(GameState.current_dice_count, 1, 3)
+	GameState.mark_roll_turn_resolved()
+	SaveManager.save_now()
+	GameState.clear_roll_transaction()
 	SaveManager.save_now()
 	_refresh_hud()
 	moving = false
 	roll_button.disabled = false
+
+func _resume_roll_transaction() -> void:
+	if GameState.roll_transaction.is_empty():
+		return
+	var phase := str(GameState.roll_transaction.get("phase", GameState.roll_transaction.get("roll_phase", "")))
+	if phase in ["PRE_ROLL", "ROLLING", "TURN_RESOLVED"]:
+		GameState.clear_roll_transaction()
+		SaveManager.save_now()
+		_restore_roll_idle()
+		return
+	show_game()
+	dice_values = _transaction_values(GameState.roll_transaction)
+	dice_mode = clampi(int(GameState.roll_transaction.get("dice_count", 1)), 1, 5)
+	last_roll_early_stopped = bool(GameState.roll_transaction.get("early_stopped", false))
+	if phase == "RESULT_COMMITTED":
+		await _present_resumed_roll_result()
+	if phase == "MOVEMENT_COMMITTED" and str(GameState.roll_transaction.get("encounter_phase", "NONE")) != "NONE":
+		await _resume_roll_encounter()
+		return
+	await _continue_roll_transaction()
+
+func _restore_roll_idle() -> void:
+	show_game()
+	rolling_dice = false
+	moving = false
+	locked_dice_count = 0
+	rolling_values.clear()
+	if is_instance_valid(map_dice_overlay):
+		map_dice_overlay.cancel_to_tray()
+	if is_instance_valid(dice_presentation):
+		dice_presentation.visible = true
+	roll_button.text = "サイコロを振る"
+	roll_button.disabled = false
+	stop_all_button.visible = false
+
+func _present_resumed_roll_result() -> void:
+	var values := _transaction_values(GameState.roll_transaction)
+	if values.is_empty():
+		return
+	moving = true
+	roll_button.disabled = true
+	if _uses_map_dice_overlay(values.size()):
+		var tray_rect := _map_dice_tray_anchor_rect()
+		var map_rect := board_view.get_global_rect()
+		dice_presentation.visible = false
+		await map_dice_overlay.begin_launch(values, tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size))
+		map_dice_overlay.present(values, false, values.size())
+		var destination := int(GameState.roll_transaction.get("target_tile_index", GameState.current_tile_index))
+		(board_view as TourismMapView).highlight_destination(destination, int(GameState.roll_transaction.get("distance", values[0])))
+		await map_dice_overlay.hold_and_return(values[0])
+		(board_view as TourismMapView).clear_destination_highlight()
+		dice_presentation.visible = true
+	else:
+		_render_dice(values, false)
+		await get_tree().create_timer(0.45).timeout
+	moving = false
+
+func _resume_roll_encounter() -> void:
+	var encounter_phase := str(GameState.roll_transaction.get("encounter_phase", "NONE"))
+	var pair_bonus := bool(GameState.roll_transaction.get("encounter_pair_bonus", false))
+	var double_bonus := int(GameState.roll_transaction.get("encounter_double_bonus", 0))
+	var recovery_route := ""
+	if encounter_phase in ["HANDOFF_PENDING", "MODAL_OPEN"]:
+		await _show_encounter_modal(pair_bonus, double_bonus)
+	elif encounter_phase == "INTERACTION_COMMITTED":
+		if bool(GameState.roll_transaction.get("encounter_joined_now", false)):
+			var definition := BossSystemScript.definition_by_id(str(GameState.roll_transaction.get("encounter_definition_id", "sleepy_sphinx")), boss_definitions)
+			recovery_route = await _show_get_result(definition)
+		else:
+			GameState.complete_roll_encounter()
+			SaveManager.save_now()
+	elif encounter_phase == "REGISTRATION_COMMITTED":
+		var definition := BossSystemScript.definition_by_id(str(GameState.roll_transaction.get("encounter_definition_id", "sleepy_sphinx")), boss_definitions)
+		var obtained: Dictionary = (GameState.roll_transaction.get("encounter_obtained", {}) as Dictionary).duplicate(true)
+		recovery_route = await _show_get_result(definition, obtained)
+	if not recovery_route.is_empty():
+		_finalize_recovered_roll_without_navigation()
+		return
+	if not GameState.roll_transaction.is_empty():
+		GameState.complete_roll_encounter()
+		SaveManager.save_now()
+		await _finish_resumed_space_effect()
+
+func _finalize_recovered_roll_without_navigation() -> void:
+	if GameState.roll_transaction.is_empty():
+		return
+	if str(GameState.roll_transaction.get("phase", "")) == "MOVEMENT_COMMITTED":
+		GameState.complete_roll_encounter()
+		GameState.commit_roll_space_effect()
+	if str(GameState.roll_transaction.get("phase", "")) == "SPACE_EFFECT_COMMITTED":
+		GameState.mark_roll_turn_resolved()
+	SaveManager.save_now()
+	GameState.clear_roll_transaction()
+	SaveManager.save_now()
+	moving = false
+	rolling_dice = false
 
 func _commit_lap_crossings(count: int, source: String) -> void:
 	for crossing_index: int in range(maxi(0, count)):
@@ -1056,6 +1229,8 @@ func _show_event_modal(source_roles: Dictionary) -> bool:
 	await close_button.pressed
 	event_state = &"CLOSING"
 	var handoff := GameState.pending_boss_handoff and GameState.debug_boss_handoff_enabled
+	if handoff and not GameState.roll_transaction.is_empty():
+		GameState.mark_roll_encounter_handoff(source_roles.get("main", &"") == DiceLogicScript.PAIR, 2 if source_roles.get("main", &"") == DiceLogicScript.DOUBLE else 0)
 	GameState.active_event_state.clear()
 	GameState.pending_event_rewards.clear()
 	if not GameState.debug_boss_handoff_enabled: GameState.pending_boss_handoff = false
@@ -1070,7 +1245,17 @@ func _reset_event_loop_state() -> void:
 func _resume_pending_boss_handoff() -> void:
 	if not GameState.pending_boss_handoff: return
 	show_game()
-	await _show_encounter_modal(false)
+	var pair_bonus := false
+	var double_bonus := 0
+	var encounter_phase := str(GameState.roll_transaction.get("encounter_phase", "NONE"))
+	if encounter_phase in ["HANDOFF_PENDING", "MODAL_OPEN"]:
+		pair_bonus = bool(GameState.roll_transaction.get("encounter_pair_bonus", false))
+		double_bonus = maxi(0, int(GameState.roll_transaction.get("encounter_double_bonus", 0)))
+	if not GameState.roll_transaction.is_empty() and str(GameState.roll_transaction.get("encounter_phase", "NONE")) == "NONE":
+		GameState.mark_roll_encounter_handoff(pair_bonus, double_bonus)
+		SaveManager.save_now()
+	await _show_encounter_modal(pair_bonus, double_bonus)
+	await _finish_resumed_space_effect()
 
 func _resolve_event_item_choices(outcome: Dictionary, content: VBoxContainer) -> void:
 	for reward: Variant in outcome.get("rewards", []):
@@ -1109,13 +1294,38 @@ func _resume_active_event() -> void:
 		content.add_child(_body("　".join(restored_summary) if not restored_summary.is_empty() else "報酬は適用済みです。", 18))
 		var close := _button("旅を続ける", func() -> void: return, true); close.toggle_mode = true; close.name = "event_resume_close"; content.add_child(close)
 		await close.pressed
+		var restored_pair: bool = false
+		var restored_double: int = 0
+		if GameState.pending_boss_handoff:
+			var restored_roles: Dictionary = saved.get("arrival", {}).get("source_roles", {})
+			restored_pair = restored_roles.get("main", &"") == DiceLogicScript.PAIR
+			restored_double = 2 if restored_roles.get("main", &"") == DiceLogicScript.DOUBLE else 0
+			if not GameState.roll_transaction.is_empty() and str(GameState.roll_transaction.get("encounter_phase", "NONE")) == "NONE":
+				GameState.mark_roll_encounter_handoff(restored_pair, restored_double)
 		GameState.active_event_state.clear(); SaveManager.save_now(); _close_modal(modal.layer)
+		if GameState.pending_boss_handoff:
+			await _show_encounter_modal(restored_pair, restored_double)
+		await _finish_resumed_space_effect()
 		return
 	var arrival: Dictionary = saved.get("arrival", {})
 	dice_values.assign(arrival.get("source_dice_values", [1, 2, 3]))
 	GameState.debug_forced_event_id = str(saved.get("event_id", "CAI-E01"))
 	var roles: Dictionary = arrival.get("source_roles", DiceLogicScript.evaluate(dice_values))
-	await _show_event_modal(roles)
+	var boss_handoff := await _show_event_modal(roles)
+	if boss_handoff:
+		await _show_encounter_modal(roles.get("main", &"") == DiceLogicScript.PAIR, 2 if roles.get("main", &"") == DiceLogicScript.DOUBLE else 0)
+	await _finish_resumed_space_effect()
+
+func _finish_resumed_space_effect() -> void:
+	if GameState.roll_transaction.is_empty():
+		return
+	var phase := str(GameState.roll_transaction.get("phase", GameState.roll_transaction.get("roll_phase", "")))
+	if phase == "MOVEMENT_COMMITTED":
+		GameState.commit_roll_space_effect()
+		SaveManager.save_now()
+		phase = "SPACE_EFFECT_COMMITTED"
+	if phase == "SPACE_EFFECT_COMMITTED":
+		await _resume_roll_transaction()
 
 func _compact_clean_hud(points: int, is_clean: bool, streak: int) -> String:
 	var current := clampi(streak, 0, LapSystemScript.MAX_CLEAN_STREAK)
@@ -1188,10 +1398,12 @@ func _show_encounter_modal(pair_bonus: bool, double_bonus: int = 0) -> void:
 	_play_encounter_chime()
 	var definition := BossSystemScript.definition_by_id(str(GameState.current_boss.get("definition_id", "sleepy_sphinx")), boss_definitions)
 	var modal := _make_modal()
+	if not GameState.roll_transaction.is_empty() and str(GameState.roll_transaction.get("encounter_phase", "NONE")) != "MODAL_OPEN":
+		GameState.mark_roll_encounter_open(pair_bonus, double_bonus)
 	# Consume the durable handoff only after the production boss modal exists.
 	if GameState.pending_boss_handoff:
 		GameState.pending_boss_handoff = false
-		SaveManager.save_now()
+	SaveManager.save_now()
 	var content: VBoxContainer = modal.content
 	var portrait := TextureRect.new()
 	portrait.texture = SPHINX_TEXTURE
@@ -1241,6 +1453,9 @@ func _show_encounter_modal(pair_bonus: bool, double_bonus: int = 0) -> void:
 	GameState.boss_bond = float(GameState.current_boss.get("gauge", 0))
 	GameState.boss_presence = maxi(0, GameState.boss_presence - 2)
 	GameState.boss_relief = 0
+	if not GameState.roll_transaction.is_empty():
+		GameState.commit_roll_encounter_interaction(bool(outcome.joined_now), str(definition.get("id", "sleepy_sphinx")))
+	SaveManager.save_now()
 	var gauge_after := int(GameState.current_boss.get("gauge", 0))
 	var filling_gauge := _body("交流 %d%%" % gauge_before, 21)
 	filling_gauge.add_theme_color_override("font_color", TEAL)
@@ -1261,6 +1476,9 @@ func _show_encounter_modal(pair_bonus: bool, double_bonus: int = 0) -> void:
 	_refresh_hud()
 	if bool(outcome.joined_now):
 		await _show_get_result(definition)
+	if not GameState.roll_transaction.is_empty():
+		GameState.complete_roll_encounter()
+		SaveManager.save_now()
 
 func _play_encounter_chime() -> void:
 	# A short, low-volume two-tone cue. There is no BGM track in this slice, so the
@@ -1293,9 +1511,9 @@ func _wait_for_action(buttons: Array[Button]) -> int:
 		await get_tree().process_frame
 	return 0
 
-func _show_get_result(definition: Dictionary) -> void:
+func _show_get_result(definition: Dictionary, restored_obtained: Dictionary = {}) -> String:
 	# The portrait changes warmth very slightly; the feeling is an invitation, never a battle win.
-	var obtained := _prepare_next_boss_after_join()
+	var obtained := restored_obtained.duplicate(true) if not restored_obtained.is_empty() else _prepare_next_boss_after_join()
 	var modal := _make_modal()
 	var content: VBoxContainer = modal.content
 	var portrait := TextureRect.new()
@@ -1323,13 +1541,14 @@ func _show_get_result(definition: Dictionary) -> void:
 			GameState.reset_run()
 			SaveManager.save_now()
 			show_game()
-			return
+			return "NEXT_TRIP"
 		if stage_select.button_pressed:
 			_close_modal(modal.layer)
 			SaveManager.save_now()
 			show_stage_select()
-			return
+			return "STAGE_SELECT"
 		await get_tree().process_frame
+	return ""
 
 func _prepare_next_boss_after_join() -> Dictionary:
 	GameState.register_current_boss()
@@ -1337,6 +1556,8 @@ func _prepare_next_boss_after_join() -> Dictionary:
 	# Advance and persist before offering either exit. Returning to stage select must never revive
 	# an already registered individual on the next Cairo trip.
 	GameState.begin_next_boss()
+	if not GameState.roll_transaction.is_empty():
+		GameState.commit_roll_encounter_registration(obtained)
 	SaveManager.save_now()
 	return obtained
 
@@ -2310,6 +2531,100 @@ func _qa_clean_capture(kind: String, path: String) -> void:
 	var result := _save_opaque_capture(path)
 	print("QA_CLEAN_CAPTURE kind=%s path=%s result=%s" % [kind, path, result])
 	get_tree().quit(0 if result == OK else 1)
+
+func _qa_roll_transaction() -> void:
+	var original: Dictionary = GameState.to_dictionary().duplicate(true)
+	var coin_tile := tile_types.find(&"COIN")
+	var start_tile := posmod(coin_tile - 1, BoardModelScript.TILE_COUNT)
+	var roles := DiceLogicScript.evaluate_current([1], 1)
+	var checks: Array[bool] = []
+
+	GameState.reset_run()
+	GameState.current_tile_index = start_tile
+	GameState.begin_roll_transaction([], 1, start_tile)
+	GameState.mark_roll_started([1])
+	SaveManager.save_now()
+	var rolling_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(rolling_loaded and GameState.current_tile_index == start_tile and GameState.rolls_used == 0 and GameState.roll_transaction.is_empty())
+
+	GameState.reset_run()
+	GameState.current_tile_index = start_tile
+	GameState.begin_roll_transaction([1], 1, start_tile)
+	GameState.commit_roll_result([1], 1, roles, 1, coin_tile, 0, true)
+	SaveManager.save_now()
+	var result_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(result_loaded and dice_values == [1] and GameState.current_tile_index == coin_tile and GameState.rolls_used == 1 and GameState.coins == 18 and GameState.roll_transaction.is_empty())
+
+	GameState.reset_run()
+	GameState.current_tile_index = coin_tile
+	GameState.rolls_used = 1
+	GameState.begin_roll_transaction([1], 1, start_tile)
+	GameState.commit_roll_result([1], 1, roles, 1, coin_tile, 0, false)
+	GameState.commit_roll_movement(coin_tile)
+	SaveManager.save_now()
+	var movement_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(movement_loaded and GameState.current_tile_index == coin_tile and GameState.rolls_used == 1 and GameState.coins == 18 and GameState.roll_transaction.is_empty())
+
+	GameState.reset_run()
+	GameState.current_tile_index = coin_tile
+	GameState.rolls_used = 1
+	GameState.begin_roll_transaction([1], 1, start_tile)
+	GameState.commit_roll_result([1], 1, roles, 1, coin_tile, 0, false)
+	GameState.commit_roll_movement(coin_tile)
+	GameState.commit_roll_space_effect()
+	SaveManager.save_now()
+	var effect_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(effect_loaded and GameState.current_tile_index == coin_tile and GameState.rolls_used == 1 and GameState.coins == 12 and GameState.roll_transaction.is_empty())
+
+	# EVENT -> boss: the pending boolean may already be consumed while the
+	# durable encounter substate still knows exactly which window to resume.
+	GameState.reset_run()
+	GameState.current_tile_index = coin_tile
+	GameState.begin_roll_transaction([1], 1, start_tile)
+	GameState.commit_roll_result([1], 1, roles, 1, coin_tile, 0, false)
+	GameState.commit_roll_movement(coin_tile)
+	var handoff_reserved := GameState.mark_roll_encounter_handoff(true, 2)
+	GameState.pending_boss_handoff = true
+	var modal_opened := GameState.mark_roll_encounter_open(true, 2)
+	GameState.pending_boss_handoff = false
+	SaveManager.save_now()
+	var consumed_loaded := SaveManager.load_now()
+	checks.append(handoff_reserved and modal_opened and consumed_loaded and not GameState.pending_boss_handoff and str(GameState.roll_transaction.get("encounter_phase", "")) == "MODAL_OPEN" and bool(GameState.roll_transaction.get("encounter_pair_bonus", false)) and int(GameState.roll_transaction.get("encounter_double_bonus", 0)) == 2)
+
+	# The companion and the next individual are one persisted boundary. A
+	# restart here must display the saved card, never register or advance again.
+	var interaction_committed := GameState.commit_roll_encounter_interaction(true, "sleepy_sphinx")
+	GameState.current_boss["gauge"] = 100
+	GameState.register_current_boss()
+	var obtained := GameState.current_boss.duplicate(true)
+	GameState.begin_next_boss()
+	var registration_committed := GameState.commit_roll_encounter_registration(obtained)
+	var next_id := str(GameState.current_boss.get("individual_id", ""))
+	var encyclopedia_count := GameState.encyclopedia.size()
+	SaveManager.save_now()
+	var registration_loaded := SaveManager.load_now()
+	checks.append(interaction_committed and registration_committed and registration_loaded and str(GameState.roll_transaction.get("encounter_phase", "")) == "REGISTRATION_COMMITTED" and str(GameState.current_boss.get("individual_id", "")) == next_id and GameState.encyclopedia.size() == encyclopedia_count and str(GameState.roll_transaction.get("encounter_obtained", {}).get("individual_id", "")) == str(obtained.get("individual_id", "")))
+
+	# Finalizing a recovered get-result choice must not call show_game; it only
+	# closes the durable transaction so the already selected route stays visible.
+	_finalize_recovered_roll_without_navigation()
+	checks.append(GameState.roll_transaction.is_empty() and GameState.encyclopedia.size() == encyclopedia_count and str(GameState.current_boss.get("individual_id", "")) == next_id)
+
+	var passed := coin_tile >= 0 and checks.all(func(value: bool) -> bool: return value)
+	print("QA_ROLL_TRANSACTION coin_tile=%d checks=%s passed=%s" % [coin_tile, checks, passed])
+	GameState.apply_dictionary(original)
+	SaveManager.save_now()
+	if not passed:
+		push_error("Roll transaction recovery QA failed.")
+	get_tree().quit(0 if passed else 1)
 
 func _qa_lap_landmark() -> void:
 	var original := GameState.to_dictionary().duplicate(true)
