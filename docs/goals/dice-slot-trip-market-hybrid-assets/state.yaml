@@ -1,0 +1,202 @@
+version: 2
+
+goal:
+  title: "TOURMAP-02A 市場地区ハイブリッド素材実験"
+  slug: "dice-slot-trip-market-hybrid-assets"
+  kind: specific
+  tranche: "単一CC0パックの反復部品を既存香辛料市場へなじませ、360x640で市場地区の観光密度を上げる"
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Kenney Sketch Desertの公式ライセンス、収録部品、現行市場景観との適合性、最小導入境界を監査する。"
+    inputs:
+      - "https://www.kenney.nl/assets/sketch-desert"
+      - "scripts/game/tourism_map_view.gd"
+      - "assets/art/landmarks/cairo/spice_market_lv0.png through lv3.png"
+      - "docs/観光マップUI・マップ上ダイス演出仕様 v0.1.md"
+    constraints:
+      - "Read-only; do not download or modify files."
+      - "Do not recommend multiple asset packs in the first experiment."
+    expected_output:
+      - "license/source evidence"
+      - "use/avoid asset categories"
+      - "integration boundary and QA risks"
+    receipt:
+      result: done
+      summary: "Kenney Sketch DesertはCC0の単一骨組みパックとして条件付き採用可。大型建物を避け、石材・木箱・小型ヤシなど最大8種/画面6〜8個に限定する。"
+      evidence:
+        - "Official page: 2D isometric desert, 240 files, CC0 1.0"
+        - "Kenney FAQ: commercial use allowed; attribution not required; logo must not be used"
+        - "Current Spice Market: 1024x512 RGBA clean-HD hero art"
+      integration_boundary:
+        - "Tourism market district only; Classic/minimap/gameplay/save unchanged"
+        - "No collision or input; deterministic placement"
+        - "Keep props out of route/current-player/map-dice reserved zones"
+        - "Correct Spice Market aspect-fit before judging visual compatibility"
+      risks:
+        - "Sketch/isometric line style may compete with the generated hero art"
+        - "Lv0 development readability can be harmed by too many market props"
+        - "Pottery must be verified from the downloaded file list"
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: medium
+    objective: "Scout証拠から採用可否とWorkerの安全な実装境界を決定する。"
+    inputs:
+      - "T001 receipt"
+    constraints:
+      - "Do not implement."
+    expected_output:
+      - "approve | revise | reject"
+      - "allowed files and acceptance checks"
+    receipt:
+      result: approve
+      decision: approve
+      summary: "Kenney Sketch Desert 1パックを市場地区の反復小物だけに使う条件で承認。原本最大8、同時表示6〜8、aspect-fit修正とLv0/Lv3比較を必須とする。"
+      allowed_files:
+        - "third_party/kenney-sketch-desert/**"
+        - "assets/art/map_props/kenney_sketch_desert/**"
+        - "scripts/game/tourism_map_view.gd"
+        - "scripts/app/main.gd (_qa_tourmap_capture QA fixture only)"
+        - "tests/run_tests.gd"
+        - "docs/reference/runtime-tourmap-market-before.png"
+        - "docs/reference/runtime-tourmap-market-lv0-hybrid.png"
+        - "docs/reference/runtime-tourmap-market-lv3-hybrid.png"
+      required_checks:
+        - "license/source/original/processed mapping"
+        - "max 8 originals and max 8 visible props"
+        - "deterministic market-only placements outside route/player/map-dice reserve"
+        - "Spice Market 2:1 aspect-fit"
+        - "360x640 Lv0/Lv3 captures"
+        - "unit, TOURMAP and listed regressions"
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "承認された単一パックを保存・選別し、市場地区へ少数の装飾を統合する。"
+    inputs:
+      - "T002 decision"
+    constraints:
+      - "Preserve gameplay/save/dice and Classic."
+      - "Keep Spice Market as the visual hero."
+      - "Do not mix a second third-party pack."
+    allowed_files:
+      - "third_party/kenney-sketch-desert/**"
+      - "assets/art/map_props/kenney_sketch_desert/**"
+      - "scripts/game/tourism_map_view.gd"
+      - "scripts/app/main.gd (_qa_tourmap_capture QA fixture only)"
+      - "tests/run_tests.gd"
+      - "docs/reference/runtime-tourmap-market-before.png"
+      - "docs/reference/runtime-tourmap-market-lv0-hybrid.png"
+      - "docs/reference/runtime-tourmap-market-lv3-hybrid.png"
+    verify:
+      - "Godot unit suite failures=0"
+      - "DICE_QA_TOURMAP and listed regressions"
+      - "360x640 Lv0/Lv3 captures"
+      - "license/source/hash mapping"
+      - "git diff --check and Goal checker"
+    stop_if:
+      - "A second pack or more than eight originals is required."
+      - "Gameplay/save/dice or existing CLEAN meaning must change."
+      - "Props outrank the Spice Market hero art after visual correction."
+    expected_output:
+      - "license-preserving asset import"
+      - "market-only visual integration"
+      - "tests and 360x640 capture"
+    receipt:
+      result: done
+      summary: "Kenney Sketch Desertから石・小型ヤシ・崩れ壁の6原本だけを導入。原本SHAを保ち、透明余白をruntime source regionで除去し、Lv0は4点/Lv1以上は6点を市場端へ決定配置した。香辛料市場は2:1 aspect-fitへ修正。"
+      changed_files:
+        - "third_party/kenney-sketch-desert/**"
+        - "assets/art/map_props/kenney_sketch_desert/**"
+        - "scripts/game/tourism_map_view.gd"
+        - "scripts/app/main.gd (_qa_tourmap_capture only)"
+        - "tests/run_tests.gd"
+        - "docs/reference/runtime-tourmap-market-before.png"
+        - "docs/reference/runtime-tourmap-market-lv0-hybrid.png"
+        - "docs/reference/runtime-tourmap-market-lv3-hybrid.png"
+      evidence:
+        - "Six original/runtime SHA256 pairs match"
+        - "Unit suite failures=0"
+        - "DICE_QA_TOURMAP all true"
+        - "CLEAN/LAP/LANDMARK/SPICE/RISK safe+challenge/M3/M4A/dice/early-stop/save regressions pass"
+        - "360x640 Lv0 and Lv3 full-frame captures"
+        - "git diff --check pass"
+      commands:
+        - cmd: "Godot 4.7 --headless --path . --script tests/run_tests.gd"
+          status: pass
+        - cmd: "DICE_QA_TOURMAP=1"
+          status: pass
+        - cmd: "DICE_QA_CLEAN_LAP/LAP_LANDMARK/SPICE_SCENIC/RISK/M3/M4A/DICE_PROGRESSION/EARLY_STOP/SAVE_RELOAD"
+          status: pass
+        - cmd: "DICE_QA_CAPTURE_TOURMAP=market_lv0 and market_lv3 at 360x640"
+          status: pass
+        - cmd: "SHA256 original/runtime comparison"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "ライセンス、視覚統一、可読性、360x640、回帰を最終監査する。"
+    inputs:
+      - "All receipts"
+      - "Before/after captures"
+      - "Fresh QA and current diff"
+    constraints:
+      - "Do not implement."
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence and residual risks"
+    receipt:
+      result: complete
+      decision: complete
+      summary: "再取得したLv0/Lv3の360x640比較で黒欠落・クリップなし。Lv0は空き地感を保つ4小物、Lv3はヤシを含む6小物で、香辛料市場が主役を維持。ライセンス、SHA、決定配置、aspect-fit、全回帰も合格。"
+      evidence:
+        - "docs/reference/runtime-tourmap-market-lv0-hybrid.png SHA256 35666D8833E1B5D28555001C96C1A5039F6AB8E0D0B8166923D3D2ED987F9BAD"
+        - "docs/reference/runtime-tourmap-market-lv3-hybrid.png"
+        - "Kenney CC0 license/source/provenance and six SHA matches"
+        - "Unit and all listed regression QA pass"
+      residual:
+        - "Verify edge props against Android device safe areas."
+        - "Keep the same restrained density and color treatment when expanding to other districts."
+
+checks:
+  dirty_fingerprint: "Existing CLEAN and TOURMAP-01 dirty work preserved; this goal may add only its board, one third-party pack with license metadata, narrow market decoration code/assets, tests, and captures."
+  last_verification:
+    result: pass
+    task: T003
+    evidence:
+      - "Godot unit suite failures=0"
+      - "DICE_QA_TOURMAP and full listed regressions pass"
+      - "Lv0/Lv3 captures inspected at 360x640"
+      - "Source/runtime hashes match"
+      - "git diff --check pass"

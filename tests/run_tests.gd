@@ -10,6 +10,7 @@ const DiceAudioControllerScript = preload("res://scripts/game/dice_audio_control
 const LapSystemScript = preload("res://scripts/game/lap_system.gd")
 const LandmarkSystemScript = preload("res://scripts/game/landmark_system.gd")
 const LandmarkScenicViewScript = preload("res://scripts/game/landmark_scenic_view.gd")
+const TourismMapViewScript = preload("res://scripts/game/tourism_map_view.gd")
 
 var failures: int = 0
 
@@ -45,6 +46,30 @@ func _init() -> void:
 	_expect(simulated_index >= 0 and simulated_index < 90 and simulated_laps == 2, "20 consecutive rolls stay valid")
 	var tiles: Array[StringName] = BoardModelScript.build_tile_types()
 	_expect(tiles.size() == 90, "90 tiles")
+	var tour_offsets: Array[int] = TourismMapViewScript.neighborhood_offsets()
+	var tour_wrap: Array[int] = TourismMapViewScript.neighborhood_indices(89)
+	var tour_rects: Array[Rect2] = TourismMapViewScript.tile_rects(Vector2(360, 250))
+	var tour_rects_large: Array[Rect2] = TourismMapViewScript.tile_rects(Vector2(720, 390))
+	var tour_centers: Array[Vector2] = TourismMapViewScript.route_centers(Vector2(360, 250))
+	var distinct_y: Dictionary = {}
+	for center: Vector2 in tour_centers: distinct_y[roundi(center.y)] = true
+	_expect(tour_offsets.size() == 15 and tour_offsets.front() == -4 and tour_offsets.back() == 10, "tourism map uses fifteen slots -4 through +10")
+	_expect(tour_wrap == [85, 86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "tourism map wraps 86..90 to 01..10")
+	_expect(TourismMapViewScript.rects_fit_without_overlap(tour_rects, Rect2(0, 0, 360, 250), 2.0), "tourism tiles fit 360x250 without overlap")
+	_expect(TourismMapViewScript.rects_fit_without_overlap(tour_rects_large, Rect2(0, 0, 720, 390), 2.0) and Rect2(0, 0, 360, 250).encloses(TourismMapViewScript.player_rect(Vector2(360, 250))) and Rect2(0, 0, 720, 390).encloses(TourismMapViewScript.player_rect(Vector2(720, 390))), "tourism tiles and enlarged player fit reference and runtime bounds")
+	_expect(tour_centers[4].x > 360.0 * 0.40 and tour_centers[4].x < 360.0 * 0.60 and tour_centers[4].y > 250.0 * 0.70 and distinct_y.size() >= 10, "tourism route keeps current lower-middle on a continuous non-grid path")
+	_expect(TourismMapViewScript.is_offset_reachable(1, 1, &"NORMAL") and TourismMapViewScript.is_offset_reachable(6, 1, &"NORMAL") and not TourismMapViewScript.is_offset_reachable(7, 1, &"LANDMARK"), "one die highlights exact one through six range")
+	_expect(TourismMapViewScript.is_offset_reachable(9, 2, &"RISK") and TourismMapViewScript.is_offset_reachable(10, 3, &"EVENT") and not TourismMapViewScript.is_offset_reachable(9, 2, &"NORMAL"), "multi dice highlights visible special destinations only")
+	_expect(TourismMapViewScript.normalized_view_mode("tourism") == "tourism" and TourismMapViewScript.normalized_view_mode("unknown") == "classic", "unknown board mode falls back to classic")
+	var scenic_fit := TourismMapViewScript.aspect_fit_rect(Vector2(1024, 512), Rect2(18, 42, 324, 125))
+	_expect(is_equal_approx(scenic_fit.size.x / scenic_fit.size.y, 2.0) and is_equal_approx(scenic_fit.size.y, 125.0), "tourism scenic preserves its two-to-one aspect ratio")
+	var market_props_lv0: Array[Dictionary] = TourismMapViewScript.market_prop_specs(Vector2(360, 250), 0, 0)
+	var market_props_lv3: Array[Dictionary] = TourismMapViewScript.market_prop_specs(Vector2(360, 250), 0, 3)
+	_expect(market_props_lv0.size() == 4 and market_props_lv3.size() == 6 and TourismMapViewScript.market_prop_specs(Vector2(360, 250), 18, 3).is_empty(), "hybrid props stay market-only and preserve landmark growth")
+	_expect(TourismMapViewScript.prop_specs_are_clear(market_props_lv0, Vector2(360, 250)) and TourismMapViewScript.prop_specs_are_clear(market_props_lv3, Vector2(360, 250)), "hybrid props avoid route tiles player and map-dice reserve")
+	var market_prop_ids: Dictionary = {}
+	for spec: Dictionary in market_props_lv3: market_prop_ids[str(spec.id)] = true
+	_expect(market_prop_ids.size() <= 8 and TourismMapViewScript.MARKET_PROP_TEXTURES.size() <= 8, "hybrid pack selection and visible props stay within eight")
 	var expected: Dictionary = {&"NORMAL": 39, &"EVENT": 11, &"ITEM": 10, &"COIN": 6, &"WARP": 3, &"SHOP": 3, &"REST": 4, &"LANDMARK": 3, &"BOSS_SCENT": 4, &"STAGE_SPECIAL": 2, &"RISK": 5}
 	for tile_type: StringName in expected:
 		_expect(tiles.count(tile_type) == expected[tile_type], "distribution " + tile_type)

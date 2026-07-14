@@ -28,6 +28,7 @@ class DiceFaceControl extends Control:
 const DiceLogicScript = preload("res://scripts/core/dice_logic.gd")
 const BoardModelScript = preload("res://scripts/game/board_model.gd")
 const BoardViewScript = preload("res://scripts/game/board_view.gd")
+const TourismMapViewScript = preload("res://scripts/game/tourism_map_view.gd")
 const BossSystemScript = preload("res://scripts/game/boss_system.gd")
 const EventSystemScript = preload("res://scripts/game/event_system.gd")
 const RewardResolverScript = preload("res://scripts/game/reward_resolver.gd")
@@ -47,6 +48,7 @@ const MUTED := Color("#8c7862")
 var rng := RandomNumberGenerator.new()
 var root_stack: VBoxContainer
 var board_view: BoardView
+var board_view_mode: String = "classic"
 var dice_row: HBoxContainer
 var dice_presentation: SubViewportContainer
 var dice_audio: Node
@@ -133,19 +135,23 @@ func _ready() -> void:
 		call_deferred("_qa_premium_board_capture", OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD"))
 	elif OS.get_environment("DICE_QA_LAP_LANDMARK") == "1":
 		call_deferred("_qa_lap_landmark")
+	elif OS.get_environment("DICE_QA_TOURMAP") == "1":
+		call_deferred("_qa_tourmap")
 	elif OS.get_environment("DICE_QA_SPICE_SCENIC") == "1":
 		call_deferred("_qa_spice_scenic")
 	elif OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC") != "":
 		call_deferred("_qa_spice_scenic_capture", OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK") != "":
 		call_deferred("_qa_lap_landmark_capture", OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_CAPTURE_TOURMAP") != "":
+		call_deferred("_qa_tourmap_capture", OS.get_environment("DICE_QA_CAPTURE_TOURMAP"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif GameState.pending_boss_handoff:
 		call_deferred("_resume_pending_boss_handoff")
 	elif not GameState.active_event_state.is_empty():
 		call_deferred("_resume_active_event")
 	elif OS.get_environment("DICE_QA_CAPTURE_M3") != "":
 		call_deferred("_qa_m3_capture", OS.get_environment("DICE_QA_CAPTURE_M3"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
-	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
+	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
 		call_deferred("_qa_capture_viewport", OS.get_environment("DICE_QA_CAPTURE_PATH"))
 
 func _apply_theme() -> void:
@@ -386,10 +392,13 @@ func show_game() -> void:
 	minimap_view = BoardViewScript.new(); minimap_view.is_minimap = true; minimap_view.custom_minimum_size = Vector2(180, 82); minimap_view.size_flags_vertical = Control.SIZE_EXPAND_FILL; minimap_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels); map_box.add_child(minimap_view)
 	map_card.add_child(map_box); overview.add_child(map_card); page.add_child(overview)
 
-	board_view = BoardViewScript.new()
+	board_view_mode = TourismMapViewScript.normalized_view_mode(OS.get_environment("DICE_BOARD_VIEW"))
+	board_view = _new_board_view(board_view_mode)
 	board_view.custom_minimum_size = Vector2(0, 390)
 	board_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	board_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels)
+	if board_view is TourismMapView:
+		(board_view as TourismMapView).set_dice_count(GameState.current_dice_count)
 	page.add_child(board_view)
 	var memo_panel := PanelContainer.new(); memo_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.97, 0.91, 0.79, 0.92), Color("#b28a52"), 14))
 	memo_label = _body("風が砂の上に細い道を描いている。", 16); memo_label.custom_minimum_size.y = 30; memo_panel.add_child(memo_label); page.add_child(memo_panel)
@@ -1030,6 +1039,7 @@ func _refresh_hud() -> void:
 	if is_instance_valid(landmark_level_label):
 		landmark_level_label.text = "全体マップ　名所 Lv.%d・%d・%d" % [int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_02", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_03", 0))]
 	if is_instance_valid(board_view): board_view.set_landmark_levels(GameState.landmark_levels)
+	if board_view is TourismMapView: (board_view as TourismMapView).set_dice_count(GameState.current_dice_count)
 	if is_instance_valid(minimap_view): minimap_view.set_landmark_levels(GameState.landmark_levels)
 	GameState.ensure_boss_data()
 	var footprints := "・".repeat(5 - GameState.boss_presence) + "●".repeat(GameState.boss_presence)
@@ -1342,7 +1352,52 @@ func _build_debug_box() -> VBoxContainer:
 		if is_instance_valid(dice_audio): _show_message("Dice Audio", "Active voices: %d / Pool: %d" % [dice_audio.active_voice_count(), int(dice_audio.receipt().pool_size)]))
 	voices.custom_minimum_size.y = 42; voices.size_flags_horizontal = Control.SIZE_EXPAND_FILL; fatigue_debug.add_child(voices)
 	box.add_child(fatigue_debug)
+	var view_row := HBoxContainer.new()
+	var classic_view := _button("BOARD CLASSIC", func() -> void: _set_board_view_mode("classic"))
+	var tourism_view := _button("BOARD TOURISM", func() -> void: _set_board_view_mode("tourism"))
+	for control: Control in [classic_view, tourism_view]:
+		control.custom_minimum_size.y = 42
+		control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		view_row.add_child(control)
+	box.add_child(view_row)
 	return box
+
+func _new_board_view(mode: String) -> BoardView:
+	var normalized := TourismMapViewScript.normalized_view_mode(mode)
+	if normalized == TourismMapViewScript.VIEW_MODE_TOURISM:
+		return TourismMapViewScript.new() as BoardView
+	return BoardViewScript.new() as BoardView
+
+func _can_switch_board_view() -> bool:
+	return is_instance_valid(board_view) and not moving and not rolling_dice and not modal_open and event_state == &"IDLE"
+
+func _set_board_view_mode(mode: String) -> bool:
+	if not _can_switch_board_view():
+		return false
+	var normalized := TourismMapViewScript.normalized_view_mode(mode)
+	var wants_tourism := normalized == TourismMapViewScript.VIEW_MODE_TOURISM
+	if (wants_tourism and board_view is TourismMapView) or (not wants_tourism and not (board_view is TourismMapView)):
+		board_view_mode = normalized
+		return true
+	var parent := board_view.get_parent()
+	if parent == null:
+		return false
+	var child_index := board_view.get_index()
+	var previous := board_view
+	var replacement := _new_board_view(normalized)
+	replacement.custom_minimum_size = previous.custom_minimum_size
+	replacement.size_flags_horizontal = previous.size_flags_horizontal
+	replacement.size_flags_vertical = previous.size_flags_vertical
+	replacement.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels)
+	if replacement is TourismMapView:
+		(replacement as TourismMapView).set_dice_count(GameState.current_dice_count)
+	parent.add_child(replacement)
+	parent.move_child(replacement, child_index)
+	parent.remove_child(previous)
+	previous.queue_free()
+	board_view = replacement
+	board_view_mode = normalized
+	return true
 
 func _debug_play_dice_audio(category: String) -> void:
 	if not is_instance_valid(dice_audio): return
@@ -1939,6 +1994,44 @@ func _qa_risk_space(kind: String) -> void:
 	print("QA_RISK kind=%s before=%d after=%d coins_delta=%d modal_closed=%s passed=%s" % [kind, before_count, count_before_close, coins_before_close - before_coins, not modal_open, passed])
 	if not passed: push_error("Risk-space QA failed.")
 	get_tree().quit(0 if passed else 1)
+
+func _qa_tourmap() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	GameState.reset_run()
+	GameState.current_tile_index = 89
+	GameState.current_dice_count = 2
+	GameState.landmark_levels = {"CAI_LANDMARK_01": 3, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	show_game()
+	var classic_ok: bool = _set_board_view_mode("classic") and not (board_view is TourismMapView)
+	var minimap_ok: bool = minimap_view.get_script() == BoardViewScript and minimap_view.is_minimap
+	var tourism_ok: bool = _set_board_view_mode("tourism") and board_view is TourismMapView
+	var wrapped_indices: Array[int] = TourismMapViewScript.neighborhood_indices(board_view.current_tile)
+	var wrap_ok: bool = wrapped_indices == [85, 86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+	var scenic_ok: bool = board_view.scenic_level == 3 and board_view.scenic_texture != null
+	var input_ok: bool = board_view.mouse_filter == Control.MOUSE_FILTER_IGNORE
+	moving = true
+	var blocked_while_moving: bool = not _set_board_view_mode("classic") and board_view is TourismMapView
+	moving = false
+	var fallback_ok: bool = _set_board_view_mode("not-a-mode") and not (board_view is TourismMapView) and board_view_mode == "classic"
+	var passed: bool = classic_ok and minimap_ok and tourism_ok and wrap_ok and scenic_ok and input_ok and blocked_while_moving and fallback_ok
+	print("QA_TOURMAP classic=%s tourism=%s minimap=%s wrap=%s scenic=%s input=%s idle_guard=%s fallback=%s passed=%s" % [classic_ok, tourism_ok, minimap_ok, wrap_ok, scenic_ok, input_ok, blocked_while_moving, fallback_ok, passed])
+	GameState.apply_dictionary(original)
+	if not passed: push_error("TOURMAP deterministic QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_tourmap_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.current_dice_count = 1
+	var market_level := 0 if kind == "market_lv0" else 3
+	GameState.landmark_levels = {"CAI_LANDMARK_01": market_level, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	GameState.current_tile_index = 43 if kind == "classic" else (84 if kind == "wrap" else 0)
+	show_game()
+	_set_board_view_mode("classic" if kind == "classic" else "tourism")
+	for ignored: int in range(12): await get_tree().process_frame
+	await get_tree().create_timer(0.50).timeout
+	var result := _save_opaque_capture(path)
+	print("QA_TOURMAP_CAPTURE kind=%s market_level=%d path=%s result=%s" % [kind, market_level, path, result])
+	get_tree().quit(0 if result == OK else 1)
 
 func _qa_lap_landmark() -> void:
 	var original := GameState.to_dictionary().duplicate(true)
