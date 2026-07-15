@@ -3,6 +3,7 @@ extends "res://scripts/game/board_view.gd"
 
 const VIEW_MODE_CLASSIC := "classic"
 const VIEW_MODE_TOURISM := "tourism"
+const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
 const FIRST_OFFSET := -4
 const LAST_OFFSET := 10
 const SLOT_COUNT := 15
@@ -140,9 +141,49 @@ static func aspect_fit_rect(source_size: Vector2, bounds: Rect2) -> Rect2:
 static func map_dice_reserved_rect(view_size: Vector2) -> Rect2:
 	return Rect2(view_size * Vector2(0.22, 0.43), view_size * Vector2(0.56, 0.28))
 
-static func map_dice_landing_rect(view_size: Vector2) -> Rect2:
+static func map_dice_landing_rect(view_size: Vector2, active_dice_count: int = 1) -> Rect2:
 	# Prefer a quiet sand pocket around the route instead of assuming the same
 	# side is clear at every aspect ratio. This is presentation geometry only.
+	var dice_count := clampi(active_dice_count, 1, 5)
+	if dice_count <= 1:
+		return _map_dice_landing_rect_single(view_size)
+	# Multi-die formations need a wider, shorter reservation. The map overlay
+	# scales individual billboards down, keeping the route and player readable.
+	var width_factor := 0.82 if dice_count == 2 else (0.84 if dice_count == 3 else 0.40)
+	# Keep the formation above the enlarged player token. The overlay is a
+	# temporary result layer, so a shallow upper pocket is more legible than a
+	# tall card that collides with the current tile.
+	var height_factor := 0.28 if dice_count < 5 else 0.46
+	var footprint := MapDiceOverlayScript.formation_bounds(dice_count)
+	var padding := Vector2(12.0, 0.0) if dice_count < 5 else Vector2(12.0, 10.0)
+	var requested_size := Vector2(minf(310.0, view_size.x * width_factor), minf(178.0, view_size.y * height_factor))
+	var landing_size := Vector2(maxf(requested_size.x, footprint.size.x + padding.x * 2.0), maxf(requested_size.y, footprint.size.y + padding.y * 2.0))
+	landing_size = Vector2(minf(landing_size.x, view_size.x), minf(landing_size.y, view_size.y))
+	var preferred_center := Vector2(view_size.x * (0.20 if dice_count == 5 else 0.50), view_size.y * (0.26 if dice_count == 5 else 0.30))
+	var half_size := landing_size * 0.5
+	var best := Rect2()
+	var best_score := INF
+	var bounds := Rect2(Vector2.ZERO, view_size)
+	var start_x := int(ceil(half_size.x))
+	var end_x := int(floor(view_size.x - half_size.x))
+	var start_y := int(ceil(half_size.y))
+	var end_y := int(floor(view_size.y - half_size.y))
+	for y: int in range(start_y, end_y + 1, 5):
+		for x: int in range(start_x, end_x + 1, 5):
+			var center := Vector2(float(x), float(y))
+			var footprint_rect := Rect2(center + footprint.position, footprint.size)
+			if not _multi_landing_candidate_is_clear(footprint_rect, view_size):
+				continue
+			var score := center.distance_squared_to(preferred_center)
+			if score < best_score:
+				best = Rect2(center - half_size, landing_size)
+				best_score = score
+	if best.has_area():
+		return best
+	var fallback_center := Vector2(clampf(preferred_center.x, half_size.x, view_size.x - half_size.x), clampf(preferred_center.y, half_size.y, view_size.y - half_size.y))
+	return Rect2(fallback_center - half_size, landing_size)
+
+static func _map_dice_landing_rect_single(view_size: Vector2) -> Rect2:
 	var landing_size := Vector2(minf(128.0, view_size.x * 0.36), minf(96.0, view_size.y * 0.38))
 	# Score a coarse deterministic grid toward the lower-left sand pocket. This
 	# keeps the die away from the landmark illustration while still adapting to
@@ -172,8 +213,27 @@ static func _landing_candidate_is_clear(candidate: Rect2, view_size: Vector2) ->
 			return false
 	return true
 
-static func landing_zone_is_clear(view_size: Vector2) -> bool:
-	return _landing_candidate_is_clear(map_dice_landing_rect(view_size), view_size)
+static func landing_zone_is_clear(view_size: Vector2, active_dice_count: int = 1) -> bool:
+	var candidate := map_dice_landing_rect(view_size, active_dice_count)
+	if active_dice_count > 1:
+		var bounds := MapDiceOverlayScript.formation_bounds(active_dice_count)
+		var footprint := Rect2(candidate.get_center() + bounds.position, bounds.size)
+		return _multi_landing_candidate_is_clear(footprint, view_size)
+	return _landing_candidate_is_clear(candidate, view_size)
+
+static func _multi_landing_candidate_is_clear(footprint: Rect2, view_size: Vector2) -> bool:
+	var bounds := Rect2(Vector2.ZERO, view_size)
+	if not bounds.encloses(footprint) or footprint.intersects(player_rect(view_size)):
+		return false
+	for tile: Rect2 in tile_rects(view_size):
+		if footprint.intersects(tile.grow(2.0)):
+			return false
+	return true
+
+static func map_dice_footprint_rect(view_size: Vector2, active_dice_count: int) -> Rect2:
+	var landing := map_dice_landing_rect(view_size, active_dice_count)
+	var bounds := MapDiceOverlayScript.formation_bounds(active_dice_count)
+	return Rect2(landing.get_center() + bounds.position, bounds.size)
 
 static func destination_rect(view_size: Vector2, current_index: int, destination_index: int) -> Rect2:
 	var offset := posmod(destination_index - current_index, TILE_COUNT)
@@ -216,7 +276,9 @@ func set_dice_count(value: int) -> void:
 
 func highlight_destination(tile_index: int, die_value: int) -> void:
 	highlighted_destination_tile = posmod(tile_index, TILE_COUNT)
-	highlighted_destination_value = clampi(die_value, 0, 6)
+	# Two/three-die previews show their summed distance (up to 18), not a
+	# single-face value. Keep only the invalid negative case clamped.
+	highlighted_destination_value = maxi(die_value, 0)
 	queue_redraw()
 
 func clear_destination_highlight() -> void:

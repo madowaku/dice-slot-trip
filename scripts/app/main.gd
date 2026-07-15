@@ -144,6 +144,8 @@ func _ready() -> void:
 		call_deferred("_qa_tourmap")
 	elif OS.get_environment("DICE_QA_TOURMAP_DIE") == "1":
 		call_deferred("_qa_tourmap_die")
+	elif OS.get_environment("DICE_QA_TOURMAP_MULTI_DIE") == "1":
+		call_deferred("_qa_tourmap_multi_die")
 	elif OS.get_environment("DICE_QA_ROLL_TRANSACTION") == "1":
 		call_deferred("_qa_roll_transaction")
 	elif OS.get_environment("DICE_QA_SPICE_SCENIC") == "1":
@@ -534,12 +536,14 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		var tray_rect := _map_dice_tray_anchor_rect()
 		dice_presentation.visible = false
 		var map_rect := board_view.get_global_rect()
-		await map_dice_overlay.begin_launch(rolling_values, tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size))
+		await map_dice_overlay.begin_launch(rolling_values, tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size, count))
 		if not map_dice_overlay.is_active():
 			_abort_map_dice_roll()
 			return []
 	roll_button.text = "タップで左から止める"
-	stop_all_button.visible = extra_controls_parent == null and not map_overlay_roll
+	stop_all_button.visible = extra_controls_parent == null
+	if map_overlay_roll and is_instance_valid(stop_all_button):
+		map_dice_overlay.set_input_exempt_rect(stop_all_button.get_global_rect())
 	if extra_controls_parent != null:
 		var controls := HBoxContainer.new(); controls.name = "extra_dice_stop_controls"; controls.add_theme_constant_override("separation", 10)
 		active_extra_left_stop = _button("左から1個停止", func() -> void: _lock_next_die(false), true)
@@ -547,6 +551,8 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		active_extra_left_stop.name = "extra_left_stop"; active_extra_all_stop.name = "extra_all_stop"
 		active_extra_left_stop.size_flags_horizontal = Control.SIZE_EXPAND_FILL; active_extra_all_stop.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		controls.add_child(active_extra_left_stop); controls.add_child(active_extra_all_stop); extra_controls_parent.add_child(controls)
+		if map_overlay_roll and is_instance_valid(active_extra_all_stop):
+			map_dice_overlay.set_input_exempt_rect(active_extra_all_stop.get_global_rect())
 	role_label.text = "目を追えば、少しだけ狙えるかも"
 	# 0.8-1.3 seconds for an untouched roll across 1/2/3/5 dice. The final
 	# presentation settle continues independently for another 0.18 seconds.
@@ -574,11 +580,16 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	_render_dice(rolling_values, false)
 	if is_instance_valid(dice_audio): dice_audio.end_roll()
 	if map_overlay_roll:
-		var preview_distance := maxi(0, int(rolling_values[0]) + GameState.next_move_bonus)
-		var destination := posmod(GameState.current_tile_index + preview_distance, BoardModelScript.TILE_COUNT)
-		(board_view as TourismMapView).highlight_destination(destination, int(rolling_values[0]))
-		await map_dice_overlay.hold_and_return(int(rolling_values[0]))
-		(board_view as TourismMapView).clear_destination_highlight()
+		# 2/3 dice preview the summed destination. Five dice are a selection
+		# screen, so no destination highlight appears before the player confirms
+		# the recommended three.
+		if count != 5:
+			var preview_distance := maxi(0, _sum_dice_values(rolling_values) + GameState.next_move_bonus)
+			var destination := posmod(GameState.current_tile_index + preview_distance, BoardModelScript.TILE_COUNT)
+			(board_view as TourismMapView).highlight_destination(destination, preview_distance)
+		await map_dice_overlay.hold_and_return(rolling_values)
+		if count != 5:
+			(board_view as TourismMapView).clear_destination_highlight()
 		dice_presentation.visible = true
 		_render_dice(rolling_values, false)
 	moving = false
@@ -587,6 +598,8 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	if is_instance_valid(active_extra_left_stop): active_extra_left_stop.disabled = true
 	if is_instance_valid(active_extra_all_stop): active_extra_all_stop.disabled = true
 	active_extra_left_stop = null; active_extra_all_stop = null
+	if is_instance_valid(map_dice_overlay):
+		map_dice_overlay.set_input_exempt_rect(Rect2())
 	return rolling_values.duplicate()
 
 func _uses_map_dice_overlay(count: int) -> bool:
@@ -641,7 +654,7 @@ func _stop_all_dice() -> void:
 	role_label.text = "残り%d個を現在の目で一括停止" % remaining
 
 func _render_dice(values: Array[int], selectable: bool) -> void:
-	if is_instance_valid(map_dice_overlay) and map_dice_overlay.is_active() and dice_mode == 1 and board_view is TourismMapView:
+	if is_instance_valid(map_dice_overlay) and map_dice_overlay.is_active() and board_view is TourismMapView and MapDiceOverlayScript.uses_map_presentation(true, values.size()):
 		map_dice_overlay.present(values, rolling_dice, locked_dice_count)
 	elif is_instance_valid(dice_presentation):
 		dice_presentation.present(values, rolling_dice, locked_dice_count)
@@ -862,17 +875,25 @@ func _present_resumed_roll_result() -> void:
 		var tray_rect := _map_dice_tray_anchor_rect()
 		var map_rect := board_view.get_global_rect()
 		dice_presentation.visible = false
-		await map_dice_overlay.begin_launch(values, tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size))
+		await map_dice_overlay.begin_launch(values, tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size, values.size()))
 		map_dice_overlay.present(values, false, values.size())
-		var destination := int(GameState.roll_transaction.get("target_tile_index", GameState.current_tile_index))
-		(board_view as TourismMapView).highlight_destination(destination, int(GameState.roll_transaction.get("distance", values[0])))
-		await map_dice_overlay.hold_and_return(values[0])
-		(board_view as TourismMapView).clear_destination_highlight()
+		if values.size() != 5:
+			var destination := int(GameState.roll_transaction.get("target_tile_index", GameState.current_tile_index))
+			(board_view as TourismMapView).highlight_destination(destination, int(GameState.roll_transaction.get("distance", _sum_dice_values(values))))
+		await map_dice_overlay.hold_and_return(values)
+		if values.size() != 5:
+			(board_view as TourismMapView).clear_destination_highlight()
 		dice_presentation.visible = true
 	else:
 		_render_dice(values, false)
 		await get_tree().create_timer(0.45).timeout
 	moving = false
+
+func _sum_dice_values(values: Array[int]) -> int:
+	var total := 0
+	for value: int in values:
+		total += clampi(value, 1, 6)
+	return total
 
 func _resume_roll_encounter() -> void:
 	var encounter_phase := str(GameState.roll_transaction.get("encounter_phase", "NONE"))
@@ -2367,6 +2388,34 @@ func _qa_tourmap_die() -> void:
 	print("QA_TOURMAP_DIE values=%s early=%s visible_stop=%s bounded=%s audio=%s idle=%s no_commit=%s receipt=%s passed=%s" % [values_valid, early_stop_ok, qa_map_die_visible_stop_ok, bounded, audio_bounded, idle, no_commit, receipt, passed])
 	GameState.apply_dictionary(original)
 	if not passed: push_error("TOURMAP-03A overlay QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_tourmap_multi_die() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	GameState.reset_run()
+	GameState.current_dice_count = 3
+	GameState.current_tile_index = 58
+	show_game()
+	_set_board_view_mode("tourism")
+	var counts: Array[int] = [2, 3, 5]
+	var valid := true
+	var idle := true
+	var receipts: Array[Dictionary] = []
+	for count: int in counts:
+		var values := await _animate_dice_roll(count)
+		var receipt: Dictionary = map_dice_overlay.receipt()
+		receipts.append(receipt)
+		valid = valid and values.size() == count and values.all(func(value: int) -> bool: return value >= 1 and value <= 6)
+		idle = idle and str(receipt.get("phase", "")) == "TRAY_IDLE" and int(receipt.get("active_billboards", 0)) == count and not map_dice_overlay.visible and not rolling_dice and not moving
+	var audio_receipt: Dictionary = dice_audio.receipt()
+	var audio_ok := int(audio_receipt.get("active_voices", 0)) == 0
+	var pooled := int(map_dice_overlay.receipt().get("billboard_pool_size", 0)) == MapDiceOverlayScript.MAX_DICE
+	var no_commit := GameState.rolls_used == 0 and GameState.current_tile_index == 58
+	var passed := valid and idle and audio_ok and pooled and no_commit
+	print("QA_TOURMAP_MULTI_DIE values=%s idle=%s audio=%s pooled=%s no_commit=%s receipts=%s passed=%s" % [valid, idle, audio_ok, pooled, no_commit, receipts, passed])
+	GameState.apply_dictionary(original)
+	if not passed:
+		push_error("TOURMAP multi-die overlay QA failed.")
 	get_tree().quit(0 if passed else 1)
 
 func _qa_request_map_die_stop() -> void:

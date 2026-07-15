@@ -63,19 +63,26 @@ class MapDieBillboard extends Control:
 enum Phase { TRAY_IDLE, LAUNCHING_TO_MAP, ROLLING_ON_MAP, STOPPING, RESULT_HOLD, RETURNING_TO_TRAY, COMPLETE }
 
 const PRESENTATION_SIZE := Vector2(128.0, 96.0)
+const MAX_DICE := 5
 const LAUNCH_DURATION := 0.24
 const RESULT_HOLD_DURATION := 0.45
 const RETURN_DURATION := 0.23
 
 var phase: Phase = Phase.TRAY_IDLE
 var presentation: DicePresentation3D
+# The Canvas billboards form a reusable visual pool. Gameplay owns the values;
+# this layer only mirrors values and stop state, so Classic remains untouched.
 var display: MapDieBillboard
+var billboards: Array[MapDieBillboard] = []
 var tray_center := Vector2.ZERO
 var landing_center := Vector2.ZERO
+var active_count := 1
+var locked_count := 0
 var stop_sent := false
 var stop_request_count := 0
 var launch_count := 0
 var completion_count := 0
+var input_exempt_rect := Rect2()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -90,8 +97,8 @@ func _ready() -> void:
 	presentation.set_tray_visible(false)
 	presentation.custom_minimum_size = PRESENTATION_SIZE
 	add_child(presentation)
-	# DicePresentation3D defaults to full-rect for the tray. The overlay needs a
-	# bounded floating viewport so its transparent surface never covers the HUD.
+	# Keep the 3D presenter as a pooled state/mesh reference while Canvas draws
+	# the transparent 2.5D billboards.
 	presentation.anchor_left = 0.0
 	presentation.anchor_top = 0.0
 	presentation.anchor_right = 0.0
@@ -99,14 +106,16 @@ func _ready() -> void:
 	presentation.position = Vector2.ZERO
 	presentation.size = PRESENTATION_SIZE
 	presentation.set_tray_visible(false)
-	# A moving transparent SubViewport can corrupt the Compatibility backbuffer.
-	# Keep the 3D presenter as the state/mesh reference but composite a matching
-	# lightweight 2.5D billboard through the normal Canvas path.
 	presentation.visible = false
-	display = MapDieBillboard.new()
-	display.name = "MapDiceBillboard"
-	display.size = PRESENTATION_SIZE
-	add_child(display)
+	for index: int in range(MAX_DICE):
+		var billboard := MapDieBillboard.new()
+		billboard.name = "MapDiceBillboard_%d" % index
+		billboard.size = PRESENTATION_SIZE
+		billboard.visible = index == 0
+		billboards.append(billboard)
+		add_child(billboard)
+		if index == 0:
+			display = billboard
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED and phase in [Phase.LAUNCHING_TO_MAP, Phase.ROLLING_ON_MAP]:
@@ -121,7 +130,41 @@ static func landing_rect_in_screen(map_global_rect: Rect2, reserved_local_rect: 
 	return Rect2(map_global_rect.position + clipped.position, clipped.size)
 
 static func uses_map_presentation(is_tourism: bool, dice_count: int) -> bool:
-	return is_tourism and dice_count == 1
+	return is_tourism and clampi(dice_count, 1, MAX_DICE) in [1, 2, 3, 5]
+
+static func formation_offsets(dice_count: int) -> Array[Vector2]:
+	match clampi(dice_count, 1, MAX_DICE):
+		1: return [Vector2.ZERO]
+		2: return [Vector2(-34.0, 0.0), Vector2(34.0, 0.0)]
+		3: return [Vector2(-34.0, 0.0), Vector2.ZERO, Vector2(34.0, 0.0)]
+		4: return [Vector2(-48.0, -32.0), Vector2(48.0, -32.0), Vector2(-48.0, 38.0), Vector2(48.0, 38.0)]
+		# Compact 3+2 arrangement. The small left pocket is intentional: it
+		# keeps the five-die footprint clear of the enlarged player token on
+		# 360x250 maps while still reading as a slot result cluster.
+		5: return [Vector2(-28.0, -20.0), Vector2(0.0, -20.0), Vector2(28.0, -20.0), Vector2(-14.0, 24.0), Vector2(14.0, 24.0)]
+	return [Vector2.ZERO]
+
+static func formation_scale(dice_count: int) -> float:
+	match clampi(dice_count, 1, MAX_DICE):
+		1: return 1.0
+		2: return 0.56
+		3: return 0.58
+		4: return 0.72
+		# Keep the 3+2 cluster compact enough for the small tourism map
+		# reference viewport while preserving readable pips.
+		5: return 0.52
+	return 1.0
+
+static func formation_bounds(dice_count: int) -> Rect2:
+	"""Return the actual pooled billboard footprint around its formation center."""
+	var count := clampi(dice_count, 1, MAX_DICE)
+	var offsets := formation_offsets(count)
+	var half_size := PRESENTATION_SIZE * formation_scale(count) * 0.5
+	var bounds := Rect2(offsets[0] - half_size, half_size * 2.0)
+	for index: int in range(1, offsets.size()):
+		var die_rect := Rect2(offsets[index] - half_size, half_size * 2.0)
+		bounds = bounds.merge(die_rect)
+	return bounds
 
 static func can_request_stop(current_phase: Phase, already_sent: bool) -> bool:
 	return current_phase == Phase.ROLLING_ON_MAP and not already_sent
@@ -134,14 +177,20 @@ func begin_launch(values: Array[int], tray_global_rect: Rect2, map_global_rect: 
 		cancel_to_tray()
 	phase = Phase.LAUNCHING_TO_MAP
 	stop_sent = false
+	locked_count = 0
+	active_count = clampi(values.size(), 1, MAX_DICE)
 	launch_count += 1
 	visible = true
 	set_process_input(true)
 	tray_center = tray_global_rect.get_center()
 	landing_center = landing_rect_in_screen(map_global_rect, reserved_local_rect).get_center()
 	presentation.present(values, true, 0)
-	display.show_face(values[0] if not values.is_empty() else 1, true)
-	_set_presentation_center(tray_center)
+	for index: int in range(MAX_DICE):
+		var billboard := billboards[index]
+		billboard.visible = index < active_count
+		if index < values.size():
+			billboard.show_face(values[index], true)
+	_set_presentation_center(tray_center, active_count)
 	var elapsed := 0.0
 	while elapsed < LAUNCH_DURATION:
 		await get_tree().process_frame
@@ -149,25 +198,36 @@ func begin_launch(values: Array[int], tray_global_rect: Rect2, map_global_rect: 
 			return
 		elapsed += get_process_delta_time()
 		var t := minf(1.0, elapsed / LAUNCH_DURATION)
-		_set_presentation_center(arc_position(tray_center, landing_center, t))
-		display.scale = Vector2.ONE * lerpf(0.78, 1.0, t)
-	_set_presentation_center(landing_center)
+		_set_presentation_center(arc_position(tray_center, landing_center, t), active_count)
+		_set_formation_scale(lerpf(0.78, 1.0, t))
+	_set_presentation_center(landing_center, active_count)
 	phase = Phase.ROLLING_ON_MAP
 
-func present(values: Array[int], rolling: bool, locked_count: int) -> void:
+func present(values: Array[int], rolling: bool, locked_value_count: int) -> void:
 	if not visible:
 		return
-	presentation.present(values, rolling, locked_count)
-	var visual_rolling := is_visual_rolling(rolling, locked_count, values.size())
-	if not values.is_empty():
-		display.show_face(values[0], visual_rolling)
+	presentation.present(values, rolling, locked_value_count)
+	active_count = clampi(values.size(), 1, MAX_DICE)
+	var previous_locked := locked_count
+	locked_count = clampi(locked_value_count, 0, active_count)
+	var visual_rolling := is_visual_rolling(rolling, locked_count, active_count)
+	for index: int in range(MAX_DICE):
+		var billboard := billboards[index]
+		billboard.visible = index < active_count
+		if index < active_count:
+			billboard.show_face(values[index], rolling and index >= locked_count)
+	if locked_count > previous_locked and phase == Phase.ROLLING_ON_MAP:
+		# The next tap can stop the next die. A one-die roll enters STOPPING and
+		# therefore still rejects duplicate taps.
+		stop_sent = false
 	if not visual_rolling and phase == Phase.ROLLING_ON_MAP:
 		phase = Phase.STOPPING
 
-func hold_and_return(final_value: int) -> void:
+func hold_and_return(final_values: Variant) -> void:
 	if not visible:
 		return
-	begin_result_hold(final_value)
+	var values := _normalize_values(final_values)
+	begin_result_hold(values)
 	await get_tree().create_timer(RESULT_HOLD_DURATION).timeout
 	phase = Phase.RETURNING_TO_TRAY
 	var start := landing_center
@@ -178,30 +238,48 @@ func hold_and_return(final_value: int) -> void:
 			return
 		elapsed += get_process_delta_time()
 		var t := minf(1.0, elapsed / RETURN_DURATION)
-		_set_presentation_center(arc_position(start, tray_center, t, 42.0))
-		display.scale = Vector2.ONE * lerpf(1.0, 0.78, t)
+		_set_presentation_center(arc_position(start, tray_center, t, 42.0), active_count)
+		_set_formation_scale(lerpf(1.0, 0.78, t))
+	# Land exactly on the tray anchor even when the final frame arrives just
+	# before t=1 so repeated formations do not leave a visual residue.
+	_set_presentation_center(tray_center, active_count)
 	phase = Phase.COMPLETE
 	completion_count += 1
 	visible = false
 	set_process_input(false)
 	stop_sent = false
-	display.scale = Vector2.ONE
+	locked_count = 0
+	_set_formation_scale(1.0)
+	for billboard: MapDieBillboard in billboards:
+		billboard.visible = false
 	phase = Phase.TRAY_IDLE
 
-func begin_result_hold(final_value: int) -> void:
+func begin_result_hold(final_values: Variant) -> void:
 	if not visible:
 		return
+	var values := _normalize_values(final_values)
 	phase = Phase.RESULT_HOLD
-	presentation.present([final_value], false, 1)
-	display.show_face(final_value, false)
+	active_count = clampi(values.size(), 1, MAX_DICE)
+	locked_count = active_count
+	presentation.present(values, false, active_count)
+	for index: int in range(MAX_DICE):
+		var billboard := billboards[index]
+		billboard.visible = index < active_count
+		if index < values.size():
+			billboard.show_face(values[index], false)
+	_set_presentation_center(landing_center, active_count)
 
 func cancel_to_tray() -> void:
 	stop_sent = false
+	locked_count = 0
 	visible = false
 	set_process_input(false)
+	input_exempt_rect = Rect2()
 	phase = Phase.TRAY_IDLE
 	if is_instance_valid(presentation):
-		display.scale = Vector2.ONE
+		_set_formation_scale(1.0)
+	for billboard: MapDieBillboard in billboards:
+		billboard.visible = false
 
 func is_active() -> bool:
 	return phase != Phase.TRAY_IDLE and phase != Phase.COMPLETE
@@ -216,23 +294,56 @@ func receipt() -> Dictionary:
 		"stop_request_count": stop_request_count,
 		"presentation_nodes": 1 if is_instance_valid(presentation) else 0,
 		"dice_pool_size": int(pool.get("pool_size", 0)),
+		"billboard_pool_size": billboards.size(),
+		"active_billboards": active_count,
 		"tray_visible": bool(pool.get("tray_visible", true)),
 		"presentation_rect": display.get_global_rect() if is_instance_valid(display) else Rect2(),
 	}
 
-func _set_presentation_center(center: Vector2) -> void:
-	display.position = center - PRESENTATION_SIZE * 0.5
-	display.size = PRESENTATION_SIZE
-	display.pivot_offset = PRESENTATION_SIZE * 0.5
+func _set_presentation_center(center: Vector2, count: int = -1) -> void:
+	var formation_count := active_count if count <= 0 else clampi(count, 1, MAX_DICE)
+	var offsets := formation_offsets(formation_count)
+	var visual_scale := formation_scale(formation_count)
+	for index: int in range(MAX_DICE):
+		var billboard := billboards[index]
+		billboard.size = PRESENTATION_SIZE
+		billboard.pivot_offset = PRESENTATION_SIZE * 0.5
+		var offset := offsets[index] if index < offsets.size() else Vector2.ZERO
+		billboard.position = center + offset - PRESENTATION_SIZE * 0.5
+		billboard.scale = Vector2.ONE * visual_scale
+
+func _set_formation_scale(value: float) -> void:
+	var scale_value := maxf(0.01, value) * formation_scale(active_count)
+	for billboard: MapDieBillboard in billboards:
+		billboard.scale = Vector2.ONE * scale_value
+
+func _normalize_values(source: Variant) -> Array[int]:
+	var values: Array[int] = []
+	if source is Array:
+		for value: Variant in source:
+			values.append(clampi(int(value), 1, 6))
+	else:
+		values.append(clampi(int(source), 1, 6))
+	return values if not values.is_empty() else [1]
 
 func _input(event: InputEvent) -> void:
 	if not visible:
+		return
+	var event_position := Vector2.ZERO
+	if event is InputEventMouseButton:
+		event_position = event.position
+	elif event is InputEventScreenTouch:
+		event_position = event.position
+	if input_exempt_rect.has_area() and input_exempt_rect.has_point(event_position):
 		return
 	get_viewport().set_input_as_handled()
 	var pressed: bool = event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
 	pressed = pressed or (event is InputEventScreenTouch and event.pressed)
 	if pressed:
 		request_early_stop()
+
+func set_input_exempt_rect(rect: Rect2) -> void:
+	input_exempt_rect = rect
 
 func request_early_stop() -> bool:
 	if not can_request_stop(phase, stop_sent):
