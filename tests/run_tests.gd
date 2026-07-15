@@ -85,6 +85,7 @@ func _init() -> void:
 	_expect(MapDiceOverlayScript.formation_offsets(2).size() == 2 and MapDiceOverlayScript.formation_offsets(3).size() == 3 and MapDiceOverlayScript.formation_offsets(5).size() == 5 and MapDiceOverlayScript.formation_scale(5) < MapDiceOverlayScript.formation_scale(3), "map die formations use two, three, and three-plus-two layouts")
 	_expect(MapDiceOverlayScript.formation_offsets(3).size() == 3 and MapDiceOverlayScript.MAX_DICE == 5, "three dice reserve a dedicated slot formation without changing the five-die pool")
 	_expect(MapDiceOverlayScript.role_visual_mode(["PAIR"]) == "PAIR" and MapDiceOverlayScript.role_visual_mode(["STRAIGHT"]) == "STRAIGHT" and MapDiceOverlayScript.role_visual_mode(["ALL EVEN"]) == "" and MapDiceOverlayScript.role_visual_mode(["TRIPLE", "ALL ODD"]) == "TRIPLE", "slot role line modes keep main role priority and support colors separate")
+	_expect(MapDiceOverlayScript.TRIPLE_CONVERGENCE_FACTOR > 0.80 and MapDiceOverlayScript.TRIPLE_CONVERGENCE_FACTOR < 1.0 and MapDiceOverlayScript.TRIPLE_RESULT_HOLD_DURATION >= 0.6 and MapDiceOverlayScript.TRIPLE_RESULT_HOLD_DURATION <= 0.8, "triple convergence is a restrained inward move with readable result hold")
 	var summed_preview := TourismMapViewScript.new()
 	summed_preview.highlight_destination(12, 18)
 	_expect(summed_preview.highlighted_destination_value == 18, "multi-die destination preview keeps summed 12-18 distance readable")

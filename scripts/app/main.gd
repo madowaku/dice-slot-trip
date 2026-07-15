@@ -2406,6 +2406,8 @@ func _qa_tourmap_multi_die() -> void:
 	var idle := true
 	var receipts: Array[Dictionary] = []
 	for count: int in counts:
+		if count == 3:
+			fixed_targets = [6, 6, 6]
 		var values := await _animate_dice_roll(count)
 		var receipt: Dictionary = map_dice_overlay.receipt()
 		receipts.append(receipt)
@@ -2415,9 +2417,10 @@ func _qa_tourmap_multi_die() -> void:
 	var audio_ok := int(audio_receipt.get("active_voices", 0)) == 0
 	var pooled := int(map_dice_overlay.receipt().get("billboard_pool_size", 0)) == MapDiceOverlayScript.MAX_DICE
 	var slot_seen := int(map_dice_overlay.receipt().get("slot_open_count", 0)) >= 1 and int(map_dice_overlay.receipt().get("slot_result_count", 0)) >= 1 and int(map_dice_overlay.receipt().get("slot_frame_count", 0)) == 3
+	var triple_seen := int(map_dice_overlay.receipt().get("triple_convergence_count", 0)) >= 1 and not bool(map_dice_overlay.receipt().get("triple_convergence_active", false))
 	var no_commit := GameState.rolls_used == 0 and GameState.current_tile_index == 58
-	var passed := valid and idle and audio_ok and pooled and slot_seen and no_commit
-	print("QA_TOURMAP_MULTI_DIE values=%s idle=%s audio=%s pooled=%s slot=%s no_commit=%s receipts=%s passed=%s" % [valid, idle, audio_ok, pooled, slot_seen, no_commit, receipts, passed])
+	var passed := valid and idle and audio_ok and pooled and slot_seen and triple_seen and no_commit
+	print("QA_TOURMAP_MULTI_DIE values=%s idle=%s audio=%s pooled=%s slot=%s triple=%s no_commit=%s receipts=%s passed=%s" % [valid, idle, audio_ok, pooled, slot_seen, triple_seen, no_commit, receipts, passed])
 	GameState.apply_dictionary(original)
 	if not passed:
 		push_error("TOURMAP multi-die overlay QA failed.")

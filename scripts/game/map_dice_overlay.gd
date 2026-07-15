@@ -150,6 +150,10 @@ class MapSlotEffects extends Control:
 				var to := centers[index + 1]
 				draw_line(from, from.lerp(to, segment_progress), Color(0.88, 0.78, 0.47, 0.85), 2.0, true)
 				draw_circle(from.lerp(to, segment_progress), 3.0, Color(1.0, 0.91, 0.65, 0.88))
+		elif main_role == "TRIPLE":
+			var triple_alpha := 0.84 * progress
+			for index: int in range(2):
+				draw_line(centers[index], centers[index + 1], Color(0.86, 0.70, 0.38, triple_alpha), 2.0, true)
 		if support_role in ["ALL EVEN", "ALL ODD"]:
 			var line_color := Color("#67c7bd") if support_role == "ALL EVEN" else Color("#d29a4a")
 			var line_alpha := 0.78 * progress
@@ -164,6 +168,9 @@ const MAX_DICE := 5
 const LAUNCH_DURATION := 0.24
 const RESULT_HOLD_DURATION := 0.45
 const RETURN_DURATION := 0.23
+const TRIPLE_CONVERGENCE_FACTOR := 0.86
+const TRIPLE_CONVERGENCE_DURATION := 0.32
+const TRIPLE_RESULT_HOLD_DURATION := 0.68
 
 var phase: Phase = Phase.TRAY_IDLE
 var presentation: DicePresentation3D
@@ -187,6 +194,11 @@ var input_exempt_rect := Rect2()
 var slot_open_count := 0
 var slot_result_count := 0
 var slot_mode_active := false
+var result_hold_duration := RESULT_HOLD_DURATION
+var triple_convergence := 0.0
+var triple_convergence_active := false
+var triple_convergence_elapsed := 0.0
+var triple_convergence_count := 0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -194,6 +206,7 @@ func _ready() -> void:
 	size = Vector2.ZERO
 	visible = false
 	set_process_input(false)
+	set_process(false)
 	presentation = DicePresentation3D.new()
 	presentation.name = "MapDicePresentation3D"
 	presentation.overlay_compact = true
@@ -373,7 +386,7 @@ func hold_and_return(final_values: Variant) -> void:
 		return
 	var values := _normalize_values(final_values)
 	begin_result_hold(values)
-	await get_tree().create_timer(RESULT_HOLD_DURATION).timeout
+	await get_tree().create_timer(result_hold_duration).timeout
 	phase = Phase.RETURNING_TO_TRAY
 	var start := landing_center
 	var elapsed := 0.0
@@ -396,6 +409,10 @@ func hold_and_return(final_values: Variant) -> void:
 	locked_count = 0
 	_set_formation_scale(1.0)
 	_set_slot_mode(false)
+	triple_convergence = 0.0
+	triple_convergence_active = false
+	result_hold_duration = RESULT_HOLD_DURATION
+	set_process(false)
 	if is_instance_valid(slot_effects):
 		slot_effects.clear()
 	for billboard: MapDieBillboard in billboards:
@@ -428,6 +445,10 @@ func cancel_to_tray() -> void:
 	if is_instance_valid(presentation):
 		_set_formation_scale(1.0)
 	_set_slot_mode(false)
+	triple_convergence = 0.0
+	triple_convergence_active = false
+	result_hold_duration = RESULT_HOLD_DURATION
+	set_process(false)
 	for billboard: MapDieBillboard in billboards:
 		billboard.visible = false
 
@@ -450,6 +471,8 @@ func receipt() -> Dictionary:
 		"slot_mode_active": slot_mode_active,
 		"slot_open_count": slot_open_count,
 		"slot_result_count": slot_result_count,
+		"triple_convergence_count": triple_convergence_count,
+		"triple_convergence_active": triple_convergence_active,
 		"tray_visible": bool(pool.get("tray_visible", true)),
 		"presentation_rect": display.get_global_rect() if is_instance_valid(display) else Rect2(),
 	}
@@ -458,19 +481,24 @@ func _set_presentation_center(center: Vector2, count: int = -1) -> void:
 	var formation_count := active_count if count <= 0 else clampi(count, 1, MAX_DICE)
 	var offsets := formation_offsets(formation_count)
 	var visual_scale := formation_scale(formation_count)
+	var convergence_scale := 1.0 + 0.04 * sin(triple_convergence * PI) if formation_count == 3 and triple_convergence_active else 1.0
 	for index: int in range(MAX_DICE):
 		var billboard := billboards[index]
 		billboard.size = PRESENTATION_SIZE
 		billboard.pivot_offset = PRESENTATION_SIZE * 0.5
 		var offset := offsets[index] if index < offsets.size() else Vector2.ZERO
+		if formation_count == 3 and triple_convergence > 0.0:
+			offset = offset.lerp(offset * TRIPLE_CONVERGENCE_FACTOR, triple_convergence)
 		billboard.position = center + offset - PRESENTATION_SIZE * 0.5
-		billboard.scale = Vector2.ONE * visual_scale
+		billboard.scale = Vector2.ONE * visual_scale * convergence_scale
 	var frame_size := Vector2(122.0, 92.0) * formation_scale(3)
 	for index: int in range(slot_frames.size()):
 		var frame := slot_frames[index]
 		frame.size = frame_size
 		frame.pivot_offset = frame_size * 0.5
 		var offset := offsets[index] if index < offsets.size() else Vector2.ZERO
+		if formation_count == 3 and triple_convergence > 0.0:
+			offset = offset.lerp(offset * TRIPLE_CONVERGENCE_FACTOR, triple_convergence)
 		frame.position = center + offset - frame_size * 0.5
 		frame.visible = slot_mode_active and formation_count == 3
 		frame.set_state(index < locked_count, index == locked_count and locked_count < 3)
@@ -504,11 +532,32 @@ func show_slot_result(text: String, values: Array[int] = [], labels: Array = [])
 		return
 	slot_result.text = text.strip_edges()
 	slot_result_count += 1
+	var is_triple := role_visual_mode(labels) == "TRIPLE" and active_count == 3
+	triple_convergence = 0.0
+	triple_convergence_active = is_triple
+	triple_convergence_elapsed = 0.0
+	if is_triple:
+		triple_convergence_count += 1
+		result_hold_duration = TRIPLE_RESULT_HOLD_DURATION
+		set_process(true)
+	else:
+		result_hold_duration = RESULT_HOLD_DURATION
+		set_process(false)
 	if is_instance_valid(slot_effects):
 		slot_effects.begin_roles(values, labels)
 	for frame: MapSlotFrame in slot_frames:
 		frame.set_state(true, false)
 	_set_presentation_center(landing_center, active_count)
+
+func _process(delta: float) -> void:
+	if not triple_convergence_active:
+		return
+	triple_convergence_elapsed += delta
+	triple_convergence = minf(1.0, triple_convergence_elapsed / TRIPLE_CONVERGENCE_DURATION)
+	_set_presentation_center(landing_center, active_count)
+	if triple_convergence >= 1.0:
+		triple_convergence_active = false
+		set_process(false)
 
 func _set_formation_scale(value: float) -> void:
 	var scale_value := maxf(0.01, value) * formation_scale(active_count)
