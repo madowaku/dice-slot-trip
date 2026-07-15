@@ -2380,14 +2380,14 @@ func _qa_tourmap() -> void:
 		var tourism_view := board_view as TourismMapView
 		var child_count_before := tourism_view.get_child_count()
 		var active_receipts_ok := true
-		for district_tile: int in [84, 43]:
+		for district_tile: int in [84, 43, 61]:
 			tourism_view.set_current_tile(district_tile)
 			for cycle: int in range(20):
 				for level: int in [0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0]:
 					tourism_view.set_flow_visual_level(level)
 			var active_receipt := tourism_view.district_flow_receipt()
-			active_receipts_ok = active_receipts_ok and bool(active_receipt.get("supported", false)) and int(active_receipt.get("flow_level", -1)) == 0 and not bool(active_receipt.get("processing", true)) and int(active_receipt.get("visual_count", 0)) == 2 and int(active_receipt.get("coordinator_child_count", 0)) == 2
-		tourism_view.set_current_tile(58)
+			active_receipts_ok = active_receipts_ok and bool(active_receipt.get("supported", false)) and int(active_receipt.get("flow_level", -1)) == 0 and not bool(active_receipt.get("processing", true)) and int(active_receipt.get("visual_count", 0)) == 3 and int(active_receipt.get("coordinator_child_count", 0)) == 3
+		tourism_view.set_current_tile(18)
 		var hidden_receipt := tourism_view.district_flow_receipt()
 		district_flow_repeat_ok = active_receipts_ok and child_count_before == tourism_view.get_child_count() and not bool(hidden_receipt.get("supported", true)) and not bool(hidden_receipt.get("processing", true)) and not bool(hidden_receipt.get("visible", true))
 		tourism_view.set_current_tile(89)
@@ -2536,11 +2536,17 @@ func _qa_tourmap_capture(kind: String, path: String) -> void:
 		"oasis_flow3": 3,
 		"oasis_flow4": 4,
 		"oasis_flow5": 5,
+		"ruins_flow0": 0,
+		"ruins_flow1": 1,
+		"ruins_flow2": 2,
+		"ruins_flow3": 3,
+		"ruins_flow4": 4,
+		"ruins_flow5": 5,
 	}
 	GameState.flow_level = int(flow_capture_levels.get(kind, 0))
 	var market_level := 0 if kind == "market_lv0" else 3
 	GameState.landmark_levels = {"CAI_LANDMARK_01": market_level, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
-	GameState.current_tile_index = 43 if kind == "classic" or kind.begins_with("oasis_flow") else (84 if kind in ["wrap", "dunes_flow5"] else 0)
+	GameState.current_tile_index = 61 if kind.begins_with("ruins_flow") else (43 if kind == "classic" or kind.begins_with("oasis_flow") else (84 if kind in ["wrap", "dunes_flow5"] else 0))
 	show_game()
 	_set_board_view_mode("classic" if kind == "classic" else "tourism")
 	for ignored: int in range(12): await get_tree().process_frame

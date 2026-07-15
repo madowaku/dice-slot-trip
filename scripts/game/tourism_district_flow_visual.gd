@@ -9,9 +9,11 @@ extends Control
 const BaseFlowVisualScript = preload("res://scripts/game/district_flow/district_flow_visual_base.gd")
 const DunesFlowVisualScript = preload("res://scripts/game/district_flow/dunes_flow_visual.gd")
 const OasisFlowVisualScript = preload("res://scripts/game/district_flow/oasis_flow_visual.gd")
+const RuinsFlowVisualScript = preload("res://scripts/game/district_flow/ruins_flow_visual.gd")
 const VISUAL_SCRIPTS: Dictionary = {
 	&"DUNES": DunesFlowVisualScript,
 	&"OASIS": OasisFlowVisualScript,
+	&"RUINS": RuinsFlowVisualScript,
 }
 
 var district_id: StringName = &""
@@ -34,6 +36,9 @@ static func dunes_reaction_profile(level: int) -> Dictionary:
 
 static func oasis_reaction_profile(level: int) -> Dictionary:
 	return OasisFlowVisualScript.reaction_profile(level)
+
+static func ruins_reaction_profile(level: int) -> Dictionary:
+	return RuinsFlowVisualScript.reaction_profile(level)
 
 func set_district(value: StringName) -> void:
 	district_id = StringName(str(value).to_upper())
