@@ -83,6 +83,80 @@ class MapSlotFrame extends Control:
 		if inner.has_area():
 			draw_line(inner.position, Vector2(inner.end.x, inner.position.y), Color(0.95, 0.82, 0.53, 0.22), 1.0)
 
+class MapSlotEffects extends Control:
+	var centers: Array[Vector2] = []
+	var main_role := ""
+	var support_role := ""
+	var pair_segments: Array[Vector2i] = []
+	var progress := 1.0
+	var elapsed := 0.0
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_process(false)
+
+	func set_layout(next_centers: Array[Vector2]) -> void:
+		centers = next_centers
+		queue_redraw()
+
+	func begin_roles(values: Array[int], labels: Array) -> void:
+		main_role = MapDiceOverlay.role_visual_mode(labels)
+		support_role = ""
+		for label: Variant in labels:
+			var role := str(label)
+			if role in ["ALL EVEN", "ALL ODD"]:
+				support_role = role
+		pair_segments.clear()
+		if main_role == "PAIR":
+			for left: int in range(values.size()):
+				for right: int in range(left + 1, values.size()):
+					if values[left] == values[right]:
+						pair_segments.append(Vector2i(left, right))
+		progress = 0.0
+		elapsed = 0.0
+		set_process(main_role != "" or support_role != "")
+		queue_redraw()
+
+	func clear() -> void:
+		main_role = ""
+		support_role = ""
+		pair_segments.clear()
+		progress = 1.0
+		set_process(false)
+		queue_redraw()
+
+	func _process(delta: float) -> void:
+		elapsed += delta
+		progress = minf(1.0, elapsed / 0.38)
+		queue_redraw()
+		if progress >= 1.0:
+			set_process(false)
+
+	func _draw() -> void:
+		if centers.size() < 3:
+			return
+		if main_role == "PAIR":
+			for segment: Vector2i in pair_segments:
+				var alpha := 0.80 * progress
+				draw_line(centers[segment.x], centers[segment.y], Color(0.93, 0.78, 0.43, alpha), 2.0, true)
+				var tip := centers[segment.x].lerp(centers[segment.y], progress)
+				draw_circle(tip, 3.0, Color(0.98, 0.88, 0.60, alpha))
+		elif main_role == "STRAIGHT":
+			for index: int in range(2):
+				var segment_progress := clampf(progress * 2.0 - float(index), 0.0, 1.0)
+				if segment_progress <= 0.0:
+					continue
+				var from := centers[index]
+				var to := centers[index + 1]
+				draw_line(from, from.lerp(to, segment_progress), Color(0.88, 0.78, 0.47, 0.85), 2.0, true)
+				draw_circle(from.lerp(to, segment_progress), 3.0, Color(1.0, 0.91, 0.65, 0.88))
+		if support_role in ["ALL EVEN", "ALL ODD"]:
+			var line_color := Color("#67c7bd") if support_role == "ALL EVEN" else Color("#d29a4a")
+			var line_alpha := 0.78 * progress
+			var left := centers[0] + Vector2(-22.0, 31.0)
+			var right := centers[2] + Vector2(22.0, 31.0)
+			draw_line(left, right, Color(line_color, line_alpha), 2.0, true)
+
 enum Phase { TRAY_IDLE, LAUNCHING_TO_MAP, ROLLING_ON_MAP, STOPPING, RESULT_HOLD, RETURNING_TO_TRAY, COMPLETE }
 
 const PRESENTATION_SIZE := Vector2(128.0, 96.0)
@@ -98,6 +172,7 @@ var presentation: DicePresentation3D
 var display: MapDieBillboard
 var billboards: Array[MapDieBillboard] = []
 var slot_frames: Array[MapSlotFrame] = []
+var slot_effects: MapSlotEffects
 var slot_title: Label
 var slot_result: Label
 var tray_center := Vector2.ZERO
@@ -136,6 +211,10 @@ func _ready() -> void:
 	presentation.size = PRESENTATION_SIZE
 	presentation.set_tray_visible(false)
 	presentation.visible = false
+	slot_effects = MapSlotEffects.new()
+	slot_effects.name = "MapSlotEffects"
+	slot_effects.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(slot_effects)
 	for index: int in range(3):
 		var frame := MapSlotFrame.new()
 		frame.name = "MapSlotFrame_%d" % index
@@ -184,6 +263,17 @@ static func landing_rect_in_screen(map_global_rect: Rect2, reserved_local_rect: 
 
 static func uses_map_presentation(is_tourism: bool, dice_count: int) -> bool:
 	return is_tourism and clampi(dice_count, 1, MAX_DICE) in [1, 2, 3, 5]
+
+static func role_visual_mode(labels: Array) -> String:
+	for label: Variant in labels:
+		var role := str(label)
+		if role == "TRIPLE":
+			return "TRIPLE"
+		if role == "STRAIGHT":
+			return "STRAIGHT"
+		if role == "PAIR":
+			return "PAIR"
+	return ""
 
 static func formation_offsets(dice_count: int) -> Array[Vector2]:
 	match clampi(dice_count, 1, MAX_DICE):
@@ -306,6 +396,8 @@ func hold_and_return(final_values: Variant) -> void:
 	locked_count = 0
 	_set_formation_scale(1.0)
 	_set_slot_mode(false)
+	if is_instance_valid(slot_effects):
+		slot_effects.clear()
 	for billboard: MapDieBillboard in billboards:
 		billboard.visible = false
 	phase = Phase.TRAY_IDLE
@@ -398,6 +490,8 @@ func _set_slot_mode(enabled: bool) -> void:
 		slot_open_count += 1
 	if not enabled and is_instance_valid(slot_result):
 		slot_result.text = ""
+	if not enabled and is_instance_valid(slot_effects):
+		slot_effects.clear()
 	for frame: MapSlotFrame in slot_frames:
 		frame.visible = enabled
 	if is_instance_valid(slot_title):
@@ -405,11 +499,13 @@ func _set_slot_mode(enabled: bool) -> void:
 	if is_instance_valid(slot_result):
 		slot_result.visible = enabled and not slot_result.text.is_empty()
 
-func show_slot_result(text: String) -> void:
+func show_slot_result(text: String, values: Array[int] = [], labels: Array = []) -> void:
 	if not slot_mode_active or not is_instance_valid(slot_result):
 		return
 	slot_result.text = text.strip_edges()
 	slot_result_count += 1
+	if is_instance_valid(slot_effects):
+		slot_effects.begin_roles(values, labels)
 	for frame: MapSlotFrame in slot_frames:
 		frame.set_state(true, false)
 	_set_presentation_center(landing_center, active_count)

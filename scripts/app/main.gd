@@ -583,7 +583,7 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		if count == 3:
 			var slot_roles: Dictionary = DiceLogicScript.evaluate_current(rolling_values, count)
 			var slot_labels: Array = slot_roles.get("labels", [])
-			map_dice_overlay.show_slot_result(" + ".join(slot_labels) if not slot_labels.is_empty() else "DICE SLOT")
+			map_dice_overlay.show_slot_result(" + ".join(slot_labels) if not slot_labels.is_empty() else "DICE SLOT", rolling_values, slot_labels)
 		# 2/3 dice preview the summed destination. Five dice are a selection
 		# screen, so no destination highlight appears before the player confirms
 		# the recommended three.
