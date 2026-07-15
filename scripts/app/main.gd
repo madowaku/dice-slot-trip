@@ -2375,25 +2375,28 @@ func _qa_tourmap() -> void:
 	var wrap_ok: bool = wrapped_indices == [85, 86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 	var scenic_ok: bool = board_view.scenic_level == 3 and board_view.scenic_texture != null
 	var input_ok: bool = board_view.mouse_filter == Control.MOUSE_FILTER_IGNORE
-	var dunes_flow_repeat_ok := false
+	var district_flow_repeat_ok := false
 	if board_view is TourismMapView:
 		var tourism_view := board_view as TourismMapView
-		tourism_view.set_current_tile(84)
 		var child_count_before := tourism_view.get_child_count()
-		for cycle: int in range(20):
-			for level: int in [0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0]:
-				tourism_view.set_flow_visual_level(level)
-		var dunes_active_receipt := tourism_view.district_flow_receipt()
+		var active_receipts_ok := true
+		for district_tile: int in [84, 43]:
+			tourism_view.set_current_tile(district_tile)
+			for cycle: int in range(20):
+				for level: int in [0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0]:
+					tourism_view.set_flow_visual_level(level)
+			var active_receipt := tourism_view.district_flow_receipt()
+			active_receipts_ok = active_receipts_ok and bool(active_receipt.get("supported", false)) and int(active_receipt.get("flow_level", -1)) == 0 and not bool(active_receipt.get("processing", true)) and int(active_receipt.get("visual_count", 0)) == 2 and int(active_receipt.get("coordinator_child_count", 0)) == 2
 		tourism_view.set_current_tile(58)
-		var dunes_hidden_receipt := tourism_view.district_flow_receipt()
-		dunes_flow_repeat_ok = child_count_before == tourism_view.get_child_count() and int(dunes_active_receipt.get("flow_level", -1)) == 0 and not bool(dunes_active_receipt.get("processing", true)) and not bool(dunes_hidden_receipt.get("processing", true)) and not bool(dunes_hidden_receipt.get("visible", true))
+		var hidden_receipt := tourism_view.district_flow_receipt()
+		district_flow_repeat_ok = active_receipts_ok and child_count_before == tourism_view.get_child_count() and not bool(hidden_receipt.get("supported", true)) and not bool(hidden_receipt.get("processing", true)) and not bool(hidden_receipt.get("visible", true))
 		tourism_view.set_current_tile(89)
 	moving = true
 	var blocked_while_moving: bool = not _set_board_view_mode("classic") and board_view is TourismMapView
 	moving = false
 	var fallback_ok: bool = _set_board_view_mode("not-a-mode") and not (board_view is TourismMapView) and board_view_mode == "classic"
-	var passed: bool = classic_ok and minimap_ok and tourism_ok and wrap_ok and scenic_ok and input_ok and dunes_flow_repeat_ok and blocked_while_moving and fallback_ok
-	print("QA_TOURMAP classic=%s tourism=%s minimap=%s wrap=%s scenic=%s input=%s dunes_flow_repeat=%s idle_guard=%s fallback=%s passed=%s" % [classic_ok, tourism_ok, minimap_ok, wrap_ok, scenic_ok, input_ok, dunes_flow_repeat_ok, blocked_while_moving, fallback_ok, passed])
+	var passed: bool = classic_ok and minimap_ok and tourism_ok and wrap_ok and scenic_ok and input_ok and district_flow_repeat_ok and blocked_while_moving and fallback_ok
+	print("QA_TOURMAP classic=%s tourism=%s minimap=%s wrap=%s scenic=%s input=%s district_flow_repeat=%s idle_guard=%s fallback=%s passed=%s" % [classic_ok, tourism_ok, minimap_ok, wrap_ok, scenic_ok, input_ok, district_flow_repeat_ok, blocked_while_moving, fallback_ok, passed])
 	GameState.apply_dictionary(original)
 	if not passed: push_error("TOURMAP deterministic QA failed.")
 	get_tree().quit(0 if passed else 1)
@@ -2525,17 +2528,25 @@ func _capture_has_full_ui(path: String) -> bool:
 func _qa_tourmap_capture(kind: String, path: String) -> void:
 	GameState.reset_run()
 	GameState.current_dice_count = 1
-	var dunes_flow_capture := kind == "dunes_flow5"
-	GameState.flow_level = 5 if dunes_flow_capture else 0
+	var flow_capture_levels := {
+		"dunes_flow5": 5,
+		"oasis_flow0": 0,
+		"oasis_flow1": 1,
+		"oasis_flow2": 2,
+		"oasis_flow3": 3,
+		"oasis_flow4": 4,
+		"oasis_flow5": 5,
+	}
+	GameState.flow_level = int(flow_capture_levels.get(kind, 0))
 	var market_level := 0 if kind == "market_lv0" else 3
 	GameState.landmark_levels = {"CAI_LANDMARK_01": market_level, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
-	GameState.current_tile_index = 43 if kind == "classic" else (84 if kind in ["wrap", "dunes_flow5"] else 0)
+	GameState.current_tile_index = 43 if kind == "classic" or kind.begins_with("oasis_flow") else (84 if kind in ["wrap", "dunes_flow5"] else 0)
 	show_game()
 	_set_board_view_mode("classic" if kind == "classic" else "tourism")
 	for ignored: int in range(12): await get_tree().process_frame
 	await get_tree().create_timer(0.50).timeout
 	var result := _save_opaque_capture(path)
-	print("QA_TOURMAP_CAPTURE kind=%s market_level=%d path=%s result=%s" % [kind, market_level, path, result])
+	print("QA_TOURMAP_CAPTURE kind=%s flow=%d market_level=%d path=%s result=%s" % [kind, GameState.flow_level, market_level, path, result])
 	get_tree().quit(0 if result == OK else 1)
 
 func _qa_clean_lap() -> void:

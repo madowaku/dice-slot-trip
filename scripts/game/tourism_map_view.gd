@@ -8,6 +8,7 @@ const DistrictFlowVisualScript = preload("res://scripts/game/tourism_district_fl
 const FIRST_OFFSET := -4
 const LAST_OFFSET := 10
 const SLOT_COUNT := 15
+const DISTRICT_IDS: Array[StringName] = [&"MARKET", &"PYRAMID", &"OASIS", &"RUINS", &"DUNES"]
 const REACHABLE_SPECIAL_TYPES: Array[StringName] = [
 	&"EVENT", &"ITEM", &"COIN", &"WARP", &"SHOP", &"REST", &"LANDMARK",
 	&"BOSS_SCENT", &"STAGE_SPECIAL", &"RISK",
@@ -34,36 +35,35 @@ var highlighted_destination_tile: int = -1
 var highlighted_destination_value: int = 0
 var flow_visual_level: int = 0
 var flow_phase: float = 0.0
-var dunes_flow_visual: Control
+var district_flow_visual: Control
 
 func _ready() -> void:
 	super._ready()
 	set_process(false)
-	dunes_flow_visual = DistrictFlowVisualScript.new()
-	dunes_flow_visual.name = "DunesFlowVisual"
-	dunes_flow_visual.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dunes_flow_visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	dunes_flow_visual.set_district(&"DUNES")
-	add_child(dunes_flow_visual)
+	district_flow_visual = DistrictFlowVisualScript.new()
+	district_flow_visual.name = "DistrictFlowVisual"
+	district_flow_visual.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	district_flow_visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(district_flow_visual)
 	_sync_district_flow_visual()
 
 func set_flow_visual_level(level: int) -> void:
 	var next_level := clampi(level, 0, 5)
 	var changed := next_level != flow_visual_level
 	flow_visual_level = next_level
-	if is_instance_valid(dunes_flow_visual):
-		dunes_flow_visual.set_flow_visual_level(flow_visual_level)
+	if is_instance_valid(district_flow_visual):
+		district_flow_visual.set_flow_visual_level(flow_visual_level)
 	set_process(flow_visual_level > 0)
 	if changed:
 		queue_redraw()
 
 func play_flow_pulse(event_type: StringName) -> void:
-	if not is_instance_valid(dunes_flow_visual) or current_tile / 18 != 4:
+	if not is_instance_valid(district_flow_visual):
 		return
-	dunes_flow_visual.play_flow_pulse(event_type)
+	district_flow_visual.play_flow_pulse(event_type)
 
 func district_flow_receipt() -> Dictionary:
-	return dunes_flow_visual.receipt() if is_instance_valid(dunes_flow_visual) else {}
+	return district_flow_visual.receipt() if is_instance_valid(district_flow_visual) else {}
 
 func set_current_tile(value: int) -> void:
 	current_tile = posmod(value, TILE_COUNT)
@@ -72,11 +72,10 @@ func set_current_tile(value: int) -> void:
 	queue_redraw()
 
 func _sync_district_flow_visual() -> void:
-	if not is_instance_valid(dunes_flow_visual):
+	if not is_instance_valid(district_flow_visual):
 		return
-	var is_dunes := current_tile / 18 == 4
-	dunes_flow_visual.set_district_active(is_dunes)
-	dunes_flow_visual.set_flow_visual_level(flow_visual_level)
+	district_flow_visual.set_district(district_id_for_tile(current_tile))
+	district_flow_visual.set_flow_visual_level(flow_visual_level)
 
 func _process(delta: float) -> void:
 	if flow_visual_level <= 0:
@@ -86,6 +85,9 @@ func _process(delta: float) -> void:
 
 static func flow_visual_strength(level: int) -> Dictionary:
 	return DistrictFlowVisualScript.flow_visual_strength(level)
+
+static func district_id_for_tile(tile_index: int) -> StringName:
+	return DISTRICT_IDS[clampi(posmod(tile_index, TILE_COUNT) / 18, 0, DISTRICT_IDS.size() - 1)]
 
 static func normalized_view_mode(value: String) -> String:
 	return VIEW_MODE_TOURISM if value.strip_edges().to_lower() == VIEW_MODE_TOURISM else VIEW_MODE_CLASSIC
