@@ -587,6 +587,7 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 			var slot_roles: Dictionary = DiceLogicScript.evaluate_current(rolling_values, count)
 			var slot_labels: Array = slot_roles.get("labels", [])
 			map_dice_overlay.show_slot_result(" + ".join(slot_labels) if not slot_labels.is_empty() else "DICE SLOT", rolling_values, slot_labels)
+			_play_flow_pulse(&"role_resolved")
 		# 2/3 dice preview the summed destination. Five dice are a selection
 		# screen, so no destination highlight appears before the player confirms
 		# the recommended three.
@@ -617,6 +618,10 @@ func _sync_flow_visuals() -> void:
 		(board_view as TourismMapView).set_flow_visual_level(GameState.flow_level)
 	if is_instance_valid(map_dice_overlay):
 		map_dice_overlay.set_flow_visual_level(GameState.flow_level)
+
+func _play_flow_pulse(event_type: StringName) -> void:
+	if is_instance_valid(board_view) and board_view is TourismMapView:
+		(board_view as TourismMapView).play_flow_pulse(event_type)
 
 func _map_dice_tray_anchor_rect() -> Rect2:
 	var source := dice_presentation.get_global_rect()
@@ -656,6 +661,7 @@ func _lock_next_die(automatic: bool) -> void:
 	locked_dice_count += 1
 	_render_dice(rolling_values, false)
 	if is_instance_valid(dice_audio): dice_audio.play_land(index, 0.76 if not automatic else 0.62)
+	_play_flow_pulse(&"die_stopped")
 	if not automatic:
 		last_roll_early_stopped = true
 		role_label.text = "%d個目を早止め" % locked_dice_count
@@ -1173,6 +1179,7 @@ func _show_risk_space_modal() -> String:
 	return memo
 
 func _apply_risk_harm(tile_index: int) -> String:
+	var flow_before := GameState.flow_level
 	var state := GameState.to_dictionary()
 	var resolution_id := "risk:%08d:%d:%d" % [GameState.total_laps, GameState.rolls_used, tile_index]
 	var resolution := RewardResolverScript.resolve_risk(state, resolution_id, tile_index)
@@ -1180,6 +1187,9 @@ func _apply_risk_harm(tile_index: int) -> String:
 	GameState.apply_dictionary(state)
 	board_view.set_current_tile(GameState.current_tile_index)
 	minimap_view.set_current_tile(GameState.current_tile_index)
+	_sync_flow_visuals()
+	if flow_before > 0 and GameState.flow_level == 0:
+		_play_flow_pulse(&"flow_broken")
 	var summary: Array = applied.get("summary", [])
 	return str(summary[0]) if not summary.is_empty() else "%s：処理済み" % RewardResolverScript.risk_name_for_tile(tile_index)
 
@@ -2365,12 +2375,25 @@ func _qa_tourmap() -> void:
 	var wrap_ok: bool = wrapped_indices == [85, 86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 	var scenic_ok: bool = board_view.scenic_level == 3 and board_view.scenic_texture != null
 	var input_ok: bool = board_view.mouse_filter == Control.MOUSE_FILTER_IGNORE
+	var dunes_flow_repeat_ok := false
+	if board_view is TourismMapView:
+		var tourism_view := board_view as TourismMapView
+		tourism_view.set_current_tile(84)
+		var child_count_before := tourism_view.get_child_count()
+		for cycle: int in range(20):
+			for level: int in [0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0]:
+				tourism_view.set_flow_visual_level(level)
+		var dunes_active_receipt := tourism_view.district_flow_receipt()
+		tourism_view.set_current_tile(58)
+		var dunes_hidden_receipt := tourism_view.district_flow_receipt()
+		dunes_flow_repeat_ok = child_count_before == tourism_view.get_child_count() and int(dunes_active_receipt.get("flow_level", -1)) == 0 and not bool(dunes_active_receipt.get("processing", true)) and not bool(dunes_hidden_receipt.get("processing", true)) and not bool(dunes_hidden_receipt.get("visible", true))
+		tourism_view.set_current_tile(89)
 	moving = true
 	var blocked_while_moving: bool = not _set_board_view_mode("classic") and board_view is TourismMapView
 	moving = false
 	var fallback_ok: bool = _set_board_view_mode("not-a-mode") and not (board_view is TourismMapView) and board_view_mode == "classic"
-	var passed: bool = classic_ok and minimap_ok and tourism_ok and wrap_ok and scenic_ok and input_ok and blocked_while_moving and fallback_ok
-	print("QA_TOURMAP classic=%s tourism=%s minimap=%s wrap=%s scenic=%s input=%s idle_guard=%s fallback=%s passed=%s" % [classic_ok, tourism_ok, minimap_ok, wrap_ok, scenic_ok, input_ok, blocked_while_moving, fallback_ok, passed])
+	var passed: bool = classic_ok and minimap_ok and tourism_ok and wrap_ok and scenic_ok and input_ok and dunes_flow_repeat_ok and blocked_while_moving and fallback_ok
+	print("QA_TOURMAP classic=%s tourism=%s minimap=%s wrap=%s scenic=%s input=%s dunes_flow_repeat=%s idle_guard=%s fallback=%s passed=%s" % [classic_ok, tourism_ok, minimap_ok, wrap_ok, scenic_ok, input_ok, dunes_flow_repeat_ok, blocked_while_moving, fallback_ok, passed])
 	GameState.apply_dictionary(original)
 	if not passed: push_error("TOURMAP deterministic QA failed.")
 	get_tree().quit(0 if passed else 1)
@@ -2502,9 +2525,11 @@ func _capture_has_full_ui(path: String) -> bool:
 func _qa_tourmap_capture(kind: String, path: String) -> void:
 	GameState.reset_run()
 	GameState.current_dice_count = 1
+	var dunes_flow_capture := kind == "dunes_flow5"
+	GameState.flow_level = 5 if dunes_flow_capture else 0
 	var market_level := 0 if kind == "market_lv0" else 3
 	GameState.landmark_levels = {"CAI_LANDMARK_01": market_level, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
-	GameState.current_tile_index = 43 if kind == "classic" else (84 if kind == "wrap" else 0)
+	GameState.current_tile_index = 43 if kind == "classic" else (84 if kind in ["wrap", "dunes_flow5"] else 0)
 	show_game()
 	_set_board_view_mode("classic" if kind == "classic" else "tourism")
 	for ignored: int in range(12): await get_tree().process_frame

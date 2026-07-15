@@ -4,6 +4,7 @@ extends "res://scripts/game/board_view.gd"
 const VIEW_MODE_CLASSIC := "classic"
 const VIEW_MODE_TOURISM := "tourism"
 const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
+const DistrictFlowVisualScript = preload("res://scripts/game/tourism_district_flow_visual.gd")
 const FIRST_OFFSET := -4
 const LAST_OFFSET := 10
 const SLOT_COUNT := 15
@@ -33,17 +34,49 @@ var highlighted_destination_tile: int = -1
 var highlighted_destination_value: int = 0
 var flow_visual_level: int = 0
 var flow_phase: float = 0.0
+var dunes_flow_visual: Control
 
 func _ready() -> void:
 	super._ready()
 	set_process(false)
+	dunes_flow_visual = DistrictFlowVisualScript.new()
+	dunes_flow_visual.name = "DunesFlowVisual"
+	dunes_flow_visual.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dunes_flow_visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dunes_flow_visual.set_district(&"DUNES")
+	add_child(dunes_flow_visual)
+	_sync_district_flow_visual()
 
 func set_flow_visual_level(level: int) -> void:
 	var next_level := clampi(level, 0, 5)
-	if next_level != flow_visual_level:
-		flow_visual_level = next_level
-		queue_redraw()
+	var changed := next_level != flow_visual_level
+	flow_visual_level = next_level
+	if is_instance_valid(dunes_flow_visual):
+		dunes_flow_visual.set_flow_visual_level(flow_visual_level)
 	set_process(flow_visual_level > 0)
+	if changed:
+		queue_redraw()
+
+func play_flow_pulse(event_type: StringName) -> void:
+	if not is_instance_valid(dunes_flow_visual) or current_tile / 18 != 4:
+		return
+	dunes_flow_visual.play_flow_pulse(event_type)
+
+func district_flow_receipt() -> Dictionary:
+	return dunes_flow_visual.receipt() if is_instance_valid(dunes_flow_visual) else {}
+
+func set_current_tile(value: int) -> void:
+	current_tile = posmod(value, TILE_COUNT)
+	_refresh_scenic()
+	_sync_district_flow_visual()
+	queue_redraw()
+
+func _sync_district_flow_visual() -> void:
+	if not is_instance_valid(dunes_flow_visual):
+		return
+	var is_dunes := current_tile / 18 == 4
+	dunes_flow_visual.set_district_active(is_dunes)
+	dunes_flow_visual.set_flow_visual_level(flow_visual_level)
 
 func _process(delta: float) -> void:
 	if flow_visual_level <= 0:
@@ -52,14 +85,7 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 static func flow_visual_strength(level: int) -> Dictionary:
-	var clamped := clampi(level, 0, 5)
-	var intensity: Array[float] = [0.0, 0.22, 0.35, 0.52, 0.70, 0.86]
-	return {
-		"level": clamped,
-		"intensity": intensity[clamped],
-		"map_motion": 0.0 if clamped < 5 else 0.35,
-		"slot_glow": 0.0 if clamped < 3 else (0.18 if clamped < 5 else 0.30),
-	}
+	return DistrictFlowVisualScript.flow_visual_strength(level)
 
 static func normalized_view_mode(value: String) -> String:
 	return VIEW_MODE_TOURISM if value.strip_edges().to_lower() == VIEW_MODE_TOURISM else VIEW_MODE_CLASSIC
@@ -408,9 +434,9 @@ func _draw_flow_map_effects() -> void:
 		for index: int in range(0, route_points.size(), 12):
 			var point := route_points[index]
 			draw_line(point, point + Vector2(8.0, -2.0), route_tint, 1.2, true)
-	if flow_visual_level >= 5:
+	if flow_visual_level >= 5 and current_tile / 18 == 0:
 		# Market cloth / palm accents: a restrained sway, only while this
-		# district is on screen. Other districts keep their own future language.
+		# district is on screen. Other districts keep their own language.
 		var sway := sin(flow_phase * 1.7) * 3.0
 		for anchor: Vector2 in [Vector2(size.x * 0.10, size.y * 0.28), Vector2(size.x * 0.90, size.y * 0.28)]:
 			draw_line(anchor, anchor + Vector2(0.0, 20.0), Color(0.64, 0.39, 0.20, 0.42), 1.5, true)
