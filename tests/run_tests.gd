@@ -83,6 +83,7 @@ func _init() -> void:
 	var all_multi_clear := TourismMapViewScript.landing_zone_is_clear(Vector2(360, 250), 2) and TourismMapViewScript.landing_zone_is_clear(Vector2(360, 250), 3) and TourismMapViewScript.landing_zone_is_clear(Vector2(360, 250), 5)
 	_expect(MapDiceOverlayScript.uses_map_presentation(true, 1) and MapDiceOverlayScript.uses_map_presentation(true, 2) and MapDiceOverlayScript.uses_map_presentation(true, 3) and MapDiceOverlayScript.uses_map_presentation(true, 5) and not MapDiceOverlayScript.uses_map_presentation(true, 4) and not MapDiceOverlayScript.uses_map_presentation(false, 2) and all_multi_clear and multi_bounds.encloses(multi_landing) and multi_bounds.encloses(multi_footprint) and multi_route_clear, "map die presentation routes Tourism 1/2/3/5 with count-aware landing footprint")
 	_expect(MapDiceOverlayScript.formation_offsets(2).size() == 2 and MapDiceOverlayScript.formation_offsets(3).size() == 3 and MapDiceOverlayScript.formation_offsets(5).size() == 5 and MapDiceOverlayScript.formation_scale(5) < MapDiceOverlayScript.formation_scale(3), "map die formations use two, three, and three-plus-two layouts")
+	_expect(MapDiceOverlayScript.formation_offsets(3).size() == 3 and MapDiceOverlayScript.MAX_DICE == 5, "three dice reserve a dedicated slot formation without changing the five-die pool")
 	var summed_preview := TourismMapViewScript.new()
 	summed_preview.highlight_destination(12, 18)
 	_expect(summed_preview.highlighted_destination_value == 18, "multi-die destination preview keeps summed 12-18 distance readable")

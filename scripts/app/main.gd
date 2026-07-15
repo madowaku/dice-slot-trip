@@ -580,6 +580,10 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	_render_dice(rolling_values, false)
 	if is_instance_valid(dice_audio): dice_audio.end_roll()
 	if map_overlay_roll:
+		if count == 3:
+			var slot_roles: Dictionary = DiceLogicScript.evaluate_current(rolling_values, count)
+			var slot_labels: Array = slot_roles.get("labels", [])
+			map_dice_overlay.show_slot_result(" + ".join(slot_labels) if not slot_labels.is_empty() else "DICE SLOT")
 		# 2/3 dice preview the summed destination. Five dice are a selection
 		# screen, so no destination highlight appears before the player confirms
 		# the recommended three.
@@ -2410,9 +2414,10 @@ func _qa_tourmap_multi_die() -> void:
 	var audio_receipt: Dictionary = dice_audio.receipt()
 	var audio_ok := int(audio_receipt.get("active_voices", 0)) == 0
 	var pooled := int(map_dice_overlay.receipt().get("billboard_pool_size", 0)) == MapDiceOverlayScript.MAX_DICE
+	var slot_seen := int(map_dice_overlay.receipt().get("slot_open_count", 0)) >= 1 and int(map_dice_overlay.receipt().get("slot_result_count", 0)) >= 1 and int(map_dice_overlay.receipt().get("slot_frame_count", 0)) == 3
 	var no_commit := GameState.rolls_used == 0 and GameState.current_tile_index == 58
-	var passed := valid and idle and audio_ok and pooled and no_commit
-	print("QA_TOURMAP_MULTI_DIE values=%s idle=%s audio=%s pooled=%s no_commit=%s receipts=%s passed=%s" % [valid, idle, audio_ok, pooled, no_commit, receipts, passed])
+	var passed := valid and idle and audio_ok and pooled and slot_seen and no_commit
+	print("QA_TOURMAP_MULTI_DIE values=%s idle=%s audio=%s pooled=%s slot=%s no_commit=%s receipts=%s passed=%s" % [valid, idle, audio_ok, pooled, slot_seen, no_commit, receipts, passed])
 	GameState.apply_dictionary(original)
 	if not passed:
 		push_error("TOURMAP multi-die overlay QA failed.")

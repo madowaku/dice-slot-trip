@@ -60,6 +60,29 @@ class MapDieBillboard extends Control:
 		box.set_corner_radius_all(radius)
 		return box
 
+class MapSlotFrame extends Control:
+	var locked := false
+	var active := false
+
+	func set_state(is_locked: bool, is_active: bool) -> void:
+		locked = is_locked
+		active = is_active
+		queue_redraw()
+
+	func _draw() -> void:
+		var frame_rect := Rect2(Vector2(2.0, 2.0), Vector2(maxf(4.0, size.x - 4.0), maxf(4.0, size.y - 4.0)))
+		var border := Color("#d9b875") if locked else (Color("#74d5cb") if active else Color(0.72, 0.56, 0.31, 0.78))
+		var fill := Color(0.10, 0.08, 0.06, 0.40) if not locked else Color(0.18, 0.14, 0.08, 0.48)
+		var style := StyleBoxFlat.new()
+		style.bg_color = fill
+		style.border_color = border
+		style.set_border_width_all(2 if active else 1)
+		style.set_corner_radius_all(9)
+		draw_style_box(style, frame_rect)
+		var inner := frame_rect.grow(-6.0)
+		if inner.has_area():
+			draw_line(inner.position, Vector2(inner.end.x, inner.position.y), Color(0.95, 0.82, 0.53, 0.22), 1.0)
+
 enum Phase { TRAY_IDLE, LAUNCHING_TO_MAP, ROLLING_ON_MAP, STOPPING, RESULT_HOLD, RETURNING_TO_TRAY, COMPLETE }
 
 const PRESENTATION_SIZE := Vector2(128.0, 96.0)
@@ -74,6 +97,9 @@ var presentation: DicePresentation3D
 # this layer only mirrors values and stop state, so Classic remains untouched.
 var display: MapDieBillboard
 var billboards: Array[MapDieBillboard] = []
+var slot_frames: Array[MapSlotFrame] = []
+var slot_title: Label
+var slot_result: Label
 var tray_center := Vector2.ZERO
 var landing_center := Vector2.ZERO
 var active_count := 1
@@ -83,6 +109,9 @@ var stop_request_count := 0
 var launch_count := 0
 var completion_count := 0
 var input_exempt_rect := Rect2()
+var slot_open_count := 0
+var slot_result_count := 0
+var slot_mode_active := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -107,6 +136,30 @@ func _ready() -> void:
 	presentation.size = PRESENTATION_SIZE
 	presentation.set_tray_visible(false)
 	presentation.visible = false
+	for index: int in range(3):
+		var frame := MapSlotFrame.new()
+		frame.name = "MapSlotFrame_%d" % index
+		frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		frame.visible = false
+		slot_frames.append(frame)
+		add_child(frame)
+	slot_title = Label.new()
+	slot_title.name = "MapSlotTitle"
+	slot_title.text = "DICE SLOT"
+	slot_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	slot_title.add_theme_font_size_override("font_size", 13)
+	slot_title.add_theme_color_override("font_color", Color("#e9c982"))
+	slot_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot_title.visible = false
+	add_child(slot_title)
+	slot_result = Label.new()
+	slot_result.name = "MapSlotResult"
+	slot_result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	slot_result.add_theme_font_size_override("font_size", 12)
+	slot_result.add_theme_color_override("font_color", Color("#f4e4bd"))
+	slot_result.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot_result.visible = false
+	add_child(slot_result)
 	for index: int in range(MAX_DICE):
 		var billboard := MapDieBillboard.new()
 		billboard.name = "MapDiceBillboard_%d" % index
@@ -179,6 +232,7 @@ func begin_launch(values: Array[int], tray_global_rect: Rect2, map_global_rect: 
 	stop_sent = false
 	locked_count = 0
 	active_count = clampi(values.size(), 1, MAX_DICE)
+	_set_slot_mode(active_count == 3)
 	launch_count += 1
 	visible = true
 	set_process_input(true)
@@ -208,6 +262,7 @@ func present(values: Array[int], rolling: bool, locked_value_count: int) -> void
 		return
 	presentation.present(values, rolling, locked_value_count)
 	active_count = clampi(values.size(), 1, MAX_DICE)
+	_set_slot_mode(active_count == 3)
 	var previous_locked := locked_count
 	locked_count = clampi(locked_value_count, 0, active_count)
 	var visual_rolling := is_visual_rolling(rolling, locked_count, active_count)
@@ -250,6 +305,7 @@ func hold_and_return(final_values: Variant) -> void:
 	stop_sent = false
 	locked_count = 0
 	_set_formation_scale(1.0)
+	_set_slot_mode(false)
 	for billboard: MapDieBillboard in billboards:
 		billboard.visible = false
 	phase = Phase.TRAY_IDLE
@@ -261,6 +317,7 @@ func begin_result_hold(final_values: Variant) -> void:
 	phase = Phase.RESULT_HOLD
 	active_count = clampi(values.size(), 1, MAX_DICE)
 	locked_count = active_count
+	_set_slot_mode(active_count == 3)
 	presentation.present(values, false, active_count)
 	for index: int in range(MAX_DICE):
 		var billboard := billboards[index]
@@ -278,6 +335,7 @@ func cancel_to_tray() -> void:
 	phase = Phase.TRAY_IDLE
 	if is_instance_valid(presentation):
 		_set_formation_scale(1.0)
+	_set_slot_mode(false)
 	for billboard: MapDieBillboard in billboards:
 		billboard.visible = false
 
@@ -296,6 +354,10 @@ func receipt() -> Dictionary:
 		"dice_pool_size": int(pool.get("pool_size", 0)),
 		"billboard_pool_size": billboards.size(),
 		"active_billboards": active_count,
+		"slot_frame_count": slot_frames.size(),
+		"slot_mode_active": slot_mode_active,
+		"slot_open_count": slot_open_count,
+		"slot_result_count": slot_result_count,
 		"tray_visible": bool(pool.get("tray_visible", true)),
 		"presentation_rect": display.get_global_rect() if is_instance_valid(display) else Rect2(),
 	}
@@ -311,6 +373,46 @@ func _set_presentation_center(center: Vector2, count: int = -1) -> void:
 		var offset := offsets[index] if index < offsets.size() else Vector2.ZERO
 		billboard.position = center + offset - PRESENTATION_SIZE * 0.5
 		billboard.scale = Vector2.ONE * visual_scale
+	var frame_size := Vector2(122.0, 92.0) * formation_scale(3)
+	for index: int in range(slot_frames.size()):
+		var frame := slot_frames[index]
+		frame.size = frame_size
+		frame.pivot_offset = frame_size * 0.5
+		var offset := offsets[index] if index < offsets.size() else Vector2.ZERO
+		frame.position = center + offset - frame_size * 0.5
+		frame.visible = slot_mode_active and formation_count == 3
+		frame.set_state(index < locked_count, index == locked_count and locked_count < 3)
+	if is_instance_valid(slot_title):
+		slot_title.size = Vector2(112.0, 20.0)
+		slot_title.position = center + Vector2(-56.0, frame_size.y * 0.5 + 2.0)
+		slot_title.visible = slot_mode_active and formation_count == 3
+	if is_instance_valid(slot_result):
+		slot_result.size = Vector2(112.0, 20.0)
+		slot_result.position = center + Vector2(-56.0, -frame_size.y * 0.5 - 21.0)
+		slot_result.visible = slot_mode_active and formation_count == 3 and not slot_result.text.is_empty()
+
+func _set_slot_mode(enabled: bool) -> void:
+	var changed := enabled != slot_mode_active
+	slot_mode_active = enabled
+	if changed and enabled:
+		slot_open_count += 1
+	if not enabled and is_instance_valid(slot_result):
+		slot_result.text = ""
+	for frame: MapSlotFrame in slot_frames:
+		frame.visible = enabled
+	if is_instance_valid(slot_title):
+		slot_title.visible = enabled
+	if is_instance_valid(slot_result):
+		slot_result.visible = enabled and not slot_result.text.is_empty()
+
+func show_slot_result(text: String) -> void:
+	if not slot_mode_active or not is_instance_valid(slot_result):
+		return
+	slot_result.text = text.strip_edges()
+	slot_result_count += 1
+	for frame: MapSlotFrame in slot_frames:
+		frame.set_state(true, false)
+	_set_presentation_center(landing_center, active_count)
 
 func _set_formation_scale(value: float) -> void:
 	var scale_value := maxf(0.01, value) * formation_scale(active_count)
