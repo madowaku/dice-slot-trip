@@ -10,10 +10,12 @@ const BaseFlowVisualScript = preload("res://scripts/game/district_flow/district_
 const DunesFlowVisualScript = preload("res://scripts/game/district_flow/dunes_flow_visual.gd")
 const OasisFlowVisualScript = preload("res://scripts/game/district_flow/oasis_flow_visual.gd")
 const RuinsFlowVisualScript = preload("res://scripts/game/district_flow/ruins_flow_visual.gd")
+const PyramidFlowVisualScript = preload("res://scripts/game/district_flow/pyramid_flow_visual.gd")
 const VISUAL_SCRIPTS: Dictionary = {
 	&"DUNES": DunesFlowVisualScript,
 	&"OASIS": OasisFlowVisualScript,
 	&"RUINS": RuinsFlowVisualScript,
+	&"PYRAMID": PyramidFlowVisualScript,
 }
 
 var district_id: StringName = &""
@@ -39,6 +41,9 @@ static func oasis_reaction_profile(level: int) -> Dictionary:
 
 static func ruins_reaction_profile(level: int) -> Dictionary:
 	return RuinsFlowVisualScript.reaction_profile(level)
+
+static func pyramid_reaction_profile(level: int) -> Dictionary:
+	return PyramidFlowVisualScript.reaction_profile(level)
 
 func set_district(value: StringName) -> void:
 	district_id = StringName(str(value).to_upper())
