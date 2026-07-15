@@ -417,6 +417,7 @@ func show_game() -> void:
 	board_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels)
 	if board_view is TourismMapView:
 		(board_view as TourismMapView).set_dice_count(GameState.current_dice_count)
+		(board_view as TourismMapView).set_flow_visual_level(GameState.flow_level)
 	page.add_child(board_view)
 	var memo_panel := PanelContainer.new(); memo_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.97, 0.91, 0.79, 0.92), Color("#b28a52"), 14))
 	memo_label = _body("風が砂の上に細い道を描いている。", 16); memo_label.custom_minimum_size.y = 30; memo_panel.add_child(memo_label); page.add_child(memo_panel)
@@ -533,6 +534,8 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		SaveManager.save_now()
 	var map_overlay_roll := _uses_map_dice_overlay(count)
 	if map_overlay_roll:
+		_sync_flow_visuals()
+		map_dice_overlay.set_flow_visual_level(GameState.flow_level)
 		var tray_rect := _map_dice_tray_anchor_rect()
 		dice_presentation.visible = false
 		var map_rect := board_view.get_global_rect()
@@ -608,6 +611,12 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 
 func _uses_map_dice_overlay(count: int) -> bool:
 	return is_instance_valid(map_dice_overlay) and MapDiceOverlayScript.uses_map_presentation(board_view is TourismMapView, count)
+
+func _sync_flow_visuals() -> void:
+	if is_instance_valid(board_view) and board_view is TourismMapView:
+		(board_view as TourismMapView).set_flow_visual_level(GameState.flow_level)
+	if is_instance_valid(map_dice_overlay):
+		map_dice_overlay.set_flow_visual_level(GameState.flow_level)
 
 func _map_dice_tray_anchor_rect() -> Rect2:
 	var source := dice_presentation.get_global_rect()
@@ -822,6 +831,7 @@ func _continue_roll_transaction() -> void:
 		await _commit_lap_crossings(crossed_laps, "NORMAL")
 	if phase != "SPACE_EFFECT_COMMITTED":
 		await _resolve_landing(tile_types[GameState.current_tile_index], roles)
+		_sync_flow_visuals()
 		GameState.commit_roll_space_effect()
 		SaveManager.save_now()
 	if crossed_laps > 0 and GameState.current_tile_index == 0:
@@ -1736,6 +1746,7 @@ func _set_board_view_mode(mode: String) -> bool:
 	replacement.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels)
 	if replacement is TourismMapView:
 		(replacement as TourismMapView).set_dice_count(GameState.current_dice_count)
+		(replacement as TourismMapView).set_flow_visual_level(GameState.flow_level)
 	parent.add_child(replacement)
 	parent.move_child(replacement, child_index)
 	parent.remove_child(previous)
@@ -2399,8 +2410,10 @@ func _qa_tourmap_multi_die() -> void:
 	GameState.reset_run()
 	GameState.current_dice_count = 3
 	GameState.current_tile_index = 58
+	GameState.flow_level = 5
 	show_game()
 	_set_board_view_mode("tourism")
+	_sync_flow_visuals()
 	var counts: Array[int] = [2, 3, 5]
 	var valid := true
 	var idle := true
@@ -2418,9 +2431,10 @@ func _qa_tourmap_multi_die() -> void:
 	var pooled := int(map_dice_overlay.receipt().get("billboard_pool_size", 0)) == MapDiceOverlayScript.MAX_DICE
 	var slot_seen := int(map_dice_overlay.receipt().get("slot_open_count", 0)) >= 1 and int(map_dice_overlay.receipt().get("slot_result_count", 0)) >= 1 and int(map_dice_overlay.receipt().get("slot_frame_count", 0)) == 3
 	var triple_seen := int(map_dice_overlay.receipt().get("triple_convergence_count", 0)) >= 1 and not bool(map_dice_overlay.receipt().get("triple_convergence_active", false))
+	var flow_visual_ok := int(map_dice_overlay.receipt().get("flow_visual_level", 0)) == 5 and board_view is TourismMapView and (board_view as TourismMapView).flow_visual_level == 5
 	var no_commit := GameState.rolls_used == 0 and GameState.current_tile_index == 58
-	var passed := valid and idle and audio_ok and pooled and slot_seen and triple_seen and no_commit
-	print("QA_TOURMAP_MULTI_DIE values=%s idle=%s audio=%s pooled=%s slot=%s triple=%s no_commit=%s receipts=%s passed=%s" % [valid, idle, audio_ok, pooled, slot_seen, triple_seen, no_commit, receipts, passed])
+	var passed := valid and idle and audio_ok and pooled and slot_seen and triple_seen and flow_visual_ok and no_commit
+	print("QA_TOURMAP_MULTI_DIE values=%s idle=%s audio=%s pooled=%s slot=%s triple=%s flow=%s no_commit=%s receipts=%s passed=%s" % [valid, idle, audio_ok, pooled, slot_seen, triple_seen, flow_visual_ok, no_commit, receipts, passed])
 	GameState.apply_dictionary(original)
 	if not passed:
 		push_error("TOURMAP multi-die overlay QA failed.")

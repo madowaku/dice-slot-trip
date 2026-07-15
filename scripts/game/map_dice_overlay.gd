@@ -90,6 +90,10 @@ class MapSlotEffects extends Control:
 	var pair_segments: Array[Vector2i] = []
 	var progress := 1.0
 	var elapsed := 0.0
+	var effect_duration := 0.38
+	var flow_level := 0
+	var wind_phase := 0.0
+	var slot_active := false
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -98,6 +102,18 @@ class MapSlotEffects extends Control:
 	func set_layout(next_centers: Array[Vector2]) -> void:
 		centers = next_centers
 		queue_redraw()
+
+	func set_flow_level(level: int) -> void:
+		flow_level = clampi(level, 0, 5)
+		set_process(slot_active and (flow_level > 0 or main_role != "" or support_role != ""))
+		queue_redraw()
+
+	func set_slot_active(active_value: bool) -> void:
+		slot_active = active_value
+		set_process(slot_active and (flow_level > 0 or main_role != "" or support_role != ""))
+
+	func _flow_strength() -> float:
+		return [0.0, 0.22, 0.35, 0.52, 0.70, 0.86][flow_level]
 
 	func begin_roles(values: Array[int], labels: Array) -> void:
 		main_role = MapDiceOverlay.role_visual_mode(labels)
@@ -114,7 +130,8 @@ class MapSlotEffects extends Control:
 						pair_segments.append(Vector2i(left, right))
 		progress = 0.0
 		elapsed = 0.0
-		set_process(main_role != "" or support_role != "")
+		effect_duration = 0.38 + (0.10 if flow_level >= 4 else 0.0)
+		set_process(slot_active and (flow_level > 0 or main_role != "" or support_role != ""))
 		queue_redraw()
 
 	func clear() -> void:
@@ -122,19 +139,36 @@ class MapSlotEffects extends Control:
 		support_role = ""
 		pair_segments.clear()
 		progress = 1.0
-		set_process(false)
+		set_process(slot_active and flow_level > 0)
 		queue_redraw()
 
 	func _process(delta: float) -> void:
-		elapsed += delta
-		progress = minf(1.0, elapsed / 0.38)
+		wind_phase = fmod(wind_phase + delta * (1.2 + float(flow_level) * 0.35), TAU)
+		if main_role != "" or support_role != "":
+			elapsed += delta
+			progress = minf(1.0, elapsed / effect_duration)
 		queue_redraw()
-		if progress >= 1.0:
+		if progress >= 1.0 and flow_level <= 0:
 			set_process(false)
 
 	func _draw() -> void:
 		if centers.size() < 3:
 			return
+		var wind_alpha := _flow_strength()
+		if flow_level >= 1:
+			for index: int in range(2):
+				var from := centers[index] + Vector2(-18.0, 31.0)
+				var wind_offset := sin(wind_phase + float(index)) * 3.0
+				draw_line(from + Vector2(wind_offset, 0.0), from + Vector2(18.0 + float(flow_level) * 2.0 + wind_offset, -4.0), Color(0.44, 0.78, 0.75, wind_alpha), 1.5, true)
+		if flow_level >= 2:
+			for index: int in range(3):
+				var particle_x := centers[index].x + sin(wind_phase * 1.7 + float(index) * 1.4) * 12.0
+				var particle_y := centers[index].y + 28.0 + cos(wind_phase + float(index)) * 3.0
+				draw_circle(Vector2(particle_x, particle_y), 1.6, Color(0.78, 0.63, 0.36, wind_alpha * 0.8))
+		if flow_level >= 3:
+			var scan_progress := fmod(wind_phase * 0.25, 1.0)
+			for center: Vector2 in centers:
+				draw_arc(center, 34.0, scan_progress * TAU, scan_progress * TAU + PI * 0.55, 12, Color(0.92, 0.75, 0.42, wind_alpha * 0.65), 1.5, true)
 		if main_role == "PAIR":
 			for segment: Vector2i in pair_segments:
 				var alpha := 0.80 * progress
@@ -199,6 +233,7 @@ var triple_convergence := 0.0
 var triple_convergence_active := false
 var triple_convergence_elapsed := 0.0
 var triple_convergence_count := 0
+var flow_visual_level := 0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -455,6 +490,11 @@ func cancel_to_tray() -> void:
 func is_active() -> bool:
 	return phase != Phase.TRAY_IDLE and phase != Phase.COMPLETE
 
+func set_flow_visual_level(level: int) -> void:
+	flow_visual_level = clampi(level, 0, 5)
+	if is_instance_valid(slot_effects):
+		slot_effects.set_flow_level(flow_visual_level)
+
 func receipt() -> Dictionary:
 	var pool := presentation.pool_receipt() if is_instance_valid(presentation) else {}
 	return {
@@ -473,6 +513,7 @@ func receipt() -> Dictionary:
 		"slot_result_count": slot_result_count,
 		"triple_convergence_count": triple_convergence_count,
 		"triple_convergence_active": triple_convergence_active,
+		"flow_visual_level": flow_visual_level,
 		"tray_visible": bool(pool.get("tray_visible", true)),
 		"presentation_rect": display.get_global_rect() if is_instance_valid(display) else Rect2(),
 	}
@@ -520,6 +561,8 @@ func _set_slot_mode(enabled: bool) -> void:
 		slot_result.text = ""
 	if not enabled and is_instance_valid(slot_effects):
 		slot_effects.clear()
+	if is_instance_valid(slot_effects):
+		slot_effects.set_slot_active(enabled)
 	for frame: MapSlotFrame in slot_frames:
 		frame.visible = enabled
 	if is_instance_valid(slot_title):

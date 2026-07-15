@@ -31,6 +31,35 @@ const MARKET_PROP_REGIONS: Dictionary = {
 var dice_count: int = 1
 var highlighted_destination_tile: int = -1
 var highlighted_destination_value: int = 0
+var flow_visual_level: int = 0
+var flow_phase: float = 0.0
+
+func _ready() -> void:
+	super._ready()
+	set_process(false)
+
+func set_flow_visual_level(level: int) -> void:
+	var next_level := clampi(level, 0, 5)
+	if next_level != flow_visual_level:
+		flow_visual_level = next_level
+		queue_redraw()
+	set_process(flow_visual_level > 0)
+
+func _process(delta: float) -> void:
+	if flow_visual_level <= 0:
+		return
+	flow_phase = fmod(flow_phase + delta * (0.65 + float(flow_visual_level) * 0.22), TAU)
+	queue_redraw()
+
+static func flow_visual_strength(level: int) -> Dictionary:
+	var clamped := clampi(level, 0, 5)
+	var intensity: Array[float] = [0.0, 0.22, 0.35, 0.52, 0.70, 0.86]
+	return {
+		"level": clamped,
+		"intensity": intensity[clamped],
+		"map_motion": 0.0 if clamped < 5 else 0.35,
+		"slot_glow": 0.0 if clamped < 3 else (0.18 if clamped < 5 else 0.30),
+	}
 
 static func normalized_view_mode(value: String) -> String:
 	return VIEW_MODE_TOURISM if value.strip_edges().to_lower() == VIEW_MODE_TOURISM else VIEW_MODE_CLASSIC
@@ -300,6 +329,7 @@ func _draw_tourism_map() -> void:
 		var scenic_rect := aspect_fit_rect(scenic_texture.get_size(), scenic_bounds)
 		draw_texture_rect(scenic_texture, scenic_rect, false, Color(1.0, 0.97, 0.88, 0.66))
 	_draw_market_props()
+	_draw_flow_map_effects()
 	var district_names := ["市場", "ピラミッド", "オアシス", "遺跡", "砂丘"]
 	draw_string(ThemeDB.fallback_font, Vector2(18, 29), "%s地区　観光ルート" % district_names[clampi(current_tile / 18, 0, 4)], HORIZONTAL_ALIGNMENT_LEFT, -1, 18, INK)
 	draw_string(ThemeDB.fallback_font, Vector2(size.x - 145, 29), "%02d / 90" % (current_tile + 1), HORIZONTAL_ALIGNMENT_RIGHT, 126, 17, Color("#795d3f"))
@@ -359,6 +389,32 @@ func _draw_market_props() -> void:
 		var rect: Rect2 = spec.get("rect", Rect2())
 		draw_texture_rect_region(texture, Rect2(rect.position + Vector2(2.0, 3.0), rect.size), region, Color(0.20, 0.12, 0.06, 0.18))
 		draw_texture_rect_region(texture, rect, region, Color(0.93, 0.82, 0.67, 0.68))
+
+func _draw_flow_map_effects() -> void:
+	var visual := flow_visual_strength(flow_visual_level)
+	var intensity := float(visual.get("intensity", 0.0))
+	if intensity <= 0.0:
+		return
+	# A handful of deterministic Canvas strokes keeps the map alive without
+	# adding particle nodes or touching gameplay timing.
+	for index: int in range(3):
+		var base_x := fposmod(flow_phase * (28.0 + float(flow_visual_level) * 7.0) + float(index) * size.x * 0.31, size.x + 46.0) - 23.0
+		var base_y := size.y * (0.24 + float(index) * 0.13)
+		var length := 18.0 + float(flow_visual_level) * 4.0
+		draw_line(Vector2(base_x, base_y), Vector2(base_x + length, base_y - 4.0), Color(0.35, 0.73, 0.70, intensity * 0.55), 1.5, true)
+	if flow_visual_level >= 3:
+		var route_points := smooth_route_points(size)
+		var route_tint := Color(0.92, 0.76, 0.43, intensity * 0.18)
+		for index: int in range(0, route_points.size(), 12):
+			var point := route_points[index]
+			draw_line(point, point + Vector2(8.0, -2.0), route_tint, 1.2, true)
+	if flow_visual_level >= 5:
+		# Market cloth / palm accents: a restrained sway, only while this
+		# district is on screen. Other districts keep their own future language.
+		var sway := sin(flow_phase * 1.7) * 3.0
+		for anchor: Vector2 in [Vector2(size.x * 0.10, size.y * 0.28), Vector2(size.x * 0.90, size.y * 0.28)]:
+			draw_line(anchor, anchor + Vector2(0.0, 20.0), Color(0.64, 0.39, 0.20, 0.42), 1.5, true)
+			draw_line(anchor + Vector2(0.0, 3.0), anchor + Vector2(18.0 + sway, 8.0), Color(0.87, 0.61, 0.30, 0.50), 2.0, true)
 
 func _draw_district_wash() -> void:
 	var district_index := current_tile / 18
