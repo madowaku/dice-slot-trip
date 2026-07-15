@@ -155,8 +155,8 @@ func _init() -> void:
 	transaction_state.reset_run()
 	transaction_state.current_tile_index = 89
 	transaction_state.begin_roll_transaction([], 1, 89)
-	var transaction_id := str(transaction_state.roll_transaction.roll_transaction_id)
-	_expect(str(transaction_state.roll_transaction.phase) == "PRE_ROLL" and transaction_id != "" and not bool(transaction_state.roll_transaction.result_committed), "roll transaction reserves PRE_ROLL without committing gameplay")
+	var transaction_id := str(transaction_state.roll_transaction.transaction_id)
+	_expect(str(transaction_state.roll_transaction.phase) == "PRE_ROLL" and transaction_id != "" and int(transaction_state.roll_transaction.start_tile_index) == 89 and transaction_state.roll_transaction.final_dice_values.is_empty() and not bool(transaction_state.roll_transaction.result_committed), "roll transaction reserves canonical PRE_ROLL without committing gameplay")
 	transaction_state.mark_roll_started([4])
 	_expect(str(transaction_state.roll_transaction.phase) == "ROLLING" and transaction_state.roll_transaction.values == [4] and transaction_state.roll_transaction.final_dice_values.is_empty(), "rolling transaction stores presentation values but no final result")
 	_expect(not transaction_state.mark_roll_started([2]), "roll transaction rejects duplicate start")
@@ -170,6 +170,7 @@ func _init() -> void:
 	transaction_state.commit_roll_movement(3)
 	_expect(str(transaction_state.roll_transaction.phase) == "MOVEMENT_COMMITTED" and bool(transaction_state.roll_transaction.movement_committed), "movement commit advances once")
 	_expect(not transaction_state.commit_roll_movement(4), "movement commit cannot run twice")
+	_expect(transaction_state.commit_roll_landing_roles() and not transaction_state.commit_roll_landing_roles() and transaction_state.commit_roll_landing_core(&"COIN", "coin +6") and not transaction_state.commit_roll_landing_core(&"COIN", "duplicate"), "landing role and core effects each commit once")
 	_expect(transaction_state.mark_roll_encounter_handoff(true, 2) and transaction_state.mark_roll_encounter_open(true, 2), "event to boss handoff is durable after reservation consumption")
 	_expect(bool(transaction_state.roll_transaction.encounter_pair_bonus) and int(transaction_state.roll_transaction.encounter_double_bonus) == 2, "PAIR and DOUBLE encounter bonuses remain authoritative on resume")
 	_expect(transaction_state.commit_roll_encounter_interaction(true, "sleepy_sphinx"), "boss interaction is durably committed")

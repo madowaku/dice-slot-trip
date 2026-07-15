@@ -637,7 +637,7 @@ func _abort_map_dice_roll() -> void:
 	if not fixed_targets.is_empty():
 		GameState.fixed_rolls = fixed_targets.duplicate()
 		fixed_targets.clear()
-	GameState.clear_roll_transaction()
+	GameState.rollback_uncommitted_roll()
 	SaveManager.save_now()
 	rolling_dice = false
 	moving = false
@@ -801,7 +801,7 @@ func _continue_roll_transaction() -> void:
 	if phase == "PRE_ROLL" or phase == "ROLLING":
 		# No gameplay result was durable yet, so the interrupted roll is a safe
 		# no-op. This also restores the pre-03B behavior for old saves.
-		GameState.clear_roll_transaction()
+		GameState.rollback_uncommitted_roll()
 		SaveManager.save_now()
 		moving = false
 		roll_button.disabled = false
@@ -856,7 +856,10 @@ func _resume_roll_transaction() -> void:
 		return
 	var phase := str(GameState.roll_transaction.get("phase", GameState.roll_transaction.get("roll_phase", "")))
 	if phase in ["PRE_ROLL", "ROLLING", "TURN_RESOLVED"]:
-		GameState.clear_roll_transaction()
+		if phase == "TURN_RESOLVED":
+			GameState.clear_roll_transaction()
+		else:
+			GameState.rollback_uncommitted_roll()
 		SaveManager.save_now()
 		_restore_roll_idle()
 		return
@@ -970,15 +973,28 @@ func _commit_lap_crossings(count: int, source: String) -> void:
 			await _show_lap_result_modal(resolution.get("result", {}))
 
 func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
-	var memo := ""
-	match tile_type:
+	var transaction: Dictionary = GameState.roll_transaction
+	var resolved_tile_type := StringName(str(transaction.get("landing_tile_type", String(tile_type))))
+	var core_committed := bool(transaction.get("landing_core_committed", false))
+	var memo := str(transaction.get("landing_memo", ""))
+	if not bool(transaction.get("landing_roles_committed", false)):
+		if roles.get("main", &"") == DiceLogicScript.PAIR:
+			GameState.souvenirs += 1
+		if roles.get("main", &"") == DiceLogicScript.STRAIGHT:
+			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
+		if roles.get("main", &"") == DiceLogicScript.DOUBLE:
+			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
+		GameState.commit_roll_landing_roles()
+		SaveManager.save_now()
+	var effective_tile_type := &"COMMITTED" if core_committed else resolved_tile_type
+	match effective_tile_type:
 		&"NORMAL":
 			memo = ["日陰で猫があくびをした。", "砂の向こうで鐘が一度鳴った。", "冷たい風が市場から届いた。"][rng.randi_range(0, 2)]
 		&"EVENT":
 			var boss_handoff := await _show_event_modal(roles)
 			memo = "短い旅の出来事を記録した。"
+			_commit_landing_core(resolved_tile_type, memo + _landing_role_suffix(roles))
 			if boss_handoff:
-				GameState.travel_memos.append(memo)
 				memo_label.text = memo
 				await _show_encounter_modal(roles.get("main", &"") == DiceLogicScript.PAIR, 2 if roles.get("main", &"") == DiceLogicScript.DOUBLE else 0)
 				return
@@ -1015,6 +1031,7 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 			var warp_laps := int(warp.laps)
 			board_view.set_current_tile(GameState.current_tile_index)
 			minimap_view.set_current_tile(GameState.current_tile_index)
+			_commit_landing_core(resolved_tile_type, memo + _landing_role_suffix(roles))
 			if warp_laps > 0: await _commit_lap_crossings(warp_laps, "WARP")
 		&"SHOP":
 			if GameState.coins >= 3:
@@ -1032,9 +1049,9 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 			var landmark_resolution := LandmarkSystemScript.resolve_stop(landmark_state, GameState.current_tile_index, landmark_resolution_id)
 			var landmark_applied := RewardResolverScript.apply(landmark_state, landmark_resolution, GameState.reward_apply_log)
 			GameState.apply_dictionary(landmark_state)
-			SaveManager.save_now()
 			var landmark_result: Dictionary = landmark_resolution.get("result", {})
 			memo = "%s Lv.%d　旅の記憶 +1" % [str(landmark_result.get("name", "カイロの名所")), int(landmark_result.get("new_level", 0))]
+			_commit_landing_core(resolved_tile_type, memo + _landing_role_suffix(roles))
 			if bool(landmark_applied.get("applied", false)):
 				await _show_landmark_result_modal(landmark_result, landmark_applied.get("summary", []))
 		&"BOSS_SCENT":
@@ -1044,17 +1061,11 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
 			memo = "砂時計の影が道を横切った。カイロの気配 +1"
 		&"RISK":
-			memo = await _show_risk_space_modal()
-	if roles.get("main", &"") == DiceLogicScript.PAIR:
-		GameState.souvenirs += 1
-		memo += "　PAIRのおみやげ +1"
-	if roles.get("main", &"") == DiceLogicScript.STRAIGHT:
-		GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
-		memo += "　STRAIGHTで気配が近づいた。"
-	if roles.get("main", &"") == DiceLogicScript.DOUBLE:
-		GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
-		memo += "　DOUBLEでDICE SLOT READY。気配も近づいた。"
-	GameState.travel_memos.append(memo)
+			memo = await _show_risk_space_modal(roles)
+	if not bool(GameState.roll_transaction.get("landing_core_committed", false)):
+		_commit_landing_core(resolved_tile_type, memo + _landing_role_suffix(roles))
+	else:
+		memo = str(GameState.roll_transaction.get("landing_memo", memo))
 	memo_label.text = memo
 	await get_tree().create_timer(0.18).timeout
 	# TRIPLE always invites one encounter after landing, even on a special space.
@@ -1062,7 +1073,7 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 	var triple_forced: bool = roles.get("main", &"") == DiceLogicScript.TRIPLE
 	if triple_forced:
 		await _show_encounter_modal(false)
-	elif tile_type == &"NORMAL":
+	elif resolved_tile_type == &"NORMAL":
 		var forced: bool = GameState.debug_force_encounter
 		GameState.debug_force_encounter = false
 		var appears := BossSystemScript.should_encounter(GameState.boss_presence, GameState.boss_relief, forced, rng.randf())
@@ -1072,6 +1083,21 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 		else:
 			GameState.boss_relief = mini(BossSystemScript.RELIEF_FORCE_AFTER, GameState.boss_relief + 1)
 			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
+
+func _landing_role_suffix(roles: Dictionary) -> String:
+	if roles.get("main", &"") == DiceLogicScript.PAIR:
+		return "　PAIRのおみやげ +1"
+	if roles.get("main", &"") == DiceLogicScript.STRAIGHT:
+		return "　STRAIGHTで気配が近づいた。"
+	if roles.get("main", &"") == DiceLogicScript.DOUBLE:
+		return "　DOUBLEでDICE SLOT READY。気配も近づいた。"
+	return ""
+
+func _commit_landing_core(tile_type: StringName, memo: String) -> void:
+	if not GameState.commit_roll_landing_core(tile_type, memo):
+		return
+	GameState.travel_memos.append(memo)
+	SaveManager.save_now()
 
 func _build_landmark_result_modal(result: Dictionary, summary: Array) -> Dictionary:
 	var modal := _make_modal()
@@ -1136,7 +1162,7 @@ func _show_item_space_choice() -> String:
 	_close_modal(modal.layer)
 	return "2候補から%s" % ("ピンポイントチケット" if chosen == 0 else "フィーバーチケット")
 
-func _show_risk_space_modal() -> String:
+func _show_risk_space_modal(roles: Dictionary = {}) -> String:
 	var base_dice_before := GameState.current_dice_count
 	var risk_tile := GameState.current_tile_index
 	var risk_name := RewardResolverScript.risk_name_for_tile(risk_tile)
@@ -1172,6 +1198,7 @@ func _show_risk_space_modal() -> String:
 			memo = _apply_risk_harm(risk_tile)
 	# The risk branch may add dice, but never removes the state held on arrival.
 	GameState.current_dice_count = maxi(base_dice_before, GameState.current_dice_count)
+	_commit_landing_core(&"RISK", memo + _landing_role_suffix(roles))
 	content.add_child(_body(memo, 20))
 	var close := _button("旅へ戻る", func() -> void: return, true); close.name = "risk_close"; close.toggle_mode = true; content.add_child(close)
 	await close.pressed
@@ -2703,6 +2730,69 @@ func _qa_roll_transaction() -> void:
 	show_game()
 	await _resume_roll_transaction()
 	checks.append(effect_loaded and GameState.current_tile_index == coin_tile and GameState.rolls_used == 1 and GameState.coins == 12 and GameState.roll_transaction.is_empty())
+
+	# Interruption after the synchronous COIN mutation but before the result
+	# hold finishes must observe the durable landing receipt and never add +6
+	# a second time.
+	GameState.reset_run()
+	GameState.current_tile_index = coin_tile
+	GameState.rolls_used = 1
+	GameState.begin_roll_transaction([1], 1, start_tile)
+	GameState.commit_roll_result([1], 1, roles, 1, coin_tile, 0, false)
+	GameState.commit_roll_movement(coin_tile)
+	GameState.commit_roll_landing_roles()
+	GameState.coins += 6
+	_commit_landing_core(&"COIN", "古い旅コインを拾った。+6")
+	var coin_core_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(coin_core_loaded and GameState.coins == 18 and GameState.current_tile_index == coin_tile and GameState.roll_transaction.is_empty())
+
+	# RISK harm is already resolution-idempotent; the landing receipt also
+	# prevents reopening the branch after its result was saved.
+	GameState.reset_run()
+	GameState.current_tile_index = 58
+	GameState.rolls_used = 1
+	GameState.begin_roll_transaction([1], 1, 57)
+	GameState.commit_roll_result([1], 1, roles, 1, 58, 0, false)
+	GameState.commit_roll_movement(58)
+	GameState.commit_roll_landing_roles()
+	var risk_memo := _apply_risk_harm(58)
+	_commit_landing_core(&"RISK", risk_memo)
+	var risk_core_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(risk_core_loaded and GameState.current_lap_penalty_count == 1 and not GameState.current_lap_clean and GameState.current_tile_index == 55 and GameState.roll_transaction.is_empty())
+
+	# LANDMARK reward and its receipt share one save boundary, so reopening
+	# after reward application cannot develop the landmark twice.
+	GameState.reset_run()
+	GameState.current_tile_index = 0
+	GameState.rolls_used = 1
+	GameState.begin_roll_transaction([1], 1, 89)
+	GameState.commit_roll_result([1], 1, roles, 1, 0, 0, false)
+	GameState.commit_roll_movement(0)
+	GameState.commit_roll_landing_roles()
+	var landmark_state := GameState.to_dictionary()
+	var landmark_resolution := LandmarkSystemScript.resolve_stop(landmark_state, 0, "qa-03b-landmark")
+	RewardResolverScript.apply(landmark_state, landmark_resolution, GameState.reward_apply_log)
+	GameState.apply_dictionary(landmark_state)
+	_commit_landing_core(&"LANDMARK", "ギザの大スフィンクス Lv.1　旅の記憶 +1")
+	var landmark_core_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(landmark_core_loaded and int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)) == 1 and GameState.roll_transaction.is_empty())
+
+	# Crossing 90 -> 01 from a committed result applies the lap exactly once.
+	GameState.reset_run()
+	GameState.current_tile_index = 89
+	GameState.begin_roll_transaction([2], 1, 89)
+	GameState.commit_roll_result([2], 1, DiceLogicScript.evaluate_current([2], 1), 2, 1, 1, false)
+	SaveManager.save_now()
+	var lap_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(lap_loaded and GameState.current_tile_index == 1 and GameState.rolls_used == 1 and GameState.total_laps == 1 and GameState.roll_transaction.is_empty())
 
 	# EVENT -> boss: the pending boolean may already be consumed while the
 	# durable encounter substate still knows exactly which window to resume.

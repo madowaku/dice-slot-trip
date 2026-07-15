@@ -179,21 +179,31 @@ func begin_roll_transaction(values: Array, dice_count: int, start_tile: int) -> 
 	if not roll_transaction.is_empty():
 		return false
 	var transaction_id := "roll:%08d:%d" % [rolls_used, Time.get_ticks_msec()]
+	var normalized_start := posmod(start_tile, 90)
 	roll_transaction = {
 		"phase": "PRE_ROLL",
 		"roll_phase": "PRE_ROLL",
+		"transaction_id": transaction_id,
 		"roll_id": transaction_id,
 		"roll_transaction_id": transaction_id,
 		"values": values.duplicate(),
-		"final_dice_values": values.duplicate(),
+		"final_dice_values": [],
 		"dice_count": clampi(dice_count, 1, 5),
-		"start_tile": posmod(start_tile, 90),
+		"start_tile_index": normalized_start,
+		"start_tile": normalized_start,
 		"target_tile_index": -1,
 		"result_committed": false,
 		"movement_committed": false,
 		"space_effect_committed": false,
+		"landing_roles_committed": false,
+		"landing_core_committed": false,
 		"early_stopped": false,
 		"encounter_phase": "NONE",
+		# These are gameplay inputs, not presentation state. They make an
+		# interrupted PRE_ROLL/ROLLING rollback future-proof if consumption is
+		# ever moved earlier in the animation pipeline.
+		"pre_roll_current_dice_count": current_dice_count,
+		"pre_roll_temporary_roll_dice_count": temporary_roll_dice_count,
 	}
 	return true
 
@@ -239,6 +249,24 @@ func commit_roll_space_effect() -> bool:
 	roll_transaction["phase"] = "SPACE_EFFECT_COMMITTED"
 	roll_transaction["roll_phase"] = "SPACE_EFFECT_COMMITTED"
 	roll_transaction["space_effect_committed"] = true
+	return true
+
+func commit_roll_landing_roles() -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "MOVEMENT_COMMITTED":
+		return false
+	if bool(roll_transaction.get("landing_roles_committed", false)):
+		return false
+	roll_transaction["landing_roles_committed"] = true
+	return true
+
+func commit_roll_landing_core(tile_type: StringName, memo: String) -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "MOVEMENT_COMMITTED":
+		return false
+	if bool(roll_transaction.get("landing_core_committed", false)):
+		return false
+	roll_transaction["landing_core_committed"] = true
+	roll_transaction["landing_tile_type"] = String(tile_type)
+	roll_transaction["landing_memo"] = memo
 	return true
 
 func mark_roll_turn_resolved() -> bool:
@@ -294,6 +322,14 @@ func complete_roll_encounter() -> bool:
 	if str(roll_transaction.get("encounter_phase", "NONE")) not in ["INTERACTION_COMMITTED", "REGISTRATION_COMMITTED"]:
 		return false
 	roll_transaction["encounter_phase"] = "COMPLETE"
+	return true
+
+func rollback_uncommitted_roll() -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) not in ["PRE_ROLL", "ROLLING"]:
+		return false
+	current_dice_count = clampi(int(roll_transaction.get("pre_roll_current_dice_count", current_dice_count)), 1, 3)
+	temporary_roll_dice_count = maxi(0, int(roll_transaction.get("pre_roll_temporary_roll_dice_count", temporary_roll_dice_count)))
+	roll_transaction.clear()
 	return true
 
 func clear_roll_transaction() -> void:
@@ -482,8 +518,22 @@ func apply_dictionary(data: Dictionary) -> void:
 		else:
 			roll_transaction["phase"] = transaction_phase
 			roll_transaction["roll_phase"] = transaction_phase
+			var loaded_transaction_id := str(roll_transaction.get("transaction_id", roll_transaction.get("roll_transaction_id", roll_transaction.get("roll_id", ""))))
+			if loaded_transaction_id.is_empty():
+				loaded_transaction_id = "legacy:%08d:%d" % [rolls_used, Time.get_ticks_msec()]
+			roll_transaction["transaction_id"] = loaded_transaction_id
+			roll_transaction["roll_transaction_id"] = loaded_transaction_id
+			roll_transaction["roll_id"] = loaded_transaction_id
 			roll_transaction["dice_count"] = clampi(int(roll_transaction.get("dice_count", 1)), 1, 5)
-			roll_transaction["start_tile"] = posmod(int(roll_transaction.get("start_tile", current_tile_index)), 90)
+			var loaded_start_tile := posmod(int(roll_transaction.get("start_tile_index", roll_transaction.get("start_tile", current_tile_index))), 90)
+			roll_transaction["start_tile_index"] = loaded_start_tile
+			roll_transaction["start_tile"] = loaded_start_tile
+			roll_transaction["pre_roll_current_dice_count"] = clampi(int(roll_transaction.get("pre_roll_current_dice_count", current_dice_count)), 1, 3)
+			roll_transaction["pre_roll_temporary_roll_dice_count"] = maxi(0, int(roll_transaction.get("pre_roll_temporary_roll_dice_count", temporary_roll_dice_count)))
+			roll_transaction["landing_roles_committed"] = bool(roll_transaction.get("landing_roles_committed", false))
+			roll_transaction["landing_core_committed"] = bool(roll_transaction.get("landing_core_committed", false))
+			if transaction_phase in ["PRE_ROLL", "ROLLING"]:
+				roll_transaction["final_dice_values"] = []
 			var loaded_target := int(roll_transaction.get("target_tile_index", roll_transaction.get("destination", -1)))
 			if loaded_target >= 0:
 				loaded_target = posmod(loaded_target, 90)
