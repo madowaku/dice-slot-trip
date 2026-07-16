@@ -2,6 +2,7 @@ extends SceneTree
 
 const DiceLogicScript = preload("res://scripts/core/dice_logic.gd")
 const BoardModelScript = preload("res://scripts/game/board_model.gd")
+const BoardViewScript = preload("res://scripts/game/board_view.gd")
 const BossSystemScript = preload("res://scripts/game/boss_system.gd")
 const RewardResolverScript = preload("res://scripts/game/reward_resolver.gd")
 const EventSystemScript = preload("res://scripts/game/event_system.gd")
@@ -14,10 +15,23 @@ const TourismMapViewScript = preload("res://scripts/game/tourism_map_view.gd")
 const DistrictFlowVisualScript = preload("res://scripts/game/tourism_district_flow_visual.gd")
 const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
 const GameStateScript = preload("res://autoload/game_state.gd")
+const AppFont: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 
 var failures: int = 0
 
 func _init() -> void:
+	var font_samples: Array[String] = ["砂時計のカイロ", "眠そうなスフィンクスがいる", "サイコロをそろえて、世界をめぐる。", "旅人を選ぶ", "香辛料市場通り", "PAIR／STRAIGHT／TRIPLE", "1234567890！？・◇●"]
+	var font_coverage := true
+	for sample: String in font_samples:
+		for index: int in range(sample.length()): font_coverage = font_coverage and AppFont.has_char(sample.unicode_at(index))
+	_expect(font_coverage and BoardViewScript.APP_FONT == AppFont and TourismMapViewScript.TOURISM_FONT == AppFont, "bundled Noto Sans JP covers Android UI strings and canvas text")
+	var mode_state: Node = GameStateScript.new()
+	_expect(mode_state.board_view_mode == "tourism", "new state defaults to Tourism")
+	var explicit_classic: Dictionary = mode_state.to_dictionary(); explicit_classic["board_view_mode"] = "classic"; mode_state.apply_dictionary(explicit_classic)
+	_expect(mode_state.board_view_mode == "classic", "explicit saved Classic mode is preserved")
+	var legacy_mode: Dictionary = explicit_classic.duplicate(true); legacy_mode.erase("board_view_mode"); mode_state.apply_dictionary(legacy_mode)
+	_expect(mode_state.board_view_mode == "tourism", "legacy save without display mode migrates to Tourism")
+	mode_state.free()
 	_expect(DiceLogicScript.evaluate([3, 3, 5]).main == &"PAIR", "PAIR")
 	_expect(DiceLogicScript.evaluate([4, 2, 3]).main == &"STRAIGHT", "STRAIGHT unordered")
 	_expect(DiceLogicScript.evaluate([5, 5, 5]).main == &"TRIPLE", "TRIPLE priority")
@@ -38,6 +52,37 @@ func _init() -> void:
 	_expect(DiceAudioControllerScript.next_variation_index(4, 2, 0) != 2 and DiceAudioControllerScript.next_variation_index(4, 2, 99) != 2, "dice audio avoids immediate variation repeats")
 	var wrapped: Dictionary = BoardModelScript.move(89, 4)
 	_expect(wrapped.index == 3 and wrapped.laps == 1, "89 to 0 lap")
+	var route_main := BoardModelScript.route_definition("main")
+	var route_bypass := BoardModelScript.route_definition("bypass_caravan")
+	var route_loop := BoardModelScript.route_definition("loop_royal_maze")
+	_expect(int(route_main.tile_count) == 90 and route_main.counts_for_lap and int(route_bypass.tile_count) == 10 and not route_bypass.counts_for_lap and int(route_loop.tile_count) == 8 and route_loop.exact_stop_exit, "ROUTE-01 defines main bypass and loop topology")
+	var bypass_move := BoardModelScript.advance_route("bypass_caravan", 8, 4)
+	_expect(str(bypass_move.route_id) == "main" and int(bypass_move.tile_index) == 60 and int(bypass_move.laps) == 0 and (bypass_move.path as Array).size() == 4, "bypass rejoins main and preserves remaining steps")
+	var loop_move := BoardModelScript.advance_route("loop_royal_maze", 6, 10)
+	_expect(str(loop_move.route_id) == "loop_royal_maze" and int(loop_move.tile_index) == 0 and int(loop_move.maze_loops) == 2 and int(loop_move.laps) == 0, "maze loops independently without main lap")
+	var route_state: Node = GameStateScript.new()
+	route_state.set_route_position("loop_royal_maze", 6)
+	route_state.pending_route_choice = {"choice_id": "route:test", "entry_tile": 32}
+	route_state.route_choice_remaining_steps = 5
+	route_state.begin_roll_transaction([], 1, 6)
+	route_state.commit_roll_result([6], 1, {}, 6, 4, 0, false, "loop_royal_maze", BoardModelScript.advance_route("loop_royal_maze", 6, 6).path, 1)
+	var route_save: Dictionary = route_state.to_dictionary()
+	var route_loaded: Node = GameStateScript.new(); route_loaded.apply_dictionary(route_save)
+	_expect(int(route_save.version) == 9 and str(route_loaded.current_route_id) == "loop_royal_maze" and int(route_loaded.current_route_tile_index) == 6 and int(route_loaded.route_choice_remaining_steps) == 5 and str(route_loaded.roll_transaction.start_route_id) == "loop_royal_maze" and str(route_loaded.roll_transaction.target_route_id) == "loop_royal_maze" and (route_loaded.roll_transaction.movement_path as Array).size() == 6, "route position choice and interrupted movement survive save")
+	var legacy_route := route_save.duplicate(true); legacy_route.erase("current_route_id"); legacy_route.erase("current_route_tile_index"); legacy_route["tile"] = 42; legacy_route["roll_transaction"] = {}; route_loaded.apply_dictionary(legacy_route)
+	_expect(str(route_loaded.current_route_id) == "main" and int(route_loaded.current_route_tile_index) == 42, "v7 tile-only save migrates to main route")
+	route_state.free(); route_loaded.free()
+	var bypass_tiles: Array = route_bypass.tiles
+	_expect(bypass_tiles.count(&"RISK") == 4 and bypass_tiles.count(&"STRONG_RISK") == 2 and bypass_tiles.count(&"GAMBLE") == 1 and bypass_tiles.size() == 10, "caravan bypass has four risk two strong risk and one gamble")
+	var branch := BoardModelScript.route_choice_encounter("main", 30, 5)
+	_expect(int(branch.steps_to_entry) == 2 and int(branch.remaining_steps) == 3 and (branch.movement_path as Array).size() == 2 and BoardModelScript.route_choice_encounter("main", 32, 5).is_empty(), "route choice pauses at entry and does not reopen next turn")
+	var choice_state: Node = GameStateScript.new(); choice_state.set_route_position("main", 30); choice_state.begin_roll_transaction([], 1, 30)
+	var reserved: bool = choice_state.reserve_route_choice([5], 1, {}, 5, branch, false)
+	var pending_save: Dictionary = choice_state.to_dictionary(); choice_state.apply_dictionary(pending_save)
+	var arrived: bool = choice_state.commit_route_choice_arrival(); var arrived_save: Dictionary = choice_state.to_dictionary(); choice_state.apply_dictionary(arrived_save)
+	var chose_bypass: bool = choice_state.commit_route_choice("bypass_caravan"); var duplicate_choice: bool = choice_state.commit_route_choice("main")
+	_expect(reserved and arrived and chose_bypass and not duplicate_choice and int(choice_state.rolls_used) == 1 and str(choice_state.current_route_id) == "bypass_caravan" and int(choice_state.roll_transaction.target_tile_index) == 3 and int(choice_state.route_choice_remaining_steps) == 3 and int(choice_state.bypass_use_count) == 1, "route choice survives interruption and commits bypass exactly once")
+	choice_state.free()
 	var long_move: Dictionary = BoardModelScript.move(0, 378)
 	_expect(long_move.index == 18 and long_move.laps == 4, "multi lap")
 	var simulated_index: int = 0
@@ -56,13 +101,16 @@ func _init() -> void:
 	var tour_centers: Array[Vector2] = TourismMapViewScript.route_centers(Vector2(360, 250))
 	var distinct_y: Dictionary = {}
 	for center: Vector2 in tour_centers: distinct_y[roundi(center.y)] = true
-	_expect(tour_offsets.size() == 15 and tour_offsets.front() == -4 and tour_offsets.back() == 10, "tourism map uses fifteen slots -4 through +10")
-	_expect(tour_wrap == [85, 86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "tourism map wraps 86..90 to 01..10")
+	_expect(tour_offsets.size() == 19 and tour_offsets.front() == -3 and tour_offsets.back() == 15, "tourism map keeps three history tiles and fifteen forward targets")
+	_expect(tour_wrap == [86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], "tourism map wraps 87..90 to 01..15")
 	_expect(TourismMapViewScript.rects_fit_without_overlap(tour_rects, Rect2(0, 0, 360, 250), 2.0), "tourism tiles fit 360x250 without overlap")
 	_expect(TourismMapViewScript.rects_fit_without_overlap(tour_rects_large, Rect2(0, 0, 720, 390), 2.0) and Rect2(0, 0, 360, 250).encloses(TourismMapViewScript.player_rect(Vector2(360, 250))) and Rect2(0, 0, 720, 390).encloses(TourismMapViewScript.player_rect(Vector2(720, 390))), "tourism tiles and enlarged player fit reference and runtime bounds")
-	_expect(tour_centers[4].x > 360.0 * 0.40 and tour_centers[4].x < 360.0 * 0.60 and tour_centers[4].y > 250.0 * 0.70 and distinct_y.size() >= 10, "tourism route keeps current lower-middle on a continuous non-grid path")
+	_expect(tour_centers[3].x > 360.0 * 0.40 and tour_centers[3].x < 360.0 * 0.60 and tour_centers[3].y > 250.0 * 0.70 and distinct_y.size() >= 10, "tourism route keeps current lower-middle on a continuous non-grid path")
 	_expect(TourismMapViewScript.is_offset_reachable(1, 1, &"NORMAL") and TourismMapViewScript.is_offset_reachable(6, 1, &"NORMAL") and not TourismMapViewScript.is_offset_reachable(7, 1, &"LANDMARK"), "one die highlights exact one through six range")
 	_expect(TourismMapViewScript.is_offset_reachable(9, 2, &"RISK") and TourismMapViewScript.is_offset_reachable(10, 3, &"EVENT") and not TourismMapViewScript.is_offset_reachable(9, 2, &"NORMAL"), "multi dice highlights visible special destinations only")
+	_expect(TourismMapViewScript.is_offset_reachable(15, 3, &"ITEM") and tour_offsets.has(15), "three dice can inspect targets through fifteen steps")
+	var bypass_points := BoardViewScript.bypass_route_points(Vector2(360, 250), 10)
+	_expect(bypass_points.size() == 10 and bypass_points[0].x < bypass_points[-1].x and BoardViewScript.bypass_exit_distance(4, 10) == 5 and BoardViewScript.bypass_exit_distance(9, 10) == 0, "bypass exposes direction and exact distance to exit")
 	_expect(TourismMapViewScript.normalized_view_mode("tourism") == "tourism" and TourismMapViewScript.normalized_view_mode("unknown") == "classic", "unknown board mode falls back to classic")
 	var scenic_fit := TourismMapViewScript.aspect_fit_rect(Vector2(1024, 512), Rect2(18, 42, 324, 125))
 	_expect(is_equal_approx(scenic_fit.size.x / scenic_fit.size.y, 2.0) and is_equal_approx(scenic_fit.size.y, 125.0), "tourism scenic preserves its two-to-one aspect ratio")
@@ -195,7 +243,7 @@ func _init() -> void:
 	transaction_state.free()
 	var destination_wrap := TourismMapViewScript.destination_rect(Vector2(360, 250), 89, 2)
 	var destination_far := TourismMapViewScript.destination_rect(Vector2(360, 250), 89, 20)
-	_expect(destination_wrap.has_area() and destination_wrap == tour_rects[7] and not destination_far.has_area(), "map destination highlight wraps 90 to 03 and rejects offscreen targets")
+	_expect(destination_wrap.has_area() and destination_wrap == tour_rects[6] and not destination_far.has_area(), "map destination highlight wraps 90 to 03 and rejects offscreen targets")
 	var market_prop_ids: Dictionary = {}
 	for spec: Dictionary in market_props_lv3: market_prop_ids[str(spec.id)] = true
 	_expect(market_prop_ids.size() <= 8 and TourismMapViewScript.MARKET_PROP_TEXTURES.size() <= 8, "hybrid pack selection and visible props stay within eight")
@@ -367,7 +415,7 @@ func _init() -> void:
 		var v5_round_trip: Dictionary = state_node.to_dictionary().duplicate(true)
 		state_node.current_dice_count = 1
 		state_node.apply_dictionary(v5_round_trip)
-		_expect(int(state_node.current_dice_count) == 2 and int(state_node.to_dictionary().version) == 6, "v6 restores current dice")
+		_expect(int(state_node.current_dice_count) == 2 and int(state_node.to_dictionary().version) == 9, "v7 restores current dice into v9")
 		var before_extra := int(state_node.current_dice_count)
 		state_node.apply_dice_roll_transition(5, DiceLogicScript.evaluate_many([1, 2, 3, 4, 5]))
 		_expect(int(state_node.current_dice_count) == before_extra, "temporary five dice preserves current")
@@ -384,7 +432,7 @@ func _init() -> void:
 		for clean_key: String in ["current_lap_clean", "current_lap_penalty_count", "clean_streak", "even_guard_active", "best_clean_streak"]:
 			v5_clean_missing.erase(clean_key)
 		state_node.apply_dictionary(v5_clean_missing)
-		_expect(state_node.current_lap_clean and state_node.current_lap_penalty_count == 0 and state_node.clean_streak == 0 and not state_node.even_guard_active and state_node.best_clean_streak == 0 and int(state_node.to_dictionary().version) == 6, "v5 missing CLEAN fields migrates to neutral v6 defaults")
+		_expect(state_node.current_lap_clean and state_node.current_lap_penalty_count == 0 and state_node.clean_streak == 0 and not state_node.even_guard_active and state_node.best_clean_streak == 0 and int(state_node.to_dictionary().version) == 9, "v5 missing CLEAN fields migrates to neutral v9 defaults")
 		state_node.apply_dictionary(state_original)
 	# M4A: data-driven event foundation.
 	var events := EventSystemScript.definitions()

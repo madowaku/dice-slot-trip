@@ -1,13 +1,15 @@
 class_name TourismMapView
 extends "res://scripts/game/board_view.gd"
 
+const TOURISM_FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
+
 const VIEW_MODE_CLASSIC := "classic"
 const VIEW_MODE_TOURISM := "tourism"
 const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
 const DistrictFlowVisualScript = preload("res://scripts/game/tourism_district_flow_visual.gd")
-const FIRST_OFFSET := -4
-const LAST_OFFSET := 10
-const SLOT_COUNT := 15
+const FIRST_OFFSET := -3
+const LAST_OFFSET := 15
+const SLOT_COUNT := 19
 const DISTRICT_IDS: Array[StringName] = [&"MARKET", &"PYRAMID", &"OASIS", &"RUINS", &"DUNES"]
 const REACHABLE_SPECIAL_TYPES: Array[StringName] = [
 	&"EVENT", &"ITEM", &"COIN", &"WARP", &"SHOP", &"REST", &"LANDMARK",
@@ -66,7 +68,7 @@ func district_flow_receipt() -> Dictionary:
 	return district_flow_visual.receipt() if is_instance_valid(district_flow_visual) else {}
 
 func set_current_tile(value: int) -> void:
-	current_tile = posmod(value, TILE_COUNT)
+	current_tile = posmod(value, current_route_tile_count)
 	_refresh_scenic()
 	_sync_district_flow_visual()
 	queue_redraw()
@@ -110,37 +112,40 @@ static func tile_rects(view_size: Vector2) -> Array[Rect2]:
 	var centers := route_centers(view_size)
 	for slot: int in range(SLOT_COUNT):
 		var offset := FIRST_OFFSET + slot
-		var diameter := 34.0 if offset == 0 else (lerpf(30.0, 21.0, float(offset) / 10.0) if offset > 0 else 28.0)
+		var diameter := 34.0 if offset == 0 else (lerpf(27.0, 15.0, float(offset) / 15.0) if offset > 0 else 25.0)
 		var slot_size := Vector2.ONE * diameter * clampf(scale_factor, 0.78, 1.35)
 		result.append(Rect2(centers[slot] - slot_size * 0.5, slot_size))
 	return result
 
 static func route_centers(view_size: Vector2) -> Array[Vector2]:
-	# History approaches from the lower-left. From the current tile the road
-	# makes one broad S through the scenic field, sampled by travel distance so
-	# markers remain separated even near the arc's turning point.
-	var rear_dense: Array[Vector2] = []
-	var forward_dense: Array[Vector2] = []
-	for step: int in range(41):
-		var t := float(step) / 40.0
-		rear_dense.append(Vector2(lerpf(0.12, 0.50, t) * view_size.x, (0.84 + sin(t * PI) * 0.025) * view_size.y))
-	for step: int in range(81):
-		var t := float(step) / 80.0
-		forward_dense.append(Vector2((0.50 + sin(t * TAU * 0.72) * 0.34) * view_size.x, lerpf(0.84, 0.16, t) * view_size.y))
-	var result := _sample_polyline(rear_dense, 5)
-	var forward := _sample_polyline(forward_dense, 11)
-	for index: int in range(1, forward.size()):
-		result.append(forward[index])
+	# Three history points feed into a broad, non-grid caravan curve. Fifteen
+	# forward points remain separated at 360 px while filling the scenic field
+	# instead of shrinking into an unreadable vertical stack.
+	var normalized: Array[Vector2] = [
+		Vector2(0.125, 0.90), Vector2(0.25, 0.89), Vector2(0.375, 0.88), Vector2(0.50, 0.88),
+		Vector2(0.625, 0.88), Vector2(0.75, 0.88), Vector2(0.875, 0.86), Vector2(0.93, 0.74),
+		Vector2(0.935, 0.58), Vector2(0.93, 0.42), Vector2(0.875, 0.26), Vector2(0.833, 0.16),
+		Vector2(0.708, 0.128), Vector2(0.583, 0.12), Vector2(0.458, 0.128), Vector2(0.472, 0.28),
+		Vector2(0.486, 0.46), Vector2(0.306, 0.58), Vector2(0.153, 0.68),
+	]
+	var result: Array[Vector2] = []
+	for point: Vector2 in normalized:
+		result.append(point * view_size)
 	return result
 
 static func smooth_route_points(view_size: Vector2) -> PackedVector2Array:
 	var points := PackedVector2Array()
-	for step: int in range(31):
-		var t := float(step) / 30.0
-		points.append(Vector2(lerpf(0.12, 0.50, t) * view_size.x, (0.84 + sin(t * PI) * 0.025) * view_size.y))
-	for step: int in range(1, 61):
-		var t := float(step) / 60.0
-		points.append(Vector2((0.50 + sin(t * TAU * 0.72) * 0.34) * view_size.x, lerpf(0.84, 0.16, t) * view_size.y))
+	var centers := route_centers(view_size)
+	for segment: int in range(centers.size() - 1):
+		var p0: Vector2 = centers[maxi(0, segment - 1)]
+		var p1: Vector2 = centers[segment]
+		var p2: Vector2 = centers[segment + 1]
+		var p3: Vector2 = centers[mini(centers.size() - 1, segment + 2)]
+		for sample: int in range(6):
+			var t := float(sample) / 6.0
+			var t2 := t * t; var t3 := t2 * t
+			points.append(0.5 * ((2.0 * p1) + (-p0 + p2) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3))
+	points.append(centers[-1])
 	return points
 
 static func _sample_polyline(points: Array[Vector2], count: int) -> Array[Vector2]:
@@ -206,7 +211,7 @@ static func map_dice_landing_rect(view_size: Vector2, active_dice_count: int = 1
 		return _map_dice_landing_rect_single(view_size)
 	# Multi-die formations need a wider, shorter reservation. The map overlay
 	# scales individual billboards down, keeping the route and player readable.
-	var width_factor := 0.82 if dice_count == 2 else (0.84 if dice_count == 3 else 0.40)
+	var width_factor := 0.46 if dice_count in [2, 3] else 0.40
 	# Keep the formation above the enlarged player token. The overlay is a
 	# temporary result layer, so a shallow upper pocket is more legible than a
 	# tall card that collides with the current tile.
@@ -303,14 +308,14 @@ static func market_prop_specs(view_size: Vector2, tile_index: int, landmark_leve
 		return []
 	var scale_factor := clampf(minf(view_size.x / 360.0, view_size.y / 250.0), 0.78, 1.25)
 	var specs: Array[Dictionary] = [
-		{"id": "wall_n", "rect": Rect2(Vector2(1.0, view_size.y * 0.70), Vector2(30.0, 18.0) * scale_factor)},
-		{"id": "wall_s", "rect": Rect2(Vector2(view_size.x - 29.0 * scale_factor, view_size.y * 0.70), Vector2(27.0, 24.0) * scale_factor)},
-		{"id": "rocks_n", "rect": Rect2(Vector2(2.0, view_size.y * 0.47), Vector2(28.0, 24.0) * scale_factor)},
-		{"id": "rocks_s", "rect": Rect2(Vector2(view_size.x - 32.0 * scale_factor, view_size.y * 0.47), Vector2(30.0, 20.0) * scale_factor)},
+		{"id": "wall_n", "rect": Rect2(Vector2(view_size.x * 0.15, view_size.y * 0.74), Vector2(30.0, 18.0) * scale_factor)},
+		{"id": "wall_s", "rect": Rect2(Vector2(view_size.x * 0.69, view_size.y * 0.72), Vector2(27.0, 24.0) * scale_factor)},
+		{"id": "rocks_n", "rect": Rect2(Vector2(10.0, view_size.y * 0.58), Vector2(28.0, 24.0) * scale_factor)},
+		{"id": "rocks_s", "rect": Rect2(Vector2(view_size.x * 0.79, view_size.y * 0.58), Vector2(30.0, 20.0) * scale_factor)},
 	]
 	if landmark_level >= 1:
-		specs.append({"id": "tree_n", "rect": Rect2(Vector2(2.0, view_size.y * 0.22), Vector2(31.0, 30.0) * scale_factor)})
-		specs.append({"id": "tree_s", "rect": Rect2(Vector2(view_size.x - 32.0 * scale_factor, view_size.y * 0.22), Vector2(30.0, 32.0) * scale_factor)})
+		specs.append({"id": "tree_n", "rect": Rect2(Vector2(view_size.x * 0.29, view_size.y * 0.30), Vector2(31.0, 30.0) * scale_factor)})
+		specs.append({"id": "tree_s", "rect": Rect2(Vector2(view_size.x * 0.56, view_size.y * 0.28), Vector2(30.0, 32.0) * scale_factor)})
 	return specs
 
 static func prop_specs_are_clear(specs: Array[Dictionary], view_size: Vector2) -> bool:
@@ -344,7 +349,7 @@ func clear_destination_highlight() -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	if is_minimap:
+	if is_minimap or current_route_id == "bypass_caravan":
 		super._draw()
 		return
 	_draw_tourism_map()
@@ -359,16 +364,20 @@ func _draw_tourism_map() -> void:
 	_draw_market_props()
 	_draw_flow_map_effects()
 	var district_names := ["市場", "ピラミッド", "オアシス", "遺跡", "砂丘"]
-	draw_string(ThemeDB.fallback_font, Vector2(18, 29), "%s地区　観光ルート" % district_names[clampi(current_tile / 18, 0, 4)], HORIZONTAL_ALIGNMENT_LEFT, -1, 18, INK)
-	draw_string(ThemeDB.fallback_font, Vector2(size.x - 145, 29), "%02d / 90" % (current_tile + 1), HORIZONTAL_ALIGNMENT_RIGHT, 126, 17, Color("#795d3f"))
+	draw_string(TOURISM_FONT, Vector2(18, 29), "%s地区　観光ルート" % district_names[clampi(current_tile / 18, 0, 4)], HORIZONTAL_ALIGNMENT_LEFT, -1, 18, INK)
+	draw_string(TOURISM_FONT, Vector2(size.x - 145, 29), "%02d / 90" % (current_tile + 1), HORIZONTAL_ALIGNMENT_RIGHT, 126, 17, Color("#795d3f"))
 	if scenic_level >= 0:
-		draw_string(ThemeDB.fallback_font, Vector2(18, 51), "香辛料市場通り  Lv.%d" % scenic_level, HORIZONTAL_ALIGNMENT_LEFT, 230, 14, Color("#704828"))
+		draw_string(TOURISM_FONT, Vector2(18, 51), "香辛料市場通り  Lv.%d" % scenic_level, HORIZONTAL_ALIGNMENT_LEFT, 230, 14, Color("#704828"))
 
 	var rects := tile_rects(size)
 	var indices := neighborhood_indices(current_tile)
 	var smooth_route := smooth_route_points(size)
 	draw_polyline(smooth_route, Color(0.27, 0.17, 0.09, 0.34), 12.0, true)
 	draw_polyline(smooth_route, Color("#d8bb83"), 7.0, true)
+	for direction_offset: int in [1, 5, 10, 14]:
+		var from_slot := direction_offset - 1 - FIRST_OFFSET
+		var to_slot := direction_offset - FIRST_OFFSET
+		_draw_direction_chevron(rects[from_slot].get_center().lerp(rects[to_slot].get_center(), 0.55), rects[to_slot].get_center() - rects[from_slot].get_center(), Color(0.44, 0.25, 0.12, 0.56), 5.0)
 
 	for slot: int in range(SLOT_COUNT):
 		var offset: int = FIRST_OFFSET + slot
@@ -388,18 +397,18 @@ func _draw_tourism_map() -> void:
 		var ring := Color("#f1c86a") if offset == 0 else (Color("#287b80") if reachable else Color("#755432"))
 		draw_arc(center, radius - 1.0, 0, TAU, 24, ring, 4.0 if offset == 0 else (3.0 if reachable else 1.5), true)
 		var text_color := Color("#fff4dc") if offset == 0 or tile_type == &"RISK" else INK
-		draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, rect.size.y * 0.48), "%02d" % (tile_index + 1), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, text_color)
+		draw_string(TOURISM_FONT, rect.position + Vector2(0, rect.size.y * 0.48), "%02d" % (tile_index + 1), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, text_color)
 		var mark := _tile_mark(tile_type)
 		if not mark.is_empty():
-			draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, rect.size.y * 0.84), mark, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 12, text_color)
+			draw_string(TOURISM_FONT, rect.position + Vector2(0, rect.size.y * 0.84), mark, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 12, text_color)
 		if reachable and dice_count == 1:
 			draw_circle(rect.position + Vector2(rect.size.x - 2.0, 2.0), 7.0, Color("#287b80"))
-			draw_string(ThemeDB.fallback_font, rect.position + Vector2(rect.size.x - 8.5, 5.5), str(offset), HORIZONTAL_ALIGNMENT_CENTER, 13.0, 9, Color.WHITE)
+			draw_string(TOURISM_FONT, rect.position + Vector2(rect.size.x - 8.5, 5.5), str(offset), HORIZONTAL_ALIGNMENT_CENTER, 13.0, 9, Color.WHITE)
 		if tile_type == &"LANDMARK":
-			draw_string(ThemeDB.fallback_font, rect.position + Vector2(-3, rect.size.y + 10), "Lv.%d" % _landmark_level(tile_index), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x + 6, 9, Color("#684829"))
+			draw_string(TOURISM_FONT, rect.position + Vector2(-3, rect.size.y + 10), "Lv.%d" % _landmark_level(tile_index), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x + 6, 9, Color("#684829"))
 		if tile_index == highlighted_destination_tile:
 			draw_arc(center, radius + 5.0, 0, TAU, 28, Color("#fff0a8"), 5.0, true)
-			draw_string(ThemeDB.fallback_font, rect.position + Vector2(-8.0, -7.0), "+%d" % highlighted_destination_value, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x + 16.0, 12, Color("#704828"))
+			draw_string(TOURISM_FONT, rect.position + Vector2(-8.0, -7.0), "+%d" % highlighted_destination_value, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x + 16.0, 12, Color("#704828"))
 
 	var current_rect: Rect2 = rects[-FIRST_OFFSET]
 	var token_rect := player_rect(size)

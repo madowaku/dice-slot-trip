@@ -1,6 +1,8 @@
 class_name BoardView
 extends Control
 
+const APP_FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
+
 const TILE_COUNT: int = 90
 const LANDMARK_IDS_BY_TILE: Dictionary = {
 	0: "CAI_LANDMARK_01",
@@ -10,6 +12,9 @@ const LANDMARK_IDS_BY_TILE: Dictionary = {
 const INK: Color = Color("#5c4938")
 const SAND: Color = Color("#ead8b5")
 const PLAYER_TEXTURE: Texture2D = preload("res://assets/art/characters/relaxed-traveler.png")
+const BYPASS_ROCKS: Texture2D = preload("res://assets/art/map_props/kenney_sketch_desert/rocks_N.png")
+const BYPASS_WALL: Texture2D = preload("res://assets/art/map_props/kenney_sketch_desert/walls_broken_N.png")
+const BYPASS_TREE: Texture2D = preload("res://assets/art/map_props/kenney_sketch_desert/tree_S.png")
 const LandmarkScenicViewScript = preload("res://scripts/game/landmark_scenic_view.gd")
 const TILE_COLORS: Dictionary = {
 	&"NORMAL": Color("#f2e5c9"),
@@ -22,11 +27,17 @@ const TILE_COLORS: Dictionary = {
 	&"LANDMARK": Color("#d4a446"),
 	&"BOSS_SCENT": Color("#8b91b7"),
 	&"STAGE_SPECIAL": Color("#4f9b98"),
-	&"RISK": Color("#c76552")
+	&"RISK": Color("#c76552"),
+	&"STRONG_RISK": Color("#883b35"),
+	&"GAMBLE": Color("#cf7b3f"),
 }
 
 var tile_types: Array[StringName] = []
 var current_tile: int = 0
+var current_route_id: String = "main"
+var current_route_tile_count: int = TILE_COUNT
+var current_route_tiles: Array = []
+var route_flow_level: int = 0
 var route: Path2D
 var positions: Array[Vector2] = []
 var is_minimap: bool = false
@@ -48,8 +59,20 @@ func configure(types: Array[StringName], tile_index: int, levels: Dictionary = {
 	queue_redraw()
 
 func set_current_tile(value: int) -> void:
-	current_tile = posmod(value, TILE_COUNT)
+	current_tile = posmod(value, current_route_tile_count)
 	_refresh_scenic()
+	queue_redraw()
+
+func set_route_context(route_id: String, tile_count: int, route_tiles: Array = []) -> void:
+	current_route_id = route_id
+	current_route_tile_count = maxi(1, tile_count)
+	current_route_tiles = route_tiles.duplicate()
+	current_tile = posmod(current_tile, current_route_tile_count)
+	_refresh_scenic()
+	queue_redraw()
+
+func set_route_flow_level(level: int) -> void:
+	route_flow_level = clampi(level, 0, 5)
 	queue_redraw()
 
 func set_landmark_levels(levels: Dictionary) -> void:
@@ -94,7 +117,107 @@ func _draw() -> void:
 	if is_minimap:
 		_draw_minimap()
 		return
+	if current_route_id == "bypass_caravan":
+		_draw_bypass_neighborhood()
+		return
 	_draw_zoomed_neighborhood()
+
+func _draw_bypass_neighborhood() -> void:
+	draw_style_box(_board_panel(), Rect2(Vector2.ZERO, size))
+	# Sand haze and sparse Kenney props turn the route into a place without
+	# sacrificing the full ten-tile read at phone size.
+	for band: int in range(5):
+		var band_rect := Rect2(12.0, 48.0 + float(band) * (size.y - 64.0) / 5.0, size.x - 24.0, (size.y - 64.0) / 5.0 + 2.0)
+		draw_rect(band_rect, Color(0.73, 0.46, 0.25, 0.025 + float(band) * 0.012))
+	draw_texture_rect(BYPASS_ROCKS, Rect2(size.x * 0.08, size.y * 0.38, 42, 50), false, Color(0.88, 0.70, 0.52, 0.62))
+	draw_texture_rect(BYPASS_WALL, Rect2(size.x * 0.67, size.y * 0.28, 54, 58), false, Color(0.88, 0.73, 0.55, 0.58))
+	draw_texture_rect(BYPASS_TREE, Rect2(size.x * 0.43, size.y * 0.57, 42, 52), false, Color(0.82, 0.67, 0.48, 0.48))
+	draw_string(APP_FONT, Vector2(18, 30), "砂嵐のキャラバン道", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color("#6b392d"))
+	draw_string(APP_FONT, Vector2(size.x - 132, 29), "危険 7 / 10", HORIZONTAL_ALIGNMENT_RIGHT, 114, 16, Color("#a23f34"))
+	var distance_left := bypass_exit_distance(current_tile, current_route_tile_count)
+	draw_string(APP_FONT, Vector2(18, 54), "現在 %d / %d　出口まで %d  →" % [current_tile + 1, current_route_tile_count, distance_left], HORIZONTAL_ALIGNMENT_LEFT, size.x - 36.0, 15, Color("#7a4a31"))
+	var count := maxi(1, current_route_tile_count)
+	var points := bypass_route_points(size, count)
+	# A broad sand road, two ruts and a dark lee edge read as terrain rather
+	# than a graph connection line.
+	draw_polyline(points, Color(0.29, 0.16, 0.09, 0.32), 27.0, true)
+	draw_polyline(points, Color("#d3a66a"), 22.0, true)
+	draw_polyline(points, Color("#e7c78f"), 15.0, true)
+	var upper_rut := PackedVector2Array(); var lower_rut := PackedVector2Array()
+	for point: Vector2 in points:
+		upper_rut.append(point + Vector2(0, -4)); lower_rut.append(point + Vector2(0, 4))
+	draw_polyline(upper_rut, Color(0.46, 0.25, 0.13, 0.42), 1.6, true)
+	draw_polyline(lower_rut, Color(0.46, 0.25, 0.13, 0.34), 1.4, true)
+	# Embedded chevrons make left-to-right travel unambiguous even before the
+	# player learns the numbering convention.
+	for segment: int in range(1, count - 1, 2):
+		_draw_direction_chevron(points[segment - 1].lerp(points[segment], 0.55), points[segment] - points[segment - 1], Color(0.55, 0.22, 0.13, 0.72), 7.0)
+	_draw_bypass_flow_wind(points)
+	for index: int in range(count):
+		var tile_type := StringName(current_route_tiles[index]) if index < current_route_tiles.size() else &"NORMAL"
+		var radius := 19.0 if index == current_tile else (18.0 if index == count - 1 else 14.0)
+		var fill := Color(TILE_COLORS.get(tile_type, SAND))
+		if tile_type == &"RISK":
+			draw_circle(points[index], radius + 7.0, Color(0.76, 0.16, 0.10, 0.14))
+		if tile_type == &"STRONG_RISK":
+			draw_circle(points[index], radius + 10.0, Color(0.18, 0.07, 0.05, 0.22))
+			draw_arc(points[index], radius + 6.0, 0, TAU, 20, Color(0.55, 0.12, 0.09, 0.68), 3.0, true)
+		draw_circle(points[index], radius, Color("#2f8588") if index == current_tile else fill)
+		draw_arc(points[index], radius, 0, TAU, 24, Color("#f1c86a") if index == current_tile else Color("#6a3b2c"), 3.0, true)
+		draw_string(APP_FONT, points[index] + Vector2(-radius, 5), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 11, Color.WHITE if index == current_tile or tile_type in [&"RISK", &"STRONG_RISK"] else INK)
+		var mark := _tile_mark(tile_type)
+		if not mark.is_empty(): draw_string(APP_FONT, points[index] + Vector2(-radius, 24), mark, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 12, Color("#6b392d"))
+		if index == count - 1:
+			_draw_exit_gate(points[index], radius)
+	var token := points[current_tile]
+	draw_texture_rect(PLAYER_TEXTURE, Rect2(token - Vector2(30, 85), Vector2(60, 80)), false)
+	if current_tile < count - 1:
+		_draw_direction_chevron(token.lerp(points[current_tile + 1], 0.55), points[current_tile + 1] - token, Color("#f5d06d"), 10.0)
+	draw_string(APP_FONT, Vector2(12, size.y - 16), "入口　分岐", HORIZONTAL_ALIGNMENT_LEFT, 92, 13, Color("#7c583c"))
+	draw_string(APP_FONT, Vector2(size.x - 112, size.y - 16), "EXIT　本線へ合流", HORIZONTAL_ALIGNMENT_RIGHT, 100, 13, Color("#8d392f"))
+
+static func bypass_exit_distance(tile_index: int, tile_count: int = 10) -> int:
+	return maxi(0, maxi(1, tile_count) - (posmod(tile_index, maxi(1, tile_count)) + 1))
+
+static func bypass_route_points(view_size: Vector2, count: int = 10) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var safe_count := maxi(2, count)
+	for index: int in range(safe_count):
+		var t := float(index) / float(safe_count - 1)
+		var x := lerpf(28.0, view_size.x - 30.0, t)
+		var ridge := sin(t * PI) * -54.0 + sin(t * TAU * 2.0) * 13.0
+		points.append(Vector2(x, view_size.y * 0.67 + ridge))
+	return points
+
+func _draw_direction_chevron(center: Vector2, direction: Vector2, color: Color, scale: float) -> void:
+	var forward := direction.normalized()
+	if forward == Vector2.ZERO: forward = Vector2.RIGHT
+	var side := Vector2(-forward.y, forward.x)
+	var triangle := PackedVector2Array([center + forward * scale, center - forward * scale * 0.75 + side * scale * 0.62, center - forward * scale * 0.75 - side * scale * 0.62])
+	draw_colored_polygon(triangle, color)
+
+func _draw_exit_gate(center: Vector2, radius: float) -> void:
+	var gate_color := Color("#8e4934")
+	draw_line(center + Vector2(-radius - 2, 5), center + Vector2(-radius - 2, -radius - 15), gate_color, 4.0, true)
+	draw_line(center + Vector2(radius + 2, 5), center + Vector2(radius + 2, -radius - 15), gate_color, 4.0, true)
+	draw_arc(center + Vector2(0, -radius - 13), radius + 4, PI, TAU, 18, Color("#d29c4b"), 5.0, true)
+	var pole_top := center + Vector2(-radius - 2, -radius - 34)
+	draw_line(center + Vector2(-radius - 2, -radius - 8), pole_top, Color("#72513a"), 2.5, true)
+	draw_colored_polygon(PackedVector2Array([pole_top, pole_top + Vector2(18, 5), pole_top + Vector2(0, 12)]), Color("#c94f3e"))
+	draw_string(APP_FONT, center + Vector2(-30, -radius - 25), "EXIT", HORIZONTAL_ALIGNMENT_CENTER, 60, 14, Color("#8d392f"))
+
+func _draw_bypass_flow_wind(points: PackedVector2Array) -> void:
+	if route_flow_level <= 0 or points.size() < 2:
+		return
+	var streak_count := 2 + route_flow_level
+	for index: int in range(streak_count):
+		var t := fposmod(float(index) * 0.19 + float(route_flow_level) * 0.07, 0.88)
+		var slot := mini(points.size() - 2, floori(t * float(points.size() - 1)))
+		var local_t := fposmod(t * float(points.size() - 1), 1.0)
+		var start := points[slot].lerp(points[slot + 1], local_t) + Vector2(0, -22.0 - float(index % 3) * 7.0)
+		var direction := (points[slot + 1] - points[slot]).normalized()
+		var length := 12.0 + float(route_flow_level) * 4.0
+		draw_line(start, start + direction * length, Color(0.95, 0.78, 0.42, 0.20 + float(route_flow_level) * 0.07), 1.5 + float(route_flow_level) * 0.18, true)
 
 func _draw_zoomed_neighborhood() -> void:
 	# The neighborhood is a legible board ribbon, not a magnified dotted map.
@@ -104,11 +227,11 @@ func _draw_zoomed_neighborhood() -> void:
 		var slot_width := maxf(1.0, size.x - 44.0)
 		var slot_height := minf(slot_width * 0.5, maxf(1.0, size.y * 0.72))
 		draw_texture_rect(scenic_texture, Rect2(22.0, 42.0, slot_width, slot_height), false, Color(1.0, 0.98, 0.91, 0.94))
-	draw_string(ThemeDB.fallback_font, Vector2(22, 34), "現在地周辺  %02d / 90" % (current_tile + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, INK)
+	draw_string(APP_FONT, Vector2(22, 34), "現在地周辺  %02d / 90" % (current_tile + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, INK)
 	var district_names := ["市場", "ピラミッド", "オアシス", "遺跡", "砂丘"]
-	draw_string(ThemeDB.fallback_font, Vector2(size.x - 150, 34), district_names[current_tile / 18], HORIZONTAL_ALIGNMENT_RIGHT, 128, 17, Color("#846c50"))
+	draw_string(APP_FONT, Vector2(size.x - 150, 34), district_names[current_tile / 18], HORIZONTAL_ALIGNMENT_RIGHT, 128, 17, Color("#846c50"))
 	if scenic_level >= 0:
-		draw_string(ThemeDB.fallback_font, Vector2(size.x * 0.5 - 130.0, 62.0), "香辛料市場通り　Lv.%d" % scenic_level, HORIZONTAL_ALIGNMENT_CENTER, 260.0, 16, Color("#6f5030"))
+		draw_string(APP_FONT, Vector2(size.x * 0.5 - 130.0, 62.0), "香辛料市場通り　Lv.%d" % scenic_level, HORIZONTAL_ALIGNMENT_CENTER, 260.0, 16, Color("#6f5030"))
 	var shown_each_side := 5
 	var tile_width := maxf(48.0, (size.x - 34.0) / 11.0)
 	var tile_height := minf(106.0, maxf(78.0, size.y * 0.28))
@@ -122,19 +245,19 @@ func _draw_zoomed_neighborhood() -> void:
 		var tile_style := _ribbon_tile_style(tile_type, offset == 0, offset == 1)
 		draw_style_box(tile_style, rect)
 		var number_color := Color.WHITE if offset == 0 or tile_type == &"RISK" else INK
-		draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, 27), "%02d" % (index + 1), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 17, number_color)
+		draw_string(APP_FONT, rect.position + Vector2(0, 27), "%02d" % (index + 1), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 17, number_color)
 		var mark := _tile_mark(tile_type)
-		if not mark.is_empty(): draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, 58), mark, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 23, number_color)
+		if not mark.is_empty(): draw_string(APP_FONT, rect.position + Vector2(0, 58), mark, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 23, number_color)
 		if tile_type == &"LANDMARK":
 			var landmark_level := _landmark_level(index)
-			draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, 78), "Lv.%d" % landmark_level, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 12, number_color)
-		if offset == 1: draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, rect.size.y - 10), "NEXT", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color("#fff4dc") if tile_type == &"RISK" else Color("#356b6d"))
+			draw_string(APP_FONT, rect.position + Vector2(0, 78), "Lv.%d" % landmark_level, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 12, number_color)
+		if offset == 1: draw_string(APP_FONT, rect.position + Vector2(0, rect.size.y - 10), "NEXT", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color("#fff4dc") if tile_type == &"RISK" else Color("#356b6d"))
 	# Direction and token stay centered while the ribbon moves beneath them.
 	var center_rect_x := size.x * 0.5 - tile_width * 0.5
 	draw_circle(Vector2(size.x * 0.5, center_y + tile_height * 0.5 + 12), 23, Color("#277c80"))
 	draw_arc(Vector2(size.x * 0.5, center_y + tile_height * 0.5 + 12), 23, 0, TAU, 24, Color("#ffe5a4"), 4, true)
 	draw_texture_rect(PLAYER_TEXTURE, Rect2(Vector2(size.x * 0.5 - 40, center_y - tile_height * 0.5 - 94), Vector2(80, 108)), false)
-	draw_string(ThemeDB.fallback_font, Vector2(center_rect_x + tile_width, center_y - tile_height * 0.5 - 12), "▶", HORIZONTAL_ALIGNMENT_CENTER, tile_width, 22, Color("#7d5f36"))
+	draw_string(APP_FONT, Vector2(center_rect_x + tile_width, center_y - tile_height * 0.5 - 12), "▶", HORIZONTAL_ALIGNMENT_CENTER, tile_width, 22, Color("#7d5f36"))
 
 func _draw_minimap() -> void:
 	draw_style_box(_mini_panel(), Rect2(Vector2.ZERO, size))
@@ -223,6 +346,8 @@ func _tile_mark(tile_type: StringName) -> String:
 		&"BOSS_SCENT": return "足"
 		&"STAGE_SPECIAL": return "✦"
 		&"RISK": return "!"
+		&"STRONG_RISK": return "!!"
+		&"GAMBLE": return "?"
 	return ""
 
 func _landmark_level(tile_index: int) -> int:

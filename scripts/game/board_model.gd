@@ -2,6 +2,10 @@ class_name BoardModel
 extends RefCounted
 
 const TILE_COUNT: int = 90
+const ROUTE_MAIN: String = "main"
+const ROUTE_BYPASS_CARAVAN: String = "bypass_caravan"
+const ROUTE_LOOP_ROYAL_MAZE: String = "loop_royal_maze"
+const VALID_ROUTE_IDS: Array[String] = [ROUTE_MAIN, ROUTE_BYPASS_CARAVAN, ROUTE_LOOP_ROYAL_MAZE]
 const TILE_TYPES: Array[StringName] = [
 	&"NORMAL", &"EVENT", &"ITEM", &"COIN", &"WARP", &"SHOP", &"REST", &"LANDMARK", &"BOSS_SCENT", &"STAGE_SPECIAL", &"RISK"
 ]
@@ -28,6 +32,99 @@ const CAIRO_LANDMARKS_BY_TILE: Dictionary = {
 static func move(index: int, distance: int, tile_count: int = TILE_COUNT) -> Dictionary:
 	var total: int = index + distance
 	return {"index": posmod(total, tile_count), "laps": floori(float(total) / float(tile_count))}
+
+static func normalized_route_id(route_id: String) -> String:
+	return route_id if route_id in VALID_ROUTE_IDS else ROUTE_MAIN
+
+static func route_definition(route_id: String) -> Dictionary:
+	match normalized_route_id(route_id):
+		ROUTE_BYPASS_CARAVAN:
+			return {
+				"id": ROUTE_BYPASS_CARAVAN, "type": "bypass", "name": "砂嵐のキャラバン道",
+				"entry_route": ROUTE_MAIN, "entry_tile": 32, "exit_route": ROUTE_MAIN, "exit_tile": 58,
+				"tile_count": 10, "tiles": [&"RISK", &"RISK", &"STRONG_RISK", &"RISK", &"GAMBLE", &"ITEM", &"RISK", &"COIN", &"STRONG_RISK", &"NORMAL"],
+				"counts_for_lap": false, "exact_stop_exit": false,
+			}
+		ROUTE_LOOP_ROYAL_MAZE:
+			return {
+				"id": ROUTE_LOOP_ROYAL_MAZE, "type": "loop", "name": "王の迷い環",
+				"entry_tile": 4, "return_gate_tile": 0, "return_route": ROUTE_MAIN, "return_tile": 74,
+				"tile_count": 8, "tiles": [&"RETURN_GATE", &"RISK", &"TREASURE", &"RISK", &"ANCIENT_ITEM", &"STRONG_RISK", &"MURAL", &"RISK"],
+				"counts_for_lap": false, "exact_stop_exit": true,
+			}
+		_:
+			return {
+				"id": ROUTE_MAIN, "type": "main", "name": "カイロ観光本線",
+				"tile_count": TILE_COUNT, "tiles": CAIRO_TILES,
+				"counts_for_lap": true, "exact_stop_exit": false,
+			}
+
+static func route_tile_count(route_id: String) -> int:
+	return int(route_definition(route_id).get("tile_count", TILE_COUNT))
+
+static func normalize_position(route_id: String, tile_index: int) -> Dictionary:
+	var normalized_route := normalized_route_id(route_id)
+	return {"route_id": normalized_route, "tile_index": posmod(tile_index, route_tile_count(normalized_route))}
+
+## Shared ROUTE-01 movement primitive. Branch entry and exact-stop maze exit are
+## deliberately deferred; debug positions can already traverse, save and resume
+## every topology. A bypass naturally rejoins main while a loop only increments
+## its own counter and never creates a main-lap crossing.
+static func advance_route(route_id: String, tile_index: int, distance: int) -> Dictionary:
+	var position := normalize_position(route_id, tile_index)
+	var crossed_laps := 0
+	var maze_loops := 0
+	var path: Array[Dictionary] = []
+	for _step: int in range(maxi(0, distance)):
+		var current_route := str(position.route_id)
+		var current_index := int(position.tile_index)
+		match current_route:
+			ROUTE_BYPASS_CARAVAN:
+				if current_index + 1 >= route_tile_count(current_route):
+					var bypass := route_definition(current_route)
+					position = normalize_position(str(bypass.exit_route), int(bypass.exit_tile))
+				else:
+					position.tile_index = current_index + 1
+			ROUTE_LOOP_ROYAL_MAZE:
+				position.tile_index = posmod(current_index + 1, route_tile_count(current_route))
+				if int(position.tile_index) == 0:
+					maze_loops += 1
+			_:
+				position.tile_index = posmod(current_index + 1, TILE_COUNT)
+				if int(position.tile_index) == 0:
+					crossed_laps += 1
+		path.append(position.duplicate(true))
+	return {
+		"route_id": str(position.route_id), "tile_index": int(position.tile_index),
+		"index": int(position.tile_index), "laps": crossed_laps, "maze_loops": maze_loops,
+		"path": path,
+	}
+
+static func route_choice_encounter(route_id: String, tile_index: int, distance: int) -> Dictionary:
+	if normalized_route_id(route_id) != ROUTE_MAIN or distance <= 0:
+		return {}
+	var entry_tile := int(route_definition(ROUTE_BYPASS_CARAVAN).entry_tile)
+	var steps_to_entry := posmod(entry_tile - posmod(tile_index, TILE_COUNT), TILE_COUNT)
+	# A traveler already standing on the fork chose a route when they arrived.
+	# Never reopen the same fork at the beginning of the following roll.
+	if steps_to_entry <= 0 or steps_to_entry > distance:
+		return {}
+	var arrival := advance_route(ROUTE_MAIN, tile_index, steps_to_entry)
+	return {
+		"entry_route_id": ROUTE_MAIN,
+		"entry_tile_index": entry_tile,
+		"steps_to_entry": steps_to_entry,
+		"remaining_steps": distance - steps_to_entry,
+		"crossed_laps": int(arrival.laps),
+		"movement_path": arrival.path,
+	}
+
+static func tile_type_for_position(route_id: String, tile_index: int) -> StringName:
+	var definition := route_definition(route_id)
+	var route_tiles: Array = definition.get("tiles", [])
+	if route_tiles.is_empty():
+		return &"NORMAL"
+	return StringName(route_tiles[posmod(tile_index, route_tiles.size())])
 
 static func build_tile_types() -> Array[StringName]:
 	return CAIRO_TILES.duplicate()

@@ -1,0 +1,16 @@
+Interface Sounds by Kenney
+License: Creative Commons Zero v1.0 Universal (CC0 1.0)
+Attribution is not required. This record is kept for source and asset provenance.
+
+Selected originals (2 of 100 files):
+- click_003.ogg  SHA256 2FA929138BC3A0F432696588F66EAC94B8F6D463905EC8808C6461CE4B054292
+- select_001.ogg SHA256 AEC0C31EA934A35936AE0D2AB8FAC8123C93AA5647F935853A58DBAF90278B7A
+
+Runtime copies:
+- third_party/kenney-interface-sounds/selected-originals/click_003.ogg
+  -> assets/audio/ui/click_003.ogg
+- third_party/kenney-interface-sounds/selected-originals/select_001.ogg
+  -> assets/audio/ui/select_001.ogg
+
+The OGG bytes are unchanged. Kenney logos and preview/sample images are not
+included or displayed.

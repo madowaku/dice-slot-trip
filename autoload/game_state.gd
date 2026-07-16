@@ -2,6 +2,7 @@ extends Node
 
 const DEFAULT_STAGE: StringName = &"cairo_hourglass"
 const DEFAULT_CHARACTER: StringName = &"relaxed"
+const DEFAULT_BOARD_VIEW_MODE := "tourism"
 const DEFAULT_LANDMARK_LEVELS: Dictionary = {
 	"CAI_LANDMARK_01": 0,
 	"CAI_LANDMARK_02": 0,
@@ -9,10 +10,34 @@ const DEFAULT_LANDMARK_LEVELS: Dictionary = {
 }
 const BossSystemScript = preload("res://scripts/game/boss_system.gd")
 const DiceLogicScript = preload("res://scripts/core/dice_logic.gd")
+const BoardModelScript = preload("res://scripts/game/board_model.gd")
 
 var selected_stage_id: StringName = DEFAULT_STAGE
 var selected_character_id: StringName = DEFAULT_CHARACTER
+var board_view_mode: String = DEFAULT_BOARD_VIEW_MODE
+var current_route_id: String = BoardModelScript.ROUTE_MAIN
 var current_tile_index: int = 0
+## Compatibility alias while existing main-route systems migrate from `tile`.
+var current_route_tile_index: int:
+	get: return current_tile_index
+	set(value): current_tile_index = value
+var pending_route_choice: Dictionary = {}
+var route_choice_remaining_steps: int = 0
+var bypass_entry_committed: bool = false
+var bypass_exit_committed: bool = false
+var loop_return_route_id: String = BoardModelScript.ROUTE_MAIN
+var loop_return_tile_index: int = 0
+var loop_entry_committed: bool = false
+var loop_exit_committed: bool = false
+var maze_loop_count: int = 0
+var maze_treasure_claimed: bool = false
+var maze_collection_flags: Dictionary = {}
+var bypass_use_count: int = 0
+var bypass_no_damage_count: int = 0
+var bypass_best_roll_count: int = 0
+var bypass_clean_losses: int = 0
+var bypass_rolls_this_visit: int = 0
+var bypass_damaged_this_visit: bool = false
 var lap_count: int = 0
 var rolls_used: int = 0
 var coins: int = 12
@@ -66,7 +91,7 @@ var dice_se_muted: bool = false
 ## omitted; only gameplay facts needed to resume after an app restart persist.
 var roll_transaction: Dictionary = {}
 
-# LAP/CLEAN state remains in save v6; FLOW fields stay neutral until its own
+# LAP/CLEAN state remains in save v9; FLOW fields stay neutral until its own
 # implementation slice.
 var total_lap_points: int = 0
 var current_lap_bonus: int = 0
@@ -90,7 +115,7 @@ var lap_reward_committed: bool = false
 var last_lap_result: Dictionary = {}
 
 # LANDMARK-01. Collection/revisit behavior is intentionally deferred, but the
-# v6 neutral fields keep later additions backward compatible.
+# v9 neutral fields keep later additions backward compatible.
 var landmark_levels: Dictionary = DEFAULT_LANDMARK_LEVELS.duplicate(true)
 var landmark_revisit_stamps: Dictionary = {}
 var landmark_collection_flags: Dictionary = {}
@@ -110,6 +135,17 @@ var unlocked_dice_count: int:
 
 func start_new_game() -> void:
 	reset_run()
+
+static func normalized_board_view_mode(value: String) -> String:
+	return "classic" if value.strip_edges().to_lower() == "classic" else DEFAULT_BOARD_VIEW_MODE
+
+func route_position() -> Dictionary:
+	return {"route_id": current_route_id, "tile_index": current_route_tile_index}
+
+func set_route_position(route_id: String, tile_index: int) -> void:
+	var normalized := BoardModelScript.normalize_position(route_id, tile_index)
+	current_route_id = str(normalized.route_id)
+	current_route_tile_index = int(normalized.tile_index)
 
 func unlock_dice(step: int = 1) -> int:
 	# Compatibility method for v4 call sites. New code should use add_dice().
@@ -137,7 +173,20 @@ func apply_dice_roll_transition(rolled_dice_count: int, roles: Dictionary) -> Di
 	return transition
 
 func reset_run() -> void:
-	current_tile_index = 0
+	set_route_position(BoardModelScript.ROUTE_MAIN, 0)
+	pending_route_choice.clear()
+	route_choice_remaining_steps = 0
+	bypass_entry_committed = false
+	bypass_exit_committed = false
+	bypass_rolls_this_visit = 0
+	bypass_damaged_this_visit = false
+	loop_return_route_id = BoardModelScript.ROUTE_MAIN
+	loop_return_tile_index = 0
+	loop_entry_committed = false
+	loop_exit_committed = false
+	maze_loop_count = 0
+	maze_treasure_claimed = false
+	maze_collection_flags.clear()
 	lap_count = 0
 	rolls_used = 0
 	coins = 12
@@ -179,7 +228,7 @@ func begin_roll_transaction(values: Array, dice_count: int, start_tile: int) -> 
 	if not roll_transaction.is_empty():
 		return false
 	var transaction_id := "roll:%08d:%d" % [rolls_used, Time.get_ticks_msec()]
-	var normalized_start := posmod(start_tile, 90)
+	var normalized_start := int(BoardModelScript.normalize_position(current_route_id, start_tile).tile_index)
 	roll_transaction = {
 		"phase": "PRE_ROLL",
 		"roll_phase": "PRE_ROLL",
@@ -191,7 +240,10 @@ func begin_roll_transaction(values: Array, dice_count: int, start_tile: int) -> 
 		"dice_count": clampi(dice_count, 1, 5),
 		"start_tile_index": normalized_start,
 		"start_tile": normalized_start,
+		"start_route_id": current_route_id,
 		"target_tile_index": -1,
+		"target_route_id": current_route_id,
+		"movement_path": [],
 		"result_committed": false,
 		"movement_committed": false,
 		"space_effect_committed": false,
@@ -215,7 +267,7 @@ func mark_roll_started(values: Array) -> bool:
 	roll_transaction["values"] = values.duplicate()
 	return true
 
-func commit_roll_result(values: Array, dice_count: int, roles: Dictionary, distance: int, destination: int, crossed_laps: int, early_stopped: bool) -> bool:
+func commit_roll_result(values: Array, dice_count: int, roles: Dictionary, distance: int, destination: int, crossed_laps: int, early_stopped: bool, destination_route_id: String = "", movement_path: Array = [], crossed_maze_loops: int = 0) -> bool:
 	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) not in ["PRE_ROLL", "ROLLING"]:
 		return false
 	roll_transaction["phase"] = "RESULT_COMMITTED"
@@ -226,20 +278,107 @@ func commit_roll_result(values: Array, dice_count: int, roles: Dictionary, dista
 	roll_transaction["roles"] = roles.duplicate(true)
 	roll_transaction["role_result"] = roles.duplicate(true)
 	roll_transaction["distance"] = maxi(0, distance)
-	roll_transaction["destination"] = posmod(destination, 90)
-	roll_transaction["target_tile_index"] = posmod(destination, 90)
+	var target_route := current_route_id if destination_route_id.is_empty() else BoardModelScript.normalized_route_id(destination_route_id)
+	var target := BoardModelScript.normalize_position(target_route, destination)
+	roll_transaction["destination"] = int(target.tile_index)
+	roll_transaction["target_tile_index"] = int(target.tile_index)
+	roll_transaction["target_route_id"] = str(target.route_id)
+	roll_transaction["movement_path"] = movement_path.duplicate(true)
 	roll_transaction["crossed_laps"] = maxi(0, crossed_laps)
+	roll_transaction["crossed_maze_loops"] = maxi(0, crossed_maze_loops)
+	roll_transaction["roll_count_committed"] = false
 	roll_transaction["result_committed"] = true
 	roll_transaction["early_stopped"] = early_stopped
 	return true
 
-func commit_roll_movement(destination: int) -> bool:
+func reserve_route_choice(values: Array, dice_count: int, roles: Dictionary, distance: int, choice: Dictionary, early_stopped: bool) -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) not in ["PRE_ROLL", "ROLLING"]:
+		return false
+	var entry_tile := int(choice.get("entry_tile_index", 0))
+	roll_transaction["phase"] = "ROUTE_CHOICE_PENDING"
+	roll_transaction["roll_phase"] = "ROUTE_CHOICE_PENDING"
+	roll_transaction["values"] = values.duplicate()
+	roll_transaction["final_dice_values"] = values.duplicate()
+	roll_transaction["dice_count"] = clampi(dice_count, 1, 5)
+	roll_transaction["roles"] = roles.duplicate(true)
+	roll_transaction["role_result"] = roles.duplicate(true)
+	roll_transaction["distance"] = maxi(0, distance)
+	roll_transaction["destination"] = entry_tile
+	roll_transaction["target_tile_index"] = entry_tile
+	roll_transaction["target_route_id"] = BoardModelScript.ROUTE_MAIN
+	roll_transaction["movement_path"] = (choice.get("movement_path", []) as Array).duplicate(true)
+	roll_transaction["crossed_laps"] = maxi(0, int(choice.get("crossed_laps", 0)))
+	roll_transaction["crossed_maze_loops"] = 0
+	roll_transaction["route_choice_remaining_steps"] = maxi(0, int(choice.get("remaining_steps", 0)))
+	roll_transaction["route_choice_entry_tile"] = entry_tile
+	roll_transaction["route_choice_arrival_committed"] = false
+	roll_transaction["route_choice_committed"] = false
+	roll_transaction["roll_count_committed"] = false
+	roll_transaction["early_stopped"] = early_stopped
+	pending_route_choice = {
+		"transaction_id": str(roll_transaction.get("transaction_id", "")),
+		"status": "pending", "entry_route_id": BoardModelScript.ROUTE_MAIN,
+		"entry_tile_index": entry_tile, "remaining_steps": maxi(0, int(choice.get("remaining_steps", 0))),
+	}
+	route_choice_remaining_steps = maxi(0, int(choice.get("remaining_steps", 0)))
+	bypass_entry_committed = false
+	bypass_exit_committed = false
+	return true
+
+func commit_route_choice_arrival() -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "ROUTE_CHOICE_PENDING" or bool(roll_transaction.get("route_choice_arrival_committed", false)):
+		return false
+	set_route_position(BoardModelScript.ROUTE_MAIN, int(roll_transaction.get("route_choice_entry_tile", 0)))
+	rolls_used += 1
+	roll_transaction["route_choice_arrival_committed"] = true
+	roll_transaction["roll_count_committed"] = true
+	return true
+
+func commit_route_choice(selected_route_id: String) -> bool:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "ROUTE_CHOICE_PENDING":
+		return false
+	if not bool(roll_transaction.get("route_choice_arrival_committed", false)) or bool(roll_transaction.get("route_choice_committed", false)):
+		return false
+	var selected := BoardModelScript.ROUTE_BYPASS_CARAVAN if selected_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN else BoardModelScript.ROUTE_MAIN
+	var entry_tile := int(roll_transaction.get("route_choice_entry_tile", 0))
+	var start_tile := 0 if selected == BoardModelScript.ROUTE_BYPASS_CARAVAN else entry_tile
+	var remaining := maxi(0, int(roll_transaction.get("route_choice_remaining_steps", 0)))
+	var continuation := BoardModelScript.advance_route(selected, start_tile, remaining)
+	roll_transaction["phase"] = "RESULT_COMMITTED"
+	roll_transaction["roll_phase"] = "RESULT_COMMITTED"
+	roll_transaction["start_route_id"] = selected
+	roll_transaction["start_tile"] = start_tile
+	roll_transaction["start_tile_index"] = start_tile
+	roll_transaction["target_route_id"] = str(continuation.route_id)
+	roll_transaction["target_tile_index"] = int(continuation.tile_index)
+	roll_transaction["destination"] = int(continuation.tile_index)
+	roll_transaction["movement_path"] = continuation.path
+	roll_transaction["crossed_laps"] = maxi(0, int(roll_transaction.get("crossed_laps", 0)) + int(continuation.laps))
+	roll_transaction["route_choice_committed"] = true
+	roll_transaction["route_choice_exact_stop"] = remaining == 0
+	roll_transaction["selected_route_id"] = selected
+	roll_transaction["result_committed"] = true
+	pending_route_choice["status"] = "committed"
+	pending_route_choice["selected_route_id"] = selected
+	route_choice_remaining_steps = remaining
+	set_route_position(selected, start_tile)
+	if selected == BoardModelScript.ROUTE_BYPASS_CARAVAN:
+		bypass_entry_committed = true
+		bypass_use_count += 1
+		bypass_rolls_this_visit = 1
+		bypass_damaged_this_visit = false
+	return true
+
+func commit_roll_movement(destination: int, destination_route_id: String = "") -> bool:
 	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "RESULT_COMMITTED":
 		return false
 	roll_transaction["phase"] = "MOVEMENT_COMMITTED"
 	roll_transaction["roll_phase"] = "MOVEMENT_COMMITTED"
-	roll_transaction["destination"] = posmod(destination, 90)
-	roll_transaction["target_tile_index"] = posmod(destination, 90)
+	var target_route := str(roll_transaction.get("target_route_id", current_route_id)) if destination_route_id.is_empty() else destination_route_id
+	var target := BoardModelScript.normalize_position(target_route, destination)
+	roll_transaction["destination"] = int(target.tile_index)
+	roll_transaction["target_tile_index"] = int(target.tile_index)
+	roll_transaction["target_route_id"] = str(target.route_id)
 	roll_transaction["movement_committed"] = true
 	return true
 
@@ -334,6 +473,8 @@ func rollback_uncommitted_roll() -> bool:
 
 func clear_roll_transaction() -> void:
 	roll_transaction.clear()
+	pending_route_choice.clear()
+	route_choice_remaining_steps = 0
 
 func ensure_boss_data() -> void:
 	if current_boss.is_empty():
@@ -372,10 +513,30 @@ func begin_next_boss() -> void:
 func to_dictionary() -> Dictionary:
 	ensure_boss_data()
 	return {
-		"version": 6,
+		"version": 9,
 		"stage_id": String(selected_stage_id),
 		"character_id": String(selected_character_id),
+		"board_view_mode": normalized_board_view_mode(board_view_mode),
+		"current_route_id": current_route_id,
+		"current_route_tile_index": current_route_tile_index,
 		"tile": current_tile_index,
+		"pending_route_choice": pending_route_choice.duplicate(true),
+		"route_choice_remaining_steps": maxi(0, route_choice_remaining_steps),
+		"bypass_entry_committed": bypass_entry_committed,
+		"bypass_exit_committed": bypass_exit_committed,
+		"loop_return_route_id": loop_return_route_id,
+		"loop_return_tile_index": loop_return_tile_index,
+		"loop_entry_committed": loop_entry_committed,
+		"loop_exit_committed": loop_exit_committed,
+		"maze_loop_count": maxi(0, maze_loop_count),
+		"maze_treasure_claimed": maze_treasure_claimed,
+		"maze_collection_flags": maze_collection_flags.duplicate(true),
+		"bypass_use_count": maxi(0, bypass_use_count),
+		"bypass_no_damage_count": maxi(0, bypass_no_damage_count),
+		"bypass_best_roll_count": maxi(0, bypass_best_roll_count),
+		"bypass_clean_losses": maxi(0, bypass_clean_losses),
+		"bypass_rolls_this_visit": maxi(0, bypass_rolls_this_visit),
+		"bypass_damaged_this_visit": bypass_damaged_this_visit,
 		"laps": lap_count,
 		"rolls": rolls_used,
 		"coins": coins,
@@ -454,7 +615,34 @@ func to_dictionary() -> Dictionary:
 func apply_dictionary(data: Dictionary) -> void:
 	selected_stage_id = StringName(str(data.get("stage_id", DEFAULT_STAGE)))
 	selected_character_id = StringName(str(data.get("character_id", DEFAULT_CHARACTER)))
-	current_tile_index = int(data.get("tile", 0))
+	# ANDROID-UI-01: old saves had no display preference and therefore migrate
+	# to Tourism. A saved explicit Classic choice remains Classic.
+	board_view_mode = normalized_board_view_mode(str(data.get("board_view_mode", DEFAULT_BOARD_VIEW_MODE)))
+	# ROUTE-01: v1-v7 only stored `tile`, which is unambiguously main-route.
+	var loaded_route_id := str(data.get("current_route_id", BoardModelScript.ROUTE_MAIN))
+	var loaded_route_tile := int(data.get("current_route_tile_index", data.get("tile", 0)))
+	# Existing main-route resolvers still mutate the compatibility `tile` key in
+	# dictionary snapshots. Honor that mutation until those systems migrate.
+	if BoardModelScript.normalized_route_id(loaded_route_id) == BoardModelScript.ROUTE_MAIN and data.has("tile"):
+		loaded_route_tile = int(data.get("tile", loaded_route_tile))
+	set_route_position(loaded_route_id, loaded_route_tile)
+	pending_route_choice = (data.get("pending_route_choice", {}) as Dictionary).duplicate(true)
+	route_choice_remaining_steps = maxi(0, int(data.get("route_choice_remaining_steps", 0)))
+	bypass_entry_committed = bool(data.get("bypass_entry_committed", false))
+	bypass_exit_committed = bool(data.get("bypass_exit_committed", false))
+	loop_return_route_id = BoardModelScript.normalized_route_id(str(data.get("loop_return_route_id", BoardModelScript.ROUTE_MAIN)))
+	loop_return_tile_index = int(BoardModelScript.normalize_position(loop_return_route_id, int(data.get("loop_return_tile_index", 0))).tile_index)
+	loop_entry_committed = bool(data.get("loop_entry_committed", false))
+	loop_exit_committed = bool(data.get("loop_exit_committed", false))
+	maze_loop_count = maxi(0, int(data.get("maze_loop_count", 0)))
+	maze_treasure_claimed = bool(data.get("maze_treasure_claimed", false))
+	maze_collection_flags = (data.get("maze_collection_flags", {}) as Dictionary).duplicate(true)
+	bypass_use_count = maxi(0, int(data.get("bypass_use_count", 0)))
+	bypass_no_damage_count = maxi(0, int(data.get("bypass_no_damage_count", 0)))
+	bypass_best_roll_count = maxi(0, int(data.get("bypass_best_roll_count", 0)))
+	bypass_clean_losses = maxi(0, int(data.get("bypass_clean_losses", 0)))
+	bypass_rolls_this_visit = maxi(0, int(data.get("bypass_rolls_this_visit", 0)))
+	bypass_damaged_this_visit = bool(data.get("bypass_damaged_this_visit", false))
 	lap_count = int(data.get("laps", 0))
 	rolls_used = int(data.get("rolls", 0))
 	coins = int(data.get("coins", 12))
@@ -513,7 +701,7 @@ func apply_dictionary(data: Dictionary) -> void:
 	roll_transaction = (data.get("roll_transaction", {}) as Dictionary).duplicate(true)
 	if not roll_transaction.is_empty():
 		var transaction_phase := str(roll_transaction.get("phase", roll_transaction.get("roll_phase", "")))
-		if transaction_phase not in ["PRE_ROLL", "ROLLING", "RESULT_COMMITTED", "MOVEMENT_COMMITTED", "SPACE_EFFECT_COMMITTED", "TURN_RESOLVED"]:
+		if transaction_phase not in ["PRE_ROLL", "ROLLING", "ROUTE_CHOICE_PENDING", "RESULT_COMMITTED", "MOVEMENT_COMMITTED", "SPACE_EFFECT_COMMITTED", "TURN_RESOLVED"]:
 			roll_transaction.clear()
 		else:
 			roll_transaction["phase"] = transaction_phase
@@ -525,7 +713,9 @@ func apply_dictionary(data: Dictionary) -> void:
 			roll_transaction["roll_transaction_id"] = loaded_transaction_id
 			roll_transaction["roll_id"] = loaded_transaction_id
 			roll_transaction["dice_count"] = clampi(int(roll_transaction.get("dice_count", 1)), 1, 5)
-			var loaded_start_tile := posmod(int(roll_transaction.get("start_tile_index", roll_transaction.get("start_tile", current_tile_index))), 90)
+			var loaded_start_route := BoardModelScript.normalized_route_id(str(roll_transaction.get("start_route_id", current_route_id)))
+			var loaded_start_tile := int(BoardModelScript.normalize_position(loaded_start_route, int(roll_transaction.get("start_tile_index", roll_transaction.get("start_tile", current_tile_index)))).tile_index)
+			roll_transaction["start_route_id"] = loaded_start_route
 			roll_transaction["start_tile_index"] = loaded_start_tile
 			roll_transaction["start_tile"] = loaded_start_tile
 			roll_transaction["pre_roll_current_dice_count"] = clampi(int(roll_transaction.get("pre_roll_current_dice_count", current_dice_count)), 1, 3)
@@ -534,11 +724,30 @@ func apply_dictionary(data: Dictionary) -> void:
 			roll_transaction["landing_core_committed"] = bool(roll_transaction.get("landing_core_committed", false))
 			if transaction_phase in ["PRE_ROLL", "ROLLING"]:
 				roll_transaction["final_dice_values"] = []
+			var loaded_target_route := BoardModelScript.normalized_route_id(str(roll_transaction.get("target_route_id", loaded_start_route)))
+			roll_transaction["target_route_id"] = loaded_target_route
 			var loaded_target := int(roll_transaction.get("target_tile_index", roll_transaction.get("destination", -1)))
 			if loaded_target >= 0:
-				loaded_target = posmod(loaded_target, 90)
+				loaded_target = int(BoardModelScript.normalize_position(loaded_target_route, loaded_target).tile_index)
 			roll_transaction["target_tile_index"] = loaded_target
 			roll_transaction["destination"] = loaded_target
+			var loaded_path: Array = roll_transaction.get("movement_path", [])
+			var normalized_path: Array[Dictionary] = []
+			for point: Variant in loaded_path:
+				if point is Dictionary:
+					var normalized_point := BoardModelScript.normalize_position(str((point as Dictionary).get("route_id", loaded_start_route)), int((point as Dictionary).get("tile_index", 0)))
+					normalized_path.append(normalized_point)
+			roll_transaction["movement_path"] = normalized_path
+			roll_transaction["crossed_maze_loops"] = maxi(0, int(roll_transaction.get("crossed_maze_loops", 0)))
+			roll_transaction["route_choice_remaining_steps"] = maxi(0, int(roll_transaction.get("route_choice_remaining_steps", route_choice_remaining_steps)))
+			roll_transaction["route_choice_entry_tile"] = posmod(int(roll_transaction.get("route_choice_entry_tile", BoardModelScript.route_definition(BoardModelScript.ROUTE_BYPASS_CARAVAN).entry_tile)), BoardModelScript.TILE_COUNT)
+			roll_transaction["route_choice_arrival_committed"] = bool(roll_transaction.get("route_choice_arrival_committed", false))
+			roll_transaction["route_choice_committed"] = bool(roll_transaction.get("route_choice_committed", false))
+			roll_transaction["roll_count_committed"] = bool(roll_transaction.get("roll_count_committed", transaction_phase in ["MOVEMENT_COMMITTED", "SPACE_EFFECT_COMMITTED", "TURN_RESOLVED"]))
+			if transaction_phase == "ROUTE_CHOICE_PENDING":
+				route_choice_remaining_steps = int(roll_transaction.route_choice_remaining_steps)
+				if pending_route_choice.is_empty():
+					pending_route_choice = {"transaction_id": loaded_transaction_id, "status": "pending", "entry_route_id": BoardModelScript.ROUTE_MAIN, "entry_tile_index": int(roll_transaction.route_choice_entry_tile), "remaining_steps": route_choice_remaining_steps}
 			var encounter_phase := str(roll_transaction.get("encounter_phase", "NONE"))
 			if encounter_phase not in ["NONE", "HANDOFF_PENDING", "MODAL_OPEN", "INTERACTION_COMMITTED", "REGISTRATION_COMMITTED", "COMPLETE"]:
 				encounter_phase = "NONE"

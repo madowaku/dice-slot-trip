@@ -38,7 +38,12 @@ const DiceAudioControllerScript = preload("res://scripts/game/dice_audio_control
 const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
 const CAIRO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/cairo-board.png")
+const WORLD_MAP_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/world-travel-map.png")
+const CAIRO_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/cairo-city-card.png")
 const SPHINX_TEXTURE: Texture2D = preload("res://assets/art/bosses/sleepy-sphinx.png")
+const UI_CLICK_STREAM: AudioStream = preload("res://assets/audio/ui/click_003.ogg")
+const UI_CONFIRM_STREAM: AudioStream = preload("res://assets/audio/ui/select_001.ogg")
+const APP_FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 
 const BG := Color("#efe2c6")
 const INK := Color("#4c3c2e")
@@ -49,11 +54,12 @@ const MUTED := Color("#8c7862")
 var rng := RandomNumberGenerator.new()
 var root_stack: VBoxContainer
 var board_view: BoardView
-var board_view_mode: String = "classic"
+var board_view_mode: String = "tourism"
 var dice_row: HBoxContainer
 var dice_presentation: SubViewportContainer
 var map_dice_overlay: MapDiceOverlay
 var dice_audio: Node
+var ui_audio_player: AudioStreamPlayer
 var role_label: Label
 var memo_label: Label
 var roll_button: Button
@@ -97,10 +103,22 @@ func _ready() -> void:
 	event_definitions = EventSystemScript.definitions()
 	GameState.ensure_boss_data()
 	_apply_theme()
+	var debug_route := OS.get_environment("DICE_DEBUG_ROUTE").strip_edges()
+	if debug_route in BoardModelScript.VALID_ROUTE_IDS:
+		GameState.set_route_position(debug_route, OS.get_environment("DICE_DEBUG_ROUTE_TILE").to_int())
+	if not OS.get_environment("DICE_DEBUG_FLOW").is_empty():
+		GameState.flow_level = clampi(OS.get_environment("DICE_DEBUG_FLOW").to_int(), 0, 5)
+	if not OS.get_environment("DICE_DEBUG_DICE_COUNT").is_empty():
+		GameState.current_dice_count = clampi(OS.get_environment("DICE_DEBUG_DICE_COUNT").to_int(), 1, 3)
+	ui_audio_player = AudioStreamPlayer.new()
+	ui_audio_player.name = "UIAudioPlayer"
+	ui_audio_player.bus = &"Master"
+	add_child(ui_audio_player)
 	match OS.get_environment("DICE_QA_SCREEN"):
 		"stage": show_stage_select()
 		"character": show_character_select()
 		"game": show_game()
+		"font": show_font_qa()
 		_: show_title()
 	if OS.get_environment("DICE_QA_EARLY_STOP") == "1":
 		call_deferred("_qa_early_stop")
@@ -128,6 +146,14 @@ func _ready() -> void:
 		call_deferred("_qa_dice_progression")
 	elif OS.get_environment("DICE_QA_AUDIO") == "1":
 		call_deferred("_qa_dice_audio")
+	elif OS.get_environment("DICE_QA_UI_AUDIO") == "1":
+		call_deferred("_qa_ui_audio")
+	elif OS.get_environment("DICE_QA_ANDROID_UI") == "1":
+		call_deferred("_qa_android_ui")
+	elif OS.get_environment("DICE_QA_ROUTE_01") == "1":
+		call_deferred("_qa_route_01")
+	elif OS.get_environment("DICE_QA_ROUTE_02") == "1":
+		call_deferred("_qa_route_02")
 	elif OS.get_environment("DICE_QA_CAPTURE_DICE") != "":
 		call_deferred("_qa_dice_capture", OS.get_environment("DICE_QA_CAPTURE_DICE"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_M4A") != "":
@@ -173,7 +199,14 @@ func _ready() -> void:
 
 func _apply_theme() -> void:
 	var app_theme := Theme.new()
+	app_theme.default_font = APP_FONT
 	app_theme.default_font_size = 24
+	for control_type: String in ["Label", "Button", "CheckButton", "LineEdit", "ProgressBar"]:
+		app_theme.set_font("font", control_type, APP_FONT)
+		app_theme.set_constant("outline_size", control_type, 0)
+	for rich_font_name: String in ["normal_font", "bold_font", "italics_font", "bold_italics_font", "mono_font"]:
+		app_theme.set_font(rich_font_name, "RichTextLabel", APP_FONT)
+	app_theme.set_constant("outline_size", "RichTextLabel", 0)
 	app_theme.set_color("font_color", "Label", INK)
 	app_theme.set_color("font_color", "Button", INK)
 	app_theme.set_color("font_hover_color", "Button", TEAL)
@@ -183,6 +216,7 @@ func _apply_theme() -> void:
 func _clear() -> void:
 	if is_instance_valid(dice_audio): dice_audio.stop_all()
 	for child: Node in get_children():
+		if child == ui_audio_player: continue
 		child.queue_free()
 	root_stack = null
 	dice_audio = null
@@ -218,6 +252,91 @@ func _make_page() -> VBoxContainer:
 	margin.add_child(root_stack)
 	return root_stack
 
+func _make_world_page() -> VBoxContainer:
+	_clear()
+	var artwork := TextureRect.new()
+	artwork.texture = WORLD_MAP_BACKGROUND
+	artwork.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	artwork.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	artwork.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(artwork)
+	var veil := ColorRect.new()
+	veil.color = Color(0.95, 0.88, 0.72, 0.08)
+	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(veil)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 22)
+	margin.add_theme_constant_override("margin_right", 22)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 18)
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(margin)
+	root_stack = VBoxContainer.new()
+	root_stack.add_theme_constant_override("separation", 8)
+	root_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root_stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	margin.add_child(root_stack)
+	return root_stack
+
+func _postcard_style(active: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("#f8e8c5") if active else Color(0.22, 0.20, 0.18, 0.88)
+	style.border_color = GOLD if active else Color("#766c61")
+	style.set_border_width_all(3 if active else 2)
+	style.set_corner_radius_all(12)
+	style.content_margin_left = 8
+	style.content_margin_right = 8
+	style.content_margin_top = 7
+	style.content_margin_bottom = 7
+	style.shadow_color = Color(0.10, 0.06, 0.03, 0.35)
+	style.shadow_size = 8
+	return style
+
+func _add_city_postcard(parent: Control, city: String, journey: String, position: Vector2, card_size: Vector2, active: bool, action: Callable, card_texture: Texture2D = null) -> Button:
+	var button := Button.new()
+	button.name = "city_%s" % city.to_lower()
+	button.text = "" if card_texture != null else "%s\n%s\n%s" % [city, journey, "● 旅に出る" if active else "◇ 準備中"]
+	button.position = position
+	button.size = card_size
+	button.clip_contents = true
+	button.add_theme_font_size_override("font_size", 18 if active else 15)
+	button.add_theme_color_override("font_color", INK if active else Color("#d7c8b5"))
+	button.add_theme_color_override("font_hover_color", TEAL if active else Color("#d7c8b5"))
+	button.add_theme_color_override("font_disabled_color", Color("#d7c8b5"))
+	button.add_theme_stylebox_override("normal", _postcard_style(active))
+	button.add_theme_stylebox_override("hover", _postcard_style(active))
+	button.add_theme_stylebox_override("pressed", _postcard_style(active))
+	button.add_theme_stylebox_override("disabled", _postcard_style(false))
+	button.disabled = not active
+	button.tooltip_text = "%sは%s" % [journey, "選択できます" if active else "今後の旅で解禁予定です"]
+	if active and action.is_valid():
+		button.pressed.connect(func() -> void: _play_ui_click(true))
+		button.pressed.connect(action)
+	if card_texture != null:
+		var art := TextureRect.new()
+		art.texture = card_texture
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		art.position = Vector2(6, 6)
+		art.size = Vector2(card_size.x - 12, card_size.y - 62)
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(art)
+		var caption_bg := ColorRect.new()
+		caption_bg.color = Color(0.97, 0.89, 0.72, 0.96)
+		caption_bg.position = Vector2(6, card_size.y - 60)
+		caption_bg.size = Vector2(card_size.x - 12, 54)
+		caption_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(caption_bg)
+		var caption := _body("%s　%s\n● 旅に出る" % [city, journey], 15)
+		caption.position = caption_bg.position
+		caption.size = caption_bg.size
+		caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(caption)
+	parent.add_child(button)
+	return button
+
 func _title(text: String, size_px: int = 52) -> Label:
 	var label := Label.new()
 	label.text = text
@@ -239,6 +358,7 @@ func _button(text: String, action: Callable, primary: bool = false) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(0, 68)
+	button.pressed.connect(func() -> void: _play_ui_click(primary))
 	button.pressed.connect(action)
 	if primary:
 		button.add_theme_color_override("font_color", Color.WHITE)
@@ -256,6 +376,15 @@ func _button(text: String, action: Callable, primary: bool = false) -> Button:
 		style.border_color = GOLD
 		button.add_theme_stylebox_override("normal", style)
 	return button
+
+func _play_ui_click(primary: bool = false) -> void:
+	if not is_instance_valid(ui_audio_player): return
+	var level := clampf(GameState.master_volume * GameState.se_volume, 0.0, 1.0)
+	if level <= 0.0: return
+	ui_audio_player.stream = UI_CONFIRM_STREAM if primary else UI_CLICK_STREAM
+	ui_audio_player.volume_db = -18.0 + linear_to_db(level)
+	ui_audio_player.pitch_scale = 1.0
+	ui_audio_player.play()
 
 func _premium_panel(bg: Color = Color("#f5e6c6"), border: Color = Color("#9b743d"), radius: int = 18) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
@@ -337,21 +466,48 @@ func _show_settings_modal() -> void:
 	SaveManager.save_now(); _close_modal(modal.layer)
 
 func show_stage_select() -> void:
-	var page := _make_page()
-	page.add_child(_title("旅先を選ぶ", 46))
-	page.add_child(_body("古い地図の上に、一枚だけ明るい切符がある。", 20))
-	page.add_child(_spacer(35))
-	var card := VBoxContainer.new()
-	card.add_theme_constant_override("separation", 14)
-	card.add_child(_title("砂時計のカイロ", 40))
-	card.add_child(_body("市場、オアシス、遺跡をめぐる\nゆったり旅", 24))
+	var page := _make_world_page()
+	var heading_panel := PanelContainer.new()
+	heading_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.88, 0.70, 0.94), Color("#8d6335"), 18))
+	var heading := VBoxContainer.new()
+	heading.add_theme_constant_override("separation", 0)
+	heading.add_child(_title("旅先を選ぶ", 40))
+	var kicker := _body("WORLD TRAVEL MAP　・　鞄の中の旅程", 16)
+	kicker.add_theme_color_override("font_color", MUTED)
+	heading.add_child(kicker)
+	heading_panel.add_child(heading)
+	page.add_child(heading_panel)
+
+	var map_area := Control.new()
+	map_area.name = "WorldMapPostcards"
+	map_area.custom_minimum_size.y = 780
+	map_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	map_area.clip_contents = true
+	page.add_child(map_area)
+	_add_city_postcard(map_area, "PARIS", "月夜のパリ", Vector2(86, 155), Vector2(170, 112), false, Callable())
+	_add_city_postcard(map_area, "TOKYO", "桜風の東京", Vector2(492, 205), Vector2(165, 112), false, Callable())
+	_add_city_postcard(map_area, "ROME", "遺跡のローマ", Vector2(70, 480), Vector2(170, 112), false, Callable())
+	_add_city_postcard(map_area, "SINGAPORE", "雨粒のシンガポール", Vector2(455, 515), Vector2(200, 112), false, Callable())
+	var cairo := _add_city_postcard(map_area, "CAIRO", "砂時計のカイロ", Vector2(245, 315), Vector2(240, 172), true, show_character_select, CAIRO_CITY_CARD)
+	cairo.add_theme_font_size_override("font_size", 21)
+	var stamp := _body("CAIRO 01　旅のスタンプ %02d" % GameState.total_laps, 15)
+	stamp.position = Vector2(250, 495)
+	stamp.size = Vector2(230, 34)
+	stamp.add_theme_color_override("font_color", Color("#70451f"))
+	map_area.add_child(stamp)
+
 	GameState.ensure_boss_data()
-	card.add_child(_body("いま気になる相手　%s\nルート　90マスの一周" % str(GameState.current_boss.get("name", "眠そうなスフィンクス")), 21))
-	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	page.add_child(card)
-	page.add_child(_body("月夜のパリ　　桜風の東京\n雨粒のシンガポール　Coming Soon", 19))
+	var route := _body("選択中：砂時計のカイロ　｜　90マス　｜　%s" % str(GameState.current_boss.get("name", "眠そうなスフィンクス")), 17)
+	route.add_theme_color_override("font_color", Color("#fce7ba"))
+	var route_panel := PanelContainer.new()
+	route_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.19, 0.14, 0.10, 0.88), GOLD, 18))
+	route_panel.add_child(route)
+	page.add_child(route_panel)
 	page.add_child(_button("この旅へ", show_character_select, true))
-	page.add_child(_button("もどる", show_title))
+	var back := _button("もどる", show_title)
+	back.add_theme_stylebox_override("normal", _premium_panel(Color(0.94, 0.84, 0.65, 0.92), Color("#8d6335"), 16))
+	back.add_theme_stylebox_override("hover", _premium_panel(Color(0.98, 0.90, 0.72, 0.98), GOLD, 16))
+	page.add_child(back)
 
 func show_character_select() -> void:
 	var page := _make_page()
@@ -369,6 +525,31 @@ func show_character_select() -> void:
 		button.custom_minimum_size.y = 115
 		page.add_child(button)
 	page.add_child(_button("もどる", show_stage_select))
+
+func show_font_qa() -> void:
+	var page := _make_page()
+	page.add_child(_title("実機フォントQA", 40))
+	page.add_child(_body("Noto Sans JP / MSDF OFF / outline 0", 16))
+	for sample: String in [
+		"砂時計のカイロ",
+		"眠そうなスフィンクスがいる",
+		"サイコロをそろえて、世界をめぐる。",
+		"旅人を選ぶ",
+		"香辛料市場通り",
+		"PAIR／STRAIGHT／TRIPLE",
+		"1234567890！？・◇●",
+	]:
+		var sample_label := _body(sample, 24)
+		sample_label.custom_minimum_size.y = 56
+		sample_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		page.add_child(sample_label)
+	var rich := RichTextLabel.new()
+	rich.bbcode_enabled = true
+	rich.fit_content = true
+	rich.custom_minimum_size.y = 72
+	rich.text = "[center][b]日本語・English・123・◇●[/b][/center]"
+	page.add_child(rich)
+	page.add_child(_button("文字と記号を確認　！？・◇●", func() -> void: return, true))
 
 func show_game() -> void:
 	var page := _make_page()
@@ -410,11 +591,12 @@ func show_game() -> void:
 	minimap_view = BoardViewScript.new(); minimap_view.is_minimap = true; minimap_view.custom_minimum_size = Vector2(180, 82); minimap_view.size_flags_vertical = Control.SIZE_EXPAND_FILL; minimap_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels); map_box.add_child(minimap_view)
 	map_card.add_child(map_box); overview.add_child(map_card); page.add_child(overview)
 
-	board_view_mode = TourismMapViewScript.normalized_view_mode(OS.get_environment("DICE_BOARD_VIEW"))
+	board_view_mode = _preferred_board_view_mode()
 	board_view = _new_board_view(board_view_mode)
 	board_view.custom_minimum_size = Vector2(0, 390)
 	board_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	board_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels)
+	_sync_board_route_context()
 	if board_view is TourismMapView:
 		(board_view as TourismMapView).set_dice_count(GameState.current_dice_count)
 		(board_view as TourismMapView).set_flow_visual_level(GameState.flow_level)
@@ -614,8 +796,10 @@ func _uses_map_dice_overlay(count: int) -> bool:
 	return is_instance_valid(map_dice_overlay) and MapDiceOverlayScript.uses_map_presentation(board_view is TourismMapView, count)
 
 func _sync_flow_visuals() -> void:
-	if is_instance_valid(board_view) and board_view is TourismMapView:
-		(board_view as TourismMapView).set_flow_visual_level(GameState.flow_level)
+	if is_instance_valid(board_view):
+		board_view.set_route_flow_level(GameState.flow_level)
+		if board_view is TourismMapView:
+			(board_view as TourismMapView).set_flow_visual_level(GameState.flow_level)
 	if is_instance_valid(map_dice_overlay):
 		map_dice_overlay.set_flow_visual_level(GameState.flow_level)
 
@@ -750,6 +934,7 @@ func _resolve_roll(values: Array[int]) -> void:
 		elif existing_phase not in ["PRE_ROLL", "ROLLING"]:
 			GameState.clear_roll_transaction()
 	var rolled_dice_count := dice_mode
+	var start_route := GameState.current_route_id
 	var start_tile := GameState.current_tile_index
 	var roles: Dictionary = DiceLogicScript.evaluate_current(values, rolled_dice_count)
 	GameState.current_lap_roll_count += 1
@@ -775,14 +960,23 @@ func _resolve_roll(values: Array[int]) -> void:
 	if GameState.next_move_bonus != 0:
 		distance = maxi(0, distance + GameState.next_move_bonus)
 		GameState.next_move_bonus = 0
-	var crossed_laps := 0
-	for step: int in range(distance):
-		if posmod(start_tile + step + 1, BoardModelScript.TILE_COUNT) == 0:
-			crossed_laps += 1
-	var destination := posmod(start_tile + distance, BoardModelScript.TILE_COUNT)
+	if start_route == BoardModelScript.ROUTE_BYPASS_CARAVAN:
+		GameState.bypass_rolls_this_visit += 1
+	var route_choice := BoardModelScript.route_choice_encounter(start_route, start_tile, distance)
+	if not route_choice.is_empty():
+		if GameState.roll_transaction.is_empty():
+			GameState.begin_roll_transaction(values, rolled_dice_count, start_tile)
+		GameState.reserve_route_choice(values, rolled_dice_count, roles, distance, route_choice, last_roll_early_stopped)
+		SaveManager.save_now()
+		await _continue_roll_transaction()
+		return
+	var route_move: Dictionary = BoardModelScript.advance_route(start_route, start_tile, distance)
+	var crossed_laps := int(route_move.laps)
+	var destination := int(route_move.tile_index)
+	var destination_route := str(route_move.route_id)
 	if GameState.roll_transaction.is_empty():
 		GameState.begin_roll_transaction(values, rolled_dice_count, start_tile)
-	GameState.commit_roll_result(values, rolled_dice_count, roles, distance, destination, crossed_laps, last_roll_early_stopped)
+	GameState.commit_roll_result(values, rolled_dice_count, roles, distance, destination, crossed_laps, last_roll_early_stopped, destination_route, route_move.path, int(route_move.maze_loops))
 	SaveManager.save_now()
 	await _continue_roll_transaction()
 
@@ -798,6 +992,9 @@ func _transaction_values(transaction: Dictionary) -> Array[int]:
 func _continue_roll_transaction() -> void:
 	var transaction: Dictionary = GameState.roll_transaction
 	var phase := str(transaction.get("phase", transaction.get("roll_phase", "")))
+	if phase == "ROUTE_CHOICE_PENDING":
+		await _continue_route_choice_transaction()
+		return
 	if phase == "PRE_ROLL" or phase == "ROLLING":
 		# No gameplay result was durable yet, so the interrupted roll is a safe
 		# no-op. This also restores the pre-03B behavior for old saves.
@@ -808,39 +1005,58 @@ func _continue_roll_transaction() -> void:
 		return
 	var values := _transaction_values(transaction)
 	var roles: Dictionary = (transaction.get("role_result", transaction.get("roles", {})) as Dictionary).duplicate(true)
-	var destination := posmod(int(transaction.get("target_tile_index", transaction.get("destination", GameState.current_tile_index))), BoardModelScript.TILE_COUNT)
+	var destination_route := BoardModelScript.normalized_route_id(str(transaction.get("target_route_id", GameState.current_route_id)))
+	var destination := int(BoardModelScript.normalize_position(destination_route, int(transaction.get("target_tile_index", transaction.get("destination", GameState.current_tile_index)))).tile_index)
 	var crossed_laps := maxi(0, int(transaction.get("crossed_laps", 0)))
+	var crossed_maze_loops := maxi(0, int(transaction.get("crossed_maze_loops", 0)))
 	dice_values = values.duplicate()
 	last_roll_early_stopped = bool(transaction.get("early_stopped", false))
 	var labels: Array = roles.get("labels", [])
 	if not labels.is_empty():
 		role_label.text = " + ".join(labels)
 	if phase == "RESULT_COMMITTED":
-		var start_tile := posmod(int(transaction.get("start_tile", GameState.current_tile_index)), BoardModelScript.TILE_COUNT)
-		GameState.current_tile_index = start_tile
+		var start_route := BoardModelScript.normalized_route_id(str(transaction.get("start_route_id", GameState.current_route_id)))
+		var start_tile := int(BoardModelScript.normalize_position(start_route, int(transaction.get("start_tile", GameState.current_tile_index))).tile_index)
+		GameState.set_route_position(start_route, start_tile)
 		board_view.set_current_tile(start_tile)
 		minimap_view.set_current_tile(start_tile)
 		var distance := maxi(0, int(transaction.get("distance", 0)))
-		for step: int in range(distance):
-			var next_index := posmod(GameState.current_tile_index + 1, BoardModelScript.TILE_COUNT)
-			GameState.current_tile_index = next_index
-			board_view.set_current_tile(next_index)
-			minimap_view.set_current_tile(next_index)
+		var movement_path: Array = transaction.get("movement_path", [])
+		if movement_path.is_empty() and distance > 0:
+			movement_path = BoardModelScript.advance_route(start_route, start_tile, distance).path
+		for point: Variant in movement_path:
+			if not point is Dictionary:
+				continue
+			GameState.set_route_position(str((point as Dictionary).get("route_id", start_route)), int((point as Dictionary).get("tile_index", start_tile)))
+			_sync_board_route_context()
+			minimap_view.set_current_tile(GameState.current_tile_index)
 			await get_tree().create_timer(0.035).timeout
-		GameState.current_tile_index = destination
-		GameState.rolls_used += 1
-		GameState.commit_roll_movement(destination)
+		GameState.set_route_position(destination_route, destination)
+		_sync_board_route_context()
+		GameState.maze_loop_count += crossed_maze_loops
+		if not bool(transaction.get("roll_count_committed", false)):
+			GameState.rolls_used += 1
+			GameState.roll_transaction["roll_count_committed"] = true
+		GameState.commit_roll_movement(destination, destination_route)
+		var movement_start_route := str(transaction.get("start_route_id", BoardModelScript.ROUTE_MAIN))
+		if movement_start_route == BoardModelScript.ROUTE_BYPASS_CARAVAN and destination_route == BoardModelScript.ROUTE_MAIN:
+			_finalize_bypass_exit()
 		SaveManager.save_now()
 	# Most destinations start in the fresh event loop. Tile 0 is also a
 	# LANDMARK, so its STOP reward is resolved first and folded into that lap.
-	if crossed_laps > 0 and GameState.current_tile_index != 0:
+	if crossed_laps > 0 and GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index != 0:
 		await _commit_lap_crossings(crossed_laps, "NORMAL")
 	if phase != "SPACE_EFFECT_COMMITTED":
-		await _resolve_landing(tile_types[GameState.current_tile_index], roles)
+		# ROUTE-01 exposes topology and persistence only. Non-main effects are
+		# activated by ROUTE-02/03, so debug traversal lands as NORMAL for now.
+		var landing_type: StringName = tile_types[GameState.current_tile_index] if GameState.current_route_id == BoardModelScript.ROUTE_MAIN else BoardModelScript.tile_type_for_position(GameState.current_route_id, GameState.current_tile_index)
+		if bool(transaction.get("route_choice_exact_stop", false)):
+			landing_type = &"NORMAL"
+		await _resolve_landing(landing_type, roles)
 		_sync_flow_visuals()
 		GameState.commit_roll_space_effect()
 		SaveManager.save_now()
-	if crossed_laps > 0 and GameState.current_tile_index == 0:
+	if crossed_laps > 0 and GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 0:
 		await _commit_lap_crossings(crossed_laps, "NORMAL")
 	dice_mode = clampi(GameState.current_dice_count, 1, 3)
 	GameState.mark_roll_turn_resolved()
@@ -850,6 +1066,56 @@ func _continue_roll_transaction() -> void:
 	_refresh_hud()
 	moving = false
 	roll_button.disabled = false
+
+func _continue_route_choice_transaction() -> void:
+	var transaction := GameState.roll_transaction
+	if str(transaction.get("phase", "")) != "ROUTE_CHOICE_PENDING":
+		return
+	if not bool(transaction.get("route_choice_arrival_committed", false)):
+		var start_route := str(transaction.get("start_route_id", BoardModelScript.ROUTE_MAIN))
+		var start_tile := int(transaction.get("start_tile_index", GameState.current_tile_index))
+		GameState.set_route_position(start_route, start_tile)
+		for point: Variant in transaction.get("movement_path", []):
+			if point is Dictionary:
+				GameState.set_route_position(str((point as Dictionary).get("route_id", BoardModelScript.ROUTE_MAIN)), int((point as Dictionary).get("tile_index", start_tile)))
+				board_view.set_current_tile(GameState.current_tile_index)
+				minimap_view.set_current_tile(GameState.current_tile_index)
+				await get_tree().create_timer(0.035).timeout
+		GameState.commit_route_choice_arrival()
+		SaveManager.save_now()
+	_refresh_hud()
+	await _show_route_choice_modal()
+	await _continue_roll_transaction()
+
+func _show_route_choice_modal() -> void:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_body("ROUTE CHOICE", 15))
+	content.add_child(_title("この先に二つの道があります", 30))
+	content.add_child(_body("本線\n残り26マス\n名所・アイテムあり", 20))
+	var main_button := _button("本線を進む", func() -> void: return, true); main_button.name = "route_choice_main"; main_button.toggle_mode = true
+	content.add_child(main_button)
+	content.add_child(_body("砂嵐のキャラバン道\n残り10マス\n危険マス 7", 20))
+	var bypass_button := _button("近道へ入る", func() -> void: return); bypass_button.name = "route_choice_bypass"; bypass_button.toggle_mode = true
+	content.add_child(bypass_button)
+	var chosen := await _wait_for_action([main_button, bypass_button])
+	main_button.disabled = true; bypass_button.disabled = true
+	var selected_route := BoardModelScript.ROUTE_MAIN if chosen == 0 else BoardModelScript.ROUTE_BYPASS_CARAVAN
+	GameState.commit_route_choice(selected_route)
+	SaveManager.save_now()
+	_sync_board_route_context()
+	_close_modal(modal.layer)
+
+func _finalize_bypass_exit() -> void:
+	if GameState.bypass_exit_committed:
+		return
+	GameState.bypass_exit_committed = true
+	if not GameState.bypass_damaged_this_visit:
+		GameState.bypass_no_damage_count += 1
+		role_label.text = "NO DAMAGE SHORTCUT"
+	var rolls := maxi(1, GameState.bypass_rolls_this_visit)
+	if GameState.bypass_best_roll_count <= 0 or rolls < GameState.bypass_best_roll_count:
+		GameState.bypass_best_roll_count = rolls
 
 func _resume_roll_transaction() -> void:
 	if GameState.roll_transaction.is_empty():
@@ -1061,7 +1327,14 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
 			memo = "砂時計の影が道を横切った。カイロの気配 +1"
 		&"RISK":
-			memo = await _show_risk_space_modal(roles)
+			if GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN:
+				memo = _apply_bypass_hazard(false)
+			else:
+				memo = await _show_risk_space_modal(roles)
+		&"STRONG_RISK":
+			memo = _apply_bypass_hazard(true)
+		&"GAMBLE":
+			memo = await _show_bypass_gamble()
 	if not bool(GameState.roll_transaction.get("landing_core_committed", false)):
 		_commit_landing_core(resolved_tile_type, memo + _landing_role_suffix(roles))
 	else:
@@ -1073,7 +1346,7 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 	var triple_forced: bool = roles.get("main", &"") == DiceLogicScript.TRIPLE
 	if triple_forced:
 		await _show_encounter_modal(false)
-	elif resolved_tile_type == &"NORMAL":
+	elif resolved_tile_type == &"NORMAL" and GameState.current_route_id == BoardModelScript.ROUTE_MAIN:
 		var forced: bool = GameState.debug_force_encounter
 		GameState.debug_force_encounter = false
 		var appears := BossSystemScript.should_encounter(GameState.boss_presence, GameState.boss_relief, forced, rng.randf())
@@ -1083,6 +1356,100 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 		else:
 			GameState.boss_relief = mini(BossSystemScript.RELIEF_FORCE_AFTER, GameState.boss_relief + 1)
 			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
+
+func _apply_bypass_hazard(strong: bool = false, forced_load_collapse: bool = false) -> String:
+	var tile_index := GameState.current_tile_index
+	var hazard_name := ""
+	var would_change := false
+	if strong:
+		if forced_load_collapse or tile_index == 2:
+			hazard_name = "荷崩れ"
+			would_change = GameState.current_dice_count != 1 or GameState.temporary_roll_dice_count != 0 or GameState.dice_keep_active or GameState.dice_double_retry_active or GameState.dice_slot_retry_active
+		else:
+			hazard_name = "砂嵐の袋小路"
+			would_change = true
+	else:
+		match tile_index:
+			0: hazard_name = "裂けた荷袋"; would_change = GameState.coins > 0
+			1: hazard_name = "向かい風"; would_change = GameState.next_move_bonus > -2
+			3: hazard_name = "砂に埋もれた標"; would_change = tile_index > 0
+			_: hazard_name = "消える足跡"; would_change = GameState.boss_presence > 0
+	if not would_change:
+		return "%s：影響なし（CLEAN維持）" % hazard_name
+	if GameState.even_guard_active:
+		GameState.even_guard_active = false
+		return "ALL EVENガードで%sを完全防御（CLEAN維持）" % hazard_name
+	if strong:
+		if forced_load_collapse or tile_index == 2:
+			GameState.current_dice_count = 1
+			GameState.temporary_roll_dice_count = 0
+			GameState.dice_keep_active = false
+			GameState.dice_double_retry_active = false
+			GameState.dice_slot_retry_active = false
+		else:
+			GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, maxi(0, tile_index - 2))
+	else:
+		match tile_index:
+			0: GameState.coins = maxi(0, GameState.coins - 8)
+			1: GameState.next_move_bonus = mini(GameState.next_move_bonus, -2)
+			3: GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, maxi(0, tile_index - 3))
+			_: GameState.boss_presence = maxi(0, GameState.boss_presence - 1)
+	GameState.current_lap_clean = false
+	GameState.current_lap_penalty_count += 1
+	GameState.bypass_clean_losses += 1
+	GameState.bypass_damaged_this_visit = true
+	GameState.flow_level = 0
+	board_view.set_current_tile(GameState.current_tile_index)
+	minimap_view.set_current_tile(GameState.current_tile_index)
+	_sync_flow_visuals()
+	return "%sの不利益が発生（CLEAN失敗）" % hazard_name
+
+func _show_bypass_gamble() -> String:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_body("GAMBLE", 15))
+	content.add_child(_title("砂嵐を突っ切りますか？", 30))
+	var careful := _button("慎重に進む　次回移動 -1", func() -> void: return, true); careful.name = "bypass_gamble_careful"; careful.toggle_mode = true
+	var dash := _button("一気に抜ける　追加3ダイス", func() -> void: return); dash.name = "bypass_gamble_dash"; dash.toggle_mode = true
+	content.add_child(careful); content.add_child(dash)
+	var chosen := await _wait_for_action([careful, dash])
+	careful.disabled = true; dash.disabled = true
+	if chosen == 0:
+		GameState.next_move_bonus -= 1
+		_close_modal(modal.layer)
+		return "慎重に進む。次回移動 -1"
+	fixed_targets = GameState.debug_fixed_extra_rolls.duplicate(); GameState.debug_fixed_extra_rolls.clear()
+	var values := await _animate_dice_roll(3, content)
+	var gamble_roles := DiceLogicScript.evaluate(values)
+	var main_role: StringName = gamble_roles.get("main", &"")
+	var support_role: StringName = gamble_roles.get("support", &"")
+	var memo := ""
+	if main_role == DiceLogicScript.TRIPLE:
+		var exit_definition := BoardModelScript.route_definition(BoardModelScript.ROUTE_BYPASS_CARAVAN)
+		GameState.set_route_position(str(exit_definition.exit_route), int(exit_definition.exit_tile))
+		_finalize_bypass_exit()
+		memo = "TRIPLE：バイパス出口へ即時移動"
+	elif main_role in [DiceLogicScript.STRAIGHT, DiceLogicScript.PAIR]:
+		var advance := 5 if main_role == DiceLogicScript.STRAIGHT else 3
+		var movement := BoardModelScript.advance_route(GameState.current_route_id, GameState.current_tile_index, advance)
+		GameState.set_route_position(str(movement.route_id), int(movement.tile_index))
+		if GameState.current_route_id == BoardModelScript.ROUTE_MAIN:
+			_finalize_bypass_exit()
+		elif BoardModelScript.tile_type_for_position(GameState.current_route_id, GameState.current_tile_index) == &"COIN":
+			GameState.coins += 6
+		memo = "%s：%dマス前進" % [String(main_role), advance]
+	elif support_role == DiceLogicScript.ALL_EVEN:
+		GameState.even_guard_active = true
+		memo = "ALL EVEN：危険ガード1回"
+	elif support_role == DiceLogicScript.ALL_ODD:
+		GameState.current_lap_bonus += 20
+		memo = "ALL ODD：ラップボーナス +20"
+	else:
+		memo = _apply_bypass_hazard(true, true)
+	_sync_board_route_context()
+	minimap_view.set_current_tile(GameState.current_tile_index)
+	_close_modal(modal.layer)
+	return memo
 
 func _landing_role_suffix(roles: Dictionary) -> String:
 	if roles.get("main", &"") == DiceLogicScript.PAIR:
@@ -1416,7 +1783,11 @@ func _refresh_hud() -> void:
 		return
 	lap_label.text = _compact_clean_hud(GameState.total_lap_points, GameState.current_lap_clean, GameState.clean_streak)
 	coin_label.text = "旅コイン %d" % GameState.coins
-	rolls_label.text = "LAP %d　ターン %d / 36　現在 %dマス　次回 %dダイス" % [GameState.lap_count, GameState.rolls_used, GameState.current_tile_index + 1, clampi(GameState.current_dice_count, 1, 3)]
+	var route_definition := BoardModelScript.route_definition(GameState.current_route_id)
+	var route_status := "現在 %dマス" % (GameState.current_tile_index + 1)
+	if GameState.current_route_id != BoardModelScript.ROUTE_MAIN:
+		route_status = "%s %d / %d" % [str(route_definition.name), GameState.current_tile_index + 1, int(route_definition.tile_count)]
+	rolls_label.text = "LAP %d　ターン %d / 36　%s　次回 %dダイス" % [GameState.lap_count, GameState.rolls_used, route_status, clampi(GameState.current_dice_count, 1, 3)]
 	if is_instance_valid(landmark_level_label):
 		landmark_level_label.text = "全体マップ　名所 Lv.%d・%d・%d" % [int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_02", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_03", 0))]
 	if is_instance_valid(board_view): board_view.set_landmark_levels(GameState.landmark_levels)
@@ -1745,13 +2116,29 @@ func _build_debug_box() -> VBoxContainer:
 	voices.custom_minimum_size.y = 42; voices.size_flags_horizontal = Control.SIZE_EXPAND_FILL; fatigue_debug.add_child(voices)
 	box.add_child(fatigue_debug)
 	var view_row := HBoxContainer.new()
-	var classic_view := _button("BOARD CLASSIC", func() -> void: _set_board_view_mode("classic"))
-	var tourism_view := _button("BOARD TOURISM", func() -> void: _set_board_view_mode("tourism"))
+	var classic_view := _button("BOARD CLASSIC", func() -> void: _debug_set_board_view_mode("classic"))
+	var tourism_view := _button("BOARD TOURISM", func() -> void: _debug_set_board_view_mode("tourism"))
 	for control: Control in [classic_view, tourism_view]:
 		control.custom_minimum_size.y = 42
 		control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		view_row.add_child(control)
 	box.add_child(view_row)
+	var route_row := HBoxContainer.new()
+	for entry: Dictionary in [
+		{"name": "MAIN 90", "route": BoardModelScript.ROUTE_MAIN, "tile": 89},
+		{"name": "BYPASS IN", "route": BoardModelScript.ROUTE_BYPASS_CARAVAN, "tile": 0},
+		{"name": "BYPASS OUT", "route": BoardModelScript.ROUTE_BYPASS_CARAVAN, "tile": 9},
+		{"name": "MAZE", "route": BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, "tile": 4},
+	]:
+		var route_button := _button(entry.name, func() -> void: _debug_set_route(str(entry.route), int(entry.tile)))
+		route_button.custom_minimum_size.y = 42; route_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; route_row.add_child(route_button)
+	box.add_child(route_row)
+	var route_resume_row := HBoxContainer.new()
+	var interrupt_route := _button("ROUTE中断保存", _debug_create_route_interruption)
+	var resume_route := _button("ROUTE復帰実行", func() -> void: call_deferred("_resume_roll_transaction"))
+	for control: Control in [interrupt_route, resume_route]:
+		control.custom_minimum_size.y = 42; control.size_flags_horizontal = Control.SIZE_EXPAND_FILL; route_resume_row.add_child(control)
+	box.add_child(route_resume_row)
 	return box
 
 func _new_board_view(mode: String) -> BoardView:
@@ -1759,6 +2146,12 @@ func _new_board_view(mode: String) -> BoardView:
 	if normalized == TourismMapViewScript.VIEW_MODE_TOURISM:
 		return TourismMapViewScript.new() as BoardView
 	return BoardViewScript.new() as BoardView
+
+func _preferred_board_view_mode() -> String:
+	var debug_override := OS.get_environment("DICE_BOARD_VIEW").strip_edges().to_lower()
+	if debug_override in [TourismMapViewScript.VIEW_MODE_CLASSIC, TourismMapViewScript.VIEW_MODE_TOURISM]:
+		return debug_override
+	return GameState.normalized_board_view_mode(GameState.board_view_mode)
 
 func _can_switch_board_view() -> bool:
 	return is_instance_valid(board_view) and not moving and not rolling_dice and not modal_open and event_state == &"IDLE"
@@ -1770,6 +2163,7 @@ func _set_board_view_mode(mode: String) -> bool:
 	var wants_tourism := normalized == TourismMapViewScript.VIEW_MODE_TOURISM
 	if (wants_tourism and board_view is TourismMapView) or (not wants_tourism and not (board_view is TourismMapView)):
 		board_view_mode = normalized
+		GameState.board_view_mode = normalized
 		return true
 	var parent := board_view.get_parent()
 	if parent == null:
@@ -1789,8 +2183,117 @@ func _set_board_view_mode(mode: String) -> bool:
 	parent.remove_child(previous)
 	previous.queue_free()
 	board_view = replacement
+	_sync_board_route_context()
 	board_view_mode = normalized
+	GameState.board_view_mode = normalized
 	return true
+
+func _sync_board_route_context() -> void:
+	if not is_instance_valid(board_view):
+		return
+	var definition := BoardModelScript.route_definition(GameState.current_route_id)
+	board_view.set_route_context(GameState.current_route_id, int(definition.tile_count), definition.get("tiles", []))
+	board_view.set_route_flow_level(GameState.flow_level)
+	board_view.set_current_tile(GameState.current_tile_index)
+
+func _debug_set_board_view_mode(mode: String) -> void:
+	if _set_board_view_mode(mode):
+		SaveManager.save_now()
+
+func _debug_set_route(route_id: String, tile_index: int) -> void:
+	GameState.clear_roll_transaction()
+	GameState.set_route_position(route_id, tile_index)
+	SaveManager.save_now()
+	show_game()
+
+func _debug_create_route_interruption() -> void:
+	if not GameState.roll_transaction.is_empty():
+		return
+	var distance := 4
+	var route_move := BoardModelScript.advance_route(GameState.current_route_id, GameState.current_tile_index, distance)
+	GameState.begin_roll_transaction([], 1, GameState.current_tile_index)
+	GameState.commit_roll_result([4], 1, DiceLogicScript.evaluate_current([4], 1), distance, int(route_move.tile_index), int(route_move.laps), false, str(route_move.route_id), route_move.path, int(route_move.maze_loops))
+	SaveManager.save_now()
+	_show_message("ROUTE-01", "RESULT_COMMITTEDを保存しました。再起動または『ROUTE復帰実行』で同じ移動を再開できます。")
+
+func _qa_route_01() -> void:
+	var backup := GameState.to_dictionary()
+	var checks: Array[bool] = []
+	# Simulate a process restart from a committed bypass movement. The first
+	# step rejoins main at 58 and the remaining step must still reach 59.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 9); show_game()
+	var bypass_move := BoardModelScript.advance_route(GameState.current_route_id, GameState.current_tile_index, 2)
+	GameState.begin_roll_transaction([], 1, GameState.current_tile_index)
+	GameState.commit_roll_result([2], 1, DiceLogicScript.evaluate_current([2], 1), 2, int(bypass_move.tile_index), int(bypass_move.laps), false, str(bypass_move.route_id), bypass_move.path, int(bypass_move.maze_loops))
+	GameState.apply_dictionary(GameState.to_dictionary())
+	await _continue_roll_transaction()
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 59 and GameState.rolls_used == 1 and GameState.roll_transaction.is_empty())
+	# A ten-step interrupted maze move crosses its gate twice, but creates no
+	# main lap and never exits the closed topology.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 6); show_game()
+	var maze_move := BoardModelScript.advance_route(GameState.current_route_id, GameState.current_tile_index, 10)
+	GameState.begin_roll_transaction([], 2, GameState.current_tile_index)
+	GameState.commit_roll_result([4, 6], 2, DiceLogicScript.evaluate_current([4, 6], 2), 10, int(maze_move.tile_index), int(maze_move.laps), false, str(maze_move.route_id), maze_move.path, int(maze_move.maze_loops))
+	GameState.apply_dictionary(GameState.to_dictionary())
+	await _continue_roll_transaction()
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and GameState.current_tile_index == 0 and GameState.maze_loop_count == 2 and GameState.lap_count == 0 and GameState.roll_transaction.is_empty())
+	var boundary := BoardModelScript.advance_route(BoardModelScript.ROUTE_MAIN, 89, 2)
+	checks.append(str(boundary.route_id) == BoardModelScript.ROUTE_MAIN and int(boundary.tile_index) == 1 and int(boundary.laps) == 1)
+	checks.append(_set_board_view_mode("classic") and _set_board_view_mode("tourism"))
+	GameState.apply_dictionary(backup); SaveManager.save_now()
+	print("QA_ROUTE_01 bypass_resume=%s maze_resume=%s main_boundary=%s views=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks.all(func(value: bool) -> bool: return value)])
+
+func _qa_press_toggle(button_name: String) -> void:
+	var deadline := Time.get_ticks_msec() + 5000
+	while find_children(button_name, "Button", true, false).is_empty() and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	var buttons := find_children(button_name, "Button", true, false)
+	if not buttons.is_empty():
+		(buttons[0] as Button).button_pressed = true
+
+func _qa_route_02() -> void:
+	var backup := GameState.to_dictionary().duplicate(true)
+	var checks: Array[bool] = []
+	# Interrupt at the fork with three steps left, then choose the bypass. Tile
+	# four is a back-three hazard, so the effective harm should land at tile one.
+	GameState.reset_run(); GameState.bypass_use_count = 0; GameState.bypass_no_damage_count = 0; GameState.bypass_best_roll_count = 0; GameState.bypass_clean_losses = 0; GameState.set_route_position(BoardModelScript.ROUTE_MAIN, 30); GameState.current_dice_count = 1; show_game()
+	call_deferred("_qa_press_toggle", "route_choice_bypass")
+	await _resolve_roll([5])
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN and GameState.current_tile_index == 0 and GameState.rolls_used == 1 and GameState.bypass_use_count == 1 and not GameState.current_lap_clean and GameState.bypass_clean_losses == 1 and GameState.roll_transaction.is_empty())
+	# Exact-stop selection commits the next route without consuming another
+	# step or firing bypass tile zero's hazard.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_MAIN, 31); GameState.coins = 12; show_game()
+	call_deferred("_qa_press_toggle", "route_choice_bypass")
+	await _resolve_roll([1])
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN and GameState.current_tile_index == 0 and GameState.coins == 12 and GameState.current_lap_clean and GameState.rolls_used == 1)
+	# A saved result at the end of the bypass rejoins main and keeps all
+	# remaining movement without creating a lap.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 8); GameState.bypass_entry_committed = true; GameState.bypass_rolls_this_visit = 1; show_game()
+	var exit_move := BoardModelScript.advance_route(GameState.current_route_id, GameState.current_tile_index, 4)
+	GameState.begin_roll_transaction([], 1, GameState.current_tile_index)
+	GameState.commit_roll_result([4], 1, DiceLogicScript.evaluate_current([4], 1), 4, int(exit_move.tile_index), int(exit_move.laps), false, str(exit_move.route_id), exit_move.path, int(exit_move.maze_loops))
+	GameState.apply_dictionary(GameState.to_dictionary())
+	await _continue_roll_transaction()
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 60 and GameState.lap_count == 0 and GameState.bypass_exit_committed and GameState.bypass_no_damage_count == 1)
+	# Guards are consumed only by real harm. A zero-coin no-op keeps both CLEAN
+	# and the guard; a real loss consumes the guard but still keeps CLEAN.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0); GameState.coins = 0; GameState.even_guard_active = true; show_game()
+	var noop_memo := _apply_bypass_hazard(false)
+	var noop_ok := GameState.current_lap_clean and GameState.even_guard_active and noop_memo.contains("影響なし")
+	GameState.coins = 20
+	var guard_memo := _apply_bypass_hazard(false)
+	checks.append(noop_ok and GameState.coins == 20 and GameState.current_lap_clean and not GameState.even_guard_active and guard_memo.contains("完全防御"))
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 4); GameState.coins = 12; GameState.debug_fixed_extra_rolls.assign([2, 2, 5]); show_game()
+	call_deferred("_qa_press_toggle", "bypass_gamble_dash")
+	var gamble_memo := await _show_bypass_gamble()
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN and GameState.current_tile_index == 7 and GameState.coins == 18 and gamble_memo.begins_with("PAIR"))
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 2); GameState.current_dice_count = 3; GameState.dice_keep_active = true; show_game()
+	var strong_memo := _apply_bypass_hazard(true)
+	checks.append(GameState.current_dice_count == 1 and not GameState.dice_keep_active and not GameState.current_lap_clean and GameState.flow_level == 0 and strong_memo.contains("荷崩れ"))
+	var passed := checks.all(func(value: bool) -> bool: return value)
+	print("QA_ROUTE_02 branch=%s exact_stop=%s exit=%s clean_guard=%s gamble=%s strong=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks[4], checks[5], passed])
+	GameState.apply_dictionary(backup); SaveManager.save_now()
+	get_tree().quit(0 if passed else 1)
 
 func _debug_play_dice_audio(category: String) -> void:
 	if not is_instance_valid(dice_audio): return
@@ -2256,6 +2759,75 @@ func _qa_dice_audio() -> void:
 	dice_audio.stop_all(); await get_tree().create_timer(0.08).timeout
 	GameState.apply_dictionary(original); SaveManager.save_now()
 	if not passed: push_error("Dice audio QA failed.")
+
+func _qa_ui_audio() -> void:
+	await get_tree().process_frame
+	show_stage_select()
+	await get_tree().process_frame
+	var city_buttons := find_children("city_cairo", "Button", true, false)
+	var city_connected := not city_buttons.is_empty() and (city_buttons[0] as Button).pressed.get_connections().size() >= 2
+	_play_ui_click(true)
+	var confirm_ok := is_instance_valid(ui_audio_player) and ui_audio_player.stream == UI_CONFIRM_STREAM
+	_play_ui_click(false)
+	var click_ok := is_instance_valid(ui_audio_player) and ui_audio_player.stream == UI_CLICK_STREAM
+	var player_id := ui_audio_player.get_instance_id()
+	show_character_select()
+	await get_tree().process_frame
+	var survives_transition := is_instance_valid(ui_audio_player) and ui_audio_player.get_instance_id() == player_id and get_node_or_null("UIAudioPlayer") == ui_audio_player
+	var passed := city_connected and confirm_ok and click_ok and survives_transition
+	print("QA_UI_AUDIO city_connected=%s confirm=%s click=%s survives=%s passed=%s" % [city_connected, confirm_ok, click_ok, survives_transition, passed])
+	if not passed: push_error("UI audio QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_android_ui() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	var samples: Array[String] = [
+		"砂時計のカイロ", "眠そうなスフィンクスがいる",
+		"サイコロをそろえて、世界をめぐる。", "旅人を選ぶ",
+		"香辛料市場通り", "PAIR／STRAIGHT／TRIPLE", "1234567890！？・◇●",
+	]
+	var coverage_ok := true
+	for sample: String in samples:
+		for index: int in range(sample.length()):
+			coverage_ok = coverage_ok and APP_FONT.has_char(sample.unicode_at(index))
+	var theme_ok := theme != null and theme.default_font == APP_FONT \
+		and theme.get_font("font", "Label") == APP_FONT \
+		and theme.get_font("font", "Button") == APP_FONT \
+		and theme.get_font("normal_font", "RichTextLabel") == APP_FONT \
+		and theme.get_constant("outline_size", "Label") == 0 \
+		and theme.get_constant("outline_size", "Button") == 0
+	show_font_qa()
+	await get_tree().process_frame
+	var controls_ok := true
+	for control: Node in find_children("*", "Control", true, false):
+		if control is Label or control is Button:
+			controls_ok = controls_ok and (control as Control).get_theme_font("font") == APP_FONT
+		elif control is RichTextLabel:
+			controls_ok = controls_ok and (control as Control).get_theme_font("normal_font", "RichTextLabel") == APP_FONT
+	var legacy := original.duplicate(true)
+	legacy.erase("board_view_mode")
+	GameState.apply_dictionary(legacy)
+	show_game()
+	var legacy_tourism := GameState.board_view_mode == "tourism" and board_view is TourismMapView
+	var explicit_classic := original.duplicate(true)
+	explicit_classic["board_view_mode"] = "classic"
+	GameState.apply_dictionary(explicit_classic)
+	show_game()
+	var classic_loaded := GameState.board_view_mode == "classic" and not (board_view is TourismMapView)
+	GameState.start_new_game()
+	show_game()
+	var classic_after_new_trip := GameState.board_view_mode == "classic" and not (board_view is TourismMapView)
+	GameState.selected_character_id = &"photographer"
+	show_game()
+	var classic_after_character := GameState.board_view_mode == "classic" and not (board_view is TourismMapView)
+	GameState.board_view_mode = "tourism"
+	show_game()
+	var tourism_restored := board_view is TourismMapView
+	var passed := coverage_ok and theme_ok and controls_ok and legacy_tourism and classic_loaded and classic_after_new_trip and classic_after_character and tourism_restored
+	print("QA_ANDROID_UI font=%s theme=%s controls=%s legacy_tourism=%s classic_load=%s new_trip=%s character=%s tourism=%s passed=%s" % [coverage_ok, theme_ok, controls_ok, legacy_tourism, classic_loaded, classic_after_new_trip, classic_after_character, tourism_restored, passed])
+	GameState.apply_dictionary(original)
+	SaveManager.save_now()
+	if not passed: push_error("ANDROID-UI-01 QA failed.")
 	get_tree().quit(0 if passed else 1)
 
 func _qa_progression_capture(kind: String, path: String) -> void:
@@ -2399,7 +2971,7 @@ func _qa_tourmap() -> void:
 	var minimap_ok: bool = minimap_view.get_script() == BoardViewScript and minimap_view.is_minimap
 	var tourism_ok: bool = _set_board_view_mode("tourism") and board_view is TourismMapView
 	var wrapped_indices: Array[int] = TourismMapViewScript.neighborhood_indices(board_view.current_tile)
-	var wrap_ok: bool = wrapped_indices == [85, 86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+	var wrap_ok: bool = wrapped_indices == [86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 	var scenic_ok: bool = board_view.scenic_level == 3 and board_view.scenic_texture != null
 	var input_ok: bool = board_view.mouse_filter == Control.MOUSE_FILTER_IGNORE
 	var district_flow_repeat_ok := false
@@ -2656,7 +3228,7 @@ func _qa_clean_lap() -> void:
 	var v5_clean_missing := original.duplicate(true); v5_clean_missing["version"] = 5
 	for clean_key: String in ["current_lap_clean", "current_lap_penalty_count", "clean_streak", "even_guard_active", "best_clean_streak"]: v5_clean_missing.erase(clean_key)
 	GameState.apply_dictionary(v5_clean_missing)
-	var migration_ok := GameState.current_lap_clean and GameState.current_lap_penalty_count == 0 and GameState.clean_streak == 0 and not GameState.even_guard_active and GameState.best_clean_streak == 0 and int(GameState.to_dictionary().version) == 6
+	var migration_ok := GameState.current_lap_clean and GameState.current_lap_penalty_count == 0 and GameState.clean_streak == 0 and not GameState.even_guard_active and GameState.best_clean_streak == 0 and int(GameState.to_dictionary().version) == 9
 	var passed := clean_ok and dirty_ok and boundaries_ok and risk_ok and noop_ok and guard_ok and saved and restored and migration_ok
 	print("QA_CLEAN_LAP clean=%s dirty=%s boundaries=%s risks=%s noop=%s guard=%s save=%s migration=%s passed=%s" % [clean_ok, dirty_ok, boundaries_ok, risk_ok, noop_ok, guard_ok, restored, migration_ok, passed])
 	GameState.apply_dictionary(original); SaveManager.save_now()
