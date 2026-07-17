@@ -48,6 +48,7 @@ var is_minimap: bool = false
 var landmark_levels: Dictionary = {}
 var scenic_texture: Texture2D
 var scenic_level: int = -1
+var movement_hop_offset_y: float = 0.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -77,6 +78,13 @@ func set_route_context(route_id: String, tile_count: int, route_tiles: Array = [
 
 func set_route_flow_level(level: int) -> void:
 	route_flow_level = clampi(level, 0, 5)
+	queue_redraw()
+
+static func hop_offset_for_progress(progress: float, height: float = 14.0) -> float:
+	return -sin(clampf(progress, 0.0, 1.0) * PI) * maxf(0.0, height)
+
+func set_movement_hop_progress(progress: float) -> void:
+	movement_hop_offset_y = hop_offset_for_progress(progress)
 	queue_redraw()
 
 func set_landmark_levels(levels: Dictionary) -> void:
@@ -177,7 +185,7 @@ func _draw_bypass_neighborhood() -> void:
 		if index == count - 1:
 			_draw_exit_gate(points[index], radius)
 	var token := points[current_tile]
-	draw_texture_rect(PLAYER_TEXTURE, Rect2(token - Vector2(30, 85), Vector2(60, 80)), false)
+	draw_texture_rect(PLAYER_TEXTURE, Rect2(token - Vector2(30, 85) + Vector2(0, movement_hop_offset_y), Vector2(60, 80)), false)
 	if current_tile < count - 1:
 		_draw_direction_chevron(token.lerp(points[current_tile + 1], 0.55), points[current_tile + 1] - token, Color("#f5d06d"), 10.0)
 	draw_string(APP_FONT, Vector2(12, size.y - 16), "入口　分岐", HORIZONTAL_ALIGNMENT_LEFT, 92, 13, Color("#7c583c"))
@@ -244,7 +252,7 @@ func _draw_royal_maze() -> void:
 	draw_texture_rect(BYPASS_ROCKS, Rect2(size.x - 86, size.y * 0.46, 62, 72), false, Color(0.35, 0.31, 0.28, 0.70))
 	draw_string(APP_FONT, Vector2(18, 30), "王の迷い環", HORIZONTAL_ALIGNMENT_LEFT, -1, 21, Color("#f0d38a"))
 	var gate_distance := posmod(-current_tile, maxi(1, current_route_tile_count))
-	draw_string(APP_FONT, Vector2(18, 54), "帰還扉まで %d　ぴったり停止で脱出" % gate_distance, HORIZONTAL_ALIGNMENT_LEFT, size.x - 36.0, 15, Color("#c9b48b"))
+	draw_string(APP_FONT, Vector2(18, 54), "帰還扉まで %d　時計回り →　ぴったり停止" % gate_distance, HORIZONTAL_ALIGNMENT_LEFT, size.x - 36.0, 15, Color("#c9b48b"))
 	var center := Vector2(size.x * 0.5, size.y * 0.58)
 	var radius := Vector2(size.x * 0.32, size.y * 0.30)
 	var points := PackedVector2Array()
@@ -259,27 +267,48 @@ func _draw_royal_maze() -> void:
 		_draw_direction_chevron(points[direction_index - 1].lerp(points[direction_index], 0.5), points[direction_index] - points[direction_index - 1], Color(0.84, 0.65, 0.28, 0.60), 6.0)
 	for index: int in range(points.size()):
 		var tile_type := StringName(current_route_tiles[index]) if index < current_route_tiles.size() else &"NORMAL"
-		var tile_radius := 20.0 if index == current_tile else (22.0 if tile_type == &"RETURN_GATE" else 16.0)
+		var tile_radius := 20.0 if index == current_tile else (25.0 if tile_type == &"RETURN_GATE" else 16.0)
 		if tile_type == &"RISK": draw_circle(points[index], tile_radius + 7.0, Color(0.68, 0.13, 0.10, 0.20))
-		if tile_type == &"STRONG_RISK": draw_circle(points[index], tile_radius + 10.0, Color(0.02, 0.01, 0.01, 0.70))
+		if tile_type == &"STRONG_RISK":
+			draw_circle(points[index], tile_radius + 12.0, Color(0.02, 0.01, 0.01, 0.78))
+			draw_arc(points[index], tile_radius + 8.0, 0, TAU, 24, Color(0.48, 0.10, 0.10, 0.62), 3.0, true)
+		if tile_type == &"TREASURE":
+			draw_circle(points[index], tile_radius + 10.0, Color(0.96, 0.68, 0.18, 0.14))
+			draw_circle(points[index], tile_radius + 5.0, Color(0.96, 0.78, 0.31, 0.12))
+		if tile_type == &"MURAL":
+			draw_circle(points[index], tile_radius + 9.0, Color(0.39, 0.28, 0.68, 0.20))
+			draw_arc(points[index], tile_radius + 6.0, -PI * 0.75, PI * 0.25, 18, Color(0.55, 0.72, 0.91, 0.58), 2.0, true)
+		if tile_type == &"RETURN_GATE":
+			draw_circle(points[index], tile_radius + 15.0, Color(0.96, 0.73, 0.24, 0.10 + route_flow_level * 0.018))
+			draw_circle(points[index], tile_radius + 8.0, Color(0.96, 0.80, 0.40, 0.10))
 		var fill := Color("#287b80") if index == current_tile else Color(TILE_COLORS.get(tile_type, Color("#77634a")))
 		draw_circle(points[index], tile_radius, fill)
 		draw_arc(points[index], tile_radius, 0, TAU, 24, Color("#f1c86a") if index == current_tile or tile_type == &"RETURN_GATE" else Color("#b28b51"), 3.0, true)
 		draw_string(APP_FONT, points[index] + Vector2(-tile_radius, 5), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, tile_radius * 2.0, 11, Color.WHITE)
 		var mark := _tile_mark(tile_type)
 		if not mark.is_empty(): draw_string(APP_FONT, points[index] + Vector2(-tile_radius, 25), mark, HORIZONTAL_ALIGNMENT_CENTER, tile_radius * 2.0, 12, Color("#e8cb84"))
+		if tile_type == &"RETURN_GATE": _draw_return_gate_marker(points[index], tile_radius)
 	if route_flow_level > 0:
 		for flow_index: int in range(route_flow_level + 1):
 			var angle := -PI * 0.5 + TAU * float(flow_index) / float(route_flow_level + 1)
 			var start := center + Vector2(cos(angle) * radius.x * 0.72, sin(angle) * radius.y * 0.72)
 			draw_line(start, start + Vector2(-sin(angle), cos(angle)) * (10.0 + route_flow_level * 4.0), Color(0.96, 0.73, 0.25, 0.16 + route_flow_level * 0.07), 2.0, true)
 	var token := points[current_tile]
-	draw_texture_rect(PLAYER_TEXTURE, Rect2(token - Vector2(31, 86), Vector2(62, 82)), false, Color(0.92, 0.84, 0.67, 1.0))
+	draw_texture_rect(PLAYER_TEXTURE, Rect2(token - Vector2(31, 86) + Vector2(0, movement_hop_offset_y), Vector2(62, 82)), false, Color(0.92, 0.84, 0.67, 1.0))
 	# Two fixed torch pairs frame the chamber; higher FLOW brightens their halo.
 	for torch_x: float in [size.x * 0.14, size.x * 0.86]:
 		var torch := Vector2(torch_x, size.y * 0.29)
 		draw_circle(torch, 10.0 + route_flow_level * 1.4, Color(0.94, 0.50, 0.16, 0.10 + route_flow_level * 0.035))
 		draw_circle(torch, 4.0, Color("#f3a83d"))
+
+func _draw_return_gate_marker(center: Vector2, radius: float) -> void:
+	var stone := Color("#3a3029")
+	var light := Color("#f2cf70")
+	var top := center + Vector2(0, -radius - 9.0)
+	draw_line(top + Vector2(-10, 10), top + Vector2(-10, -1), stone, 4.0, true)
+	draw_line(top + Vector2(10, 10), top + Vector2(10, -1), stone, 4.0, true)
+	draw_arc(top, 10.0, PI, TAU, 16, light, 3.0, true)
+	draw_string(APP_FONT, center + Vector2(-35, radius + 22), "帰還扉", HORIZONTAL_ALIGNMENT_CENTER, 70, 12, light)
 
 
 func _draw_zoomed_neighborhood() -> void:
@@ -319,7 +348,7 @@ func _draw_zoomed_neighborhood() -> void:
 	var center_rect_x := size.x * 0.5 - tile_width * 0.5
 	draw_circle(Vector2(size.x * 0.5, center_y + tile_height * 0.5 + 12), 23, Color("#277c80"))
 	draw_arc(Vector2(size.x * 0.5, center_y + tile_height * 0.5 + 12), 23, 0, TAU, 24, Color("#ffe5a4"), 4, true)
-	draw_texture_rect(PLAYER_TEXTURE, Rect2(Vector2(size.x * 0.5 - 40, center_y - tile_height * 0.5 - 94), Vector2(80, 108)), false)
+	draw_texture_rect(PLAYER_TEXTURE, Rect2(Vector2(size.x * 0.5 - 40, center_y - tile_height * 0.5 - 94 + movement_hop_offset_y), Vector2(80, 108)), false)
 	draw_string(APP_FONT, Vector2(center_rect_x + tile_width, center_y - tile_height * 0.5 - 12), "▶", HORIZONTAL_ALIGNMENT_CENTER, tile_width, 22, Color("#7d5f36"))
 
 func _draw_minimap() -> void:
@@ -357,7 +386,8 @@ func _draw_maze_minimap() -> void:
 	draw_polyline(ring, Color("#756044"), 4.0, true)
 	for index: int in range(points.size()):
 		var tile_type := StringName(current_route_tiles[index]) if index < current_route_tiles.size() else &"NORMAL"
-		draw_circle(points[index], 4.5 if index != current_tile else 7.0, Color("#287b80") if index == current_tile else Color(TILE_COLORS.get(tile_type, Color("#77634a"))))
+		if tile_type == &"RETURN_GATE": draw_circle(points[index], 9.0, Color(0.95, 0.73, 0.27, 0.24))
+		draw_circle(points[index], 6.0 if tile_type == &"RETURN_GATE" else (4.5 if index != current_tile else 7.0), Color("#287b80") if index == current_tile else Color(TILE_COLORS.get(tile_type, Color("#77634a"))))
 
 func _draw_route(show_token_art: bool) -> void:
 	var path := PackedVector2Array(positions)
@@ -393,7 +423,7 @@ func _draw_route(show_token_art: bool) -> void:
 	if show_token_art:
 		draw_circle(player_pos + Vector2(0, 6), 16.0, Color("#3b8b91"))
 		draw_arc(player_pos + Vector2(0, 6), 16.0, 0.0, TAU, 24, Color("#fff2ce"), 3.0, true)
-		draw_texture_rect(PLAYER_TEXTURE, Rect2(player_pos - Vector2(24, 55), Vector2(48, 64)), false)
+		draw_texture_rect(PLAYER_TEXTURE, Rect2(player_pos - Vector2(24, 55) + Vector2(0, movement_hop_offset_y), Vector2(48, 64)), false)
 	else:
 		draw_circle(player_pos, 6.0, Color("#287b80"))
 		draw_arc(player_pos, 6.0, 0.0, TAU, 18, Color("#fff2ce"), 1.5, true)

@@ -983,6 +983,17 @@ func _resolve_roll(values: Array[int]) -> void:
 	SaveManager.save_now()
 	await _continue_roll_transaction()
 
+func _animate_route_step_hop() -> void:
+	if not is_instance_valid(board_view):
+		await get_tree().create_timer(0.035).timeout
+		return
+	# Four short poses read as a deliberate hop while keeping long 3/5-die
+	# moves brisk. Gameplay position remains committed one tile at a time.
+	for progress: float in [0.18, 0.46, 0.74, 1.0]:
+		board_view.set_movement_hop_progress(progress)
+		await get_tree().create_timer(0.018).timeout
+	board_view.set_movement_hop_progress(0.0)
+
 func _transaction_values(transaction: Dictionary) -> Array[int]:
 	var values: Array[int] = []
 	var source_values: Array = transaction.get("final_dice_values", transaction.get("values", []))
@@ -1033,8 +1044,7 @@ func _continue_roll_transaction() -> void:
 				continue
 			GameState.set_route_position(str((point as Dictionary).get("route_id", start_route)), int((point as Dictionary).get("tile_index", start_tile)))
 			_sync_board_route_context()
-			minimap_view.set_current_tile(GameState.current_tile_index)
-			await get_tree().create_timer(0.035).timeout
+			await _animate_route_step_hop()
 		GameState.set_route_position(destination_route, destination)
 		_sync_board_route_context()
 		GameState.maze_loop_count += crossed_maze_loops
@@ -1086,9 +1096,8 @@ func _continue_route_choice_transaction() -> void:
 		for point: Variant in transaction.get("movement_path", []):
 			if point is Dictionary:
 				GameState.set_route_position(str((point as Dictionary).get("route_id", BoardModelScript.ROUTE_MAIN)), int((point as Dictionary).get("tile_index", start_tile)))
-				board_view.set_current_tile(GameState.current_tile_index)
-				minimap_view.set_current_tile(GameState.current_tile_index)
-				await get_tree().create_timer(0.035).timeout
+				_sync_board_route_context()
+				await _animate_route_step_hop()
 		GameState.commit_route_choice_arrival()
 		SaveManager.save_now()
 	_refresh_hud()

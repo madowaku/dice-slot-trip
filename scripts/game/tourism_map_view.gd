@@ -419,6 +419,7 @@ func _draw_tourism_map() -> void:
 
 	var current_rect: Rect2 = rects[-FIRST_OFFSET]
 	var token_rect := player_rect(size)
+	token_rect.position.y += movement_hop_offset_y
 	draw_circle(current_rect.get_center() + Vector2(0, 8), current_rect.size.x * 0.42, Color("#287b80"))
 	draw_arc(current_rect.get_center() + Vector2(0, 8), current_rect.size.x * 0.42, 0, TAU, 24, Color("#ffe5a4"), 3.0, true)
 	draw_texture_rect(PLAYER_TEXTURE, token_rect, false)
