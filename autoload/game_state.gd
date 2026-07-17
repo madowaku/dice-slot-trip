@@ -38,6 +38,7 @@ var bypass_best_roll_count: int = 0
 var bypass_clean_losses: int = 0
 var bypass_rolls_this_visit: int = 0
 var bypass_damaged_this_visit: bool = false
+var bypass_revealed_tiles: Array[int] = []
 var lap_count: int = 0
 var rolls_used: int = 0
 var coins: int = 12
@@ -91,7 +92,7 @@ var dice_se_muted: bool = false
 ## omitted; only gameplay facts needed to resume after an app restart persist.
 var roll_transaction: Dictionary = {}
 
-# LAP/CLEAN state remains in save v9; FLOW fields stay neutral until its own
+# LAP/CLEAN state remains in save v10; FLOW fields stay neutral until its own
 # implementation slice.
 var total_lap_points: int = 0
 var current_lap_bonus: int = 0
@@ -115,7 +116,7 @@ var lap_reward_committed: bool = false
 var last_lap_result: Dictionary = {}
 
 # LANDMARK-01. Collection/revisit behavior is intentionally deferred, but the
-# v9 neutral fields keep later additions backward compatible.
+# v10 neutral fields keep later additions backward compatible.
 var landmark_levels: Dictionary = DEFAULT_LANDMARK_LEVELS.duplicate(true)
 var landmark_revisit_stamps: Dictionary = {}
 var landmark_collection_flags: Dictionary = {}
@@ -203,6 +204,7 @@ func reset_run() -> void:
 	bypass_exit_committed = false
 	bypass_rolls_this_visit = 0
 	bypass_damaged_this_visit = false
+	bypass_revealed_tiles.clear()
 	loop_return_route_id = BoardModelScript.ROUTE_MAIN
 	loop_return_tile_index = 0
 	loop_entry_committed = false
@@ -271,6 +273,7 @@ func begin_roll_transaction(values: Array, dice_count: int, start_tile: int) -> 
 		"space_effect_committed": false,
 		"landing_roles_committed": false,
 		"landing_core_committed": false,
+		"bypass_tile_reveal_committed": false,
 		"early_stopped": false,
 		"encounter_phase": "NONE",
 		# These are gameplay inputs, not presentation state. They make an
@@ -404,6 +407,30 @@ func commit_roll_movement(destination: int, destination_route_id: String = "") -
 	roll_transaction["movement_committed"] = true
 	return true
 
+func is_bypass_tile_revealed(tile_index: int) -> bool:
+	var count := BoardModelScript.route_tile_count(BoardModelScript.ROUTE_BYPASS_CARAVAN)
+	var normalized := posmod(tile_index, count)
+	return normalized == 0 or normalized == count - 1 or normalized in bypass_revealed_tiles
+
+func commit_bypass_tile_reveal(tile_index: int) -> Dictionary:
+	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "MOVEMENT_COMMITTED":
+		return {"committed": false, "newly_revealed": false, "tile_index": -1}
+	if bool(roll_transaction.get("bypass_tile_reveal_committed", false)):
+		return {"committed": false, "newly_revealed": false, "tile_index": int(roll_transaction.get("bypass_tile_reveal_index", -1))}
+	var target_route := BoardModelScript.normalized_route_id(str(roll_transaction.get("target_route_id", current_route_id)))
+	var count := BoardModelScript.route_tile_count(BoardModelScript.ROUTE_BYPASS_CARAVAN)
+	var normalized := posmod(tile_index, count)
+	if target_route != BoardModelScript.ROUTE_BYPASS_CARAVAN or current_route_id != target_route or current_route_tile_index != normalized:
+		return {"committed": false, "newly_revealed": false, "tile_index": -1}
+	var newly_revealed := not is_bypass_tile_revealed(normalized)
+	if newly_revealed:
+		bypass_revealed_tiles.append(normalized)
+		bypass_revealed_tiles.sort()
+	roll_transaction["bypass_tile_reveal_committed"] = true
+	roll_transaction["bypass_tile_reveal_index"] = normalized
+	roll_transaction["bypass_tile_reveal_was_new"] = newly_revealed
+	return {"committed": true, "newly_revealed": newly_revealed, "tile_index": normalized}
+
 func commit_roll_space_effect() -> bool:
 	if roll_transaction.is_empty() or str(roll_transaction.get("phase", "")) != "MOVEMENT_COMMITTED":
 		return false
@@ -535,7 +562,7 @@ func begin_next_boss() -> void:
 func to_dictionary() -> Dictionary:
 	ensure_boss_data()
 	return {
-		"version": 9,
+		"version": 10,
 		"stage_id": String(selected_stage_id),
 		"character_id": String(selected_character_id),
 		"board_view_mode": normalized_board_view_mode(board_view_mode),
@@ -559,6 +586,7 @@ func to_dictionary() -> Dictionary:
 		"bypass_clean_losses": maxi(0, bypass_clean_losses),
 		"bypass_rolls_this_visit": maxi(0, bypass_rolls_this_visit),
 		"bypass_damaged_this_visit": bypass_damaged_this_visit,
+		"bypass_revealed_tiles": bypass_revealed_tiles.duplicate(),
 		"laps": lap_count,
 		"rolls": rolls_used,
 		"coins": coins,
@@ -665,6 +693,17 @@ func apply_dictionary(data: Dictionary) -> void:
 	bypass_clean_losses = maxi(0, int(data.get("bypass_clean_losses", 0)))
 	bypass_rolls_this_visit = maxi(0, int(data.get("bypass_rolls_this_visit", 0)))
 	bypass_damaged_this_visit = bool(data.get("bypass_damaged_this_visit", false))
+	bypass_revealed_tiles.clear()
+	var loaded_revealed: Variant = data.get("bypass_revealed_tiles", [])
+	if loaded_revealed is Array:
+		var bypass_count := BoardModelScript.route_tile_count(BoardModelScript.ROUTE_BYPASS_CARAVAN)
+		for raw_index: Variant in loaded_revealed:
+			if typeof(raw_index) not in [TYPE_INT, TYPE_FLOAT]:
+				continue
+			var revealed_index := int(raw_index)
+			if revealed_index > 0 and revealed_index < bypass_count - 1 and revealed_index not in bypass_revealed_tiles:
+				bypass_revealed_tiles.append(revealed_index)
+		bypass_revealed_tiles.sort()
 	lap_count = int(data.get("laps", 0))
 	rolls_used = int(data.get("rolls", 0))
 	coins = int(data.get("coins", 12))
@@ -744,6 +783,7 @@ func apply_dictionary(data: Dictionary) -> void:
 			roll_transaction["pre_roll_temporary_roll_dice_count"] = maxi(0, int(roll_transaction.get("pre_roll_temporary_roll_dice_count", temporary_roll_dice_count)))
 			roll_transaction["landing_roles_committed"] = bool(roll_transaction.get("landing_roles_committed", false))
 			roll_transaction["landing_core_committed"] = bool(roll_transaction.get("landing_core_committed", false))
+			roll_transaction["bypass_tile_reveal_committed"] = bool(roll_transaction.get("bypass_tile_reveal_committed", false))
 			if transaction_phase in ["PRE_ROLL", "ROLLING"]:
 				roll_transaction["final_dice_values"] = []
 			var loaded_target_route := BoardModelScript.normalized_route_id(str(roll_transaction.get("target_route_id", loaded_start_route)))

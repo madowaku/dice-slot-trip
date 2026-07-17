@@ -49,6 +49,9 @@ var landmark_levels: Dictionary = {}
 var scenic_texture: Texture2D
 var scenic_level: int = -1
 var movement_hop_offset_y: float = 0.0
+var bypass_revealed_tiles: Array[int] = []
+var bypass_reveal_tile: int = -1
+var bypass_reveal_progress: float = 1.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -86,6 +89,29 @@ static func hop_offset_for_progress(progress: float, height: float = 14.0) -> fl
 func set_movement_hop_progress(progress: float) -> void:
 	movement_hop_offset_y = hop_offset_for_progress(progress)
 	queue_redraw()
+
+func set_bypass_revealed_tiles(revealed_tiles: Array) -> void:
+	bypass_revealed_tiles.clear()
+	for value: Variant in revealed_tiles:
+		var index := int(value)
+		if index not in bypass_revealed_tiles:
+			bypass_revealed_tiles.append(index)
+	queue_redraw()
+
+func set_bypass_reveal_progress(tile_index: int, progress: float) -> void:
+	bypass_reveal_tile = tile_index
+	bypass_reveal_progress = clampf(progress, 0.0, 1.0)
+	if bypass_reveal_progress >= 1.0:
+		bypass_reveal_tile = -1
+	queue_redraw()
+
+static func bypass_tile_is_public(tile_index: int, tile_count: int, revealed_tiles: Array) -> bool:
+	var count := maxi(2, tile_count)
+	var normalized := posmod(tile_index, count)
+	return normalized == 0 or normalized == count - 1 or normalized in revealed_tiles
+
+static func bypass_display_type(tile_index: int, tile_count: int, tile_type: StringName, revealed_tiles: Array) -> StringName:
+	return tile_type if bypass_tile_is_public(tile_index, tile_count, revealed_tiles) else &"SECRET"
 
 func set_landmark_levels(levels: Dictionary) -> void:
 	landmark_levels = levels.duplicate(true)
@@ -170,18 +196,33 @@ func _draw_bypass_neighborhood() -> void:
 	_draw_bypass_flow_wind(points)
 	for index: int in range(count):
 		var tile_type := StringName(current_route_tiles[index]) if index < current_route_tiles.size() else &"NORMAL"
-		var radius := 19.0 if index == current_tile else (18.0 if index == count - 1 else 14.0)
-		var fill := Color(TILE_COLORS.get(tile_type, SAND))
-		if tile_type == &"RISK":
-			draw_circle(points[index], radius + 7.0, Color(0.76, 0.16, 0.10, 0.14))
-		if tile_type == &"STRONG_RISK":
-			draw_circle(points[index], radius + 10.0, Color(0.18, 0.07, 0.05, 0.22))
-			draw_arc(points[index], radius + 6.0, 0, TAU, 20, Color(0.55, 0.12, 0.09, 0.68), 3.0, true)
+		var radius := 19.0 if index == current_tile else (18.0 if index == count - 1 else 16.0)
+		var is_revealing := index == bypass_reveal_tile and bypass_reveal_progress < 1.0
+		var reveal_amount := bypass_reveal_progress if is_revealing else (1.0 if bypass_tile_is_public(index, count, bypass_revealed_tiles) else 0.0)
+		var true_fill := Color(TILE_COLORS.get(tile_type, SAND))
+		var fill := Color("#967047").lerp(true_fill, reveal_amount)
+		if tile_type == &"RISK" and reveal_amount > 0.0:
+			draw_circle(points[index], radius + 8.0, Color(0.76, 0.16, 0.10, 0.24 * reveal_amount))
+		if tile_type == &"STRONG_RISK" and reveal_amount > 0.0:
+			draw_circle(points[index], radius + 10.0, Color(0.18, 0.07, 0.05, 0.32 * reveal_amount))
+			draw_arc(points[index], radius + 6.0, 0, TAU, 20, Color(0.55, 0.12, 0.09, 0.68 * reveal_amount), 3.0, true)
 		draw_circle(points[index], radius, Color("#2f8588") if index == current_tile else fill)
 		draw_arc(points[index], radius, 0, TAU, 24, Color("#f1c86a") if index == current_tile else Color("#6a3b2c"), 3.0, true)
-		draw_string(APP_FONT, points[index] + Vector2(-radius, 5), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 11, Color.WHITE if index == current_tile or tile_type in [&"RISK", &"STRONG_RISK"] else INK)
 		var mark := _tile_mark(tile_type)
-		if not mark.is_empty(): draw_string(APP_FONT, points[index] + Vector2(-radius, 24), mark, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 12, Color("#6b392d"))
+		if reveal_amount < 1.0:
+			draw_string(APP_FONT, points[index] + Vector2(-radius, -radius - 3), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 10, Color(0.35, 0.20, 0.12, 0.78))
+			draw_string(APP_FONT, points[index] + Vector2(-radius, 7), "?", HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 21, Color(0.96, 0.87, 0.69, 0.90 * (1.0 - reveal_amount)))
+			var veil_alpha := 0.30 * (1.0 - reveal_amount)
+			draw_circle(points[index] + Vector2(-9.0 - reveal_amount * 12.0, -4), radius * 0.72, Color(0.90, 0.73, 0.49, veil_alpha))
+			draw_circle(points[index] + Vector2(9.0 + reveal_amount * 12.0, 3), radius * 0.62, Color(0.76, 0.56, 0.34, veil_alpha))
+		else:
+			var number_y := -1.0 if not mark.is_empty() else 5.0
+			draw_string(APP_FONT, points[index] + Vector2(-radius, number_y), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 11, Color.WHITE if index == current_tile or tile_type in [&"RISK", &"STRONG_RISK"] else INK)
+		if not mark.is_empty() and reveal_amount > 0.0:
+			draw_string(APP_FONT, points[index] + Vector2(-radius, 15), mark, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 16, Color(0.42, 0.22, 0.14, reveal_amount))
+		if reveal_amount >= 1.0 and index > 0 and index < count - 1:
+			draw_circle(points[index] + Vector2(-5, radius + 6), 2.0, Color(0.35, 0.20, 0.11, 0.34))
+			draw_circle(points[index] + Vector2(4, radius + 9), 1.7, Color(0.35, 0.20, 0.11, 0.28))
 		if index == count - 1:
 			_draw_exit_gate(points[index], radius)
 	var token := points[current_tile]
@@ -371,7 +412,9 @@ func _draw_bypass_minimap() -> void:
 	draw_polyline(points, Color("#6f3b2c"), 7.0, true)
 	for index: int in range(points.size()):
 		var tile_type := StringName(current_route_tiles[index]) if index < current_route_tiles.size() else &"NORMAL"
-		draw_circle(points[index], 4.5 if index != current_tile else 7.0, Color("#287b80") if index == current_tile else Color(TILE_COLORS.get(tile_type, SAND)))
+		var public := bypass_tile_is_public(index, current_route_tile_count, bypass_revealed_tiles)
+		var fill := Color(TILE_COLORS.get(tile_type, SAND)) if public else Color("#967047")
+		draw_circle(points[index], 4.5 if index != current_tile else 7.0, Color("#287b80") if index == current_tile else fill)
 
 func _draw_maze_minimap() -> void:
 	var panel := _mini_panel(); panel.bg_color = Color("#292421"); panel.border_color = Color("#9a7338")

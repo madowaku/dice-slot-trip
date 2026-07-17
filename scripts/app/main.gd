@@ -156,6 +156,10 @@ func _ready() -> void:
 		call_deferred("_qa_route_02")
 	elif OS.get_environment("DICE_QA_ROUTE_03") == "1":
 		call_deferred("_qa_route_03")
+	elif OS.get_environment("DICE_QA_CARAVAN_SECRET") == "1":
+		call_deferred("_qa_caravan_secret")
+	elif OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET") != "":
+		call_deferred("_qa_caravan_secret_capture", OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_DICE") != "":
 		call_deferred("_qa_dice_capture", OS.get_environment("DICE_QA_CAPTURE_DICE"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_M4A") != "":
@@ -196,7 +200,7 @@ func _ready() -> void:
 		call_deferred("_resume_roll_transaction")
 	elif OS.get_environment("DICE_QA_CAPTURE_M3") != "":
 		call_deferred("_qa_m3_capture", OS.get_environment("DICE_QA_CAPTURE_M3"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
-	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CLEAN").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
+	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CLEAN").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
 		call_deferred("_qa_capture_viewport", OS.get_environment("DICE_QA_CAPTURE_PATH"))
 
 func _apply_theme() -> void:
@@ -994,6 +998,14 @@ func _animate_route_step_hop() -> void:
 		await get_tree().create_timer(0.018).timeout
 	board_view.set_movement_hop_progress(0.0)
 
+func _animate_bypass_tile_reveal(tile_index: int) -> void:
+	if not is_instance_valid(board_view) or tile_index < 0:
+		return
+	for progress: float in [0.0, 0.16, 0.34, 0.55, 0.76, 1.0]:
+		board_view.set_bypass_reveal_progress(tile_index, progress)
+		await get_tree().create_timer(0.075).timeout
+	board_view.set_bypass_reveal_progress(-1, 1.0)
+
 func _transaction_values(transaction: Dictionary) -> Array[int]:
 	var values: Array[int] = []
 	var source_values: Array = transaction.get("final_dice_values", transaction.get("values", []))
@@ -1058,6 +1070,16 @@ func _continue_roll_transaction() -> void:
 		if movement_start_route == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and destination_route == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and destination == int(BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE).return_gate_tile) and int(transaction.get("distance", 0)) > 0:
 			maze_exited_now = _commit_royal_maze_exit()
 		SaveManager.save_now()
+	# Persist a bypass stop before presentation and before its space effect.
+	# Resuming MOVEMENT_COMMITTED then observes the reveal and applies only the
+	# still-pending landing effect.
+	if str(GameState.roll_transaction.get("phase", "")) == "MOVEMENT_COMMITTED" and GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN:
+		var reveal_result := GameState.commit_bypass_tile_reveal(GameState.current_tile_index)
+		if bool(reveal_result.get("committed", false)):
+			SaveManager.save_now()
+			_sync_board_route_context()
+			if bool(reveal_result.get("newly_revealed", false)):
+				await _animate_bypass_tile_reveal(int(reveal_result.get("tile_index", -1)))
 	if maze_exited_now:
 		await _show_maze_exit_modal()
 	# Most destinations start in the fresh event loop. Tile 0 is also a
@@ -2279,6 +2301,15 @@ func _build_debug_box() -> VBoxContainer:
 		var route_button := _button(entry.name, func() -> void: _debug_set_route(str(entry.route), int(entry.tile)))
 		route_button.custom_minimum_size.y = 42; route_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; route_row.add_child(route_button)
 	box.add_child(route_row)
+	var secret_row := HBoxContainer.new()
+	for entry: Dictionary in [
+		{"name": "SECRET NONE", "mode": "none"},
+		{"name": "SECRET HERE", "mode": "current"},
+		{"name": "SECRET ALL", "mode": "all"},
+	]:
+		var secret_button := _button(entry.name, func() -> void: _debug_set_bypass_reveals(str(entry.mode)))
+		secret_button.custom_minimum_size.y = 42; secret_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; secret_row.add_child(secret_button)
+	box.add_child(secret_row)
 	var route_resume_row := HBoxContainer.new()
 	var interrupt_route := _button("ROUTE中断保存", _debug_create_route_interruption)
 	var resume_route := _button("ROUTE復帰実行", func() -> void: call_deferred("_resume_roll_transaction"))
@@ -2341,6 +2372,7 @@ func _sync_board_route_context() -> void:
 			continue
 		route_view.set_route_context(GameState.current_route_id, int(definition.tile_count), definition.get("tiles", []))
 		route_view.set_route_flow_level(GameState.flow_level)
+		route_view.set_bypass_revealed_tiles(GameState.bypass_revealed_tiles)
 		route_view.set_current_tile(GameState.current_tile_index)
 
 func _debug_set_board_view_mode(mode: String) -> void:
@@ -2352,6 +2384,17 @@ func _debug_set_route(route_id: String, tile_index: int) -> void:
 	GameState.set_route_position(route_id, tile_index)
 	SaveManager.save_now()
 	show_game()
+
+func _debug_set_bypass_reveals(mode: String) -> void:
+	match mode:
+		"all": GameState.bypass_revealed_tiles.assign(range(1, BoardModelScript.route_tile_count(BoardModelScript.ROUTE_BYPASS_CARAVAN) - 1))
+		"current":
+			if GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN and GameState.current_tile_index > 0 and GameState.current_tile_index < BoardModelScript.route_tile_count(BoardModelScript.ROUTE_BYPASS_CARAVAN) - 1 and GameState.current_tile_index not in GameState.bypass_revealed_tiles:
+				GameState.bypass_revealed_tiles.append(GameState.current_tile_index)
+				GameState.bypass_revealed_tiles.sort()
+		_: GameState.bypass_revealed_tiles.clear()
+	_sync_board_route_context()
+	SaveManager.save_now()
 
 func _debug_create_route_interruption() -> void:
 	if not GameState.roll_transaction.is_empty():
@@ -2500,6 +2543,82 @@ func _qa_route_03() -> void:
 	print("QA_ROUTE_03 entry=%s pass_gate=%s ten_loops=%s non_gate=%s exact_exit=%s transaction_exit=%s rewards=%s hazards=%s save=%s views=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks[4], checks[5], checks[6], checks[7], checks[8], checks[9], passed])
 	GameState.apply_dictionary(backup); SaveManager.save_now()
 	get_tree().quit(0 if passed else 1)
+
+func _qa_caravan_secret() -> void:
+	var backup := GameState.to_dictionary().duplicate(true)
+	var checks: Array[bool] = []
+	GameState.reset_run()
+	checks.append(GameState.bypass_revealed_tiles.is_empty() and GameState.is_bypass_tile_revealed(0) and GameState.is_bypass_tile_revealed(9) and not GameState.is_bypass_tile_revealed(1))
+	checks.append(BoardViewScript.bypass_display_type(1, 10, &"RISK", []) == &"SECRET" and BoardViewScript.bypass_display_type(1, 10, &"STRONG_RISK", []) == &"SECRET" and BoardViewScript.bypass_display_type(7, 10, &"COIN", []) == &"SECRET")
+
+	# Three traversed spaces stay hidden; only the final stop is revealed before
+	# tile three's back-three hazard resolves.
+	GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0); show_game()
+	var pass_move := BoardModelScript.advance_route(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0, 3)
+	GameState.begin_roll_transaction([], 3, 0)
+	GameState.commit_roll_result([1, 1, 1], 3, {}, 3, int(pass_move.tile_index), 0, false, str(pass_move.route_id), pass_move.path, 0)
+	await _continue_roll_transaction()
+	checks.append(GameState.bypass_revealed_tiles == [3] and not GameState.is_bypass_tile_revealed(1) and not GameState.is_bypass_tile_revealed(2) and GameState.current_tile_index == 0 and GameState.current_lap_penalty_count == 1)
+	var persisted := SaveManager.save_now(); GameState.bypass_revealed_tiles.clear(); var restored := SaveManager.load_now()
+	checks.append(persisted and restored and GameState.bypass_revealed_tiles == [3])
+	GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0)
+	checks.append(GameState.bypass_revealed_tiles == [3])
+
+	# Simulate termination after reveal persistence but before the hazard. Resume
+	# must apply one penalty and never reveal a passed tile.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0); GameState.next_move_bonus = 0
+	var interrupted_move := BoardModelScript.advance_route(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0, 1)
+	GameState.begin_roll_transaction([], 1, 0)
+	GameState.commit_roll_result([1], 1, DiceLogicScript.evaluate_current([1], 1), 1, 1, 0, false, BoardModelScript.ROUTE_BYPASS_CARAVAN, interrupted_move.path, 0)
+	GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 1); GameState.commit_roll_movement(1, BoardModelScript.ROUTE_BYPASS_CARAVAN)
+	var interrupted_reveal := GameState.commit_bypass_tile_reveal(1); SaveManager.save_now(); GameState.apply_dictionary(GameState.to_dictionary()); show_game()
+	await _resume_roll_transaction()
+	checks.append(interrupted_reveal.newly_revealed and GameState.bypass_revealed_tiles == [1] and GameState.next_move_bonus == -2 and GameState.current_lap_penalty_count == 1 and GameState.roll_transaction.is_empty())
+
+	# Coin landing is revealed and awarded once. Reloading the resolved turn does
+	# not add another coin receipt.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 6); GameState.coins = 12; show_game()
+	var coin_move := BoardModelScript.advance_route(BoardModelScript.ROUTE_BYPASS_CARAVAN, 6, 1)
+	GameState.begin_roll_transaction([], 1, 6)
+	GameState.commit_roll_result([1], 1, DiceLogicScript.evaluate_current([1], 1), 1, 7, 0, false, BoardModelScript.ROUTE_BYPASS_CARAVAN, coin_move.path, 0)
+	await _continue_roll_transaction()
+	var coin_saved := SaveManager.save_now(); var coins_after := GameState.coins; SaveManager.load_now()
+	checks.append(coin_saved and GameState.bypass_revealed_tiles == [7] and coins_after == 18 and GameState.coins == 18)
+
+	var dice_paths_ok := true
+	for dice_count: int in [1, 2, 3, 5]:
+		var distance := dice_count
+		var move := BoardModelScript.advance_route(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0, distance)
+		dice_paths_ok = dice_paths_ok and (move.path as Array).size() == distance and int(move.tile_index) == distance
+	checks.append(dice_paths_ok)
+
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 4); show_game()
+	var views_ok := _set_board_view_mode("classic") and _set_board_view_mode("tourism")
+	checks.append(views_ok and BoardModelScript.tile_type_for_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 2) == &"TREASURE")
+	var exit_move := BoardModelScript.advance_route(BoardModelScript.ROUTE_BYPASS_CARAVAN, 8, 2)
+	checks.append(str(exit_move.route_id) == BoardModelScript.ROUTE_MAIN and int(exit_move.tile_index) == 58)
+
+	var passed := checks.all(func(value: bool) -> bool: return value)
+	print("QA_CARAVAN_SECRET new=%s hidden=%s stop_only=%s save=%s reentry=%s interrupt=%s coin=%s dice=%s views_maze=%s exit=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks[4], checks[5], checks[6], checks[7], checks[8], checks[9], passed])
+	GameState.apply_dictionary(backup); SaveManager.save_now()
+	get_tree().quit(0 if passed else 1)
+
+func _qa_caravan_secret_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.board_view_mode = "tourism"
+	GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 4 if kind == "revealed" else 3)
+	if kind == "revealing":
+		GameState.bypass_revealed_tiles.assign([3])
+	elif kind == "revealed":
+		GameState.bypass_revealed_tiles.assign([3, 4])
+	show_game()
+	if kind == "revealing" and is_instance_valid(board_view):
+		board_view.set_bypass_reveal_progress(3, 0.48)
+	for ignored: int in range(12): await get_tree().process_frame
+	await get_tree().create_timer(0.18).timeout
+	var result := _save_opaque_capture(path)
+	print("QA_CARAVAN_SECRET_CAPTURE kind=%s path=%s result=%s" % [kind, path, result])
+	get_tree().quit(0 if result == OK else 1)
 
 func _debug_play_dice_audio(category: String) -> void:
 	if not is_instance_valid(dice_audio): return
@@ -3419,7 +3538,7 @@ func _qa_clean_lap() -> void:
 	var v5_clean_missing := original.duplicate(true); v5_clean_missing["version"] = 5
 	for clean_key: String in ["current_lap_clean", "current_lap_penalty_count", "clean_streak", "even_guard_active", "best_clean_streak"]: v5_clean_missing.erase(clean_key)
 	GameState.apply_dictionary(v5_clean_missing)
-	var migration_ok := GameState.current_lap_clean and GameState.current_lap_penalty_count == 0 and GameState.clean_streak == 0 and not GameState.even_guard_active and GameState.best_clean_streak == 0 and int(GameState.to_dictionary().version) == 9
+	var migration_ok := GameState.current_lap_clean and GameState.current_lap_penalty_count == 0 and GameState.clean_streak == 0 and not GameState.even_guard_active and GameState.best_clean_streak == 0 and int(GameState.to_dictionary().version) == 10
 	var passed := clean_ok and dirty_ok and boundaries_ok and risk_ok and noop_ok and guard_ok and saved and restored and migration_ok
 	print("QA_CLEAN_LAP clean=%s dirty=%s boundaries=%s risks=%s noop=%s guard=%s save=%s migration=%s passed=%s" % [clean_ok, dirty_ok, boundaries_ok, risk_ok, noop_ok, guard_ok, restored, migration_ok, passed])
 	GameState.apply_dictionary(original); SaveManager.save_now()
