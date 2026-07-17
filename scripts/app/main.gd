@@ -37,6 +37,7 @@ const LandmarkSystemScript = preload("res://scripts/game/landmark_system.gd")
 const DiceAudioControllerScript = preload("res://scripts/game/dice_audio_controller.gd")
 const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
+const PopupBookTransitionScript = preload("res://scripts/game/popup_book_transition.gd")
 const CAIRO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/cairo-board.png")
 const WORLD_MAP_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/world-travel-map.png")
 const CAIRO_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/cairo-city-card.png")
@@ -158,8 +159,12 @@ func _ready() -> void:
 		call_deferred("_qa_route_03")
 	elif OS.get_environment("DICE_QA_CARAVAN_SECRET") == "1":
 		call_deferred("_qa_caravan_secret")
+	elif OS.get_environment("DICE_QA_POPUP_BOOK") == "1":
+		call_deferred("_qa_popup_book")
 	elif OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET") != "":
 		call_deferred("_qa_caravan_secret_capture", OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_CAPTURE_POPUP_BOOK") != "":
+		call_deferred("_qa_popup_book_capture", OS.get_environment("DICE_QA_CAPTURE_POPUP_BOOK"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_DICE") != "":
 		call_deferred("_qa_dice_capture", OS.get_environment("DICE_QA_CAPTURE_DICE"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_M4A") != "":
@@ -200,7 +205,7 @@ func _ready() -> void:
 		call_deferred("_resume_roll_transaction")
 	elif OS.get_environment("DICE_QA_CAPTURE_M3") != "":
 		call_deferred("_qa_m3_capture", OS.get_environment("DICE_QA_CAPTURE_M3"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
-	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CLEAN").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
+	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CLEAN").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET").is_empty() and OS.get_environment("DICE_QA_CAPTURE_POPUP_BOOK").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
 		call_deferred("_qa_capture_viewport", OS.get_environment("DICE_QA_CAPTURE_PATH"))
 
 func _apply_theme() -> void:
@@ -1188,15 +1193,27 @@ func _enter_royal_maze() -> String:
 	GameState.travel_memos.append(memo)
 	_sync_board_route_context()
 	SaveManager.save_now()
-	var modal := _make_modal()
-	var content: VBoxContainer = modal.content
-	content.add_child(_body("PYRAMID INTERIOR", 15))
-	content.add_child(_title("王の迷い環", 34))
-	content.add_child(_body("足元の転送床が沈み、同じ景色へ戻り続ける石の回廊へ落ちた。\n帰還扉へぴったり停止するまで、ここから出られない。", 19))
-	var close := _button("回廊を進む", func() -> void: return, true); close.name = "maze_entry_close"; close.toggle_mode = true; content.add_child(close)
-	modal["close"] = close
-	await _wait_brief_result(modal, 0.75)
+	await _play_royal_maze_entry_transition()
 	return memo
+
+func _play_royal_maze_entry_transition(duration_override: float = -1.0) -> Dictionary:
+	# The route entry is already durable when this presentation begins. A killed
+	# app therefore resumes in the maze and never replays or double-commits it.
+	modal_open = true
+	var layer := CanvasLayer.new()
+	layer.name = "RoyalMazePopupBookLayer"
+	layer.layer = 20
+	add_child(layer)
+	var transition: Control = PopupBookTransitionScript.new()
+	transition.name = "RoyalMazePopupBookTransition"
+	layer.add_child(transition)
+	transition.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	await transition.play(duration_override)
+	var transition_receipt: Dictionary = transition.receipt()
+	if is_instance_valid(layer):
+		layer.queue_free()
+	modal_open = false
+	return transition_receipt
 
 func _resume_roll_transaction() -> void:
 	if GameState.roll_transaction.is_empty():
@@ -2543,6 +2560,76 @@ func _qa_route_03() -> void:
 	print("QA_ROUTE_03 entry=%s pass_gate=%s ten_loops=%s non_gate=%s exact_exit=%s transaction_exit=%s rewards=%s hazards=%s save=%s views=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks[4], checks[5], checks[6], checks[7], checks[8], checks[9], passed])
 	GameState.apply_dictionary(backup); SaveManager.save_now()
 	get_tree().quit(0 if passed else 1)
+
+func _qa_popup_book() -> void:
+	var backup := GameState.to_dictionary().duplicate(true)
+	var checks: Array[bool] = []
+	GameState.reset_run()
+	GameState.set_route_position(BoardModelScript.ROUTE_MAIN, BoardModelScript.ROYAL_MAZE_SOURCE_TILE)
+	var definition := BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE)
+	var entered := GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, int(definition.return_tile))
+	SaveManager.save_now()
+	show_game()
+	checks.append(entered and GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and GameState.current_tile_index == int(definition.entry_tile))
+
+	# Start without awaiting so QA can exercise the same tap-to-skip path as the
+	# production overlay while the durable route state remains unchanged.
+	_play_royal_maze_entry_transition()
+	await get_tree().process_frame
+	var transition := find_child("RoyalMazePopupBookTransition", true, false)
+	checks.append(modal_open and is_instance_valid(transition))
+	if is_instance_valid(transition):
+		transition.request_skip()
+	while modal_open:
+		await get_tree().process_frame
+	await get_tree().process_frame
+	var skipped_final_state := {
+		"route_id": GameState.current_route_id,
+		"tile_index": GameState.current_tile_index,
+		"overlay_removed": find_child("RoyalMazePopupBookTransition", true, false) == null,
+		"input_unlocked": not modal_open,
+	}
+	checks.append(skipped_final_state.overlay_removed and skipped_final_state.input_unlocked)
+	var completed_receipt := await _play_royal_maze_entry_transition(0.04)
+	await get_tree().process_frame
+	var completed_final_state := {
+		"route_id": GameState.current_route_id,
+		"tile_index": GameState.current_tile_index,
+		"overlay_removed": find_child("RoyalMazePopupBookTransition", true, false) == null,
+		"input_unlocked": not modal_open,
+	}
+	checks.append(bool(completed_receipt.get("completed", false)) and not bool(completed_receipt.get("skipped", true)) and completed_final_state == skipped_final_state)
+
+	# Resume policy: a saved maze state opens the normal maze screen directly;
+	# a presentation phase is intentionally not part of the save schema.
+	var restored := SaveManager.load_now()
+	show_game()
+	checks.append(restored and GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and find_child("RoyalMazePopupBookTransition", true, false) == null and not modal_open)
+	var passed := checks.all(func(value: bool) -> bool: return value)
+	print("QA_POPUP_BOOK durable=%s overlay=%s skip=%s complete_match=%s resume=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks[4], passed])
+	GameState.apply_dictionary(backup); SaveManager.save_now()
+	get_tree().quit(0 if passed else 1)
+
+func _qa_popup_book_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.set_route_position(BoardModelScript.ROUTE_MAIN, BoardModelScript.ROYAL_MAZE_SOURCE_TILE)
+	GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, int(BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE).return_tile))
+	show_game()
+	var layer := CanvasLayer.new()
+	layer.layer = 20
+	add_child(layer)
+	var transition := PopupBookTransitionScript.new()
+	layer.add_child(transition)
+	transition.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var preview_progress: float = float({"opening": 0.28, "rising": 0.62, "complete": 1.0}.get(kind, 0.62))
+	transition.set_preview_progress(preview_progress)
+	for ignored: int in range(10):
+		await get_tree().process_frame
+	var result := _save_opaque_capture(path)
+	var image := Image.load_from_file(path)
+	var correct_size := image != null and image.get_size() == Vector2i(360, 640)
+	print("QA_POPUP_BOOK_CAPTURE kind=%s progress=%.2f size=%s path=%s result=%s" % [kind, preview_progress, correct_size, path, result])
+	get_tree().quit(0 if result == OK and correct_size else 1)
 
 func _qa_caravan_secret() -> void:
 	var backup := GameState.to_dictionary().duplicate(true)

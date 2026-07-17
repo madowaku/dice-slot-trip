@@ -14,6 +14,7 @@ const LandmarkScenicViewScript = preload("res://scripts/game/landmark_scenic_vie
 const TourismMapViewScript = preload("res://scripts/game/tourism_map_view.gd")
 const DistrictFlowVisualScript = preload("res://scripts/game/tourism_district_flow_visual.gd")
 const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
+const PopupBookTransitionScript = preload("res://scripts/game/popup_book_transition.gd")
 const GameStateScript = preload("res://autoload/game_state.gd")
 const AppFont: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 
@@ -53,6 +54,10 @@ func _init() -> void:
 	var wrapped: Dictionary = BoardModelScript.move(89, 4)
 	_expect(wrapped.index == 3 and wrapped.laps == 1, "89 to 0 lap")
 	_expect(is_equal_approx(BoardViewScript.hop_offset_for_progress(0.0), 0.0) and BoardViewScript.hop_offset_for_progress(0.5) < -13.9 and is_equal_approx(BoardViewScript.hop_offset_for_progress(1.0), 0.0), "route token hop starts grounded peaks mid-step and lands grounded")
+	var popup_start: Dictionary = PopupBookTransitionScript.phase_receipt(0.0)
+	var popup_middle: Dictionary = PopupBookTransitionScript.phase_receipt(0.58)
+	var popup_end: Dictionary = PopupBookTransitionScript.phase_receipt(1.0)
+	_expect(is_zero_approx(float(popup_start.maze_rise)) and float(popup_middle.door_open) > 0.99 and float(popup_middle.maze_rise) > 0.4 and is_equal_approx(float(popup_end.tray_slide), 1.0), "popup-book phases open the door before raising the maze and finish with the dice tray")
 	var route_main := BoardModelScript.route_definition("main")
 	var route_bypass := BoardModelScript.route_definition("bypass_caravan")
 	var route_loop := BoardModelScript.route_definition("loop_royal_maze")
