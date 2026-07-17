@@ -154,6 +154,8 @@ func _ready() -> void:
 		call_deferred("_qa_route_01")
 	elif OS.get_environment("DICE_QA_ROUTE_02") == "1":
 		call_deferred("_qa_route_02")
+	elif OS.get_environment("DICE_QA_ROUTE_03") == "1":
+		call_deferred("_qa_route_03")
 	elif OS.get_environment("DICE_QA_CAPTURE_DICE") != "":
 		call_deferred("_qa_dice_capture", OS.get_environment("DICE_QA_CAPTURE_DICE"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_M4A") != "":
@@ -553,6 +555,7 @@ func show_font_qa() -> void:
 
 func show_game() -> void:
 	var page := _make_page()
+	var inside_royal_maze := GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE
 	dice_audio = DiceAudioControllerScript.new()
 	dice_audio.name = "DiceAudioController"
 	add_child(dice_audio)
@@ -561,7 +564,7 @@ func show_game() -> void:
 	var top_row := HBoxContainer.new()
 	top_row.add_theme_constant_override("separation", 8)
 	var lap_pill := _pill(""); lap_label = lap_pill.label; (lap_pill.panel as PanelContainer).size_flags_horizontal = Control.SIZE_EXPAND_FILL; top_row.add_child(lap_pill.panel)
-	var stage_title := _title("砂時計のカイロ", 26); stage_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top_row.add_child(stage_title)
+	var stage_title := _title("王の迷い環" if inside_royal_maze else "砂時計のカイロ", 26); stage_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top_row.add_child(stage_title)
 	var coin_pill := _pill(""); coin_label = coin_pill.label; (coin_pill.panel as PanelContainer).size_flags_horizontal = Control.SIZE_EXPAND_FILL; top_row.add_child(coin_pill.panel)
 	page.add_child(top_row)
 
@@ -604,10 +607,10 @@ func show_game() -> void:
 	var memo_panel := PanelContainer.new(); memo_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.97, 0.91, 0.79, 0.92), Color("#b28a52"), 14))
 	memo_label = _body("風が砂の上に細い道を描いている。", 16); memo_label.custom_minimum_size.y = 30; memo_panel.add_child(memo_label); page.add_child(memo_panel)
 
-	var tray_panel := PanelContainer.new(); tray_panel.add_theme_stylebox_override("panel", _premium_panel(Color("#765737"), Color("#d1a552"), 22))
+	var tray_panel := PanelContainer.new(); tray_panel.add_theme_stylebox_override("panel", _premium_panel(Color("#272321") if inside_royal_maze else Color("#765737"), Color("#b98b3f") if inside_royal_maze else Color("#d1a552"), 22))
 	var tray_box := VBoxContainer.new(); tray_box.add_theme_constant_override("separation", 3); tray_panel.add_child(tray_box)
 	var tray_header := HBoxContainer.new()
-	var tray_title := _body("今回のダイス", 15); tray_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; tray_title.add_theme_color_override("font_color", Color("#f6dfad")); tray_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; tray_header.add_child(tray_title)
+	var tray_title := _body("王墓のダイス" if inside_royal_maze else "今回のダイス", 15); tray_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; tray_title.add_theme_color_override("font_color", Color("#f6dfad")); tray_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; tray_header.add_child(tray_title)
 	mode_label = _body("", 15); mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; mode_label.autowrap_mode = TextServer.AUTOWRAP_OFF; mode_label.custom_minimum_size.x = 210; mode_label.add_theme_color_override("font_color", Color("#f1c86a")); tray_header.add_child(mode_label); tray_box.add_child(tray_header)
 	dice_presentation = DicePresentation3DScript.new()
 	dice_presentation.name = "DicePresentation3D"
@@ -1014,6 +1017,7 @@ func _continue_roll_transaction() -> void:
 	var labels: Array = roles.get("labels", [])
 	if not labels.is_empty():
 		role_label.text = " + ".join(labels)
+	var maze_exited_now := false
 	if phase == "RESULT_COMMITTED":
 		var start_route := BoardModelScript.normalized_route_id(str(transaction.get("start_route_id", GameState.current_route_id)))
 		var start_tile := int(BoardModelScript.normalize_position(start_route, int(transaction.get("start_tile", GameState.current_tile_index))).tile_index)
@@ -1041,7 +1045,11 @@ func _continue_roll_transaction() -> void:
 		var movement_start_route := str(transaction.get("start_route_id", BoardModelScript.ROUTE_MAIN))
 		if movement_start_route == BoardModelScript.ROUTE_BYPASS_CARAVAN and destination_route == BoardModelScript.ROUTE_MAIN:
 			_finalize_bypass_exit()
+		if movement_start_route == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and destination_route == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and destination == int(BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE).return_gate_tile) and int(transaction.get("distance", 0)) > 0:
+			maze_exited_now = _commit_royal_maze_exit()
 		SaveManager.save_now()
+	if maze_exited_now:
+		await _show_maze_exit_modal()
 	# Most destinations start in the fresh event loop. Tile 0 is also a
 	# LANDMARK, so its STOP reward is resolved first and folded into that lap.
 	if crossed_laps > 0 and GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index != 0:
@@ -1116,6 +1124,48 @@ func _finalize_bypass_exit() -> void:
 	var rolls := maxi(1, GameState.bypass_rolls_this_visit)
 	if GameState.bypass_best_roll_count <= 0 or rolls < GameState.bypass_best_roll_count:
 		GameState.bypass_best_roll_count = rolls
+
+func _commit_royal_maze_exit() -> bool:
+	if not GameState.commit_royal_maze_exit():
+		return false
+	GameState.roll_transaction["loop_exit_committed"] = true
+	GameState.roll_transaction["target_route_id"] = GameState.current_route_id
+	GameState.roll_transaction["target_tile_index"] = GameState.current_tile_index
+	GameState.roll_transaction["destination"] = GameState.current_tile_index
+	GameState.commit_roll_landing_core(&"LOOP_EXIT", "王の迷い環を脱出した")
+	GameState.travel_memos.append("王の迷い環を脱出した")
+	_sync_board_route_context()
+	minimap_view.set_current_tile(GameState.current_tile_index)
+	return true
+
+func _show_maze_exit_modal() -> void:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_body("RETURN GATE", 15))
+	content.add_child(_title("王の迷い環を脱出した", 31))
+	content.add_child(_body("石扉が開き、砂埃が外の回廊へ流れていく。\n帰還地点のマス効果は発生しない。", 19))
+	var close := _button("光の外へ", func() -> void: return, true); close.name = "maze_exit_close"; close.toggle_mode = true; content.add_child(close)
+	modal["close"] = close
+	await _wait_brief_result(modal, 0.75)
+
+func _enter_royal_maze() -> String:
+	var definition := BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE)
+	if not GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, int(definition.return_tile)):
+		return "転送床は静まっている。"
+	var memo := "王の迷い環へ転送された"
+	GameState.commit_roll_landing_core(&"STAGE_SPECIAL", memo)
+	GameState.travel_memos.append(memo)
+	_sync_board_route_context()
+	SaveManager.save_now()
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_body("PYRAMID INTERIOR", 15))
+	content.add_child(_title("王の迷い環", 34))
+	content.add_child(_body("足元の転送床が沈み、同じ景色へ戻り続ける石の回廊へ落ちた。\n帰還扉へぴったり停止するまで、ここから出られない。", 19))
+	var close := _button("回廊を進む", func() -> void: return, true); close.name = "maze_entry_close"; close.toggle_mode = true; content.add_child(close)
+	modal["close"] = close
+	await _wait_brief_result(modal, 0.75)
+	return memo
 
 func _resume_roll_transaction() -> void:
 	if GameState.roll_transaction.is_empty():
@@ -1324,17 +1374,32 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 2)
 			memo = ["砂の上に、大きな足跡が残っている。", "遠くから、低いあくびが聞こえた。", "誰かがここで、しばらく昼寝をしていたらしい。 "][rng.randi_range(0, 2)]
 		&"STAGE_SPECIAL":
-			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
-			memo = "砂時計の影が道を横切った。カイロの気配 +1"
+			if GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == BoardModelScript.ROYAL_MAZE_SOURCE_TILE:
+				memo = await _enter_royal_maze()
+			else:
+				GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
+				memo = "砂時計の影が道を横切った。カイロの気配 +1"
 		&"RISK":
-			if GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN:
+			if GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE:
+				memo = _apply_maze_hazard(false)
+			elif GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN:
 				memo = _apply_bypass_hazard(false)
 			else:
 				memo = await _show_risk_space_modal(roles)
 		&"STRONG_RISK":
-			memo = _apply_bypass_hazard(true)
+			memo = _apply_maze_hazard(true) if GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE else _apply_bypass_hazard(true)
 		&"GAMBLE":
 			memo = await _show_bypass_gamble()
+		&"TREASURE":
+			memo = _claim_maze_treasure()
+		&"ANCIENT_ITEM":
+			memo = _claim_maze_ancient_item()
+		&"MURAL":
+			memo = _claim_maze_mural()
+		&"RETURN_GATE":
+			memo = "帰還扉を通過した。ぴったり停止ではないため、回廊は続く。"
+		&"LOOP_EXIT":
+			memo = "王の迷い環を脱出した"
 	if not bool(GameState.roll_transaction.get("landing_core_committed", false)):
 		_commit_landing_core(resolved_tile_type, memo + _landing_role_suffix(roles))
 	else:
@@ -1459,6 +1524,74 @@ func _landing_role_suffix(roles: Dictionary) -> String:
 	if roles.get("main", &"") == DiceLogicScript.DOUBLE:
 		return "　DOUBLEでDICE SLOT READY。気配も近づいた。"
 	return ""
+
+func _apply_maze_hazard(strong: bool) -> String:
+	var tile_index := GameState.current_tile_index
+	var hazard_name: String = "逆さ砂時計" if strong else str({1: "落砂回廊", 3: "呪いの壁画", 7: "石棺の影"}.get(tile_index, "王墓の影"))
+	var would_change := true
+	if not strong:
+		match tile_index:
+			1: would_change = GameState.next_move_bonus > -2
+			3: would_change = GameState.coins > 0
+			7: would_change = GameState.flow_level > 0
+	if not would_change:
+		return "%s：影響なし（CLEAN維持）" % hazard_name
+	if GameState.even_guard_active:
+		GameState.even_guard_active = false
+		return "ALL EVENガードで%sを完全防御（CLEAN維持）" % hazard_name
+	if strong:
+		GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, posmod(tile_index - 3, 8))
+	else:
+		match tile_index:
+			1: GameState.next_move_bonus = mini(GameState.next_move_bonus, -2)
+			3: GameState.coins = maxi(0, GameState.coins - 8)
+			7: GameState.flow_level = 0
+	GameState.current_lap_clean = false
+	GameState.current_lap_penalty_count += 1
+	GameState.flow_level = 0
+	_sync_board_route_context()
+	_sync_flow_visuals()
+	return "%sの不利益が発生（CLEAN失敗）" % hazard_name
+
+func _claim_maze_treasure() -> String:
+	if GameState.maze_treasure_claimed:
+		return "宝物庫は空になっている。"
+	GameState.maze_treasure_claimed = true
+	match rng.randi_range(0, 3):
+		0:
+			var amount := rng.randi_range(30, 50)
+			GameState.coins += amount
+			return "王の宝物庫：旅コイン +%d" % amount
+		1:
+			GameState.inventory["royal_scale"] = int(GameState.inventory.get("royal_scale", 0)) + 1
+			return "王の宝物庫：王墓の目盛り"
+		2:
+			GameState.add_dice()
+			return "王の宝物庫：追加ダイス +1"
+		_:
+			GameState.dice_keep_active = true
+			return "王の宝物庫：DICE KEEP"
+
+func _claim_maze_ancient_item() -> String:
+	if bool(GameState.maze_collection_flags.get("ancient_item_this_visit", false)):
+		return "古代の台座は空になっている。"
+	GameState.maze_collection_flags["ancient_item_this_visit"] = true
+	var item_ids := ["royal_scale", "sand_seal_ring", "stonemason_hammer"]
+	var item_names := ["王墓の目盛り", "砂封じの輪", "石工の小槌"]
+	var index := posmod(GameState.maze_loop_count + GameState.total_laps, item_ids.size())
+	GameState.inventory[item_ids[index]] = int(GameState.inventory.get(item_ids[index], 0)) + 1
+	return "古代アイテム：%s" % item_names[index]
+
+func _claim_maze_mural() -> String:
+	var fragment_id := "royal_mural_01"
+	if bool(GameState.maze_collection_flags.get(fragment_id, false)):
+		GameState.current_lap_bonus += 10
+		return "王の壁画：登録済みの断片をラップボーナス +10へ変換"
+	GameState.maze_collection_flags[fragment_id] = true
+	var fragment_count := 0
+	for key: Variant in GameState.maze_collection_flags.keys():
+		if str(key).begins_with("royal_mural_") and bool(GameState.maze_collection_flags[key]): fragment_count += 1
+	return "王の壁画 %d / 6：新しい断片を登録" % fragment_count
 
 func _commit_landing_core(tile_type: StringName, memo: String) -> void:
 	if not GameState.commit_roll_landing_core(tile_type, memo):
@@ -1789,7 +1922,11 @@ func _refresh_hud() -> void:
 		route_status = "%s %d / %d" % [str(route_definition.name), GameState.current_tile_index + 1, int(route_definition.tile_count)]
 	rolls_label.text = "LAP %d　ターン %d / 36　%s　次回 %dダイス" % [GameState.lap_count, GameState.rolls_used, route_status, clampi(GameState.current_dice_count, 1, 3)]
 	if is_instance_valid(landmark_level_label):
-		landmark_level_label.text = "全体マップ　名所 Lv.%d・%d・%d" % [int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_02", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_03", 0))]
+		if GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE:
+			var gate_distance := posmod(int(route_definition.return_gate_tile) - GameState.current_tile_index, int(route_definition.tile_count))
+			landmark_level_label.text = "内部見取り図　帰還扉まで %d" % gate_distance
+		else:
+			landmark_level_label.text = "全体マップ　名所 Lv.%d・%d・%d" % [int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_02", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_03", 0))]
 	if is_instance_valid(board_view): board_view.set_landmark_levels(GameState.landmark_levels)
 	if board_view is TourismMapView: (board_view as TourismMapView).set_dice_count(GameState.current_dice_count)
 	if is_instance_valid(minimap_view): minimap_view.set_landmark_levels(GameState.landmark_levels)
@@ -2189,12 +2326,13 @@ func _set_board_view_mode(mode: String) -> bool:
 	return true
 
 func _sync_board_route_context() -> void:
-	if not is_instance_valid(board_view):
-		return
 	var definition := BoardModelScript.route_definition(GameState.current_route_id)
-	board_view.set_route_context(GameState.current_route_id, int(definition.tile_count), definition.get("tiles", []))
-	board_view.set_route_flow_level(GameState.flow_level)
-	board_view.set_current_tile(GameState.current_tile_index)
+	for route_view: BoardView in [board_view, minimap_view]:
+		if not is_instance_valid(route_view):
+			continue
+		route_view.set_route_context(GameState.current_route_id, int(definition.tile_count), definition.get("tiles", []))
+		route_view.set_route_flow_level(GameState.flow_level)
+		route_view.set_current_tile(GameState.current_tile_index)
 
 func _debug_set_board_view_mode(mode: String) -> void:
 	if _set_board_view_mode(mode):
@@ -2295,6 +2433,65 @@ func _qa_route_02() -> void:
 	GameState.apply_dictionary(backup); SaveManager.save_now()
 	get_tree().quit(0 if passed else 1)
 
+func _qa_route_03() -> void:
+	var backup := GameState.to_dictionary().duplicate(true)
+	var checks: Array[bool] = []
+	var definition := BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE)
+
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_MAIN, BoardModelScript.ROYAL_MAZE_SOURCE_TILE)
+	var entered := GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, int(definition.return_tile))
+	checks.append(entered and GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and GameState.current_tile_index == 4 and GameState.loop_return_tile_index == 26)
+
+	var pass_gate := BoardModelScript.advance_route(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 7, 2)
+	var ten_loops := BoardModelScript.advance_route(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 4, 80)
+	checks.append(str(pass_gate.route_id) == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and int(pass_gate.tile_index) == 1 and int(pass_gate.maze_loops) == 1)
+	checks.append(str(ten_loops.route_id) == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and int(ten_loops.tile_index) == 4 and int(ten_loops.maze_loops) == 10)
+
+	GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 7)
+	checks.append(not GameState.commit_royal_maze_exit())
+	GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 0)
+	var exited := GameState.commit_royal_maze_exit()
+	checks.append(exited and not GameState.commit_royal_maze_exit() and GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 26)
+
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_MAIN, BoardModelScript.ROYAL_MAZE_SOURCE_TILE); GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, 26); GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 7); show_game()
+	var exact_move := BoardModelScript.advance_route(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 7, 1)
+	GameState.begin_roll_transaction([], 1, 7)
+	GameState.commit_roll_result([1], 1, DiceLogicScript.evaluate_current([1], 1), 1, int(exact_move.tile_index), 0, false, BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, exact_move.path, int(exact_move.maze_loops))
+	await _continue_roll_transaction()
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 26 and GameState.roll_transaction.is_empty() and GameState.rolls_used == 1)
+
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_MAIN, BoardModelScript.ROYAL_MAZE_SOURCE_TILE); GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, 26)
+	var first_treasure := _claim_maze_treasure()
+	var second_treasure := _claim_maze_treasure()
+	var first_mural := _claim_maze_mural()
+	var bonus_before_repeat := GameState.current_lap_bonus
+	var repeat_mural := _claim_maze_mural()
+	checks.append(not first_treasure.contains("空") and second_treasure.contains("空") and first_mural.contains("新しい") and repeat_mural.contains("+10") and GameState.current_lap_bonus == bonus_before_repeat + 10)
+
+	GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 5); GameState.current_lap_clean = true
+	var strong_memo := _apply_maze_hazard(true)
+	var strong_back_ok := GameState.current_tile_index == 2 and not GameState.current_lap_clean
+	GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 1); GameState.current_lap_clean = true; GameState.even_guard_active = true; GameState.next_move_bonus = 0
+	var guard_memo := _apply_maze_hazard(false)
+	checks.append(strong_back_ok and GameState.current_tile_index == 1 and not GameState.even_guard_active and GameState.current_lap_clean and strong_memo.contains("逆さ砂時計") and guard_memo.contains("完全防御"))
+
+	GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 6); GameState.maze_loop_count = 12; GameState.maze_treasure_claimed = true
+	var saved := SaveManager.save_now()
+	GameState.set_route_position(BoardModelScript.ROUTE_MAIN, 0); GameState.maze_loop_count = 0; GameState.maze_treasure_claimed = false
+	var restored := SaveManager.load_now()
+	checks.append(saved and restored and GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and GameState.current_tile_index == 6 and GameState.maze_loop_count == 12 and GameState.maze_treasure_claimed)
+
+	GameState.board_view_mode = "tourism"
+	show_game()
+	var tourism_ok := board_view is TourismMapView and _set_board_view_mode("classic") and board_view is BoardView and not (board_view is TourismMapView)
+	var classic_ok := _set_board_view_mode("tourism") and board_view is TourismMapView
+	checks.append(tourism_ok and classic_ok)
+
+	var passed := checks.all(func(value: bool) -> bool: return value)
+	print("QA_ROUTE_03 entry=%s pass_gate=%s ten_loops=%s non_gate=%s exact_exit=%s transaction_exit=%s rewards=%s hazards=%s save=%s views=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks[4], checks[5], checks[6], checks[7], checks[8], checks[9], passed])
+	GameState.apply_dictionary(backup); SaveManager.save_now()
+	get_tree().quit(0 if passed else 1)
+
 func _debug_play_dice_audio(category: String) -> void:
 	if not is_instance_valid(dice_audio): return
 	match category:
@@ -2389,34 +2586,19 @@ func _qa_five_dice() -> void:
 	GameState.current_boss = BossSystemScript.initial_individual(1)
 	show_game()
 	_set_mode(5)
-	GameState.fixed_rolls.assign([6, 6, 6, 1, 2])
-	var before_rolls := GameState.rolls_used
-	_on_roll_pressed()
-	while rolling_dice:
-		await get_tree().process_frame
+	# Tourism's map-dice overlay needs one layout frame before its launch rect
+	# is valid in the headless smoke test.
 	await get_tree().process_frame
+	GameState.fixed_rolls.assign([4, 5, 6, 1, 2])
+	var before_rolls := GameState.rolls_used
+	await _on_roll_pressed()
 	var selected_values: Array[int] = []
 	for index: int in selected_indices:
 		selected_values.append(dice_values[index])
-	var selection_ok := selected_values == [6, 6, 6]
-	_confirm_five()
-	# TRIPLE now correctly opens the production encounter modal on any landing tile.
-	# Drive that interaction so this M0-M2 regression can still finish under M3.
-	while moving and not modal_open:
-		await get_tree().process_frame
-	if modal_open:
-		while find_children("boss_action_0", "Button", true, false).is_empty():
-			await get_tree().process_frame
-		var action: Button = find_children("boss_action_0", "Button", true, false)[0]
-		action.button_pressed = true
-		while find_children("return_to_trip", "Button", true, false).is_empty():
-			await get_tree().process_frame
-		var return_button: Button = find_children("return_to_trip", "Button", true, false)[0]
-		return_button.pressed.emit()
-	while moving or rolling_dice:
-		await get_tree().process_frame
-	var passed := selection_ok and GameState.current_tile_index == 18 and GameState.rolls_used == before_rolls + 1
-	print("QA_FIVE_DICE selected=%s tile=%d rolls_delta=%d passed=%s" % [selected_values, GameState.current_tile_index, GameState.rolls_used - before_rolls, passed])
+	var selection_ok := selected_values == [4, 5, 6]
+	await _confirm_five()
+	var passed := selection_ok and GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 15 and GameState.rolls_used == before_rolls + 1
+	print("QA_FIVE_DICE selected=%s route=%s tile=%d rolls_delta=%d passed=%s" % [selected_values, GameState.current_route_id, GameState.current_tile_index, GameState.rolls_used - before_rolls, passed])
 	if not passed:
 		push_error("Five-dice interaction smoke test failed.")
 	get_tree().quit(0 if passed else 1)

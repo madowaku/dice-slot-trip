@@ -147,6 +147,29 @@ func set_route_position(route_id: String, tile_index: int) -> void:
 	current_route_id = str(normalized.route_id)
 	current_route_tile_index = int(normalized.tile_index)
 
+func commit_royal_maze_entry(return_route_id: String, return_tile_index: int) -> bool:
+	if current_route_id != BoardModelScript.ROUTE_MAIN or current_route_tile_index != BoardModelScript.ROYAL_MAZE_SOURCE_TILE:
+		return false
+	var definition := BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE)
+	loop_return_route_id = BoardModelScript.normalized_route_id(return_route_id)
+	loop_return_tile_index = int(BoardModelScript.normalize_position(loop_return_route_id, return_tile_index).tile_index)
+	loop_entry_committed = true
+	loop_exit_committed = false
+	maze_treasure_claimed = false
+	maze_collection_flags.erase("ancient_item_this_visit")
+	set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, int(definition.entry_tile))
+	return true
+
+func commit_royal_maze_exit() -> bool:
+	if current_route_id != BoardModelScript.ROUTE_LOOP_ROYAL_MAZE:
+		return false
+	var definition := BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE)
+	if current_route_tile_index != int(definition.return_gate_tile) or loop_exit_committed:
+		return false
+	loop_exit_committed = true
+	set_route_position(loop_return_route_id, loop_return_tile_index)
+	return true
+
 func unlock_dice(step: int = 1) -> int:
 	# Compatibility method for v4 call sites. New code should use add_dice().
 	return add_dice(step)
@@ -186,7 +209,6 @@ func reset_run() -> void:
 	loop_exit_committed = false
 	maze_loop_count = 0
 	maze_treasure_claimed = false
-	maze_collection_flags.clear()
 	lap_count = 0
 	rolls_used = 0
 	coins = 12

@@ -5,6 +5,7 @@ const TILE_COUNT: int = 90
 const ROUTE_MAIN: String = "main"
 const ROUTE_BYPASS_CARAVAN: String = "bypass_caravan"
 const ROUTE_LOOP_ROYAL_MAZE: String = "loop_royal_maze"
+const ROYAL_MAZE_SOURCE_TILE: int = 18
 const VALID_ROUTE_IDS: Array[String] = [ROUTE_MAIN, ROUTE_BYPASS_CARAVAN, ROUTE_LOOP_ROYAL_MAZE]
 const TILE_TYPES: Array[StringName] = [
 	&"NORMAL", &"EVENT", &"ITEM", &"COIN", &"WARP", &"SHOP", &"REST", &"LANDMARK", &"BOSS_SCENT", &"STAGE_SPECIAL", &"RISK"
@@ -48,7 +49,8 @@ static func route_definition(route_id: String) -> Dictionary:
 		ROUTE_LOOP_ROYAL_MAZE:
 			return {
 				"id": ROUTE_LOOP_ROYAL_MAZE, "type": "loop", "name": "王の迷い環",
-				"entry_tile": 4, "return_gate_tile": 0, "return_route": ROUTE_MAIN, "return_tile": 74,
+				"source_route": ROUTE_MAIN, "source_tile": ROYAL_MAZE_SOURCE_TILE,
+				"entry_tile": 4, "return_gate_tile": 0, "return_route": ROUTE_MAIN, "return_tile": 26,
 				"tile_count": 8, "tiles": [&"RETURN_GATE", &"RISK", &"TREASURE", &"RISK", &"ANCIENT_ITEM", &"STRONG_RISK", &"MURAL", &"RISK"],
 				"counts_for_lap": false, "exact_stop_exit": true,
 			}

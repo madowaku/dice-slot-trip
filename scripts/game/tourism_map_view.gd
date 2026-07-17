@@ -35,6 +35,7 @@ const MARKET_PROP_REGIONS: Dictionary = {
 var dice_count: int = 1
 var highlighted_destination_tile: int = -1
 var highlighted_destination_value: int = 0
+var offscreen_destination_distance: int = 0
 var flow_visual_level: int = 0
 var flow_phase: float = 0.0
 var district_flow_visual: Control
@@ -341,15 +342,17 @@ func highlight_destination(tile_index: int, die_value: int) -> void:
 	# Two/three-die previews show their summed distance (up to 18), not a
 	# single-face value. Keep only the invalid negative case clamped.
 	highlighted_destination_value = maxi(die_value, 0)
+	offscreen_destination_distance = highlighted_destination_value if highlighted_destination_value > LAST_OFFSET else 0
 	queue_redraw()
 
 func clear_destination_highlight() -> void:
 	highlighted_destination_tile = -1
 	highlighted_destination_value = 0
+	offscreen_destination_distance = 0
 	queue_redraw()
 
 func _draw() -> void:
-	if is_minimap or current_route_id == "bypass_caravan":
+	if is_minimap or current_route_id in ["bypass_caravan", "loop_royal_maze"]:
 		super._draw()
 		return
 	_draw_tourism_map()
@@ -368,6 +371,10 @@ func _draw_tourism_map() -> void:
 	draw_string(TOURISM_FONT, Vector2(size.x - 145, 29), "%02d / 90" % (current_tile + 1), HORIZONTAL_ALIGNMENT_RIGHT, 126, 17, Color("#795d3f"))
 	if scenic_level >= 0:
 		draw_string(TOURISM_FONT, Vector2(18, 51), "香辛料市場通り  Lv.%d" % scenic_level, HORIZONTAL_ALIGNMENT_LEFT, 230, 14, Color("#704828"))
+	if offscreen_destination_distance > 0:
+		var indicator := Rect2(size.x - 178.0, 43.0, 160.0, 34.0)
+		draw_style_box(_destination_indicator_style(), indicator)
+		draw_string(TOURISM_FONT, indicator.position + Vector2(8.0, 23.0), "着地点 %dマス先  →" % offscreen_destination_distance, HORIZONTAL_ALIGNMENT_CENTER, indicator.size.x - 16.0, 15, Color("#fff4dc"))
 
 	var rects := tile_rects(size)
 	var indices := neighborhood_indices(current_tile)
@@ -426,6 +433,16 @@ func _draw_market_props() -> void:
 		var rect: Rect2 = spec.get("rect", Rect2())
 		draw_texture_rect_region(texture, Rect2(rect.position + Vector2(2.0, 3.0), rect.size), region, Color(0.20, 0.12, 0.06, 0.18))
 		draw_texture_rect_region(texture, rect, region, Color(0.93, 0.82, 0.67, 0.68))
+
+func _destination_indicator_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.48, 0.20, 0.13, 0.94)
+	style.border_color = Color("#f1c86a")
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(12)
+	style.shadow_color = Color(0.18, 0.09, 0.04, 0.28)
+	style.shadow_size = 4
+	return style
 
 func _draw_flow_map_effects() -> void:
 	var visual := flow_visual_strength(flow_visual_level)

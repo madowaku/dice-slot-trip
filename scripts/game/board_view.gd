@@ -30,6 +30,10 @@ const TILE_COLORS: Dictionary = {
 	&"RISK": Color("#c76552"),
 	&"STRONG_RISK": Color("#883b35"),
 	&"GAMBLE": Color("#cf7b3f"),
+	&"RETURN_GATE": Color("#d3aa50"),
+	&"TREASURE": Color("#c99742"),
+	&"ANCIENT_ITEM": Color("#5c9c91"),
+	&"MURAL": Color("#9276a9"),
 }
 
 var tile_types: Array[StringName] = []
@@ -119,6 +123,9 @@ func _draw() -> void:
 		return
 	if current_route_id == "bypass_caravan":
 		_draw_bypass_neighborhood()
+		return
+	if current_route_id == "loop_royal_maze":
+		_draw_royal_maze()
 		return
 	_draw_zoomed_neighborhood()
 
@@ -219,6 +226,62 @@ func _draw_bypass_flow_wind(points: PackedVector2Array) -> void:
 		var length := 12.0 + float(route_flow_level) * 4.0
 		draw_line(start, start + direction * length, Color(0.95, 0.78, 0.42, 0.20 + float(route_flow_level) * 0.07), 1.5 + float(route_flow_level) * 0.18, true)
 
+func _draw_royal_maze() -> void:
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = Color("#24201f")
+	panel.border_color = Color("#9a7338")
+	panel.set_border_width_all(3)
+	panel.set_corner_radius_all(18)
+	panel.shadow_color = Color(0.05, 0.03, 0.02, 0.65)
+	panel.shadow_size = 10
+	draw_style_box(panel, Rect2(Vector2.ZERO, size))
+	# Stone courses and Kenney fragments keep the chamber tactile while the
+	# eight-stop topology remains fully visible.
+	for row: int in range(7):
+		var y := 52.0 + float(row) * (size.y - 64.0) / 7.0
+		draw_line(Vector2(12, y), Vector2(size.x - 12, y), Color(0.78, 0.62, 0.39, 0.07), 1.0, true)
+	draw_texture_rect(BYPASS_WALL, Rect2(20, size.y * 0.54, 68, 72), false, Color(0.38, 0.34, 0.30, 0.72))
+	draw_texture_rect(BYPASS_ROCKS, Rect2(size.x - 86, size.y * 0.46, 62, 72), false, Color(0.35, 0.31, 0.28, 0.70))
+	draw_string(APP_FONT, Vector2(18, 30), "王の迷い環", HORIZONTAL_ALIGNMENT_LEFT, -1, 21, Color("#f0d38a"))
+	var gate_distance := posmod(-current_tile, maxi(1, current_route_tile_count))
+	draw_string(APP_FONT, Vector2(18, 54), "帰還扉まで %d　ぴったり停止で脱出" % gate_distance, HORIZONTAL_ALIGNMENT_LEFT, size.x - 36.0, 15, Color("#c9b48b"))
+	var center := Vector2(size.x * 0.5, size.y * 0.58)
+	var radius := Vector2(size.x * 0.32, size.y * 0.30)
+	var points := PackedVector2Array()
+	for index: int in range(maxi(1, current_route_tile_count)):
+		var angle := -PI * 0.5 + TAU * float(index) / float(maxi(1, current_route_tile_count))
+		points.append(center + Vector2(cos(angle) * radius.x, sin(angle) * radius.y))
+	var ring := points.duplicate(); ring.append(points[0])
+	draw_polyline(ring, Color(0.04, 0.03, 0.03, 0.72), 28.0, true)
+	draw_polyline(ring, Color("#55483b"), 21.0, true)
+	draw_polyline(ring, Color("#746044"), 4.0, true)
+	for direction_index: int in [1, 3, 5, 7]:
+		_draw_direction_chevron(points[direction_index - 1].lerp(points[direction_index], 0.5), points[direction_index] - points[direction_index - 1], Color(0.84, 0.65, 0.28, 0.60), 6.0)
+	for index: int in range(points.size()):
+		var tile_type := StringName(current_route_tiles[index]) if index < current_route_tiles.size() else &"NORMAL"
+		var tile_radius := 20.0 if index == current_tile else (22.0 if tile_type == &"RETURN_GATE" else 16.0)
+		if tile_type == &"RISK": draw_circle(points[index], tile_radius + 7.0, Color(0.68, 0.13, 0.10, 0.20))
+		if tile_type == &"STRONG_RISK": draw_circle(points[index], tile_radius + 10.0, Color(0.02, 0.01, 0.01, 0.70))
+		var fill := Color("#287b80") if index == current_tile else Color(TILE_COLORS.get(tile_type, Color("#77634a")))
+		draw_circle(points[index], tile_radius, fill)
+		draw_arc(points[index], tile_radius, 0, TAU, 24, Color("#f1c86a") if index == current_tile or tile_type == &"RETURN_GATE" else Color("#b28b51"), 3.0, true)
+		draw_string(APP_FONT, points[index] + Vector2(-tile_radius, 5), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, tile_radius * 2.0, 11, Color.WHITE)
+		var mark := _tile_mark(tile_type)
+		if not mark.is_empty(): draw_string(APP_FONT, points[index] + Vector2(-tile_radius, 25), mark, HORIZONTAL_ALIGNMENT_CENTER, tile_radius * 2.0, 12, Color("#e8cb84"))
+	if route_flow_level > 0:
+		for flow_index: int in range(route_flow_level + 1):
+			var angle := -PI * 0.5 + TAU * float(flow_index) / float(route_flow_level + 1)
+			var start := center + Vector2(cos(angle) * radius.x * 0.72, sin(angle) * radius.y * 0.72)
+			draw_line(start, start + Vector2(-sin(angle), cos(angle)) * (10.0 + route_flow_level * 4.0), Color(0.96, 0.73, 0.25, 0.16 + route_flow_level * 0.07), 2.0, true)
+	var token := points[current_tile]
+	draw_texture_rect(PLAYER_TEXTURE, Rect2(token - Vector2(31, 86), Vector2(62, 82)), false, Color(0.92, 0.84, 0.67, 1.0))
+	# Two fixed torch pairs frame the chamber; higher FLOW brightens their halo.
+	for torch_x: float in [size.x * 0.14, size.x * 0.86]:
+		var torch := Vector2(torch_x, size.y * 0.29)
+		draw_circle(torch, 10.0 + route_flow_level * 1.4, Color(0.94, 0.50, 0.16, 0.10 + route_flow_level * 0.035))
+		draw_circle(torch, 4.0, Color("#f3a83d"))
+
+
 func _draw_zoomed_neighborhood() -> void:
 	# The neighborhood is a legible board ribbon, not a magnified dotted map.
 	# The full 90-tile topology remains in the independent minimap.
@@ -260,8 +323,41 @@ func _draw_zoomed_neighborhood() -> void:
 	draw_string(APP_FONT, Vector2(center_rect_x + tile_width, center_y - tile_height * 0.5 - 12), "▶", HORIZONTAL_ALIGNMENT_CENTER, tile_width, 22, Color("#7d5f36"))
 
 func _draw_minimap() -> void:
+	if current_route_id == "loop_royal_maze":
+		_draw_maze_minimap()
+		return
+	if current_route_id == "bypass_caravan":
+		_draw_bypass_minimap()
+		return
 	draw_style_box(_mini_panel(), Rect2(Vector2.ZERO, size))
 	_draw_route(false)
+
+func _draw_bypass_minimap() -> void:
+	draw_style_box(_mini_panel(), Rect2(Vector2.ZERO, size))
+	var points := PackedVector2Array()
+	var count := maxi(2, current_route_tile_count)
+	for index: int in range(count):
+		var t := float(index) / float(count - 1)
+		points.append(Vector2(12.0 + t * (size.x - 24.0), size.y * 0.55 + sin(t * PI * 2.0) * 7.0))
+	draw_polyline(points, Color("#6f3b2c"), 7.0, true)
+	for index: int in range(points.size()):
+		var tile_type := StringName(current_route_tiles[index]) if index < current_route_tiles.size() else &"NORMAL"
+		draw_circle(points[index], 4.5 if index != current_tile else 7.0, Color("#287b80") if index == current_tile else Color(TILE_COLORS.get(tile_type, SAND)))
+
+func _draw_maze_minimap() -> void:
+	var panel := _mini_panel(); panel.bg_color = Color("#292421"); panel.border_color = Color("#9a7338")
+	draw_style_box(panel, Rect2(Vector2.ZERO, size))
+	var center := size * 0.5
+	var radius := Vector2(size.x * 0.34, size.y * 0.32)
+	var points := PackedVector2Array()
+	for index: int in range(current_route_tile_count):
+		var angle := -PI * 0.5 + TAU * float(index) / float(current_route_tile_count)
+		points.append(center + Vector2(cos(angle) * radius.x, sin(angle) * radius.y))
+	var ring := points.duplicate(); ring.append(points[0])
+	draw_polyline(ring, Color("#756044"), 4.0, true)
+	for index: int in range(points.size()):
+		var tile_type := StringName(current_route_tiles[index]) if index < current_route_tiles.size() else &"NORMAL"
+		draw_circle(points[index], 4.5 if index != current_tile else 7.0, Color("#287b80") if index == current_tile else Color(TILE_COLORS.get(tile_type, Color("#77634a"))))
 
 func _draw_route(show_token_art: bool) -> void:
 	var path := PackedVector2Array(positions)
@@ -348,6 +444,10 @@ func _tile_mark(tile_type: StringName) -> String:
 		&"RISK": return "!"
 		&"STRONG_RISK": return "!!"
 		&"GAMBLE": return "?"
+		&"RETURN_GATE": return "扉"
+		&"TREASURE": return "宝"
+		&"ANCIENT_ITEM": return "王"
+		&"MURAL": return "画"
 	return ""
 
 func _landmark_level(tile_index: int) -> int:
