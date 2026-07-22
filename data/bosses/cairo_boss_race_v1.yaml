@@ -1,0 +1,148 @@
+schema_version: dice-slot-trip.boss-race/1
+boss_race:
+  id: cairo_golden_gate_mirror_race_v1
+  display_name: 黄金門の鏡面レース
+  stage_id: cairo_hourglass_v1
+  boss_id: hourglass_gate_warden
+  boss_display_name: 砂時計門の番人
+  course_kind: parallel_straight
+  course_length: 13
+  start_position: 0
+  goal_position: 13
+  estimated_time_seconds:
+    min: 25
+    max: 45
+  retry_policy: no_retry_record_result_and_finish_stage
+carry_in:
+  three_roll_slot_values: true
+  skill_charge_and_ready_state: true
+  inventory: true
+  hp: true
+  coins: true
+  run_flags:
+  - boss_ignore_first_sand
+dice_rules:
+  player_roll_range:
+  - 1
+  - 6
+  boss_roll_formula: 7 - effective_player_roll
+  effective_player_roll_order:
+  - commit_tapped_face
+  - apply_allowed_player_roll_modifiers
+  - clamp_to_1_6
+  - derive_boss_roll
+  allowed_player_roll_modifiers:
+  - compass
+  boss_roll_is_public: true
+  boss_uses_separate_random_roll: false
+turn_order:
+- commit_player_roll
+- apply_allowed_player_roll_modifiers
+- derive_and_reveal_boss_roll
+- transfer_player_roll_to_three_roll_slot
+- resolve_three_roll_role_and_skill_charge
+- apply_pending_sand_or_wind_modifiers
+- move_both_racers_logically_simultaneously
+- check_goal_during_base_movement
+- resolve_landing_tile_effects_for_non_finished_racers
+- check_goal_after_boost
+- advance_turn
+movement_rules:
+  minimum_move_after_modifiers: 1
+  goal_condition: reach_or_pass_goal
+  base_movement_is_simultaneous: true
+  visual_start_offset_ms:
+    player: 0
+    boss: 100
+  landing_effects_trigger_only_after_base_move_ends: true
+  boost_extra_move_triggers_no_landing_effect: true
+  safety_max_turns: 12
+tie_rules:
+  compare_arrival_step_within_turn: true
+  exact_same_arrival_step_winner: player
+  boost_same_step_tie_winner: player
+tile_effects:
+  NORMAL:
+    effects: []
+  BOOST:
+    effects:
+    - move_relative: 2
+    extra_move_triggers_tile: false
+  SAND:
+    effects:
+    - set_next_base_move_modifier: -1
+    player_first_sand_can_be_ignored_by_flag: boss_ignore_first_sand
+  WIND:
+    effects:
+    - set_next_base_move_modifier: 1
+  GOAL:
+    effects:
+    - finish_race: true
+course:
+  1:
+    type: NORMAL
+  2:
+    type: BOOST
+  3:
+    type: SAND
+  4:
+    type: NORMAL
+  5:
+    type: WIND
+  6:
+    type: BOOST
+  7:
+    type: SAND
+  8:
+    type: NORMAL
+  9:
+    type: BOOST
+  10:
+    type: WIND
+  11:
+    type: SAND
+  12:
+    type: BOOST
+  13:
+    type: GOAL
+three_roll_slot:
+  rule_ref: three_roll_slot_v1
+  continues_from_stage: true
+  boss_race_uses_same_role_rewards: true
+  coins_earned_during_race_count_for_final_score: true
+explorer_cat_skill:
+  rule_ref: explorer_cat_pinpoint_v1
+  usable: true
+  focus_highlight_target: player_landing_tile_for_current_face
+  does_not_change_boss_formula: true
+result:
+  win:
+    record_boss_win: true
+    boss_stamp: cairo_hourglass_warden_win
+    score_bonus: 1000
+    stage_rating_bonus: 1
+    time_adjustment_seconds: 0
+  lose:
+    record_boss_loss: true
+    score_bonus: 0
+    stage_rating_bonus: 0
+    time_adjustment_seconds: 0
+    remove_items: false
+    restart_stage: false
+  stage_completes_after_result: true
+  result_fields:
+  - winner
+  - turn_count
+  - player_final_position
+  - boss_final_position
+  - player_roll_history
+  - boss_roll_history
+  - win_reason
+validation:
+  assertions:
+  - course_positions_contiguous_1_to_13
+  - position_13_is_goal
+  - mirror_roll_pairs_sum_to_7
+  - all_non_goal_tiles_have_known_effects
+  - minimum_movement_prevents_deadlock
+  - race_result_never_requests_retry

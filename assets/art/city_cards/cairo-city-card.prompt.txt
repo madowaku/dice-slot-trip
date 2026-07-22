@@ -1,0 +1,18 @@
+Use case: illustration-story.
+Asset type: selectable city postcard hero art for a portrait mobile travel board game.
+Create a new landscape 4:3 illustration for the Cairo city card, using the
+existing Cairo board for the warm parchment watercolor palette and environment,
+and the existing sleepy sphinx for the exact cozy cat-sphinx character design.
+The cat-sphinx rests in the lower-right foreground, with the Giza pyramids, a
+ribbon of blue Nile water with two feluccas, a few palms and warm market rooftops
+layered behind it. The composition must remain readable at approximately
+240x170 pixels: one large character silhouette, three clear pyramids, restrained
+detail, strong warm/cool separation. Premium hand-painted clean-HD 2D mobile game
+art, soft golden late-afternoon light, dusty teal and sand palette, subtle paper
+texture, gentle storybook mood. Keep the cat-sphinx recognizable and calm; no
+other characters. No postcard border, UI, buttons, flags, icons, text, letters,
+or watermark.
+
+Generated with OpenAI built-in image generation on 2026-07-16.
+Reference images: cairo-board.png and sleepy-sphinx.png.
+Runtime crop: 960x720 PNG.

@@ -1,0 +1,19 @@
+Sketch Desert by Kenney
+License: Creative Commons Zero v1.0 Universal (CC0 1.0)
+Attribution is not required. This record is kept for source and asset provenance.
+
+Selected originals (6 of 240 files):
+- rocks_N.png        SHA256 34D04A887A860AD6298869FF5E124B5DAD40B17D30A835769A6C16D56FA30053
+- rocks_S.png        SHA256 EC3E3100EDCEE32AED82A6D7C2D8E7542CA42888341617479173AC0A23C26478
+- tree_N.png         SHA256 348A8C2E80DDADDE47A243825A4038E14A75B9FD6276F329934275D5B2C54485
+- tree_S.png         SHA256 103368F430A6710AE91EC5FAD2E1E90E9C4910625E88DB00D0ACE943AA2F62FB
+- walls_broken_N.png SHA256 10579823BA389E25594E62B70B1F5026573D4D60CFE9D49AEAB40103FB9603F8
+- walls_broken_S.png SHA256 01548F7D12E1E737C9C1EB17E79CC32E0F2BE44C1240EE98ACFC9BD8510F2FB0
+
+Runtime copies:
+- third_party/kenney-sketch-desert/selected-originals/<name>
+  -> assets/art/map_props/kenney_sketch_desert/<name>
+
+The PNG bytes are unchanged. Visual integration is performed at runtime with
+reduced saturation/opacity, a warm tint, and a shared down-right shadow.
+Kenney logos and preview/sample images are not included or displayed.

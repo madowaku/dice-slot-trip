@@ -1,0 +1,38 @@
+{
+  "stage_id": "cairo_hourglass",
+  "landmarks": [
+    {
+      "id": "CAI_LANDMARK_01",
+      "tile_index": 0,
+      "district": "MARKET",
+      "name": "香辛料市場通り",
+      "levels": [
+        {"level": 1, "label": "発見", "rewards": [{"type": "COIN", "amount": 20}]},
+        {"level": 2, "label": "にぎわい", "rewards": [{"type": "DICE_ADD_1"}]},
+        {"level": 3, "label": "完成", "rewards": [{"type": "LAP_BONUS", "amount": 30}, {"type": "POSTCARD", "postcard_id": "cairo_spice_market_complete"}]}
+      ]
+    },
+    {
+      "id": "CAI_LANDMARK_02",
+      "tile_index": 22,
+      "district": "PYRAMID",
+      "name": "夕映えの展望広場",
+      "levels": [
+        {"level": 1, "label": "発見", "rewards": [{"type": "COIN", "amount": 20}]},
+        {"level": 2, "label": "にぎわい", "rewards": [{"type": "DICE_ADD_1"}]},
+        {"level": 3, "label": "完成", "rewards": [{"type": "LAP_BONUS", "amount": 30}, {"type": "POSTCARD", "postcard_id": "cairo_sunset_plaza_complete"}]}
+      ]
+    },
+    {
+      "id": "CAI_LANDMARK_03",
+      "tile_index": 54,
+      "district": "RUINS",
+      "name": "星灯りの遺跡広場",
+      "levels": [
+        {"level": 1, "label": "発見", "rewards": [{"type": "COIN", "amount": 20}]},
+        {"level": 2, "label": "にぎわい", "rewards": [{"type": "DICE_ADD_1"}]},
+        {"level": 3, "label": "完成", "rewards": [{"type": "LAP_BONUS", "amount": 30}, {"type": "POSTCARD", "postcard_id": "cairo_starlit_ruins_complete"}]}
+      ]
+    }
+  ]
+}

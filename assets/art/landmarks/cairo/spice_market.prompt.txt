@@ -1,0 +1,12 @@
+Pipeline: built-in GPT Image 2 reference generation/editing + #FF00FF chroma cleanup + generate2dsprite QC processor.
+Use case: stylized-concept / precise-object-edit.
+Asset: Spice Market scenic landmark progression, Lv0 through Lv3, exact 1024x512 RGBA PNG.
+
+Lv3 base prompt:
+Create an original, fully developed Cairo spice-market street as a self-contained scenic prop for a vertical mobile board game. Use a clean high-end hand-painted HD game-asset style, crisp readable silhouettes, smooth painted surfaces, controlled highlights, low texture noise, and a 3/4 top-down diorama perspective. Build a compact sandstone bazaar with terracotta and muted-teal awnings, spice baskets, ceramic jars, restrained brass lamps, modest palm accents, and a narrow turquoise water channel. Use low-saturation sandstone, parchment, muted teal, aged gold, and terracotta. Keep the broad market silhouette in the upper and middle area and the lower 20% deliberately sparse for a readable board route.
+
+Progression edit invariant:
+Use the preceding level as the exact edit target. Preserve the 2:1 canvas, camera, crop, centered ground anchor, vanishing direction, water-channel path, palette, warm lighting, material language, and perspective. Reduce only the amount of development: Lv2 is a medium bazaar, Lv1 is a small newly opened stall cluster, and Lv0 is the quiet foundation seed of the same place. Replace removed construction with clean background rather than redesigning the site.
+
+Chroma and safety constraints for every level:
+Perfectly flat solid #FF00FF background, no gradient, texture, shadow, reflection, floor plane, or haze. Do not use #FF00FF in the subject. Leave generous key-color margin on every edge. No words, signs, lettering, numbers, UI, labels, banner text, watermark, border, people, route tiles, dice, Sphinx, pyramids, or icons. No tall object in the bottom fifth. Do not make pixel art.

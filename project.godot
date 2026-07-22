@@ -11,13 +11,8 @@ config_version=5
 [application]
 
 config/name="DICE SLOT TRIP"
-run/main_scene="res://scenes/app/Main.tscn"
+run/main_scene="res://scenes/app/V1PlayScreen.tscn"
 config/features=PackedStringArray("4.7")
-
-[autoload]
-
-GameState="*res://autoload/game_state.gd"
-SaveManager="*res://autoload/save_manager.gd"
 
 [display]
 
@@ -30,9 +25,10 @@ window/handheld/orientation=1
 
 [gui]
 
-theme/default_font_multichannel_signed_distance_field=true
+theme/default_font_multichannel_signed_distance_field=false
 
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true

@@ -1,0 +1,15 @@
+Noto Sans JP Regular
+License: SIL Open Font License 1.1
+Copyright 2014-2021 Adobe, with Reserved Font Name 'Source'
+
+Selected original:
+- NotoSansJP-Regular.ttf
+  SHA256 D930D5D52D15231C283089760F84584272AD5E37E14607BA0D19C798E7A9CAEC
+
+Runtime copy:
+- third_party/noto-sans-jp/selected-originals/NotoSansJP-Regular.ttf
+  -> assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf
+
+The TTF bytes are unchanged. The font is bundled with the game and is not
+loaded from an OS font directory. The full OFL 1.1 license is stored in
+OFL.txt.

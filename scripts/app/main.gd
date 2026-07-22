@@ -28,12 +28,23 @@ class DiceFaceControl extends Control:
 const DiceLogicScript = preload("res://scripts/core/dice_logic.gd")
 const BoardModelScript = preload("res://scripts/game/board_model.gd")
 const BoardViewScript = preload("res://scripts/game/board_view.gd")
+const TourismMapViewScript = preload("res://scripts/game/tourism_map_view.gd")
 const BossSystemScript = preload("res://scripts/game/boss_system.gd")
 const EventSystemScript = preload("res://scripts/game/event_system.gd")
 const RewardResolverScript = preload("res://scripts/game/reward_resolver.gd")
+const LapSystemScript = preload("res://scripts/game/lap_system.gd")
+const LandmarkSystemScript = preload("res://scripts/game/landmark_system.gd")
+const DiceAudioControllerScript = preload("res://scripts/game/dice_audio_controller.gd")
 const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3d.gd")
+const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
+const PopupBookTransitionScript = preload("res://scripts/game/popup_book_transition.gd")
 const CAIRO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/cairo-board.png")
+const WORLD_MAP_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/world-travel-map.png")
+const CAIRO_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/cairo-city-card.png")
 const SPHINX_TEXTURE: Texture2D = preload("res://assets/art/bosses/sleepy-sphinx.png")
+const UI_CLICK_STREAM: AudioStream = preload("res://assets/audio/ui/click_003.ogg")
+const UI_CONFIRM_STREAM: AudioStream = preload("res://assets/audio/ui/select_001.ogg")
+const APP_FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 
 const BG := Color("#efe2c6")
 const INK := Color("#4c3c2e")
@@ -44,8 +55,12 @@ const MUTED := Color("#8c7862")
 var rng := RandomNumberGenerator.new()
 var root_stack: VBoxContainer
 var board_view: BoardView
+var board_view_mode: String = "tourism"
 var dice_row: HBoxContainer
 var dice_presentation: SubViewportContainer
+var map_dice_overlay: MapDiceOverlay
+var dice_audio: Node
+var ui_audio_player: AudioStreamPlayer
 var role_label: Label
 var memo_label: Label
 var roll_button: Button
@@ -60,6 +75,7 @@ var rolls_label: Label
 var coin_label: Label
 var stamp_label: Label
 var minimap_view: BoardView
+var landmark_level_label: Label
 var debug_box: VBoxContainer
 var dice_mode: int = 3
 var dice_values: Array[int] = []
@@ -79,6 +95,7 @@ var last_roll_early_stopped: bool = false
 var roll_visual_frame: int = 0
 var active_extra_left_stop: Button
 var active_extra_all_stop: Button
+var qa_map_die_visible_stop_ok := false
 
 func _ready() -> void:
 	rng.seed = 20260711
@@ -87,10 +104,22 @@ func _ready() -> void:
 	event_definitions = EventSystemScript.definitions()
 	GameState.ensure_boss_data()
 	_apply_theme()
+	var debug_route := OS.get_environment("DICE_DEBUG_ROUTE").strip_edges()
+	if debug_route in BoardModelScript.VALID_ROUTE_IDS:
+		GameState.set_route_position(debug_route, OS.get_environment("DICE_DEBUG_ROUTE_TILE").to_int())
+	if not OS.get_environment("DICE_DEBUG_FLOW").is_empty():
+		GameState.flow_level = clampi(OS.get_environment("DICE_DEBUG_FLOW").to_int(), 0, 5)
+	if not OS.get_environment("DICE_DEBUG_DICE_COUNT").is_empty():
+		GameState.current_dice_count = clampi(OS.get_environment("DICE_DEBUG_DICE_COUNT").to_int(), 1, 3)
+	ui_audio_player = AudioStreamPlayer.new()
+	ui_audio_player.name = "UIAudioPlayer"
+	ui_audio_player.bus = &"Master"
+	add_child(ui_audio_player)
 	match OS.get_environment("DICE_QA_SCREEN"):
 		"stage": show_stage_select()
 		"character": show_character_select()
 		"game": show_game()
+		"font": show_font_qa()
 		_: show_title()
 	if OS.get_environment("DICE_QA_EARLY_STOP") == "1":
 		call_deferred("_qa_early_stop")
@@ -116,6 +145,26 @@ func _ready() -> void:
 		call_deferred("_qa_m4a_hardening")
 	elif OS.get_environment("DICE_QA_DICE_PROGRESSION") == "1":
 		call_deferred("_qa_dice_progression")
+	elif OS.get_environment("DICE_QA_AUDIO") == "1":
+		call_deferred("_qa_dice_audio")
+	elif OS.get_environment("DICE_QA_UI_AUDIO") == "1":
+		call_deferred("_qa_ui_audio")
+	elif OS.get_environment("DICE_QA_ANDROID_UI") == "1":
+		call_deferred("_qa_android_ui")
+	elif OS.get_environment("DICE_QA_ROUTE_01") == "1":
+		call_deferred("_qa_route_01")
+	elif OS.get_environment("DICE_QA_ROUTE_02") == "1":
+		call_deferred("_qa_route_02")
+	elif OS.get_environment("DICE_QA_ROUTE_03") == "1":
+		call_deferred("_qa_route_03")
+	elif OS.get_environment("DICE_QA_CARAVAN_SECRET") == "1":
+		call_deferred("_qa_caravan_secret")
+	elif OS.get_environment("DICE_QA_POPUP_BOOK") == "1":
+		call_deferred("_qa_popup_book")
+	elif OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET") != "":
+		call_deferred("_qa_caravan_secret_capture", OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_CAPTURE_POPUP_BOOK") != "":
+		call_deferred("_qa_popup_book_capture", OS.get_environment("DICE_QA_CAPTURE_POPUP_BOOK"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_DICE") != "":
 		call_deferred("_qa_dice_capture", OS.get_environment("DICE_QA_CAPTURE_DICE"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_M4A") != "":
@@ -124,18 +173,51 @@ func _ready() -> void:
 		call_deferred("_qa_risk_space", OS.get_environment("DICE_QA_RISK"))
 	elif OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD") != "":
 		call_deferred("_qa_premium_board_capture", OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD"))
-	elif GameState.pending_boss_handoff:
-		call_deferred("_resume_pending_boss_handoff")
+	elif OS.get_environment("DICE_QA_LAP_LANDMARK") == "1":
+		call_deferred("_qa_lap_landmark")
+	elif OS.get_environment("DICE_QA_CLEAN_LAP") == "1":
+		call_deferred("_qa_clean_lap")
+	elif OS.get_environment("DICE_QA_TOURMAP") == "1":
+		call_deferred("_qa_tourmap")
+	elif OS.get_environment("DICE_QA_TOURMAP_DIE") == "1":
+		call_deferred("_qa_tourmap_die")
+	elif OS.get_environment("DICE_QA_TOURMAP_MULTI_DIE") == "1":
+		call_deferred("_qa_tourmap_multi_die")
+	elif OS.get_environment("DICE_QA_ROLL_TRANSACTION") == "1":
+		call_deferred("_qa_roll_transaction")
+	elif OS.get_environment("DICE_QA_SPICE_SCENIC") == "1":
+		call_deferred("_qa_spice_scenic")
+	elif OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC") != "":
+		call_deferred("_qa_spice_scenic_capture", OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK") != "":
+		call_deferred("_qa_lap_landmark_capture", OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_CAPTURE_CLEAN") != "":
+		call_deferred("_qa_clean_capture", OS.get_environment("DICE_QA_CAPTURE_CLEAN"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_CAPTURE_TOURMAP") != "":
+		call_deferred("_qa_tourmap_capture", OS.get_environment("DICE_QA_CAPTURE_TOURMAP"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE") != "":
+		call_deferred("_qa_tourmap_die_capture", OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif not GameState.active_event_state.is_empty():
 		call_deferred("_resume_active_event")
+	elif GameState.pending_boss_handoff:
+		call_deferred("_resume_pending_boss_handoff")
+	elif not GameState.roll_transaction.is_empty():
+		call_deferred("_resume_roll_transaction")
 	elif OS.get_environment("DICE_QA_CAPTURE_M3") != "":
 		call_deferred("_qa_m3_capture", OS.get_environment("DICE_QA_CAPTURE_M3"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
-	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
+	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CLEAN").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET").is_empty() and OS.get_environment("DICE_QA_CAPTURE_POPUP_BOOK").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
 		call_deferred("_qa_capture_viewport", OS.get_environment("DICE_QA_CAPTURE_PATH"))
 
 func _apply_theme() -> void:
 	var app_theme := Theme.new()
+	app_theme.default_font = APP_FONT
 	app_theme.default_font_size = 24
+	for control_type: String in ["Label", "Button", "CheckButton", "LineEdit", "ProgressBar"]:
+		app_theme.set_font("font", control_type, APP_FONT)
+		app_theme.set_constant("outline_size", control_type, 0)
+	for rich_font_name: String in ["normal_font", "bold_font", "italics_font", "bold_italics_font", "mono_font"]:
+		app_theme.set_font(rich_font_name, "RichTextLabel", APP_FONT)
+	app_theme.set_constant("outline_size", "RichTextLabel", 0)
 	app_theme.set_color("font_color", "Label", INK)
 	app_theme.set_color("font_color", "Button", INK)
 	app_theme.set_color("font_hover_color", "Button", TEAL)
@@ -143,9 +225,12 @@ func _apply_theme() -> void:
 	theme = app_theme
 
 func _clear() -> void:
+	if is_instance_valid(dice_audio): dice_audio.stop_all()
 	for child: Node in get_children():
+		if child == ui_audio_player: continue
 		child.queue_free()
 	root_stack = null
+	dice_audio = null
 
 func _make_page() -> VBoxContainer:
 	_clear()
@@ -178,6 +263,91 @@ func _make_page() -> VBoxContainer:
 	margin.add_child(root_stack)
 	return root_stack
 
+func _make_world_page() -> VBoxContainer:
+	_clear()
+	var artwork := TextureRect.new()
+	artwork.texture = WORLD_MAP_BACKGROUND
+	artwork.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	artwork.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	artwork.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(artwork)
+	var veil := ColorRect.new()
+	veil.color = Color(0.95, 0.88, 0.72, 0.08)
+	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(veil)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 22)
+	margin.add_theme_constant_override("margin_right", 22)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 18)
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(margin)
+	root_stack = VBoxContainer.new()
+	root_stack.add_theme_constant_override("separation", 8)
+	root_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root_stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	margin.add_child(root_stack)
+	return root_stack
+
+func _postcard_style(active: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("#f8e8c5") if active else Color(0.22, 0.20, 0.18, 0.88)
+	style.border_color = GOLD if active else Color("#766c61")
+	style.set_border_width_all(3 if active else 2)
+	style.set_corner_radius_all(12)
+	style.content_margin_left = 8
+	style.content_margin_right = 8
+	style.content_margin_top = 7
+	style.content_margin_bottom = 7
+	style.shadow_color = Color(0.10, 0.06, 0.03, 0.35)
+	style.shadow_size = 8
+	return style
+
+func _add_city_postcard(parent: Control, city: String, journey: String, position: Vector2, card_size: Vector2, active: bool, action: Callable, card_texture: Texture2D = null) -> Button:
+	var button := Button.new()
+	button.name = "city_%s" % city.to_lower()
+	button.text = "" if card_texture != null else "%s\n%s\n%s" % [city, journey, "● 旅に出る" if active else "◇ 準備中"]
+	button.position = position
+	button.size = card_size
+	button.clip_contents = true
+	button.add_theme_font_size_override("font_size", 18 if active else 15)
+	button.add_theme_color_override("font_color", INK if active else Color("#d7c8b5"))
+	button.add_theme_color_override("font_hover_color", TEAL if active else Color("#d7c8b5"))
+	button.add_theme_color_override("font_disabled_color", Color("#d7c8b5"))
+	button.add_theme_stylebox_override("normal", _postcard_style(active))
+	button.add_theme_stylebox_override("hover", _postcard_style(active))
+	button.add_theme_stylebox_override("pressed", _postcard_style(active))
+	button.add_theme_stylebox_override("disabled", _postcard_style(false))
+	button.disabled = not active
+	button.tooltip_text = "%sは%s" % [journey, "選択できます" if active else "今後の旅で解禁予定です"]
+	if active and action.is_valid():
+		button.pressed.connect(func() -> void: _play_ui_click(true))
+		button.pressed.connect(action)
+	if card_texture != null:
+		var art := TextureRect.new()
+		art.texture = card_texture
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		art.position = Vector2(6, 6)
+		art.size = Vector2(card_size.x - 12, card_size.y - 62)
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(art)
+		var caption_bg := ColorRect.new()
+		caption_bg.color = Color(0.97, 0.89, 0.72, 0.96)
+		caption_bg.position = Vector2(6, card_size.y - 60)
+		caption_bg.size = Vector2(card_size.x - 12, 54)
+		caption_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(caption_bg)
+		var caption := _body("%s　%s\n● 旅に出る" % [city, journey], 15)
+		caption.position = caption_bg.position
+		caption.size = caption_bg.size
+		caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(caption)
+	parent.add_child(button)
+	return button
+
 func _title(text: String, size_px: int = 52) -> Label:
 	var label := Label.new()
 	label.text = text
@@ -199,6 +369,7 @@ func _button(text: String, action: Callable, primary: bool = false) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(0, 68)
+	button.pressed.connect(func() -> void: _play_ui_click(primary))
 	button.pressed.connect(action)
 	if primary:
 		button.add_theme_color_override("font_color", Color.WHITE)
@@ -216,6 +387,15 @@ func _button(text: String, action: Callable, primary: bool = false) -> Button:
 		style.border_color = GOLD
 		button.add_theme_stylebox_override("normal", style)
 	return button
+
+func _play_ui_click(primary: bool = false) -> void:
+	if not is_instance_valid(ui_audio_player): return
+	var level := clampf(GameState.master_volume * GameState.se_volume, 0.0, 1.0)
+	if level <= 0.0: return
+	ui_audio_player.stream = UI_CONFIRM_STREAM if primary else UI_CLICK_STREAM
+	ui_audio_player.volume_db = -18.0 + linear_to_db(level)
+	ui_audio_player.pitch_scale = 1.0
+	ui_audio_player.play()
 
 func _premium_panel(bg: Color = Color("#f5e6c6"), border: Color = Color("#9b743d"), radius: int = 18) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
@@ -260,14 +440,15 @@ func show_title() -> void:
 	var continue_button := _button("つづきから", func() -> void:
 		SaveManager.load_now()
 		show_game()
-		if GameState.pending_boss_handoff: call_deferred("_resume_pending_boss_handoff")
-		elif not GameState.active_event_state.is_empty(): call_deferred("_resume_active_event"))
+		if not GameState.active_event_state.is_empty(): call_deferred("_resume_active_event")
+		elif GameState.pending_boss_handoff: call_deferred("_resume_pending_boss_handoff")
+		elif not GameState.roll_transaction.is_empty(): call_deferred("_resume_roll_transaction"))
 	continue_button.disabled = not SaveManager.has_save()
 	page.add_child(continue_button)
 	var utility := HBoxContainer.new()
 	utility.add_theme_constant_override("separation", 16)
 	var book := _button("図鑑", show_encyclopedia)
-	var settings := _button("設定", func() -> void: _show_message("設定", "音量と演出速度はM3以降で調整できます。"))
+	var settings := _button("設定", _show_settings_modal)
 	book.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	settings.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	utility.add_child(book)
@@ -275,22 +456,69 @@ func show_title() -> void:
 	page.add_child(utility)
 	page.add_child(_body("オートセーブ対応", 18))
 
+func _show_settings_modal() -> void:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_title("音の設定", 34))
+	var master_label := _body("全体音量 %d%%" % roundi(GameState.master_volume * 100.0), 19)
+	var master_slider := HSlider.new(); master_slider.min_value = 0; master_slider.max_value = 100; master_slider.step = 1; master_slider.value = GameState.master_volume * 100.0; master_slider.custom_minimum_size.y = 42
+	master_slider.value_changed.connect(func(value: float) -> void: GameState.master_volume = value / 100.0; master_label.text = "全体音量 %d%%" % roundi(value); if is_instance_valid(dice_audio): dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted))
+	content.add_child(master_label); content.add_child(master_slider)
+	var se_label := _body("SE音量 %d%%" % roundi(GameState.se_volume * 100.0), 19)
+	var se_slider := HSlider.new(); se_slider.min_value = 0; se_slider.max_value = 100; se_slider.step = 1; se_slider.value = GameState.se_volume * 100.0; se_slider.custom_minimum_size.y = 42
+	se_slider.value_changed.connect(func(value: float) -> void: GameState.se_volume = value / 100.0; se_label.text = "SE音量 %d%%" % roundi(value); if is_instance_valid(dice_audio): dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted))
+	content.add_child(se_label); content.add_child(se_slider)
+	var dice_mute := CheckButton.new(); dice_mute.text = "ダイスSEをミュート"; dice_mute.button_pressed = GameState.dice_se_muted; dice_mute.custom_minimum_size.y = 52
+	dice_mute.toggled.connect(func(value: bool) -> void: GameState.dice_se_muted = value; if is_instance_valid(dice_audio): dice_audio.set_muted(value))
+	content.add_child(dice_mute)
+	content.add_child(_body("音量0でも出目・目押し・移動は変わりません。", 16))
+	var close := _button("保存して閉じる", func() -> void: return, true); close.toggle_mode = true; content.add_child(close)
+	await close.pressed
+	SaveManager.save_now(); _close_modal(modal.layer)
+
 func show_stage_select() -> void:
-	var page := _make_page()
-	page.add_child(_title("旅先を選ぶ", 46))
-	page.add_child(_body("古い地図の上に、一枚だけ明るい切符がある。", 20))
-	page.add_child(_spacer(35))
-	var card := VBoxContainer.new()
-	card.add_theme_constant_override("separation", 14)
-	card.add_child(_title("砂時計のカイロ", 40))
-	card.add_child(_body("市場、オアシス、遺跡をめぐる\nゆったり旅", 24))
+	var page := _make_world_page()
+	var heading_panel := PanelContainer.new()
+	heading_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.88, 0.70, 0.94), Color("#8d6335"), 18))
+	var heading := VBoxContainer.new()
+	heading.add_theme_constant_override("separation", 0)
+	heading.add_child(_title("旅先を選ぶ", 40))
+	var kicker := _body("WORLD TRAVEL MAP　・　鞄の中の旅程", 16)
+	kicker.add_theme_color_override("font_color", MUTED)
+	heading.add_child(kicker)
+	heading_panel.add_child(heading)
+	page.add_child(heading_panel)
+
+	var map_area := Control.new()
+	map_area.name = "WorldMapPostcards"
+	map_area.custom_minimum_size.y = 780
+	map_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	map_area.clip_contents = true
+	page.add_child(map_area)
+	_add_city_postcard(map_area, "PARIS", "月夜のパリ", Vector2(86, 155), Vector2(170, 112), false, Callable())
+	_add_city_postcard(map_area, "TOKYO", "桜風の東京", Vector2(492, 205), Vector2(165, 112), false, Callable())
+	_add_city_postcard(map_area, "ROME", "遺跡のローマ", Vector2(70, 480), Vector2(170, 112), false, Callable())
+	_add_city_postcard(map_area, "SINGAPORE", "雨粒のシンガポール", Vector2(455, 515), Vector2(200, 112), false, Callable())
+	var cairo := _add_city_postcard(map_area, "CAIRO", "砂時計のカイロ", Vector2(245, 315), Vector2(240, 172), true, show_character_select, CAIRO_CITY_CARD)
+	cairo.add_theme_font_size_override("font_size", 21)
+	var stamp := _body("CAIRO 01　旅のスタンプ %02d" % GameState.total_laps, 15)
+	stamp.position = Vector2(250, 495)
+	stamp.size = Vector2(230, 34)
+	stamp.add_theme_color_override("font_color", Color("#70451f"))
+	map_area.add_child(stamp)
+
 	GameState.ensure_boss_data()
-	card.add_child(_body("いま気になる相手　%s\nルート　90マスの一周" % str(GameState.current_boss.get("name", "眠そうなスフィンクス")), 21))
-	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	page.add_child(card)
-	page.add_child(_body("月夜のパリ　　桜風の東京\n雨粒のシンガポール　Coming Soon", 19))
+	var route := _body("選択中：砂時計のカイロ　｜　90マス　｜　%s" % str(GameState.current_boss.get("name", "眠そうなスフィンクス")), 17)
+	route.add_theme_color_override("font_color", Color("#fce7ba"))
+	var route_panel := PanelContainer.new()
+	route_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.19, 0.14, 0.10, 0.88), GOLD, 18))
+	route_panel.add_child(route)
+	page.add_child(route_panel)
 	page.add_child(_button("この旅へ", show_character_select, true))
-	page.add_child(_button("もどる", show_title))
+	var back := _button("もどる", show_title)
+	back.add_theme_stylebox_override("normal", _premium_panel(Color(0.94, 0.84, 0.65, 0.92), Color("#8d6335"), 16))
+	back.add_theme_stylebox_override("hover", _premium_panel(Color(0.98, 0.90, 0.72, 0.98), GOLD, 16))
+	page.add_child(back)
 
 func show_character_select() -> void:
 	var page := _make_page()
@@ -309,13 +537,43 @@ func show_character_select() -> void:
 		page.add_child(button)
 	page.add_child(_button("もどる", show_stage_select))
 
+func show_font_qa() -> void:
+	var page := _make_page()
+	page.add_child(_title("実機フォントQA", 40))
+	page.add_child(_body("Noto Sans JP / MSDF OFF / outline 0", 16))
+	for sample: String in [
+		"砂時計のカイロ",
+		"眠そうなスフィンクスがいる",
+		"サイコロをそろえて、世界をめぐる。",
+		"旅人を選ぶ",
+		"香辛料市場通り",
+		"PAIR／STRAIGHT／TRIPLE",
+		"1234567890！？・◇●",
+	]:
+		var sample_label := _body(sample, 24)
+		sample_label.custom_minimum_size.y = 56
+		sample_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		page.add_child(sample_label)
+	var rich := RichTextLabel.new()
+	rich.bbcode_enabled = true
+	rich.fit_content = true
+	rich.custom_minimum_size.y = 72
+	rich.text = "[center][b]日本語・English・123・◇●[/b][/center]"
+	page.add_child(rich)
+	page.add_child(_button("文字と記号を確認　！？・◇●", func() -> void: return, true))
+
 func show_game() -> void:
 	var page := _make_page()
+	var inside_royal_maze := GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE
+	dice_audio = DiceAudioControllerScript.new()
+	dice_audio.name = "DiceAudioController"
+	add_child(dice_audio)
+	dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted)
 	page.add_theme_constant_override("separation", 6)
 	var top_row := HBoxContainer.new()
 	top_row.add_theme_constant_override("separation", 8)
 	var lap_pill := _pill(""); lap_label = lap_pill.label; (lap_pill.panel as PanelContainer).size_flags_horizontal = Control.SIZE_EXPAND_FILL; top_row.add_child(lap_pill.panel)
-	var stage_title := _title("砂時計のカイロ", 26); stage_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top_row.add_child(stage_title)
+	var stage_title := _title("王の迷い環" if inside_royal_maze else "砂時計のカイロ", 26); stage_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top_row.add_child(stage_title)
 	var coin_pill := _pill(""); coin_label = coin_pill.label; (coin_pill.panel as PanelContainer).size_flags_horizontal = Control.SIZE_EXPAND_FILL; top_row.add_child(coin_pill.panel)
 	page.add_child(top_row)
 
@@ -341,22 +599,27 @@ func show_game() -> void:
 
 	var map_card := PanelContainer.new(); map_card.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.89, 0.75, 0.94), Color("#a47a3c"), 18)); map_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var map_box := VBoxContainer.new(); map_box.add_theme_constant_override("separation", 2)
-	var map_title := _body("全体マップ", 14); map_title.add_theme_color_override("font_color", MUTED); map_box.add_child(map_title)
-	minimap_view = BoardViewScript.new(); minimap_view.is_minimap = true; minimap_view.custom_minimum_size = Vector2(180, 82); minimap_view.size_flags_vertical = Control.SIZE_EXPAND_FILL; minimap_view.configure(tile_types, GameState.current_tile_index); map_box.add_child(minimap_view)
+	landmark_level_label = _body("", 14); landmark_level_label.add_theme_color_override("font_color", MUTED); map_box.add_child(landmark_level_label)
+	minimap_view = BoardViewScript.new(); minimap_view.is_minimap = true; minimap_view.custom_minimum_size = Vector2(180, 82); minimap_view.size_flags_vertical = Control.SIZE_EXPAND_FILL; minimap_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels); map_box.add_child(minimap_view)
 	map_card.add_child(map_box); overview.add_child(map_card); page.add_child(overview)
 
-	board_view = BoardViewScript.new()
+	board_view_mode = _preferred_board_view_mode()
+	board_view = _new_board_view(board_view_mode)
 	board_view.custom_minimum_size = Vector2(0, 390)
 	board_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	board_view.configure(tile_types, GameState.current_tile_index)
+	board_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels)
+	_sync_board_route_context()
+	if board_view is TourismMapView:
+		(board_view as TourismMapView).set_dice_count(GameState.current_dice_count)
+		(board_view as TourismMapView).set_flow_visual_level(GameState.flow_level)
 	page.add_child(board_view)
 	var memo_panel := PanelContainer.new(); memo_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.97, 0.91, 0.79, 0.92), Color("#b28a52"), 14))
 	memo_label = _body("風が砂の上に細い道を描いている。", 16); memo_label.custom_minimum_size.y = 30; memo_panel.add_child(memo_label); page.add_child(memo_panel)
 
-	var tray_panel := PanelContainer.new(); tray_panel.add_theme_stylebox_override("panel", _premium_panel(Color("#765737"), Color("#d1a552"), 22))
+	var tray_panel := PanelContainer.new(); tray_panel.add_theme_stylebox_override("panel", _premium_panel(Color("#272321") if inside_royal_maze else Color("#765737"), Color("#b98b3f") if inside_royal_maze else Color("#d1a552"), 22))
 	var tray_box := VBoxContainer.new(); tray_box.add_theme_constant_override("separation", 3); tray_panel.add_child(tray_box)
 	var tray_header := HBoxContainer.new()
-	var tray_title := _body("今回のダイス", 15); tray_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; tray_title.add_theme_color_override("font_color", Color("#f6dfad")); tray_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; tray_header.add_child(tray_title)
+	var tray_title := _body("王墓のダイス" if inside_royal_maze else "今回のダイス", 15); tray_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; tray_title.add_theme_color_override("font_color", Color("#f6dfad")); tray_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; tray_header.add_child(tray_title)
 	mode_label = _body("", 15); mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; mode_label.autowrap_mode = TextServer.AUTOWRAP_OFF; mode_label.custom_minimum_size.x = 210; mode_label.add_theme_color_override("font_color", Color("#f1c86a")); tray_header.add_child(mode_label); tray_box.add_child(tray_header)
 	dice_presentation = DicePresentation3DScript.new()
 	dice_presentation.name = "DicePresentation3D"
@@ -392,6 +655,10 @@ func show_game() -> void:
 	debug_box = _build_debug_box()
 	debug_box.visible = false
 	page.add_child(debug_box)
+	map_dice_overlay = MapDiceOverlayScript.new()
+	map_dice_overlay.name = "MapDiceOverlay"
+	map_dice_overlay.early_stop_requested.connect(func() -> void: _lock_next_die(false))
+	add_child(map_dice_overlay)
 	_set_mode(clampi(GameState.current_dice_count, 1, 3))
 	_refresh_dice_mode_buttons()
 	_refresh_hud()
@@ -433,7 +700,11 @@ func _on_roll_pressed() -> void:
 	fixed_targets = GameState.fixed_rolls.duplicate()
 	GameState.fixed_rolls.clear()
 	last_roll_early_stopped = false
+	GameState.begin_roll_transaction([], dice_mode, GameState.current_tile_index)
+	SaveManager.save_now()
 	dice_values = await _animate_dice_roll(dice_mode)
+	if dice_values.is_empty():
+		return
 	if dice_mode == 5:
 		selected_indices = DiceLogicScript.recommended_indices(dice_values)
 		_render_dice(dice_values, true)
@@ -448,11 +719,28 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	moving = true
 	rolling_dice = true
 	locked_dice_count = 0
+	if is_instance_valid(dice_audio): dice_audio.begin_roll(count)
 	rolling_values.clear()
 	for index: int in range(count):
 		rolling_values.append(rng.randi_range(1, 6))
+	if not GameState.roll_transaction.is_empty() and str(GameState.roll_transaction.get("phase", "")) == "PRE_ROLL":
+		GameState.mark_roll_started(rolling_values)
+		SaveManager.save_now()
+	var map_overlay_roll := _uses_map_dice_overlay(count)
+	if map_overlay_roll:
+		_sync_flow_visuals()
+		map_dice_overlay.set_flow_visual_level(GameState.flow_level)
+		var tray_rect := _map_dice_tray_anchor_rect()
+		dice_presentation.visible = false
+		var map_rect := board_view.get_global_rect()
+		await map_dice_overlay.begin_launch(rolling_values, tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size, count))
+		if not map_dice_overlay.is_active():
+			_abort_map_dice_roll()
+			return []
 	roll_button.text = "タップで左から止める"
 	stop_all_button.visible = extra_controls_parent == null
+	if map_overlay_roll and is_instance_valid(stop_all_button):
+		map_dice_overlay.set_input_exempt_rect(stop_all_button.get_global_rect())
 	if extra_controls_parent != null:
 		var controls := HBoxContainer.new(); controls.name = "extra_dice_stop_controls"; controls.add_theme_constant_override("separation", 10)
 		active_extra_left_stop = _button("左から1個停止", func() -> void: _lock_next_die(false), true)
@@ -460,11 +748,19 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		active_extra_left_stop.name = "extra_left_stop"; active_extra_all_stop.name = "extra_all_stop"
 		active_extra_left_stop.size_flags_horizontal = Control.SIZE_EXPAND_FILL; active_extra_all_stop.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		controls.add_child(active_extra_left_stop); controls.add_child(active_extra_all_stop); extra_controls_parent.add_child(controls)
+		if map_overlay_roll and is_instance_valid(active_extra_all_stop):
+			map_dice_overlay.set_input_exempt_rect(active_extra_all_stop.get_global_rect())
 	role_label.text = "目を追えば、少しだけ狙えるかも"
 	# 0.8-1.3 seconds for an untouched roll across 1/2/3/5 dice. The final
 	# presentation settle continues independently for another 0.18 seconds.
 	for frame: int in range(26):
+		if map_overlay_roll and not map_dice_overlay.is_active():
+			_abort_map_dice_roll()
+			return []
 		roll_visual_frame = frame
+		if is_instance_valid(dice_audio):
+			dice_audio.play_roll(1.0 - float(frame) / 25.0)
+			if frame in [4, 8, 12, 16]: dice_audio.play_contact(0.38 + float(frame) * 0.018)
 		for index: int in range(locked_dice_count, count):
 			rolling_values[index] = rng.randi_range(1, 6)
 		_render_dice(rolling_values, false)
@@ -478,13 +774,79 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		_lock_next_die(true)
 		await get_tree().create_timer(0.13).timeout
 	rolling_dice = false
+	_render_dice(rolling_values, false)
+	if is_instance_valid(dice_audio): dice_audio.end_roll()
+	if map_overlay_roll:
+		if count == 3:
+			var slot_roles: Dictionary = DiceLogicScript.evaluate_current(rolling_values, count)
+			var slot_labels: Array = slot_roles.get("labels", [])
+			map_dice_overlay.show_slot_result(" + ".join(slot_labels) if not slot_labels.is_empty() else "DICE SLOT", rolling_values, slot_labels)
+			_play_flow_pulse(&"role_resolved")
+		# 2/3 dice preview the summed destination. Five dice are a selection
+		# screen, so no destination highlight appears before the player confirms
+		# the recommended three.
+		if count != 5:
+			var preview_distance := maxi(0, _sum_dice_values(rolling_values) + GameState.next_move_bonus)
+			var destination := posmod(GameState.current_tile_index + preview_distance, BoardModelScript.TILE_COUNT)
+			(board_view as TourismMapView).highlight_destination(destination, preview_distance)
+		await map_dice_overlay.hold_and_return(rolling_values)
+		if count != 5:
+			(board_view as TourismMapView).clear_destination_highlight()
+		dice_presentation.visible = true
+		_render_dice(rolling_values, false)
 	moving = false
 	roll_button.text = "サイコロを振る"
 	stop_all_button.visible = false
 	if is_instance_valid(active_extra_left_stop): active_extra_left_stop.disabled = true
 	if is_instance_valid(active_extra_all_stop): active_extra_all_stop.disabled = true
 	active_extra_left_stop = null; active_extra_all_stop = null
+	if is_instance_valid(map_dice_overlay):
+		map_dice_overlay.set_input_exempt_rect(Rect2())
 	return rolling_values.duplicate()
+
+func _uses_map_dice_overlay(count: int) -> bool:
+	return is_instance_valid(map_dice_overlay) and MapDiceOverlayScript.uses_map_presentation(board_view is TourismMapView, count)
+
+func _sync_flow_visuals() -> void:
+	if is_instance_valid(board_view):
+		board_view.set_route_flow_level(GameState.flow_level)
+		if board_view is TourismMapView:
+			(board_view as TourismMapView).set_flow_visual_level(GameState.flow_level)
+	if is_instance_valid(map_dice_overlay):
+		map_dice_overlay.set_flow_visual_level(GameState.flow_level)
+
+func _play_flow_pulse(event_type: StringName) -> void:
+	if is_instance_valid(board_view) and board_view is TourismMapView:
+		(board_view as TourismMapView).play_flow_pulse(event_type)
+
+func _map_dice_tray_anchor_rect() -> Rect2:
+	var source := dice_presentation.get_global_rect()
+	var center_x := roll_button.get_global_rect().get_center().x
+	var center_y := source.get_center().y
+	if source.size.y <= 1.0:
+		center_y = roll_button.get_global_rect().position.y - 72.0
+	return Rect2(Vector2(center_x, center_y) - MapDiceOverlayScript.PRESENTATION_SIZE * 0.5, MapDiceOverlayScript.PRESENTATION_SIZE)
+
+func _abort_map_dice_roll() -> void:
+	# The gameplay roll has not committed yet. Put any deterministic/debug
+	# targets back so interruption cannot silently consume them.
+	if not fixed_targets.is_empty():
+		GameState.fixed_rolls = fixed_targets.duplicate()
+		fixed_targets.clear()
+	GameState.rollback_uncommitted_roll()
+	SaveManager.save_now()
+	rolling_dice = false
+	moving = false
+	locked_dice_count = 0
+	rolling_values.clear()
+	if is_instance_valid(dice_audio):
+		dice_audio.stop_all_roll_sounds()
+	if is_instance_valid(map_dice_overlay):
+		map_dice_overlay.cancel_to_tray()
+	if is_instance_valid(dice_presentation):
+		dice_presentation.visible = true
+	roll_button.text = "サイコロを振る"
+	stop_all_button.visible = false
 
 func _lock_next_die(automatic: bool) -> void:
 	if not rolling_dice or locked_dice_count >= rolling_values.size():
@@ -494,6 +856,8 @@ func _lock_next_die(automatic: bool) -> void:
 		rolling_values[index] = clampi(fixed_targets[index], 1, 6)
 	locked_dice_count += 1
 	_render_dice(rolling_values, false)
+	if is_instance_valid(dice_audio): dice_audio.play_land(index, 0.76 if not automatic else 0.62)
+	_play_flow_pulse(&"die_stopped")
 	if not automatic:
 		last_roll_early_stopped = true
 		role_label.text = "%d個目を早止め" % locked_dice_count
@@ -505,7 +869,9 @@ func _stop_all_dice() -> void:
 	role_label.text = "残り%d個を現在の目で一括停止" % remaining
 
 func _render_dice(values: Array[int], selectable: bool) -> void:
-	if is_instance_valid(dice_presentation):
+	if is_instance_valid(map_dice_overlay) and map_dice_overlay.is_active() and board_view is TourismMapView and MapDiceOverlayScript.uses_map_presentation(true, values.size()):
+		map_dice_overlay.present(values, rolling_dice, locked_dice_count)
+	elif is_instance_valid(dice_presentation):
 		dice_presentation.present(values, rolling_dice, locked_dice_count)
 	dice_row.visible = selectable or not is_instance_valid(dice_presentation)
 	for child: Node in dice_row.get_children():
@@ -567,8 +933,24 @@ func _confirm_five() -> void:
 func _resolve_roll(values: Array[int]) -> void:
 	moving = true
 	roll_button.disabled = true
+	# A committed transaction can be resumed without re-applying roles, dice
+	# transitions, lap bonuses, or next-move bonuses.
+	if not GameState.roll_transaction.is_empty():
+		var existing_phase := str(GameState.roll_transaction.get("phase", GameState.roll_transaction.get("roll_phase", "")))
+		if existing_phase in ["RESULT_COMMITTED", "MOVEMENT_COMMITTED", "SPACE_EFFECT_COMMITTED"]:
+			dice_values = _transaction_values(GameState.roll_transaction)
+			dice_mode = clampi(int(GameState.roll_transaction.get("dice_count", dice_mode)), 1, 5)
+			last_roll_early_stopped = bool(GameState.roll_transaction.get("early_stopped", false))
+			await _continue_roll_transaction()
+			return
+		elif existing_phase not in ["PRE_ROLL", "ROLLING"]:
+			GameState.clear_roll_transaction()
 	var rolled_dice_count := dice_mode
+	var start_route := GameState.current_route_id
+	var start_tile := GameState.current_tile_index
 	var roles: Dictionary = DiceLogicScript.evaluate_current(values, rolled_dice_count)
+	GameState.current_lap_roll_count += 1
+	GameState.current_lap_bonus += LapSystemScript.role_bonus_for(roles, rolled_dice_count)
 	var labels: Array = roles.get("labels", [])
 	if not labels.is_empty():
 		role_label.text = " + ".join(labels)
@@ -578,6 +960,7 @@ func _resolve_roll(values: Array[int]) -> void:
 		role_label.text = "静かな一投"
 	if roles.get("support", &"") == DiceLogicScript.ALL_EVEN:
 		GameState.coins += 3
+		GameState.even_guard_active = true
 	if roles.get("main", &"") == DiceLogicScript.TRIPLE:
 		GameState.boss_presence = 5
 	# Consume the rolled state before landing rewards. An item/event DICE_ADD_1
@@ -586,39 +969,396 @@ func _resolve_roll(values: Array[int]) -> void:
 	var distance: int = 0
 	for value: int in values:
 		distance += value
-	if GameState.next_move_bonus > 0:
-		distance += GameState.next_move_bonus
+	if GameState.next_move_bonus != 0:
+		distance = maxi(0, distance + GameState.next_move_bonus)
 		GameState.next_move_bonus = 0
-	for step: int in range(distance):
-		var next_index := posmod(GameState.current_tile_index + 1, BoardModelScript.TILE_COUNT)
-		if next_index == 0:
-			GameState.lap_count += 1
-			_reset_event_loop_state()
-			GameState.lap_stamps.append("CAIRO-%02d" % GameState.lap_count)
-			GameState.coins += 5
-			GameState.travel_memos.append("カイロを一周。砂時計のスタンプを押した。")
-		GameState.current_tile_index = next_index
-		board_view.set_current_tile(next_index)
-		minimap_view.set_current_tile(next_index)
+	if start_route == BoardModelScript.ROUTE_BYPASS_CARAVAN:
+		GameState.bypass_rolls_this_visit += 1
+	var route_choice := BoardModelScript.route_choice_encounter(start_route, start_tile, distance)
+	if not route_choice.is_empty():
+		if GameState.roll_transaction.is_empty():
+			GameState.begin_roll_transaction(values, rolled_dice_count, start_tile)
+		GameState.reserve_route_choice(values, rolled_dice_count, roles, distance, route_choice, last_roll_early_stopped)
+		SaveManager.save_now()
+		await _continue_roll_transaction()
+		return
+	var route_move: Dictionary = BoardModelScript.advance_route(start_route, start_tile, distance)
+	var crossed_laps := int(route_move.laps)
+	var destination := int(route_move.tile_index)
+	var destination_route := str(route_move.route_id)
+	if GameState.roll_transaction.is_empty():
+		GameState.begin_roll_transaction(values, rolled_dice_count, start_tile)
+	GameState.commit_roll_result(values, rolled_dice_count, roles, distance, destination, crossed_laps, last_roll_early_stopped, destination_route, route_move.path, int(route_move.maze_loops))
+	SaveManager.save_now()
+	await _continue_roll_transaction()
+
+func _animate_route_step_hop() -> void:
+	if not is_instance_valid(board_view):
 		await get_tree().create_timer(0.035).timeout
-	GameState.rolls_used += 1
-	await _resolve_landing(tile_types[GameState.current_tile_index], roles)
+		return
+	# Four short poses read as a deliberate hop while keeping long 3/5-die
+	# moves brisk. Gameplay position remains committed one tile at a time.
+	for progress: float in [0.18, 0.46, 0.74, 1.0]:
+		board_view.set_movement_hop_progress(progress)
+		await get_tree().create_timer(0.018).timeout
+	board_view.set_movement_hop_progress(0.0)
+
+func _animate_bypass_tile_reveal(tile_index: int) -> void:
+	if not is_instance_valid(board_view) or tile_index < 0:
+		return
+	for progress: float in [0.0, 0.16, 0.34, 0.55, 0.76, 1.0]:
+		board_view.set_bypass_reveal_progress(tile_index, progress)
+		await get_tree().create_timer(0.075).timeout
+	board_view.set_bypass_reveal_progress(-1, 1.0)
+
+func _transaction_values(transaction: Dictionary) -> Array[int]:
+	var values: Array[int] = []
+	var source_values: Array = transaction.get("final_dice_values", transaction.get("values", []))
+	if source_values.is_empty():
+		source_values = transaction.get("values", [])
+	for value: Variant in source_values:
+		values.append(clampi(int(value), 1, 6))
+	return values
+
+func _continue_roll_transaction() -> void:
+	var transaction: Dictionary = GameState.roll_transaction
+	var phase := str(transaction.get("phase", transaction.get("roll_phase", "")))
+	if phase == "ROUTE_CHOICE_PENDING":
+		await _continue_route_choice_transaction()
+		return
+	if phase == "PRE_ROLL" or phase == "ROLLING":
+		# No gameplay result was durable yet, so the interrupted roll is a safe
+		# no-op. This also restores the pre-03B behavior for old saves.
+		GameState.rollback_uncommitted_roll()
+		SaveManager.save_now()
+		moving = false
+		roll_button.disabled = false
+		return
+	var values := _transaction_values(transaction)
+	var roles: Dictionary = (transaction.get("role_result", transaction.get("roles", {})) as Dictionary).duplicate(true)
+	var destination_route := BoardModelScript.normalized_route_id(str(transaction.get("target_route_id", GameState.current_route_id)))
+	var destination := int(BoardModelScript.normalize_position(destination_route, int(transaction.get("target_tile_index", transaction.get("destination", GameState.current_tile_index)))).tile_index)
+	var crossed_laps := maxi(0, int(transaction.get("crossed_laps", 0)))
+	var crossed_maze_loops := maxi(0, int(transaction.get("crossed_maze_loops", 0)))
+	dice_values = values.duplicate()
+	last_roll_early_stopped = bool(transaction.get("early_stopped", false))
+	var labels: Array = roles.get("labels", [])
+	if not labels.is_empty():
+		role_label.text = " + ".join(labels)
+	var maze_exited_now := false
+	if phase == "RESULT_COMMITTED":
+		var start_route := BoardModelScript.normalized_route_id(str(transaction.get("start_route_id", GameState.current_route_id)))
+		var start_tile := int(BoardModelScript.normalize_position(start_route, int(transaction.get("start_tile", GameState.current_tile_index))).tile_index)
+		GameState.set_route_position(start_route, start_tile)
+		board_view.set_current_tile(start_tile)
+		minimap_view.set_current_tile(start_tile)
+		var distance := maxi(0, int(transaction.get("distance", 0)))
+		var movement_path: Array = transaction.get("movement_path", [])
+		if movement_path.is_empty() and distance > 0:
+			movement_path = BoardModelScript.advance_route(start_route, start_tile, distance).path
+		for point: Variant in movement_path:
+			if not point is Dictionary:
+				continue
+			GameState.set_route_position(str((point as Dictionary).get("route_id", start_route)), int((point as Dictionary).get("tile_index", start_tile)))
+			_sync_board_route_context()
+			await _animate_route_step_hop()
+		GameState.set_route_position(destination_route, destination)
+		_sync_board_route_context()
+		GameState.maze_loop_count += crossed_maze_loops
+		if not bool(transaction.get("roll_count_committed", false)):
+			GameState.rolls_used += 1
+			GameState.roll_transaction["roll_count_committed"] = true
+		GameState.commit_roll_movement(destination, destination_route)
+		var movement_start_route := str(transaction.get("start_route_id", BoardModelScript.ROUTE_MAIN))
+		if movement_start_route == BoardModelScript.ROUTE_BYPASS_CARAVAN and destination_route == BoardModelScript.ROUTE_MAIN:
+			_finalize_bypass_exit()
+		if movement_start_route == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and destination_route == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and destination == int(BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE).return_gate_tile) and int(transaction.get("distance", 0)) > 0:
+			maze_exited_now = _commit_royal_maze_exit()
+		SaveManager.save_now()
+	# Persist a bypass stop before presentation and before its space effect.
+	# Resuming MOVEMENT_COMMITTED then observes the reveal and applies only the
+	# still-pending landing effect.
+	if str(GameState.roll_transaction.get("phase", "")) == "MOVEMENT_COMMITTED" and GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN:
+		var reveal_result := GameState.commit_bypass_tile_reveal(GameState.current_tile_index)
+		if bool(reveal_result.get("committed", false)):
+			SaveManager.save_now()
+			_sync_board_route_context()
+			if bool(reveal_result.get("newly_revealed", false)):
+				await _animate_bypass_tile_reveal(int(reveal_result.get("tile_index", -1)))
+	if maze_exited_now:
+		await _show_maze_exit_modal()
+	# Most destinations start in the fresh event loop. Tile 0 is also a
+	# LANDMARK, so its STOP reward is resolved first and folded into that lap.
+	if crossed_laps > 0 and GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index != 0:
+		await _commit_lap_crossings(crossed_laps, "NORMAL")
+	if phase != "SPACE_EFFECT_COMMITTED":
+		# ROUTE-01 exposes topology and persistence only. Non-main effects are
+		# activated by ROUTE-02/03, so debug traversal lands as NORMAL for now.
+		var landing_type: StringName = tile_types[GameState.current_tile_index] if GameState.current_route_id == BoardModelScript.ROUTE_MAIN else BoardModelScript.tile_type_for_position(GameState.current_route_id, GameState.current_tile_index)
+		if bool(transaction.get("route_choice_exact_stop", false)):
+			landing_type = &"NORMAL"
+		await _resolve_landing(landing_type, roles)
+		_sync_flow_visuals()
+		GameState.commit_roll_space_effect()
+		SaveManager.save_now()
+	if crossed_laps > 0 and GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 0:
+		await _commit_lap_crossings(crossed_laps, "NORMAL")
 	dice_mode = clampi(GameState.current_dice_count, 1, 3)
+	GameState.mark_roll_turn_resolved()
+	SaveManager.save_now()
+	GameState.clear_roll_transaction()
 	SaveManager.save_now()
 	_refresh_hud()
 	moving = false
 	roll_button.disabled = false
 
+func _continue_route_choice_transaction() -> void:
+	var transaction := GameState.roll_transaction
+	if str(transaction.get("phase", "")) != "ROUTE_CHOICE_PENDING":
+		return
+	if not bool(transaction.get("route_choice_arrival_committed", false)):
+		var start_route := str(transaction.get("start_route_id", BoardModelScript.ROUTE_MAIN))
+		var start_tile := int(transaction.get("start_tile_index", GameState.current_tile_index))
+		GameState.set_route_position(start_route, start_tile)
+		for point: Variant in transaction.get("movement_path", []):
+			if point is Dictionary:
+				GameState.set_route_position(str((point as Dictionary).get("route_id", BoardModelScript.ROUTE_MAIN)), int((point as Dictionary).get("tile_index", start_tile)))
+				_sync_board_route_context()
+				await _animate_route_step_hop()
+		GameState.commit_route_choice_arrival()
+		SaveManager.save_now()
+	_refresh_hud()
+	await _show_route_choice_modal()
+	await _continue_roll_transaction()
+
+func _show_route_choice_modal() -> void:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_body("ROUTE CHOICE", 15))
+	content.add_child(_title("この先に二つの道があります", 30))
+	content.add_child(_body("本線\n残り26マス\n名所・アイテムあり", 20))
+	var main_button := _button("本線を進む", func() -> void: return, true); main_button.name = "route_choice_main"; main_button.toggle_mode = true
+	content.add_child(main_button)
+	content.add_child(_body("砂嵐のキャラバン道\n残り10マス\n危険マス 7", 20))
+	var bypass_button := _button("近道へ入る", func() -> void: return); bypass_button.name = "route_choice_bypass"; bypass_button.toggle_mode = true
+	content.add_child(bypass_button)
+	var chosen := await _wait_for_action([main_button, bypass_button])
+	main_button.disabled = true; bypass_button.disabled = true
+	var selected_route := BoardModelScript.ROUTE_MAIN if chosen == 0 else BoardModelScript.ROUTE_BYPASS_CARAVAN
+	GameState.commit_route_choice(selected_route)
+	SaveManager.save_now()
+	_sync_board_route_context()
+	_close_modal(modal.layer)
+
+func _finalize_bypass_exit() -> void:
+	if GameState.bypass_exit_committed:
+		return
+	GameState.bypass_exit_committed = true
+	if not GameState.bypass_damaged_this_visit:
+		GameState.bypass_no_damage_count += 1
+		role_label.text = "NO DAMAGE SHORTCUT"
+	var rolls := maxi(1, GameState.bypass_rolls_this_visit)
+	if GameState.bypass_best_roll_count <= 0 or rolls < GameState.bypass_best_roll_count:
+		GameState.bypass_best_roll_count = rolls
+
+func _commit_royal_maze_exit() -> bool:
+	if not GameState.commit_royal_maze_exit():
+		return false
+	GameState.roll_transaction["loop_exit_committed"] = true
+	GameState.roll_transaction["target_route_id"] = GameState.current_route_id
+	GameState.roll_transaction["target_tile_index"] = GameState.current_tile_index
+	GameState.roll_transaction["destination"] = GameState.current_tile_index
+	GameState.commit_roll_landing_core(&"LOOP_EXIT", "王の迷い環を脱出した")
+	GameState.travel_memos.append("王の迷い環を脱出した")
+	_sync_board_route_context()
+	minimap_view.set_current_tile(GameState.current_tile_index)
+	return true
+
+func _show_maze_exit_modal() -> void:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_body("RETURN GATE", 15))
+	content.add_child(_title("王の迷い環を脱出した", 31))
+	content.add_child(_body("石扉が開き、砂埃が外の回廊へ流れていく。\n帰還地点のマス効果は発生しない。", 19))
+	var close := _button("光の外へ", func() -> void: return, true); close.name = "maze_exit_close"; close.toggle_mode = true; content.add_child(close)
+	modal["close"] = close
+	await _wait_brief_result(modal, 0.75)
+
+func _enter_royal_maze() -> String:
+	var definition := BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE)
+	if not GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, int(definition.return_tile)):
+		return "転送床は静まっている。"
+	var memo := "王の迷い環へ転送された"
+	GameState.commit_roll_landing_core(&"STAGE_SPECIAL", memo)
+	GameState.travel_memos.append(memo)
+	_sync_board_route_context()
+	SaveManager.save_now()
+	await _play_royal_maze_entry_transition()
+	return memo
+
+func _play_royal_maze_entry_transition(duration_override: float = -1.0) -> Dictionary:
+	# The route entry is already durable when this presentation begins. A killed
+	# app therefore resumes in the maze and never replays or double-commits it.
+	modal_open = true
+	var layer := CanvasLayer.new()
+	layer.name = "RoyalMazePopupBookLayer"
+	layer.layer = 20
+	add_child(layer)
+	var transition: Control = PopupBookTransitionScript.new()
+	transition.name = "RoyalMazePopupBookTransition"
+	layer.add_child(transition)
+	transition.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	await transition.play(duration_override)
+	var transition_receipt: Dictionary = transition.receipt()
+	if is_instance_valid(layer):
+		layer.queue_free()
+	modal_open = false
+	return transition_receipt
+
+func _resume_roll_transaction() -> void:
+	if GameState.roll_transaction.is_empty():
+		return
+	var phase := str(GameState.roll_transaction.get("phase", GameState.roll_transaction.get("roll_phase", "")))
+	if phase in ["PRE_ROLL", "ROLLING", "TURN_RESOLVED"]:
+		if phase == "TURN_RESOLVED":
+			GameState.clear_roll_transaction()
+		else:
+			GameState.rollback_uncommitted_roll()
+		SaveManager.save_now()
+		_restore_roll_idle()
+		return
+	show_game()
+	dice_values = _transaction_values(GameState.roll_transaction)
+	dice_mode = clampi(int(GameState.roll_transaction.get("dice_count", 1)), 1, 5)
+	last_roll_early_stopped = bool(GameState.roll_transaction.get("early_stopped", false))
+	if phase == "RESULT_COMMITTED":
+		await _present_resumed_roll_result()
+	if phase == "MOVEMENT_COMMITTED" and str(GameState.roll_transaction.get("encounter_phase", "NONE")) != "NONE":
+		await _resume_roll_encounter()
+		return
+	await _continue_roll_transaction()
+
+func _restore_roll_idle() -> void:
+	show_game()
+	rolling_dice = false
+	moving = false
+	locked_dice_count = 0
+	rolling_values.clear()
+	if is_instance_valid(map_dice_overlay):
+		map_dice_overlay.cancel_to_tray()
+	if is_instance_valid(dice_presentation):
+		dice_presentation.visible = true
+	roll_button.text = "サイコロを振る"
+	roll_button.disabled = false
+	stop_all_button.visible = false
+
+func _present_resumed_roll_result() -> void:
+	var values := _transaction_values(GameState.roll_transaction)
+	if values.is_empty():
+		return
+	moving = true
+	roll_button.disabled = true
+	if _uses_map_dice_overlay(values.size()):
+		var tray_rect := _map_dice_tray_anchor_rect()
+		var map_rect := board_view.get_global_rect()
+		dice_presentation.visible = false
+		await map_dice_overlay.begin_launch(values, tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size, values.size()))
+		map_dice_overlay.present(values, false, values.size())
+		if values.size() != 5:
+			var destination := int(GameState.roll_transaction.get("target_tile_index", GameState.current_tile_index))
+			(board_view as TourismMapView).highlight_destination(destination, int(GameState.roll_transaction.get("distance", _sum_dice_values(values))))
+		await map_dice_overlay.hold_and_return(values)
+		if values.size() != 5:
+			(board_view as TourismMapView).clear_destination_highlight()
+		dice_presentation.visible = true
+	else:
+		_render_dice(values, false)
+		await get_tree().create_timer(0.45).timeout
+	moving = false
+
+func _sum_dice_values(values: Array[int]) -> int:
+	var total := 0
+	for value: int in values:
+		total += clampi(value, 1, 6)
+	return total
+
+func _resume_roll_encounter() -> void:
+	var encounter_phase := str(GameState.roll_transaction.get("encounter_phase", "NONE"))
+	var pair_bonus := bool(GameState.roll_transaction.get("encounter_pair_bonus", false))
+	var double_bonus := int(GameState.roll_transaction.get("encounter_double_bonus", 0))
+	var recovery_route := ""
+	if encounter_phase in ["HANDOFF_PENDING", "MODAL_OPEN"]:
+		await _show_encounter_modal(pair_bonus, double_bonus)
+	elif encounter_phase == "INTERACTION_COMMITTED":
+		if bool(GameState.roll_transaction.get("encounter_joined_now", false)):
+			var definition := BossSystemScript.definition_by_id(str(GameState.roll_transaction.get("encounter_definition_id", "sleepy_sphinx")), boss_definitions)
+			recovery_route = await _show_get_result(definition)
+		else:
+			GameState.complete_roll_encounter()
+			SaveManager.save_now()
+	elif encounter_phase == "REGISTRATION_COMMITTED":
+		var definition := BossSystemScript.definition_by_id(str(GameState.roll_transaction.get("encounter_definition_id", "sleepy_sphinx")), boss_definitions)
+		var obtained: Dictionary = (GameState.roll_transaction.get("encounter_obtained", {}) as Dictionary).duplicate(true)
+		recovery_route = await _show_get_result(definition, obtained)
+	if not recovery_route.is_empty():
+		_finalize_recovered_roll_without_navigation()
+		return
+	if not GameState.roll_transaction.is_empty():
+		GameState.complete_roll_encounter()
+		SaveManager.save_now()
+		await _finish_resumed_space_effect()
+
+func _finalize_recovered_roll_without_navigation() -> void:
+	if GameState.roll_transaction.is_empty():
+		return
+	if str(GameState.roll_transaction.get("phase", "")) == "MOVEMENT_COMMITTED":
+		GameState.complete_roll_encounter()
+		GameState.commit_roll_space_effect()
+	if str(GameState.roll_transaction.get("phase", "")) == "SPACE_EFFECT_COMMITTED":
+		GameState.mark_roll_turn_resolved()
+	SaveManager.save_now()
+	GameState.clear_roll_transaction()
+	SaveManager.save_now()
+	moving = false
+	rolling_dice = false
+
+func _commit_lap_crossings(count: int, source: String) -> void:
+	for crossing_index: int in range(maxi(0, count)):
+		var previous: Dictionary = GameState.last_lap_result
+		if crossing_index == 0 and int(previous.get("journey_roll_index", -1)) == GameState.rolls_used and str(previous.get("source", "")) == source:
+			continue
+		var state := GameState.to_dictionary()
+		var resolution_id := "lap:%08d:%s:%d:%d" % [GameState.total_laps + 1, source.to_lower(), GameState.rolls_used, crossing_index]
+		var resolution := LapSystemScript.resolve(state, resolution_id, source)
+		var applied := RewardResolverScript.apply(state, resolution, GameState.reward_apply_log)
+		GameState.apply_dictionary(state)
+		SaveManager.save_now()
+		if bool(applied.get("applied", false)):
+			await _show_lap_result_modal(resolution.get("result", {}))
+
 func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
-	var memo := ""
-	match tile_type:
+	var transaction: Dictionary = GameState.roll_transaction
+	var resolved_tile_type := StringName(str(transaction.get("landing_tile_type", String(tile_type))))
+	var core_committed := bool(transaction.get("landing_core_committed", false))
+	var memo := str(transaction.get("landing_memo", ""))
+	if not bool(transaction.get("landing_roles_committed", false)):
+		if roles.get("main", &"") == DiceLogicScript.PAIR:
+			GameState.souvenirs += 1
+		if roles.get("main", &"") == DiceLogicScript.STRAIGHT:
+			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
+		if roles.get("main", &"") == DiceLogicScript.DOUBLE:
+			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
+		GameState.commit_roll_landing_roles()
+		SaveManager.save_now()
+	var effective_tile_type := &"COMMITTED" if core_committed else resolved_tile_type
+	match effective_tile_type:
 		&"NORMAL":
 			memo = ["日陰で猫があくびをした。", "砂の向こうで鐘が一度鳴った。", "冷たい風が市場から届いた。"][rng.randi_range(0, 2)]
 		&"EVENT":
 			var boss_handoff := await _show_event_modal(roles)
 			memo = "短い旅の出来事を記録した。"
+			_commit_landing_core(resolved_tile_type, memo + _landing_role_suffix(roles))
 			if boss_handoff:
-				GameState.travel_memos.append(memo)
 				memo_label.text = memo
 				await _show_encounter_modal(roles.get("main", &"") == DiceLogicScript.PAIR, 2 if roles.get("main", &"") == DiceLogicScript.DOUBLE else 0)
 				return
@@ -649,13 +1389,14 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 			memo = "古い旅コインを拾った。+6"
 		&"WARP":
 			memo = "風の道に乗って、6マス先へ。"
+			GameState.current_lap_bonus += LapSystemScript.WARP_LAP_BONUS
 			var warp: Dictionary = BoardModelScript.move(GameState.current_tile_index, 6)
 			GameState.current_tile_index = int(warp.index)
 			var warp_laps := int(warp.laps)
-			GameState.lap_count += warp_laps
-			if warp_laps > 0: _reset_event_loop_state()
 			board_view.set_current_tile(GameState.current_tile_index)
 			minimap_view.set_current_tile(GameState.current_tile_index)
+			_commit_landing_core(resolved_tile_type, memo + _landing_role_suffix(roles))
+			if warp_laps > 0: await _commit_lap_crossings(warp_laps, "WARP")
 		&"SHOP":
 			if GameState.coins >= 3:
 				GameState.coins -= 3
@@ -667,27 +1408,50 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 			GameState.boss_presence = mini(5, GameState.boss_presence + 1)
 			memo = "オアシスでひと休み。足跡が少し近づいた。"
 		&"LANDMARK":
-			GameState.souvenirs += 1
-			GameState.boss_presence = mini(5, GameState.boss_presence + 2)
-			memo = "遺跡の影を見上げた。旅の記憶 +1"
+			var landmark_state := GameState.to_dictionary()
+			var landmark_resolution_id := "landmark:%08d:%d:%d" % [GameState.total_laps, GameState.rolls_used, GameState.current_tile_index]
+			var landmark_resolution := LandmarkSystemScript.resolve_stop(landmark_state, GameState.current_tile_index, landmark_resolution_id)
+			var landmark_applied := RewardResolverScript.apply(landmark_state, landmark_resolution, GameState.reward_apply_log)
+			GameState.apply_dictionary(landmark_state)
+			var landmark_result: Dictionary = landmark_resolution.get("result", {})
+			memo = "%s Lv.%d　旅の記憶 +1" % [str(landmark_result.get("name", "カイロの名所")), int(landmark_result.get("new_level", 0))]
+			_commit_landing_core(resolved_tile_type, memo + _landing_role_suffix(roles))
+			if bool(landmark_applied.get("applied", false)):
+				await _show_landmark_result_modal(landmark_result, landmark_applied.get("summary", []))
 		&"BOSS_SCENT":
 			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 2)
 			memo = ["砂の上に、大きな足跡が残っている。", "遠くから、低いあくびが聞こえた。", "誰かがここで、しばらく昼寝をしていたらしい。 "][rng.randi_range(0, 2)]
 		&"STAGE_SPECIAL":
-			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
-			memo = "砂時計の影が道を横切った。カイロの気配 +1"
+			if GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == BoardModelScript.ROYAL_MAZE_SOURCE_TILE:
+				memo = await _enter_royal_maze()
+			else:
+				GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
+				memo = "砂時計の影が道を横切った。カイロの気配 +1"
 		&"RISK":
-			memo = await _show_risk_space_modal()
-	if roles.get("main", &"") == DiceLogicScript.PAIR:
-		GameState.souvenirs += 1
-		memo += "　PAIRのおみやげ +1"
-	if roles.get("main", &"") == DiceLogicScript.STRAIGHT:
-		GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
-		memo += "　STRAIGHTで気配が近づいた。"
-	if roles.get("main", &"") == DiceLogicScript.DOUBLE:
-		GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
-		memo += "　DOUBLEでDICE SLOT READY。気配も近づいた。"
-	GameState.travel_memos.append(memo)
+			if GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE:
+				memo = _apply_maze_hazard(false)
+			elif GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN:
+				memo = _apply_bypass_hazard(false)
+			else:
+				memo = await _show_risk_space_modal(roles)
+		&"STRONG_RISK":
+			memo = _apply_maze_hazard(true) if GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE else _apply_bypass_hazard(true)
+		&"GAMBLE":
+			memo = await _show_bypass_gamble()
+		&"TREASURE":
+			memo = _claim_maze_treasure()
+		&"ANCIENT_ITEM":
+			memo = _claim_maze_ancient_item()
+		&"MURAL":
+			memo = _claim_maze_mural()
+		&"RETURN_GATE":
+			memo = "帰還扉を通過した。ぴったり停止ではないため、回廊は続く。"
+		&"LOOP_EXIT":
+			memo = "王の迷い環を脱出した"
+	if not bool(GameState.roll_transaction.get("landing_core_committed", false)):
+		_commit_landing_core(resolved_tile_type, memo + _landing_role_suffix(roles))
+	else:
+		memo = str(GameState.roll_transaction.get("landing_memo", memo))
 	memo_label.text = memo
 	await get_tree().create_timer(0.18).timeout
 	# TRIPLE always invites one encounter after landing, even on a special space.
@@ -695,7 +1459,7 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 	var triple_forced: bool = roles.get("main", &"") == DiceLogicScript.TRIPLE
 	if triple_forced:
 		await _show_encounter_modal(false)
-	elif tile_type == &"NORMAL":
+	elif resolved_tile_type == &"NORMAL" and GameState.current_route_id == BoardModelScript.ROUTE_MAIN:
 		var forced: bool = GameState.debug_force_encounter
 		GameState.debug_force_encounter = false
 		var appears := BossSystemScript.should_encounter(GameState.boss_presence, GameState.boss_relief, forced, rng.randf())
@@ -705,6 +1469,232 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 		else:
 			GameState.boss_relief = mini(BossSystemScript.RELIEF_FORCE_AFTER, GameState.boss_relief + 1)
 			GameState.boss_presence = mini(BossSystemScript.PRESENCE_MAX, GameState.boss_presence + 1)
+
+func _apply_bypass_hazard(strong: bool = false, forced_load_collapse: bool = false) -> String:
+	var tile_index := GameState.current_tile_index
+	var hazard_name := ""
+	var would_change := false
+	if strong:
+		if forced_load_collapse or tile_index == 2:
+			hazard_name = "荷崩れ"
+			would_change = GameState.current_dice_count != 1 or GameState.temporary_roll_dice_count != 0 or GameState.dice_keep_active or GameState.dice_double_retry_active or GameState.dice_slot_retry_active
+		else:
+			hazard_name = "砂嵐の袋小路"
+			would_change = true
+	else:
+		match tile_index:
+			0: hazard_name = "裂けた荷袋"; would_change = GameState.coins > 0
+			1: hazard_name = "向かい風"; would_change = GameState.next_move_bonus > -2
+			3: hazard_name = "砂に埋もれた標"; would_change = tile_index > 0
+			_: hazard_name = "消える足跡"; would_change = GameState.boss_presence > 0
+	if not would_change:
+		return "%s：影響なし（CLEAN維持）" % hazard_name
+	if GameState.even_guard_active:
+		GameState.even_guard_active = false
+		return "ALL EVENガードで%sを完全防御（CLEAN維持）" % hazard_name
+	if strong:
+		if forced_load_collapse or tile_index == 2:
+			GameState.current_dice_count = 1
+			GameState.temporary_roll_dice_count = 0
+			GameState.dice_keep_active = false
+			GameState.dice_double_retry_active = false
+			GameState.dice_slot_retry_active = false
+		else:
+			GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, maxi(0, tile_index - 2))
+	else:
+		match tile_index:
+			0: GameState.coins = maxi(0, GameState.coins - 8)
+			1: GameState.next_move_bonus = mini(GameState.next_move_bonus, -2)
+			3: GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, maxi(0, tile_index - 3))
+			_: GameState.boss_presence = maxi(0, GameState.boss_presence - 1)
+	GameState.current_lap_clean = false
+	GameState.current_lap_penalty_count += 1
+	GameState.bypass_clean_losses += 1
+	GameState.bypass_damaged_this_visit = true
+	GameState.flow_level = 0
+	board_view.set_current_tile(GameState.current_tile_index)
+	minimap_view.set_current_tile(GameState.current_tile_index)
+	_sync_flow_visuals()
+	return "%sの不利益が発生（CLEAN失敗）" % hazard_name
+
+func _show_bypass_gamble() -> String:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_body("GAMBLE", 15))
+	content.add_child(_title("砂嵐を突っ切りますか？", 30))
+	var careful := _button("慎重に進む　次回移動 -1", func() -> void: return, true); careful.name = "bypass_gamble_careful"; careful.toggle_mode = true
+	var dash := _button("一気に抜ける　追加3ダイス", func() -> void: return); dash.name = "bypass_gamble_dash"; dash.toggle_mode = true
+	content.add_child(careful); content.add_child(dash)
+	var chosen := await _wait_for_action([careful, dash])
+	careful.disabled = true; dash.disabled = true
+	if chosen == 0:
+		GameState.next_move_bonus -= 1
+		_close_modal(modal.layer)
+		return "慎重に進む。次回移動 -1"
+	fixed_targets = GameState.debug_fixed_extra_rolls.duplicate(); GameState.debug_fixed_extra_rolls.clear()
+	var values := await _animate_dice_roll(3, content)
+	var gamble_roles := DiceLogicScript.evaluate(values)
+	var main_role: StringName = gamble_roles.get("main", &"")
+	var support_role: StringName = gamble_roles.get("support", &"")
+	var memo := ""
+	if main_role == DiceLogicScript.TRIPLE:
+		var exit_definition := BoardModelScript.route_definition(BoardModelScript.ROUTE_BYPASS_CARAVAN)
+		GameState.set_route_position(str(exit_definition.exit_route), int(exit_definition.exit_tile))
+		_finalize_bypass_exit()
+		memo = "TRIPLE：バイパス出口へ即時移動"
+	elif main_role in [DiceLogicScript.STRAIGHT, DiceLogicScript.PAIR]:
+		var advance := 5 if main_role == DiceLogicScript.STRAIGHT else 3
+		var movement := BoardModelScript.advance_route(GameState.current_route_id, GameState.current_tile_index, advance)
+		GameState.set_route_position(str(movement.route_id), int(movement.tile_index))
+		if GameState.current_route_id == BoardModelScript.ROUTE_MAIN:
+			_finalize_bypass_exit()
+		elif BoardModelScript.tile_type_for_position(GameState.current_route_id, GameState.current_tile_index) == &"COIN":
+			GameState.coins += 6
+		memo = "%s：%dマス前進" % [String(main_role), advance]
+	elif support_role == DiceLogicScript.ALL_EVEN:
+		GameState.even_guard_active = true
+		memo = "ALL EVEN：危険ガード1回"
+	elif support_role == DiceLogicScript.ALL_ODD:
+		GameState.current_lap_bonus += 20
+		memo = "ALL ODD：ラップボーナス +20"
+	else:
+		memo = _apply_bypass_hazard(true, true)
+	_sync_board_route_context()
+	minimap_view.set_current_tile(GameState.current_tile_index)
+	_close_modal(modal.layer)
+	return memo
+
+func _landing_role_suffix(roles: Dictionary) -> String:
+	if roles.get("main", &"") == DiceLogicScript.PAIR:
+		return "　PAIRのおみやげ +1"
+	if roles.get("main", &"") == DiceLogicScript.STRAIGHT:
+		return "　STRAIGHTで気配が近づいた。"
+	if roles.get("main", &"") == DiceLogicScript.DOUBLE:
+		return "　DOUBLEでDICE SLOT READY。気配も近づいた。"
+	return ""
+
+func _apply_maze_hazard(strong: bool) -> String:
+	var tile_index := GameState.current_tile_index
+	var hazard_name: String = "逆さ砂時計" if strong else str({1: "落砂回廊", 3: "呪いの壁画", 7: "石棺の影"}.get(tile_index, "王墓の影"))
+	var would_change := true
+	if not strong:
+		match tile_index:
+			1: would_change = GameState.next_move_bonus > -2
+			3: would_change = GameState.coins > 0
+			7: would_change = GameState.flow_level > 0
+	if not would_change:
+		return "%s：影響なし（CLEAN維持）" % hazard_name
+	if GameState.even_guard_active:
+		GameState.even_guard_active = false
+		return "ALL EVENガードで%sを完全防御（CLEAN維持）" % hazard_name
+	if strong:
+		GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, posmod(tile_index - 3, 8))
+	else:
+		match tile_index:
+			1: GameState.next_move_bonus = mini(GameState.next_move_bonus, -2)
+			3: GameState.coins = maxi(0, GameState.coins - 8)
+			7: GameState.flow_level = 0
+	GameState.current_lap_clean = false
+	GameState.current_lap_penalty_count += 1
+	GameState.flow_level = 0
+	_sync_board_route_context()
+	_sync_flow_visuals()
+	return "%sの不利益が発生（CLEAN失敗）" % hazard_name
+
+func _claim_maze_treasure() -> String:
+	if GameState.maze_treasure_claimed:
+		return "宝物庫は空になっている。"
+	GameState.maze_treasure_claimed = true
+	match rng.randi_range(0, 3):
+		0:
+			var amount := rng.randi_range(30, 50)
+			GameState.coins += amount
+			return "王の宝物庫：旅コイン +%d" % amount
+		1:
+			GameState.inventory["royal_scale"] = int(GameState.inventory.get("royal_scale", 0)) + 1
+			return "王の宝物庫：王墓の目盛り"
+		2:
+			GameState.add_dice()
+			return "王の宝物庫：追加ダイス +1"
+		_:
+			GameState.dice_keep_active = true
+			return "王の宝物庫：DICE KEEP"
+
+func _claim_maze_ancient_item() -> String:
+	if bool(GameState.maze_collection_flags.get("ancient_item_this_visit", false)):
+		return "古代の台座は空になっている。"
+	GameState.maze_collection_flags["ancient_item_this_visit"] = true
+	var item_ids := ["royal_scale", "sand_seal_ring", "stonemason_hammer"]
+	var item_names := ["王墓の目盛り", "砂封じの輪", "石工の小槌"]
+	var index := posmod(GameState.maze_loop_count + GameState.total_laps, item_ids.size())
+	GameState.inventory[item_ids[index]] = int(GameState.inventory.get(item_ids[index], 0)) + 1
+	return "古代アイテム：%s" % item_names[index]
+
+func _claim_maze_mural() -> String:
+	var fragment_id := "royal_mural_01"
+	if bool(GameState.maze_collection_flags.get(fragment_id, false)):
+		GameState.current_lap_bonus += 10
+		return "王の壁画：登録済みの断片をラップボーナス +10へ変換"
+	GameState.maze_collection_flags[fragment_id] = true
+	var fragment_count := 0
+	for key: Variant in GameState.maze_collection_flags.keys():
+		if str(key).begins_with("royal_mural_") and bool(GameState.maze_collection_flags[key]): fragment_count += 1
+	return "王の壁画 %d / 6：新しい断片を登録" % fragment_count
+
+func _commit_landing_core(tile_type: StringName, memo: String) -> void:
+	if not GameState.commit_roll_landing_core(tile_type, memo):
+		return
+	GameState.travel_memos.append(memo)
+	SaveManager.save_now()
+
+func _build_landmark_result_modal(result: Dictionary, summary: Array) -> Dictionary:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	var developed := bool(result.get("developed", false))
+	content.add_child(_body("LANDMARK", 15))
+	content.add_child(_title(str(result.get("name", "カイロの名所")), 32))
+	content.add_child(_body("Lv.%d → Lv.%d" % [int(result.get("old_level", 0)), int(result.get("new_level", 0))] if developed else "Lv.3　完成した景色を再訪", 23))
+	content.add_child(_body("　".join(summary) if not summary.is_empty() else "旅の記憶に残した。", 18))
+	var close := _button("旅を続ける", func() -> void: return, true)
+	close.name = "landmark_result_close"
+	close.toggle_mode = true
+	content.add_child(close)
+	modal["close"] = close
+	return modal
+
+func _show_landmark_result_modal(result: Dictionary, summary: Array) -> void:
+	var modal := _build_landmark_result_modal(result, summary)
+	await _wait_brief_result(modal, 0.62)
+
+func _build_lap_result_modal(result: Dictionary) -> Dictionary:
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_body("LAP %d COMPLETE" % int(result.get("lap_number", GameState.lap_count)), 18))
+	content.add_child(_title("LAP POINT +%d" % int(result.get("points", 100)), 34))
+	var clean_text := "CLEAN STREAK %d　×%.2f" % [int(result.get("clean_streak", 0)), float(result.get("multiplier", 1.0))] if bool(result.get("clean", true)) else "CLEAN失敗　×1.00"
+	content.add_child(_body("基本 %d　＋　ラップボーナス %d\n%s　→　獲得 %d\nラップスコア %d　（%dロール）" % [int(result.get("base_points", 100)), int(result.get("lap_bonus", 0)), clean_text, int(result.get("points", 100)), int(result.get("score", 0)), int(result.get("roll_count", 0))], 19))
+	var milestone := int(result.get("milestone", 0))
+	if milestone in [2, 3, 5]:
+		var reward_text: String = str({2: "旅コイン +12", 3: "追加ダイス +1", 5: "DICE KEEP"}.get(milestone, ""))
+		content.add_child(_body("CLEAN %d 到達ボーナス　%s" % [milestone, reward_text], 18))
+	content.add_child(_body(str(result.get("next_clean_goal", LapSystemScript.next_clean_goal_for(int(result.get("clean_streak", 0))))), 17))
+	var close := _button("次の一周へ", func() -> void: return, true)
+	close.name = "lap_result_close"
+	close.toggle_mode = true
+	content.add_child(close)
+	modal["close"] = close
+	return modal
+
+func _show_lap_result_modal(result: Dictionary) -> void:
+	var modal := _build_lap_result_modal(result)
+	await _wait_brief_result(modal, 0.62)
+
+func _wait_brief_result(modal: Dictionary, duration: float) -> void:
+	var close: Button = modal.close
+	var deadline := Time.get_ticks_msec() + roundi(duration * 1000.0)
+	while not close.button_pressed and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	_close_modal(modal.layer)
 
 func _show_item_space_choice() -> String:
 	var modal := _make_modal()
@@ -720,23 +1710,22 @@ func _show_item_space_choice() -> String:
 	_close_modal(modal.layer)
 	return "2候補から%s" % ("ピンポイントチケット" if chosen == 0 else "フィーバーチケット")
 
-func _show_risk_space_modal() -> String:
+func _show_risk_space_modal(roles: Dictionary = {}) -> String:
 	var base_dice_before := GameState.current_dice_count
+	var risk_tile := GameState.current_tile_index
+	var risk_name := RewardResolverScript.risk_name_for_tile(risk_tile)
 	var modal := _make_modal()
 	var content: VBoxContainer = modal.content
-	content.add_child(_title("砂塵の抜け道", 32))
-	content.add_child(_body("安全な足場を進むか、砂の向こうへ3ダイスを投げるか。\n挑戦しても今のダイスは失いません。", 20))
-	var safe := _button("安全策　追加ダイス +1", func() -> void: return, true); safe.name = "risk_safe"; safe.toggle_mode = true
-	var challenge := _button("挑戦　追加3ダイス", func() -> void: return); challenge.name = "risk_challenge"; challenge.toggle_mode = true
+	content.add_child(_title(risk_name, 32))
+	content.add_child(_body("受け流すか、3ダイスの目押しで突破するか。\n役が成立すれば不利益を防ぎ、今のダイスも失いません。", 20))
+	var safe := _button("受け流す", func() -> void: return, true); safe.name = "risk_safe"; safe.toggle_mode = true
+	var challenge := _button("目押しで突破　追加3ダイス", func() -> void: return); challenge.name = "risk_challenge"; challenge.toggle_mode = true
 	content.add_child(safe); content.add_child(challenge)
 	var chosen := await _wait_for_action([safe, challenge])
 	safe.disabled = true; challenge.disabled = true
 	var memo := ""
 	if chosen == 0:
-		var before := GameState.current_dice_count
-		var before_coins := GameState.coins
-		var after := GameState.add_dice()
-		memo = "リスクマスの安全策。追加ダイス %d→%d" % [before, after] if after > before else "安全策の余剰ダイスを旅コイン +%dへ変換" % (GameState.coins - before_coins)
+		memo = _apply_risk_harm(risk_tile)
 	else:
 		fixed_targets = GameState.debug_fixed_extra_rolls.duplicate(); GameState.debug_fixed_extra_rolls.clear()
 		var extra_values := await _animate_dice_roll(3, content)
@@ -754,14 +1743,30 @@ func _show_risk_space_modal() -> String:
 		elif support_role == DiceLogicScript.ALL_ODD:
 			GameState.coins += 30; memo = "挑戦成功：ALL ODD。旅コイン +30"
 		else:
-			GameState.coins += 5; memo = "砂の流れを読んだ。小さな旅コイン +5"
+			memo = _apply_risk_harm(risk_tile)
 	# The risk branch may add dice, but never removes the state held on arrival.
 	GameState.current_dice_count = maxi(base_dice_before, GameState.current_dice_count)
+	_commit_landing_core(&"RISK", memo + _landing_role_suffix(roles))
 	content.add_child(_body(memo, 20))
 	var close := _button("旅へ戻る", func() -> void: return, true); close.name = "risk_close"; close.toggle_mode = true; content.add_child(close)
 	await close.pressed
 	_close_modal(modal.layer)
 	return memo
+
+func _apply_risk_harm(tile_index: int) -> String:
+	var flow_before := GameState.flow_level
+	var state := GameState.to_dictionary()
+	var resolution_id := "risk:%08d:%d:%d" % [GameState.total_laps, GameState.rolls_used, tile_index]
+	var resolution := RewardResolverScript.resolve_risk(state, resolution_id, tile_index)
+	var applied := RewardResolverScript.apply(state, resolution, GameState.reward_apply_log)
+	GameState.apply_dictionary(state)
+	board_view.set_current_tile(GameState.current_tile_index)
+	minimap_view.set_current_tile(GameState.current_tile_index)
+	_sync_flow_visuals()
+	if flow_before > 0 and GameState.flow_level == 0:
+		_play_flow_pulse(&"flow_broken")
+	var summary: Array = applied.get("summary", [])
+	return str(summary[0]) if not summary.is_empty() else "%s：処理済み" % RewardResolverScript.risk_name_for_tile(tile_index)
 
 func _event_by_id(event_id: String) -> Dictionary:
 	for event: Dictionary in event_definitions:
@@ -844,6 +1849,8 @@ func _show_event_modal(source_roles: Dictionary) -> bool:
 	await close_button.pressed
 	event_state = &"CLOSING"
 	var handoff := GameState.pending_boss_handoff and GameState.debug_boss_handoff_enabled
+	if handoff and not GameState.roll_transaction.is_empty():
+		GameState.mark_roll_encounter_handoff(source_roles.get("main", &"") == DiceLogicScript.PAIR, 2 if source_roles.get("main", &"") == DiceLogicScript.DOUBLE else 0)
 	GameState.active_event_state.clear()
 	GameState.pending_event_rewards.clear()
 	if not GameState.debug_boss_handoff_enabled: GameState.pending_boss_handoff = false
@@ -858,7 +1865,17 @@ func _reset_event_loop_state() -> void:
 func _resume_pending_boss_handoff() -> void:
 	if not GameState.pending_boss_handoff: return
 	show_game()
-	await _show_encounter_modal(false)
+	var pair_bonus := false
+	var double_bonus := 0
+	var encounter_phase := str(GameState.roll_transaction.get("encounter_phase", "NONE"))
+	if encounter_phase in ["HANDOFF_PENDING", "MODAL_OPEN"]:
+		pair_bonus = bool(GameState.roll_transaction.get("encounter_pair_bonus", false))
+		double_bonus = maxi(0, int(GameState.roll_transaction.get("encounter_double_bonus", 0)))
+	if not GameState.roll_transaction.is_empty() and str(GameState.roll_transaction.get("encounter_phase", "NONE")) == "NONE":
+		GameState.mark_roll_encounter_handoff(pair_bonus, double_bonus)
+		SaveManager.save_now()
+	await _show_encounter_modal(pair_bonus, double_bonus)
+	await _finish_resumed_space_effect()
 
 func _resolve_event_item_choices(outcome: Dictionary, content: VBoxContainer) -> void:
 	for reward: Variant in outcome.get("rewards", []):
@@ -897,20 +1914,70 @@ func _resume_active_event() -> void:
 		content.add_child(_body("　".join(restored_summary) if not restored_summary.is_empty() else "報酬は適用済みです。", 18))
 		var close := _button("旅を続ける", func() -> void: return, true); close.toggle_mode = true; close.name = "event_resume_close"; content.add_child(close)
 		await close.pressed
+		var restored_pair: bool = false
+		var restored_double: int = 0
+		if GameState.pending_boss_handoff:
+			var restored_roles: Dictionary = saved.get("arrival", {}).get("source_roles", {})
+			restored_pair = restored_roles.get("main", &"") == DiceLogicScript.PAIR
+			restored_double = 2 if restored_roles.get("main", &"") == DiceLogicScript.DOUBLE else 0
+			if not GameState.roll_transaction.is_empty() and str(GameState.roll_transaction.get("encounter_phase", "NONE")) == "NONE":
+				GameState.mark_roll_encounter_handoff(restored_pair, restored_double)
 		GameState.active_event_state.clear(); SaveManager.save_now(); _close_modal(modal.layer)
+		if GameState.pending_boss_handoff:
+			await _show_encounter_modal(restored_pair, restored_double)
+		await _finish_resumed_space_effect()
 		return
 	var arrival: Dictionary = saved.get("arrival", {})
 	dice_values.assign(arrival.get("source_dice_values", [1, 2, 3]))
 	GameState.debug_forced_event_id = str(saved.get("event_id", "CAI-E01"))
 	var roles: Dictionary = arrival.get("source_roles", DiceLogicScript.evaluate(dice_values))
-	await _show_event_modal(roles)
+	var boss_handoff := await _show_event_modal(roles)
+	if boss_handoff:
+		await _show_encounter_modal(roles.get("main", &"") == DiceLogicScript.PAIR, 2 if roles.get("main", &"") == DiceLogicScript.DOUBLE else 0)
+	await _finish_resumed_space_effect()
+
+func _finish_resumed_space_effect() -> void:
+	if GameState.roll_transaction.is_empty():
+		return
+	var phase := str(GameState.roll_transaction.get("phase", GameState.roll_transaction.get("roll_phase", "")))
+	if phase == "MOVEMENT_COMMITTED":
+		GameState.commit_roll_space_effect()
+		SaveManager.save_now()
+		phase = "SPACE_EFFECT_COMMITTED"
+	if phase == "SPACE_EFFECT_COMMITTED":
+		await _resume_roll_transaction()
+
+func _compact_clean_hud(points: int, is_clean: bool, streak: int) -> String:
+	var current := clampi(streak, 0, LapSystemScript.MAX_CLEAN_STREAK)
+	if not is_clean:
+		var recovery_target := maxi(1, current)
+		return "LAP POINT %d\nCLEAN失敗　STREAK %d\nRECOVER %d（次周）" % [points, current, recovery_target]
+	if current >= LapSystemScript.MAX_CLEAN_STREAK:
+		return "LAP POINT %d\nCLEAN STREAK MAX\nCLEAN維持中" % points
+	for target: int in [2, 3, 5]:
+		if current < target:
+			return "LAP POINT %d\nCLEAN STREAK %d\nNEXT %d（あと%d周）" % [points, current, target, target - current]
+	return "LAP POINT %d\nCLEAN STREAK %d\nCLEAN維持中" % [points, current]
 
 func _refresh_hud() -> void:
 	if lap_label == null:
 		return
-	lap_label.text = "周回 %d" % GameState.lap_count
+	lap_label.text = _compact_clean_hud(GameState.total_lap_points, GameState.current_lap_clean, GameState.clean_streak)
 	coin_label.text = "旅コイン %d" % GameState.coins
-	rolls_label.text = "ターン %d / 36　現在 %dマス　次回 %dダイス" % [GameState.rolls_used, GameState.current_tile_index + 1, clampi(GameState.current_dice_count, 1, 3)]
+	var route_definition := BoardModelScript.route_definition(GameState.current_route_id)
+	var route_status := "現在 %dマス" % (GameState.current_tile_index + 1)
+	if GameState.current_route_id != BoardModelScript.ROUTE_MAIN:
+		route_status = "%s %d / %d" % [str(route_definition.name), GameState.current_tile_index + 1, int(route_definition.tile_count)]
+	rolls_label.text = "LAP %d　ターン %d / 36　%s　次回 %dダイス" % [GameState.lap_count, GameState.rolls_used, route_status, clampi(GameState.current_dice_count, 1, 3)]
+	if is_instance_valid(landmark_level_label):
+		if GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE:
+			var gate_distance := posmod(int(route_definition.return_gate_tile) - GameState.current_tile_index, int(route_definition.tile_count))
+			landmark_level_label.text = "内部見取り図　帰還扉まで %d" % gate_distance
+		else:
+			landmark_level_label.text = "全体マップ　名所 Lv.%d・%d・%d" % [int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_02", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_03", 0))]
+	if is_instance_valid(board_view): board_view.set_landmark_levels(GameState.landmark_levels)
+	if board_view is TourismMapView: (board_view as TourismMapView).set_dice_count(GameState.current_dice_count)
+	if is_instance_valid(minimap_view): minimap_view.set_landmark_levels(GameState.landmark_levels)
 	GameState.ensure_boss_data()
 	var footprints := "・".repeat(5 - GameState.boss_presence) + "●".repeat(GameState.boss_presence)
 	boss_label.text = str(GameState.current_boss.get("name", "眠そうなスフィンクス"))
@@ -959,10 +2026,12 @@ func _show_encounter_modal(pair_bonus: bool, double_bonus: int = 0) -> void:
 	_play_encounter_chime()
 	var definition := BossSystemScript.definition_by_id(str(GameState.current_boss.get("definition_id", "sleepy_sphinx")), boss_definitions)
 	var modal := _make_modal()
+	if not GameState.roll_transaction.is_empty() and str(GameState.roll_transaction.get("encounter_phase", "NONE")) != "MODAL_OPEN":
+		GameState.mark_roll_encounter_open(pair_bonus, double_bonus)
 	# Consume the durable handoff only after the production boss modal exists.
 	if GameState.pending_boss_handoff:
 		GameState.pending_boss_handoff = false
-		SaveManager.save_now()
+	SaveManager.save_now()
 	var content: VBoxContainer = modal.content
 	var portrait := TextureRect.new()
 	portrait.texture = SPHINX_TEXTURE
@@ -1012,6 +2081,9 @@ func _show_encounter_modal(pair_bonus: bool, double_bonus: int = 0) -> void:
 	GameState.boss_bond = float(GameState.current_boss.get("gauge", 0))
 	GameState.boss_presence = maxi(0, GameState.boss_presence - 2)
 	GameState.boss_relief = 0
+	if not GameState.roll_transaction.is_empty():
+		GameState.commit_roll_encounter_interaction(bool(outcome.joined_now), str(definition.get("id", "sleepy_sphinx")))
+	SaveManager.save_now()
 	var gauge_after := int(GameState.current_boss.get("gauge", 0))
 	var filling_gauge := _body("交流 %d%%" % gauge_before, 21)
 	filling_gauge.add_theme_color_override("font_color", TEAL)
@@ -1032,6 +2104,9 @@ func _show_encounter_modal(pair_bonus: bool, double_bonus: int = 0) -> void:
 	_refresh_hud()
 	if bool(outcome.joined_now):
 		await _show_get_result(definition)
+	if not GameState.roll_transaction.is_empty():
+		GameState.complete_roll_encounter()
+		SaveManager.save_now()
 
 func _play_encounter_chime() -> void:
 	# A short, low-volume two-tone cue. There is no BGM track in this slice, so the
@@ -1064,9 +2139,9 @@ func _wait_for_action(buttons: Array[Button]) -> int:
 		await get_tree().process_frame
 	return 0
 
-func _show_get_result(definition: Dictionary) -> void:
+func _show_get_result(definition: Dictionary, restored_obtained: Dictionary = {}) -> String:
 	# The portrait changes warmth very slightly; the feeling is an invitation, never a battle win.
-	var obtained := _prepare_next_boss_after_join()
+	var obtained := restored_obtained.duplicate(true) if not restored_obtained.is_empty() else _prepare_next_boss_after_join()
 	var modal := _make_modal()
 	var content: VBoxContainer = modal.content
 	var portrait := TextureRect.new()
@@ -1094,13 +2169,14 @@ func _show_get_result(definition: Dictionary) -> void:
 			GameState.reset_run()
 			SaveManager.save_now()
 			show_game()
-			return
+			return "NEXT_TRIP"
 		if stage_select.button_pressed:
 			_close_modal(modal.layer)
 			SaveManager.save_now()
 			show_stage_select()
-			return
+			return "STAGE_SELECT"
 		await get_tree().process_frame
+	return ""
 
 func _prepare_next_boss_after_join() -> Dictionary:
 	GameState.register_current_boss()
@@ -1108,6 +2184,8 @@ func _prepare_next_boss_after_join() -> Dictionary:
 	# Advance and persist before offering either exit. Returning to stage select must never revive
 	# an already registered individual on the next Cairo trip.
 	GameState.begin_next_boss()
+	if not GameState.roll_transaction.is_empty():
+		GameState.commit_roll_encounter_registration(obtained)
 	SaveManager.save_now()
 	return obtained
 
@@ -1203,7 +2281,457 @@ func _build_debug_box() -> VBoxContainer:
 	var boss_toggle := _button("ボス接続ON/OFF", func() -> void: GameState.debug_boss_handoff_enabled = not GameState.debug_boss_handoff_enabled)
 	for control: Control in [extra_input, extra_apply, rare_unlock, boss_toggle]: control.size_flags_horizontal = Control.SIZE_EXPAND_FILL; event_debug_2.add_child(control)
 	box.add_child(event_debug_2)
+	var audio_debug := HBoxContainer.new()
+	for entry: Dictionary in [
+		{"name": "Launch SE", "category": "launch"}, {"name": "Roll SE", "category": "roll"},
+		{"name": "Contact SE", "category": "contact"}, {"name": "Land SE", "category": "land"},
+		{"name": "Lock SE", "category": "lock"}
+	]:
+		var audio_button := _button(entry.name, func() -> void: _debug_play_dice_audio(entry.category))
+		audio_button.custom_minimum_size.y = 42; audio_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; audio_debug.add_child(audio_button)
+	box.add_child(audio_debug)
+	var fatigue_debug := HBoxContainer.new()
+	for count: int in [1, 3, 5]:
+		var fatigue_button := _button("%d Dice ×20" % count, func() -> void: _debug_audio_twenty(count))
+		fatigue_button.custom_minimum_size.y = 42; fatigue_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; fatigue_debug.add_child(fatigue_button)
+	var mute_dice := _button("Mute Dice SE", _debug_toggle_dice_audio)
+	mute_dice.custom_minimum_size.y = 42; mute_dice.size_flags_horizontal = Control.SIZE_EXPAND_FILL; fatigue_debug.add_child(mute_dice)
+	var voices := _button("Active Voices", func() -> void:
+		if is_instance_valid(dice_audio): _show_message("Dice Audio", "Active voices: %d / Pool: %d" % [dice_audio.active_voice_count(), int(dice_audio.receipt().pool_size)]))
+	voices.custom_minimum_size.y = 42; voices.size_flags_horizontal = Control.SIZE_EXPAND_FILL; fatigue_debug.add_child(voices)
+	box.add_child(fatigue_debug)
+	var view_row := HBoxContainer.new()
+	var classic_view := _button("BOARD CLASSIC", func() -> void: _debug_set_board_view_mode("classic"))
+	var tourism_view := _button("BOARD TOURISM", func() -> void: _debug_set_board_view_mode("tourism"))
+	for control: Control in [classic_view, tourism_view]:
+		control.custom_minimum_size.y = 42
+		control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		view_row.add_child(control)
+	box.add_child(view_row)
+	var route_row := HBoxContainer.new()
+	for entry: Dictionary in [
+		{"name": "MAIN 90", "route": BoardModelScript.ROUTE_MAIN, "tile": 89},
+		{"name": "BYPASS IN", "route": BoardModelScript.ROUTE_BYPASS_CARAVAN, "tile": 0},
+		{"name": "BYPASS OUT", "route": BoardModelScript.ROUTE_BYPASS_CARAVAN, "tile": 9},
+		{"name": "MAZE", "route": BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, "tile": 4},
+	]:
+		var route_button := _button(entry.name, func() -> void: _debug_set_route(str(entry.route), int(entry.tile)))
+		route_button.custom_minimum_size.y = 42; route_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; route_row.add_child(route_button)
+	box.add_child(route_row)
+	var secret_row := HBoxContainer.new()
+	for entry: Dictionary in [
+		{"name": "SECRET NONE", "mode": "none"},
+		{"name": "SECRET HERE", "mode": "current"},
+		{"name": "SECRET ALL", "mode": "all"},
+	]:
+		var secret_button := _button(entry.name, func() -> void: _debug_set_bypass_reveals(str(entry.mode)))
+		secret_button.custom_minimum_size.y = 42; secret_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; secret_row.add_child(secret_button)
+	box.add_child(secret_row)
+	var route_resume_row := HBoxContainer.new()
+	var interrupt_route := _button("ROUTE中断保存", _debug_create_route_interruption)
+	var resume_route := _button("ROUTE復帰実行", func() -> void: call_deferred("_resume_roll_transaction"))
+	for control: Control in [interrupt_route, resume_route]:
+		control.custom_minimum_size.y = 42; control.size_flags_horizontal = Control.SIZE_EXPAND_FILL; route_resume_row.add_child(control)
+	box.add_child(route_resume_row)
 	return box
+
+func _new_board_view(mode: String) -> BoardView:
+	var normalized := TourismMapViewScript.normalized_view_mode(mode)
+	if normalized == TourismMapViewScript.VIEW_MODE_TOURISM:
+		return TourismMapViewScript.new() as BoardView
+	return BoardViewScript.new() as BoardView
+
+func _preferred_board_view_mode() -> String:
+	var debug_override := OS.get_environment("DICE_BOARD_VIEW").strip_edges().to_lower()
+	if debug_override in [TourismMapViewScript.VIEW_MODE_CLASSIC, TourismMapViewScript.VIEW_MODE_TOURISM]:
+		return debug_override
+	return GameState.normalized_board_view_mode(GameState.board_view_mode)
+
+func _can_switch_board_view() -> bool:
+	return is_instance_valid(board_view) and not moving and not rolling_dice and not modal_open and event_state == &"IDLE"
+
+func _set_board_view_mode(mode: String) -> bool:
+	if not _can_switch_board_view():
+		return false
+	var normalized := TourismMapViewScript.normalized_view_mode(mode)
+	var wants_tourism := normalized == TourismMapViewScript.VIEW_MODE_TOURISM
+	if (wants_tourism and board_view is TourismMapView) or (not wants_tourism and not (board_view is TourismMapView)):
+		board_view_mode = normalized
+		GameState.board_view_mode = normalized
+		return true
+	var parent := board_view.get_parent()
+	if parent == null:
+		return false
+	var child_index := board_view.get_index()
+	var previous := board_view
+	var replacement := _new_board_view(normalized)
+	replacement.custom_minimum_size = previous.custom_minimum_size
+	replacement.size_flags_horizontal = previous.size_flags_horizontal
+	replacement.size_flags_vertical = previous.size_flags_vertical
+	replacement.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels)
+	if replacement is TourismMapView:
+		(replacement as TourismMapView).set_dice_count(GameState.current_dice_count)
+		(replacement as TourismMapView).set_flow_visual_level(GameState.flow_level)
+	parent.add_child(replacement)
+	parent.move_child(replacement, child_index)
+	parent.remove_child(previous)
+	previous.queue_free()
+	board_view = replacement
+	_sync_board_route_context()
+	board_view_mode = normalized
+	GameState.board_view_mode = normalized
+	return true
+
+func _sync_board_route_context() -> void:
+	var definition := BoardModelScript.route_definition(GameState.current_route_id)
+	for route_view: BoardView in [board_view, minimap_view]:
+		if not is_instance_valid(route_view):
+			continue
+		route_view.set_route_context(GameState.current_route_id, int(definition.tile_count), definition.get("tiles", []))
+		route_view.set_route_flow_level(GameState.flow_level)
+		route_view.set_bypass_revealed_tiles(GameState.bypass_revealed_tiles)
+		route_view.set_current_tile(GameState.current_tile_index)
+
+func _debug_set_board_view_mode(mode: String) -> void:
+	if _set_board_view_mode(mode):
+		SaveManager.save_now()
+
+func _debug_set_route(route_id: String, tile_index: int) -> void:
+	GameState.clear_roll_transaction()
+	GameState.set_route_position(route_id, tile_index)
+	SaveManager.save_now()
+	show_game()
+
+func _debug_set_bypass_reveals(mode: String) -> void:
+	match mode:
+		"all": GameState.bypass_revealed_tiles.assign(range(1, BoardModelScript.route_tile_count(BoardModelScript.ROUTE_BYPASS_CARAVAN) - 1))
+		"current":
+			if GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN and GameState.current_tile_index > 0 and GameState.current_tile_index < BoardModelScript.route_tile_count(BoardModelScript.ROUTE_BYPASS_CARAVAN) - 1 and GameState.current_tile_index not in GameState.bypass_revealed_tiles:
+				GameState.bypass_revealed_tiles.append(GameState.current_tile_index)
+				GameState.bypass_revealed_tiles.sort()
+		_: GameState.bypass_revealed_tiles.clear()
+	_sync_board_route_context()
+	SaveManager.save_now()
+
+func _debug_create_route_interruption() -> void:
+	if not GameState.roll_transaction.is_empty():
+		return
+	var distance := 4
+	var route_move := BoardModelScript.advance_route(GameState.current_route_id, GameState.current_tile_index, distance)
+	GameState.begin_roll_transaction([], 1, GameState.current_tile_index)
+	GameState.commit_roll_result([4], 1, DiceLogicScript.evaluate_current([4], 1), distance, int(route_move.tile_index), int(route_move.laps), false, str(route_move.route_id), route_move.path, int(route_move.maze_loops))
+	SaveManager.save_now()
+	_show_message("ROUTE-01", "RESULT_COMMITTEDを保存しました。再起動または『ROUTE復帰実行』で同じ移動を再開できます。")
+
+func _qa_route_01() -> void:
+	var backup := GameState.to_dictionary()
+	var checks: Array[bool] = []
+	# Simulate a process restart from a committed bypass movement. The first
+	# step rejoins main at 58 and the remaining step must still reach 59.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 9); show_game()
+	var bypass_move := BoardModelScript.advance_route(GameState.current_route_id, GameState.current_tile_index, 2)
+	GameState.begin_roll_transaction([], 1, GameState.current_tile_index)
+	GameState.commit_roll_result([2], 1, DiceLogicScript.evaluate_current([2], 1), 2, int(bypass_move.tile_index), int(bypass_move.laps), false, str(bypass_move.route_id), bypass_move.path, int(bypass_move.maze_loops))
+	GameState.apply_dictionary(GameState.to_dictionary())
+	await _continue_roll_transaction()
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 59 and GameState.rolls_used == 1 and GameState.roll_transaction.is_empty())
+	# A ten-step interrupted maze move crosses its gate twice, but creates no
+	# main lap and never exits the closed topology.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 6); show_game()
+	var maze_move := BoardModelScript.advance_route(GameState.current_route_id, GameState.current_tile_index, 10)
+	GameState.begin_roll_transaction([], 2, GameState.current_tile_index)
+	GameState.commit_roll_result([4, 6], 2, DiceLogicScript.evaluate_current([4, 6], 2), 10, int(maze_move.tile_index), int(maze_move.laps), false, str(maze_move.route_id), maze_move.path, int(maze_move.maze_loops))
+	GameState.apply_dictionary(GameState.to_dictionary())
+	await _continue_roll_transaction()
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and GameState.current_tile_index == 0 and GameState.maze_loop_count == 2 and GameState.lap_count == 0 and GameState.roll_transaction.is_empty())
+	var boundary := BoardModelScript.advance_route(BoardModelScript.ROUTE_MAIN, 89, 2)
+	checks.append(str(boundary.route_id) == BoardModelScript.ROUTE_MAIN and int(boundary.tile_index) == 1 and int(boundary.laps) == 1)
+	checks.append(_set_board_view_mode("classic") and _set_board_view_mode("tourism"))
+	GameState.apply_dictionary(backup); SaveManager.save_now()
+	print("QA_ROUTE_01 bypass_resume=%s maze_resume=%s main_boundary=%s views=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks.all(func(value: bool) -> bool: return value)])
+
+func _qa_press_toggle(button_name: String) -> void:
+	var deadline := Time.get_ticks_msec() + 5000
+	while find_children(button_name, "Button", true, false).is_empty() and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	var buttons := find_children(button_name, "Button", true, false)
+	if not buttons.is_empty():
+		(buttons[0] as Button).button_pressed = true
+
+func _qa_route_02() -> void:
+	var backup := GameState.to_dictionary().duplicate(true)
+	var checks: Array[bool] = []
+	# Interrupt at the fork with three steps left, then choose the bypass. Tile
+	# four is a back-three hazard, so the effective harm should land at tile one.
+	GameState.reset_run(); GameState.bypass_use_count = 0; GameState.bypass_no_damage_count = 0; GameState.bypass_best_roll_count = 0; GameState.bypass_clean_losses = 0; GameState.set_route_position(BoardModelScript.ROUTE_MAIN, 30); GameState.current_dice_count = 1; show_game()
+	call_deferred("_qa_press_toggle", "route_choice_bypass")
+	await _resolve_roll([5])
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN and GameState.current_tile_index == 0 and GameState.rolls_used == 1 and GameState.bypass_use_count == 1 and not GameState.current_lap_clean and GameState.bypass_clean_losses == 1 and GameState.roll_transaction.is_empty())
+	# Exact-stop selection commits the next route without consuming another
+	# step or firing bypass tile zero's hazard.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_MAIN, 31); GameState.coins = 12; show_game()
+	call_deferred("_qa_press_toggle", "route_choice_bypass")
+	await _resolve_roll([1])
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN and GameState.current_tile_index == 0 and GameState.coins == 12 and GameState.current_lap_clean and GameState.rolls_used == 1)
+	# A saved result at the end of the bypass rejoins main and keeps all
+	# remaining movement without creating a lap.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 8); GameState.bypass_entry_committed = true; GameState.bypass_rolls_this_visit = 1; show_game()
+	var exit_move := BoardModelScript.advance_route(GameState.current_route_id, GameState.current_tile_index, 4)
+	GameState.begin_roll_transaction([], 1, GameState.current_tile_index)
+	GameState.commit_roll_result([4], 1, DiceLogicScript.evaluate_current([4], 1), 4, int(exit_move.tile_index), int(exit_move.laps), false, str(exit_move.route_id), exit_move.path, int(exit_move.maze_loops))
+	GameState.apply_dictionary(GameState.to_dictionary())
+	await _continue_roll_transaction()
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 60 and GameState.lap_count == 0 and GameState.bypass_exit_committed and GameState.bypass_no_damage_count == 1)
+	# Guards are consumed only by real harm. A zero-coin no-op keeps both CLEAN
+	# and the guard; a real loss consumes the guard but still keeps CLEAN.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0); GameState.coins = 0; GameState.even_guard_active = true; show_game()
+	var noop_memo := _apply_bypass_hazard(false)
+	var noop_ok := GameState.current_lap_clean and GameState.even_guard_active and noop_memo.contains("影響なし")
+	GameState.coins = 20
+	var guard_memo := _apply_bypass_hazard(false)
+	checks.append(noop_ok and GameState.coins == 20 and GameState.current_lap_clean and not GameState.even_guard_active and guard_memo.contains("完全防御"))
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 4); GameState.coins = 12; GameState.debug_fixed_extra_rolls.assign([2, 2, 5]); show_game()
+	call_deferred("_qa_press_toggle", "bypass_gamble_dash")
+	var gamble_memo := await _show_bypass_gamble()
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN and GameState.current_tile_index == 7 and GameState.coins == 18 and gamble_memo.begins_with("PAIR"))
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 2); GameState.current_dice_count = 3; GameState.dice_keep_active = true; show_game()
+	var strong_memo := _apply_bypass_hazard(true)
+	checks.append(GameState.current_dice_count == 1 and not GameState.dice_keep_active and not GameState.current_lap_clean and GameState.flow_level == 0 and strong_memo.contains("荷崩れ"))
+	var passed := checks.all(func(value: bool) -> bool: return value)
+	print("QA_ROUTE_02 branch=%s exact_stop=%s exit=%s clean_guard=%s gamble=%s strong=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks[4], checks[5], passed])
+	GameState.apply_dictionary(backup); SaveManager.save_now()
+	get_tree().quit(0 if passed else 1)
+
+func _qa_route_03() -> void:
+	var backup := GameState.to_dictionary().duplicate(true)
+	var checks: Array[bool] = []
+	var definition := BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE)
+
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_MAIN, BoardModelScript.ROYAL_MAZE_SOURCE_TILE)
+	var entered := GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, int(definition.return_tile))
+	checks.append(entered and GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and GameState.current_tile_index == 4 and GameState.loop_return_tile_index == 26)
+
+	var pass_gate := BoardModelScript.advance_route(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 7, 2)
+	var ten_loops := BoardModelScript.advance_route(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 4, 80)
+	checks.append(str(pass_gate.route_id) == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and int(pass_gate.tile_index) == 1 and int(pass_gate.maze_loops) == 1)
+	checks.append(str(ten_loops.route_id) == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and int(ten_loops.tile_index) == 4 and int(ten_loops.maze_loops) == 10)
+
+	GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 7)
+	checks.append(not GameState.commit_royal_maze_exit())
+	GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 0)
+	var exited := GameState.commit_royal_maze_exit()
+	checks.append(exited and not GameState.commit_royal_maze_exit() and GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 26)
+
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_MAIN, BoardModelScript.ROYAL_MAZE_SOURCE_TILE); GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, 26); GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 7); show_game()
+	var exact_move := BoardModelScript.advance_route(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 7, 1)
+	GameState.begin_roll_transaction([], 1, 7)
+	GameState.commit_roll_result([1], 1, DiceLogicScript.evaluate_current([1], 1), 1, int(exact_move.tile_index), 0, false, BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, exact_move.path, int(exact_move.maze_loops))
+	await _continue_roll_transaction()
+	checks.append(GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 26 and GameState.roll_transaction.is_empty() and GameState.rolls_used == 1)
+
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_MAIN, BoardModelScript.ROYAL_MAZE_SOURCE_TILE); GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, 26)
+	var first_treasure := _claim_maze_treasure()
+	var second_treasure := _claim_maze_treasure()
+	var first_mural := _claim_maze_mural()
+	var bonus_before_repeat := GameState.current_lap_bonus
+	var repeat_mural := _claim_maze_mural()
+	checks.append(not first_treasure.contains("空") and second_treasure.contains("空") and first_mural.contains("新しい") and repeat_mural.contains("+10") and GameState.current_lap_bonus == bonus_before_repeat + 10)
+
+	GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 5); GameState.current_lap_clean = true
+	var strong_memo := _apply_maze_hazard(true)
+	var strong_back_ok := GameState.current_tile_index == 2 and not GameState.current_lap_clean
+	GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 1); GameState.current_lap_clean = true; GameState.even_guard_active = true; GameState.next_move_bonus = 0
+	var guard_memo := _apply_maze_hazard(false)
+	checks.append(strong_back_ok and GameState.current_tile_index == 1 and not GameState.even_guard_active and GameState.current_lap_clean and strong_memo.contains("逆さ砂時計") and guard_memo.contains("完全防御"))
+
+	GameState.set_route_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 6); GameState.maze_loop_count = 12; GameState.maze_treasure_claimed = true
+	var saved := SaveManager.save_now()
+	GameState.set_route_position(BoardModelScript.ROUTE_MAIN, 0); GameState.maze_loop_count = 0; GameState.maze_treasure_claimed = false
+	var restored := SaveManager.load_now()
+	checks.append(saved and restored and GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and GameState.current_tile_index == 6 and GameState.maze_loop_count == 12 and GameState.maze_treasure_claimed)
+
+	GameState.board_view_mode = "tourism"
+	show_game()
+	var tourism_ok := board_view is TourismMapView and _set_board_view_mode("classic") and board_view is BoardView and not (board_view is TourismMapView)
+	var classic_ok := _set_board_view_mode("tourism") and board_view is TourismMapView
+	checks.append(tourism_ok and classic_ok)
+
+	var passed := checks.all(func(value: bool) -> bool: return value)
+	print("QA_ROUTE_03 entry=%s pass_gate=%s ten_loops=%s non_gate=%s exact_exit=%s transaction_exit=%s rewards=%s hazards=%s save=%s views=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks[4], checks[5], checks[6], checks[7], checks[8], checks[9], passed])
+	GameState.apply_dictionary(backup); SaveManager.save_now()
+	get_tree().quit(0 if passed else 1)
+
+func _qa_popup_book() -> void:
+	var backup := GameState.to_dictionary().duplicate(true)
+	var checks: Array[bool] = []
+	GameState.reset_run()
+	GameState.set_route_position(BoardModelScript.ROUTE_MAIN, BoardModelScript.ROYAL_MAZE_SOURCE_TILE)
+	var definition := BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE)
+	var entered := GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, int(definition.return_tile))
+	SaveManager.save_now()
+	show_game()
+	checks.append(entered and GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and GameState.current_tile_index == int(definition.entry_tile))
+
+	# Start without awaiting so QA can exercise the same tap-to-skip path as the
+	# production overlay while the durable route state remains unchanged.
+	_play_royal_maze_entry_transition()
+	await get_tree().process_frame
+	var transition := find_child("RoyalMazePopupBookTransition", true, false)
+	checks.append(modal_open and is_instance_valid(transition))
+	if is_instance_valid(transition):
+		transition.request_skip()
+	while modal_open:
+		await get_tree().process_frame
+	await get_tree().process_frame
+	var skipped_final_state := {
+		"route_id": GameState.current_route_id,
+		"tile_index": GameState.current_tile_index,
+		"overlay_removed": find_child("RoyalMazePopupBookTransition", true, false) == null,
+		"input_unlocked": not modal_open,
+	}
+	checks.append(skipped_final_state.overlay_removed and skipped_final_state.input_unlocked)
+	var completed_receipt := await _play_royal_maze_entry_transition(0.04)
+	await get_tree().process_frame
+	var completed_final_state := {
+		"route_id": GameState.current_route_id,
+		"tile_index": GameState.current_tile_index,
+		"overlay_removed": find_child("RoyalMazePopupBookTransition", true, false) == null,
+		"input_unlocked": not modal_open,
+	}
+	checks.append(bool(completed_receipt.get("completed", false)) and not bool(completed_receipt.get("skipped", true)) and completed_final_state == skipped_final_state)
+
+	# Resume policy: a saved maze state opens the normal maze screen directly;
+	# a presentation phase is intentionally not part of the save schema.
+	var restored := SaveManager.load_now()
+	show_game()
+	checks.append(restored and GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and find_child("RoyalMazePopupBookTransition", true, false) == null and not modal_open)
+	var passed := checks.all(func(value: bool) -> bool: return value)
+	print("QA_POPUP_BOOK durable=%s overlay=%s skip=%s complete_match=%s resume=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks[4], passed])
+	GameState.apply_dictionary(backup); SaveManager.save_now()
+	get_tree().quit(0 if passed else 1)
+
+func _qa_popup_book_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.set_route_position(BoardModelScript.ROUTE_MAIN, BoardModelScript.ROYAL_MAZE_SOURCE_TILE)
+	GameState.commit_royal_maze_entry(BoardModelScript.ROUTE_MAIN, int(BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE).return_tile))
+	show_game()
+	var layer := CanvasLayer.new()
+	layer.layer = 20
+	add_child(layer)
+	var transition := PopupBookTransitionScript.new()
+	layer.add_child(transition)
+	transition.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var preview_progress: float = float({"opening": 0.28, "rising": 0.62, "complete": 1.0}.get(kind, 0.62))
+	transition.set_preview_progress(preview_progress)
+	for ignored: int in range(10):
+		await get_tree().process_frame
+	var result := _save_opaque_capture(path)
+	var image := Image.load_from_file(path)
+	var correct_size := image != null and image.get_size() == Vector2i(360, 640)
+	print("QA_POPUP_BOOK_CAPTURE kind=%s progress=%.2f size=%s path=%s result=%s" % [kind, preview_progress, correct_size, path, result])
+	get_tree().quit(0 if result == OK and correct_size else 1)
+
+func _qa_caravan_secret() -> void:
+	var backup := GameState.to_dictionary().duplicate(true)
+	var checks: Array[bool] = []
+	GameState.reset_run()
+	checks.append(GameState.bypass_revealed_tiles.is_empty() and GameState.is_bypass_tile_revealed(0) and GameState.is_bypass_tile_revealed(9) and not GameState.is_bypass_tile_revealed(1))
+	checks.append(BoardViewScript.bypass_display_type(1, 10, &"RISK", []) == &"SECRET" and BoardViewScript.bypass_display_type(1, 10, &"STRONG_RISK", []) == &"SECRET" and BoardViewScript.bypass_display_type(7, 10, &"COIN", []) == &"SECRET")
+
+	# Three traversed spaces stay hidden; only the final stop is revealed before
+	# tile three's back-three hazard resolves.
+	GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0); show_game()
+	var pass_move := BoardModelScript.advance_route(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0, 3)
+	GameState.begin_roll_transaction([], 3, 0)
+	GameState.commit_roll_result([1, 1, 1], 3, {}, 3, int(pass_move.tile_index), 0, false, str(pass_move.route_id), pass_move.path, 0)
+	await _continue_roll_transaction()
+	checks.append(GameState.bypass_revealed_tiles == [3] and not GameState.is_bypass_tile_revealed(1) and not GameState.is_bypass_tile_revealed(2) and GameState.current_tile_index == 0 and GameState.current_lap_penalty_count == 1)
+	var persisted := SaveManager.save_now(); GameState.bypass_revealed_tiles.clear(); var restored := SaveManager.load_now()
+	checks.append(persisted and restored and GameState.bypass_revealed_tiles == [3])
+	GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0)
+	checks.append(GameState.bypass_revealed_tiles == [3])
+
+	# Simulate termination after reveal persistence but before the hazard. Resume
+	# must apply one penalty and never reveal a passed tile.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0); GameState.next_move_bonus = 0
+	var interrupted_move := BoardModelScript.advance_route(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0, 1)
+	GameState.begin_roll_transaction([], 1, 0)
+	GameState.commit_roll_result([1], 1, DiceLogicScript.evaluate_current([1], 1), 1, 1, 0, false, BoardModelScript.ROUTE_BYPASS_CARAVAN, interrupted_move.path, 0)
+	GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 1); GameState.commit_roll_movement(1, BoardModelScript.ROUTE_BYPASS_CARAVAN)
+	var interrupted_reveal := GameState.commit_bypass_tile_reveal(1); SaveManager.save_now(); GameState.apply_dictionary(GameState.to_dictionary()); show_game()
+	await _resume_roll_transaction()
+	checks.append(interrupted_reveal.newly_revealed and GameState.bypass_revealed_tiles == [1] and GameState.next_move_bonus == -2 and GameState.current_lap_penalty_count == 1 and GameState.roll_transaction.is_empty())
+
+	# Coin landing is revealed and awarded once. Reloading the resolved turn does
+	# not add another coin receipt.
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 6); GameState.coins = 12; show_game()
+	var coin_move := BoardModelScript.advance_route(BoardModelScript.ROUTE_BYPASS_CARAVAN, 6, 1)
+	GameState.begin_roll_transaction([], 1, 6)
+	GameState.commit_roll_result([1], 1, DiceLogicScript.evaluate_current([1], 1), 1, 7, 0, false, BoardModelScript.ROUTE_BYPASS_CARAVAN, coin_move.path, 0)
+	await _continue_roll_transaction()
+	var coin_saved := SaveManager.save_now(); var coins_after := GameState.coins; SaveManager.load_now()
+	checks.append(coin_saved and GameState.bypass_revealed_tiles == [7] and coins_after == 18 and GameState.coins == 18)
+
+	var dice_paths_ok := true
+	for dice_count: int in [1, 2, 3, 5]:
+		var distance := dice_count
+		var move := BoardModelScript.advance_route(BoardModelScript.ROUTE_BYPASS_CARAVAN, 0, distance)
+		dice_paths_ok = dice_paths_ok and (move.path as Array).size() == distance and int(move.tile_index) == distance
+	checks.append(dice_paths_ok)
+
+	GameState.reset_run(); GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 4); show_game()
+	var views_ok := _set_board_view_mode("classic") and _set_board_view_mode("tourism")
+	checks.append(views_ok and BoardModelScript.tile_type_for_position(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 2) == &"TREASURE")
+	var exit_move := BoardModelScript.advance_route(BoardModelScript.ROUTE_BYPASS_CARAVAN, 8, 2)
+	checks.append(str(exit_move.route_id) == BoardModelScript.ROUTE_MAIN and int(exit_move.tile_index) == 58)
+
+	var passed := checks.all(func(value: bool) -> bool: return value)
+	print("QA_CARAVAN_SECRET new=%s hidden=%s stop_only=%s save=%s reentry=%s interrupt=%s coin=%s dice=%s views_maze=%s exit=%s passed=%s" % [checks[0], checks[1], checks[2], checks[3], checks[4], checks[5], checks[6], checks[7], checks[8], checks[9], passed])
+	GameState.apply_dictionary(backup); SaveManager.save_now()
+	get_tree().quit(0 if passed else 1)
+
+func _qa_caravan_secret_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.board_view_mode = "tourism"
+	GameState.set_route_position(BoardModelScript.ROUTE_BYPASS_CARAVAN, 4 if kind == "revealed" else 3)
+	if kind == "revealing":
+		GameState.bypass_revealed_tiles.assign([3])
+	elif kind == "revealed":
+		GameState.bypass_revealed_tiles.assign([3, 4])
+	show_game()
+	if kind == "revealing" and is_instance_valid(board_view):
+		board_view.set_bypass_reveal_progress(3, 0.48)
+	for ignored: int in range(12): await get_tree().process_frame
+	await get_tree().create_timer(0.18).timeout
+	var result := _save_opaque_capture(path)
+	print("QA_CARAVAN_SECRET_CAPTURE kind=%s path=%s result=%s" % [kind, path, result])
+	get_tree().quit(0 if result == OK else 1)
+
+func _debug_play_dice_audio(category: String) -> void:
+	if not is_instance_valid(dice_audio): return
+	match category:
+		"launch": dice_audio.begin_roll(1)
+		"roll": dice_audio.play_roll(1.0)
+		"contact": dice_audio.play_contact(0.6)
+		"land": dice_audio.play_land(Time.get_ticks_msec(), 0.72)
+		"lock": dice_audio.play_lock()
+
+func _debug_toggle_dice_audio() -> void:
+	GameState.dice_se_muted = not GameState.dice_se_muted
+	if is_instance_valid(dice_audio): dice_audio.set_muted(GameState.dice_se_muted)
+	SaveManager.save_now()
+
+func _debug_audio_twenty(count: int) -> void:
+	if not is_instance_valid(dice_audio): return
+	for roll_index: int in range(20):
+		dice_audio.begin_roll(count)
+		for pulse: int in range(3):
+			dice_audio.play_roll(1.0 - float(pulse) * 0.3)
+			if pulse == 1: dice_audio.play_contact(0.5)
+			await get_tree().create_timer(0.055).timeout
+		for die_index: int in range(count): dice_audio.play_land(die_index, 0.62)
+		await get_tree().create_timer(0.16).timeout
+		dice_audio.end_roll()
 
 func _debug_set_boss_gauge(value: int) -> void:
 	GameState.ensure_boss_data()
@@ -1273,34 +2801,19 @@ func _qa_five_dice() -> void:
 	GameState.current_boss = BossSystemScript.initial_individual(1)
 	show_game()
 	_set_mode(5)
-	GameState.fixed_rolls.assign([6, 6, 6, 1, 2])
-	var before_rolls := GameState.rolls_used
-	_on_roll_pressed()
-	while rolling_dice:
-		await get_tree().process_frame
+	# Tourism's map-dice overlay needs one layout frame before its launch rect
+	# is valid in the headless smoke test.
 	await get_tree().process_frame
+	GameState.fixed_rolls.assign([4, 5, 6, 1, 2])
+	var before_rolls := GameState.rolls_used
+	await _on_roll_pressed()
 	var selected_values: Array[int] = []
 	for index: int in selected_indices:
 		selected_values.append(dice_values[index])
-	var selection_ok := selected_values == [6, 6, 6]
-	_confirm_five()
-	# TRIPLE now correctly opens the production encounter modal on any landing tile.
-	# Drive that interaction so this M0-M2 regression can still finish under M3.
-	while moving and not modal_open:
-		await get_tree().process_frame
-	if modal_open:
-		while find_children("boss_action_0", "Button", true, false).is_empty():
-			await get_tree().process_frame
-		var action: Button = find_children("boss_action_0", "Button", true, false)[0]
-		action.button_pressed = true
-		while find_children("return_to_trip", "Button", true, false).is_empty():
-			await get_tree().process_frame
-		var return_button: Button = find_children("return_to_trip", "Button", true, false)[0]
-		return_button.pressed.emit()
-	while moving or rolling_dice:
-		await get_tree().process_frame
-	var passed := selection_ok and GameState.current_tile_index == 18 and GameState.rolls_used == before_rolls + 1
-	print("QA_FIVE_DICE selected=%s tile=%d rolls_delta=%d passed=%s" % [selected_values, GameState.current_tile_index, GameState.rolls_used - before_rolls, passed])
+	var selection_ok := selected_values == [4, 5, 6]
+	await _confirm_five()
+	var passed := selection_ok and GameState.current_route_id == BoardModelScript.ROUTE_MAIN and GameState.current_tile_index == 15 and GameState.rolls_used == before_rolls + 1
+	print("QA_FIVE_DICE selected=%s route=%s tile=%d rolls_delta=%d passed=%s" % [selected_values, GameState.current_route_id, GameState.current_tile_index, GameState.rolls_used - before_rolls, passed])
 	if not passed:
 		push_error("Five-dice interaction smoke test failed.")
 	get_tree().quit(0 if passed else 1)
@@ -1611,6 +3124,109 @@ func _qa_extra_dice_controls() -> void:
 	if not passed: push_error("Extra dice stop controls QA failed.")
 	get_tree().quit(0 if passed else 1)
 
+func _qa_dice_audio() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	GameState.reset_run(); GameState.master_volume = 1.0; GameState.se_volume = 1.0; GameState.dice_se_muted = false; show_game()
+	var pool_before := int(dice_audio.receipt().pool_size)
+	dice_audio.begin_roll(5)
+	dice_audio.play_launch() # Must not duplicate the begin-roll launch.
+	for pulse: int in range(8):
+		dice_audio.play_roll(1.0 - float(pulse) / 9.0)
+		await get_tree().create_timer(0.082).timeout
+	for contact_index: int in range(10): dice_audio.play_contact(0.5)
+	for die_index: int in range(5): dice_audio.play_land(die_index, 0.64)
+	for die_index: int in range(5): dice_audio.play_land(die_index, 0.64) # Duplicate locks are ignored.
+	await get_tree().create_timer(0.28).timeout
+	dice_audio.end_roll()
+	var mixed: Dictionary = dice_audio.receipt()
+	var counts: Dictionary = mixed.play_counts
+	var physical_counts_ok := int(counts.launch) == 1 and int(counts.roll) > 0 and int(counts.roll) <= 8 and int(counts.contact) > 0 and int(counts.contact) <= 4 and int(mixed.contacts_this_roll) == 4 and int(counts.land) == 5 and int(counts.lock) > 0 and int(counts.lock) <= 5
+	var bounded := int(mixed.pool_size) == DiceAudioControllerScript.PLAYER_POOL_SIZE and int(mixed.rolling_pool) == 2 and int(mixed.contact_pool) == 2 and int(mixed.landing_pool) == 3
+	var before_mute := counts.duplicate(true)
+	dice_audio.set_muted(true); dice_audio.begin_roll(3); dice_audio.play_roll(1.0); dice_audio.play_contact(); dice_audio.play_land(0); await get_tree().process_frame
+	var mute_ok: bool = dice_audio.receipt().play_counts == before_mute and int(dice_audio.active_voice_count()) == 0
+	dice_audio.set_muted(false)
+	for roll_index: int in range(100): dice_audio.begin_roll(1); dice_audio.end_roll()
+	var pool_stable := int(dice_audio.receipt().pool_size) == pool_before
+	GameState.master_volume = 0.75; GameState.se_volume = 0.35; GameState.dice_se_muted = true
+	var settings := GameState.to_dictionary(); GameState.master_volume = 1.0; GameState.se_volume = 1.0; GameState.dice_se_muted = false; GameState.apply_dictionary(settings)
+	var settings_ok := is_equal_approx(GameState.master_volume, 0.75) and is_equal_approx(GameState.se_volume, 0.35) and GameState.dice_se_muted
+	var passed: bool = physical_counts_ok and bounded and mute_ok and pool_stable and settings_ok
+	print("QA_DICE_AUDIO launch=%d roll=%d contact=%d land=%d lock=%d pool=%d mute=%s stable=%s settings=%s passed=%s" % [int(counts.launch), int(counts.roll), int(counts.contact), int(counts.land), int(counts.lock), int(mixed.pool_size), mute_ok, pool_stable, settings_ok, passed])
+	dice_audio.stop_all(); await get_tree().create_timer(0.08).timeout
+	GameState.apply_dictionary(original); SaveManager.save_now()
+	if not passed: push_error("Dice audio QA failed.")
+
+func _qa_ui_audio() -> void:
+	await get_tree().process_frame
+	show_stage_select()
+	await get_tree().process_frame
+	var city_buttons := find_children("city_cairo", "Button", true, false)
+	var city_connected := not city_buttons.is_empty() and (city_buttons[0] as Button).pressed.get_connections().size() >= 2
+	_play_ui_click(true)
+	var confirm_ok := is_instance_valid(ui_audio_player) and ui_audio_player.stream == UI_CONFIRM_STREAM
+	_play_ui_click(false)
+	var click_ok := is_instance_valid(ui_audio_player) and ui_audio_player.stream == UI_CLICK_STREAM
+	var player_id := ui_audio_player.get_instance_id()
+	show_character_select()
+	await get_tree().process_frame
+	var survives_transition := is_instance_valid(ui_audio_player) and ui_audio_player.get_instance_id() == player_id and get_node_or_null("UIAudioPlayer") == ui_audio_player
+	var passed := city_connected and confirm_ok and click_ok and survives_transition
+	print("QA_UI_AUDIO city_connected=%s confirm=%s click=%s survives=%s passed=%s" % [city_connected, confirm_ok, click_ok, survives_transition, passed])
+	if not passed: push_error("UI audio QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_android_ui() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	var samples: Array[String] = [
+		"砂時計のカイロ", "眠そうなスフィンクスがいる",
+		"サイコロをそろえて、世界をめぐる。", "旅人を選ぶ",
+		"香辛料市場通り", "PAIR／STRAIGHT／TRIPLE", "1234567890！？・◇●",
+	]
+	var coverage_ok := true
+	for sample: String in samples:
+		for index: int in range(sample.length()):
+			coverage_ok = coverage_ok and APP_FONT.has_char(sample.unicode_at(index))
+	var theme_ok := theme != null and theme.default_font == APP_FONT \
+		and theme.get_font("font", "Label") == APP_FONT \
+		and theme.get_font("font", "Button") == APP_FONT \
+		and theme.get_font("normal_font", "RichTextLabel") == APP_FONT \
+		and theme.get_constant("outline_size", "Label") == 0 \
+		and theme.get_constant("outline_size", "Button") == 0
+	show_font_qa()
+	await get_tree().process_frame
+	var controls_ok := true
+	for control: Node in find_children("*", "Control", true, false):
+		if control is Label or control is Button:
+			controls_ok = controls_ok and (control as Control).get_theme_font("font") == APP_FONT
+		elif control is RichTextLabel:
+			controls_ok = controls_ok and (control as Control).get_theme_font("normal_font", "RichTextLabel") == APP_FONT
+	var legacy := original.duplicate(true)
+	legacy.erase("board_view_mode")
+	GameState.apply_dictionary(legacy)
+	show_game()
+	var legacy_tourism := GameState.board_view_mode == "tourism" and board_view is TourismMapView
+	var explicit_classic := original.duplicate(true)
+	explicit_classic["board_view_mode"] = "classic"
+	GameState.apply_dictionary(explicit_classic)
+	show_game()
+	var classic_loaded := GameState.board_view_mode == "classic" and not (board_view is TourismMapView)
+	GameState.start_new_game()
+	show_game()
+	var classic_after_new_trip := GameState.board_view_mode == "classic" and not (board_view is TourismMapView)
+	GameState.selected_character_id = &"photographer"
+	show_game()
+	var classic_after_character := GameState.board_view_mode == "classic" and not (board_view is TourismMapView)
+	GameState.board_view_mode = "tourism"
+	show_game()
+	var tourism_restored := board_view is TourismMapView
+	var passed := coverage_ok and theme_ok and controls_ok and legacy_tourism and classic_loaded and classic_after_new_trip and classic_after_character and tourism_restored
+	print("QA_ANDROID_UI font=%s theme=%s controls=%s legacy_tourism=%s classic_load=%s new_trip=%s character=%s tourism=%s passed=%s" % [coverage_ok, theme_ok, controls_ok, legacy_tourism, classic_loaded, classic_after_new_trip, classic_after_character, tourism_restored, passed])
+	GameState.apply_dictionary(original)
+	SaveManager.save_now()
+	if not passed: push_error("ANDROID-UI-01 QA failed.")
+	get_tree().quit(0 if passed else 1)
+
 func _qa_progression_capture(kind: String, path: String) -> void:
 	GameState.reset_run()
 	GameState.current_dice_count = 1 if kind == "one" else (2 if kind == "two" else 3)
@@ -1721,10 +3337,10 @@ func _qa_dice_capture(kind: String, path: String) -> void:
 	get_tree().quit(0 if result == OK else 1)
 
 func _qa_risk_space(kind: String) -> void:
-	GameState.reset_run(); GameState.current_dice_count = 2; GameState.current_tile_index = 58; show_game()
+	GameState.reset_run(); GameState.applied_resolution_ids.clear(); GameState.current_dice_count = 2; GameState.current_tile_index = 58; GameState.flow_level = 3; show_game()
 	var before_count := GameState.current_dice_count
 	var before_coins := GameState.coins
-	if kind == "challenge": GameState.debug_fixed_extra_rolls.assign([1, 2, 6])
+	if kind == "challenge": GameState.debug_fixed_extra_rolls.assign([1, 3, 5])
 	_show_risk_space_modal()
 	var button_name := "risk_challenge" if kind == "challenge" else "risk_safe"
 	while find_children(button_name, "Button", true, false).is_empty(): await get_tree().process_frame
@@ -1735,11 +3351,602 @@ func _qa_risk_space(kind: String) -> void:
 	(find_children("risk_close", "Button", true, false)[0] as Button).pressed.emit()
 	while modal_open: await get_tree().process_frame
 	var passed := count_before_close >= before_count
-	if kind == "safe": passed = passed and count_before_close == 3
-	else: passed = passed and count_before_close == 2 and coins_before_close == before_coins + 5
-	print("QA_RISK kind=%s before=%d after=%d coins_delta=%d modal_closed=%s passed=%s" % [kind, before_count, count_before_close, coins_before_close - before_coins, not modal_open, passed])
+	if kind == "safe": passed = passed and count_before_close == 2 and GameState.current_tile_index == 55 and not GameState.current_lap_clean and GameState.current_lap_penalty_count == 1
+	else: passed = passed and count_before_close == 2 and coins_before_close == before_coins + 30 and GameState.current_lap_clean and GameState.flow_level == 3
+	print("QA_RISK kind=%s before=%d after=%d coins_delta=%d clean=%s tile=%d modal_closed=%s passed=%s" % [kind, before_count, count_before_close, coins_before_close - before_coins, GameState.current_lap_clean, GameState.current_tile_index, not modal_open, passed])
 	if not passed: push_error("Risk-space QA failed.")
 	get_tree().quit(0 if passed else 1)
+
+func _qa_tourmap() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	GameState.reset_run()
+	GameState.current_tile_index = 89
+	GameState.current_dice_count = 2
+	GameState.landmark_levels = {"CAI_LANDMARK_01": 3, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	show_game()
+	var classic_ok: bool = _set_board_view_mode("classic") and not (board_view is TourismMapView)
+	var minimap_ok: bool = minimap_view.get_script() == BoardViewScript and minimap_view.is_minimap
+	var tourism_ok: bool = _set_board_view_mode("tourism") and board_view is TourismMapView
+	var wrapped_indices: Array[int] = TourismMapViewScript.neighborhood_indices(board_view.current_tile)
+	var wrap_ok: bool = wrapped_indices == [86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+	var scenic_ok: bool = board_view.scenic_level == 3 and board_view.scenic_texture != null
+	var input_ok: bool = board_view.mouse_filter == Control.MOUSE_FILTER_IGNORE
+	var district_flow_repeat_ok := false
+	if board_view is TourismMapView:
+		var tourism_view := board_view as TourismMapView
+		var child_count_before := tourism_view.get_child_count()
+		var active_receipts_ok := true
+		for district_tile: int in [84, 43, 61, 25]:
+			tourism_view.set_current_tile(district_tile)
+			for cycle: int in range(20):
+				for level: int in [0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0]:
+					tourism_view.set_flow_visual_level(level)
+			var active_receipt := tourism_view.district_flow_receipt()
+			active_receipts_ok = active_receipts_ok and bool(active_receipt.get("supported", false)) and int(active_receipt.get("flow_level", -1)) == 0 and not bool(active_receipt.get("processing", true)) and int(active_receipt.get("visual_count", 0)) == 4 and int(active_receipt.get("coordinator_child_count", 0)) == 4
+		tourism_view.set_current_tile(0)
+		var hidden_receipt := tourism_view.district_flow_receipt()
+		district_flow_repeat_ok = active_receipts_ok and child_count_before == tourism_view.get_child_count() and not bool(hidden_receipt.get("supported", true)) and not bool(hidden_receipt.get("processing", true)) and not bool(hidden_receipt.get("visible", true))
+		tourism_view.set_current_tile(89)
+	moving = true
+	var blocked_while_moving: bool = not _set_board_view_mode("classic") and board_view is TourismMapView
+	moving = false
+	var fallback_ok: bool = _set_board_view_mode("not-a-mode") and not (board_view is TourismMapView) and board_view_mode == "classic"
+	var passed: bool = classic_ok and minimap_ok and tourism_ok and wrap_ok and scenic_ok and input_ok and district_flow_repeat_ok and blocked_while_moving and fallback_ok
+	print("QA_TOURMAP classic=%s tourism=%s minimap=%s wrap=%s scenic=%s input=%s district_flow_repeat=%s idle_guard=%s fallback=%s passed=%s" % [classic_ok, tourism_ok, minimap_ok, wrap_ok, scenic_ok, input_ok, district_flow_repeat_ok, blocked_while_moving, fallback_ok, passed])
+	GameState.apply_dictionary(original)
+	if not passed: push_error("TOURMAP deterministic QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_tourmap_die() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	GameState.reset_run()
+	GameState.current_dice_count = 1
+	GameState.current_tile_index = 89
+	show_game()
+	_set_board_view_mode("tourism")
+	var start_tile := GameState.current_tile_index
+	var values_valid := true
+	var early_stop_ok := false
+	qa_map_die_visible_stop_ok = false
+	for roll_index: int in range(20):
+		if roll_index == 0:
+			call_deferred("_qa_request_map_die_stop")
+		var values := await _animate_dice_roll(1)
+		values_valid = values_valid and values.size() == 1 and int(values[0]) in range(1, 7)
+		if roll_index == 0:
+			early_stop_ok = last_roll_early_stopped
+	var receipt: Dictionary = map_dice_overlay.receipt()
+	var bounded := int(receipt.presentation_nodes) == 1 and int(receipt.dice_pool_size) == 5 and int(receipt.launch_count) == 20 and int(receipt.completion_count) == 20
+	var idle := str(receipt.phase) == "TRAY_IDLE" and not map_dice_overlay.visible and dice_presentation.visible and not moving and not rolling_dice
+	var no_commit := GameState.current_tile_index == start_tile and GameState.rolls_used == 0
+	var audio_receipt: Dictionary = dice_audio.receipt()
+	var audio_bounded := int(audio_receipt.pool_size) == DiceAudioControllerScript.PLAYER_POOL_SIZE and int(audio_receipt.active_voices) == 0
+	var passed := values_valid and early_stop_ok and qa_map_die_visible_stop_ok and int(receipt.stop_request_count) == 1 and bounded and audio_bounded and idle and no_commit
+	print("QA_TOURMAP_DIE values=%s early=%s visible_stop=%s bounded=%s audio=%s idle=%s no_commit=%s receipt=%s passed=%s" % [values_valid, early_stop_ok, qa_map_die_visible_stop_ok, bounded, audio_bounded, idle, no_commit, receipt, passed])
+	GameState.apply_dictionary(original)
+	if not passed: push_error("TOURMAP-03A overlay QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_tourmap_multi_die() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	GameState.reset_run()
+	GameState.current_dice_count = 3
+	GameState.current_tile_index = 58
+	GameState.flow_level = 5
+	show_game()
+	_set_board_view_mode("tourism")
+	_sync_flow_visuals()
+	var counts: Array[int] = [2, 3, 5]
+	var valid := true
+	var idle := true
+	var receipts: Array[Dictionary] = []
+	for count: int in counts:
+		if count == 3:
+			fixed_targets = [6, 6, 6]
+		var values := await _animate_dice_roll(count)
+		var receipt: Dictionary = map_dice_overlay.receipt()
+		receipts.append(receipt)
+		valid = valid and values.size() == count and values.all(func(value: int) -> bool: return value >= 1 and value <= 6)
+		idle = idle and str(receipt.get("phase", "")) == "TRAY_IDLE" and int(receipt.get("active_billboards", 0)) == count and not map_dice_overlay.visible and not rolling_dice and not moving
+	var audio_receipt: Dictionary = dice_audio.receipt()
+	var audio_ok := int(audio_receipt.get("active_voices", 0)) == 0
+	var pooled := int(map_dice_overlay.receipt().get("billboard_pool_size", 0)) == MapDiceOverlayScript.MAX_DICE
+	var slot_seen := int(map_dice_overlay.receipt().get("slot_open_count", 0)) >= 1 and int(map_dice_overlay.receipt().get("slot_result_count", 0)) >= 1 and int(map_dice_overlay.receipt().get("slot_frame_count", 0)) == 3
+	var triple_seen := int(map_dice_overlay.receipt().get("triple_convergence_count", 0)) >= 1 and not bool(map_dice_overlay.receipt().get("triple_convergence_active", false))
+	var flow_visual_ok := int(map_dice_overlay.receipt().get("flow_visual_level", 0)) == 5 and board_view is TourismMapView and (board_view as TourismMapView).flow_visual_level == 5
+	var no_commit := GameState.rolls_used == 0 and GameState.current_tile_index == 58
+	var passed := valid and idle and audio_ok and pooled and slot_seen and triple_seen and flow_visual_ok and no_commit
+	print("QA_TOURMAP_MULTI_DIE values=%s idle=%s audio=%s pooled=%s slot=%s triple=%s flow=%s no_commit=%s receipts=%s passed=%s" % [valid, idle, audio_ok, pooled, slot_seen, triple_seen, flow_visual_ok, no_commit, receipts, passed])
+	GameState.apply_dictionary(original)
+	if not passed:
+		push_error("TOURMAP multi-die overlay QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_request_map_die_stop() -> void:
+	while is_instance_valid(map_dice_overlay) and map_dice_overlay.phase != MapDiceOverlay.Phase.ROLLING_ON_MAP:
+		await get_tree().process_frame
+	if is_instance_valid(map_dice_overlay):
+		map_dice_overlay.request_early_stop()
+		qa_map_die_visible_stop_ok = map_dice_overlay.phase == MapDiceOverlay.Phase.STOPPING and not map_dice_overlay.display.rolling
+		map_dice_overlay.request_early_stop()
+
+func _qa_tourmap_die_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.current_dice_count = 1
+	GameState.current_tile_index = 0
+	GameState.landmark_levels = {"CAI_LANDMARK_01": 3, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	show_game()
+	_set_board_view_mode("tourism")
+	for ignored: int in range(12):
+		await get_tree().process_frame
+	if kind in ["rolling", "result"]:
+		var map_rect := board_view.get_global_rect()
+		var tray_rect := _map_dice_tray_anchor_rect()
+		dice_presentation.visible = false
+		await map_dice_overlay.begin_launch([4], tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size))
+		map_dice_overlay.present([4], kind == "rolling", 0 if kind == "rolling" else 1)
+		# Freeze only the QA readback frame. The Compatibility renderer can return
+		# a partial backbuffer while a CanvasItem is changing during get_image().
+		if kind == "rolling":
+			map_dice_overlay.display.rolling = false
+			map_dice_overlay.display.set_process(false)
+			map_dice_overlay.presentation.set_process(false)
+		if kind == "result":
+			var destination := posmod(GameState.current_tile_index + 4, BoardModelScript.TILE_COUNT)
+			(board_view as TourismMapView).highlight_destination(destination, 4)
+			map_dice_overlay.begin_result_hold(4)
+	for ignored: int in range(8):
+		await get_tree().process_frame
+	await get_tree().create_timer(0.22).timeout
+	var result := ERR_CANT_CREATE
+	var capture_attempts := 0
+	for attempt: int in range(5):
+		capture_attempts = attempt + 1
+		result = _save_opaque_capture(path)
+		if result == OK and _capture_has_full_ui(path):
+			break
+		for ignored: int in range(6):
+			await get_tree().process_frame
+		await get_tree().create_timer(0.12).timeout
+	var capture_valid := result == OK and _capture_has_full_ui(path)
+	print("QA_TOURMAP_DIE_CAPTURE kind=%s phase=%s receipt=%s attempts=%d valid=%s path=%s result=%s" % [kind, MapDiceOverlay.Phase.keys()[map_dice_overlay.phase], map_dice_overlay.receipt(), capture_attempts, capture_valid, path, result])
+	get_tree().quit(0 if capture_valid else 1)
+
+func _capture_has_full_ui(path: String) -> bool:
+	var image := Image.load_from_file(path)
+	if image == null or image.get_size() != Vector2i(360, 640):
+		return false
+	for point: Vector2i in [Vector2i(180, 20), Vector2i(20, 82), Vector2i(340, 82), Vector2i(20, 560), Vector2i(180, 620)]:
+		if image.get_pixelv(point).get_luminance() < 0.08:
+			return false
+	return true
+
+func _qa_tourmap_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.current_dice_count = 1
+	var flow_capture_levels := {
+		"dunes_flow5": 5,
+		"oasis_flow0": 0,
+		"oasis_flow1": 1,
+		"oasis_flow2": 2,
+		"oasis_flow3": 3,
+		"oasis_flow4": 4,
+		"oasis_flow5": 5,
+		"ruins_flow0": 0,
+		"ruins_flow1": 1,
+		"ruins_flow2": 2,
+		"ruins_flow3": 3,
+		"ruins_flow4": 4,
+		"ruins_flow5": 5,
+		"pyramid_flow0": 0,
+		"pyramid_flow1": 1,
+		"pyramid_flow2": 2,
+		"pyramid_flow3": 3,
+		"pyramid_flow4": 4,
+		"pyramid_flow5": 5,
+	}
+	GameState.flow_level = int(flow_capture_levels.get(kind, 0))
+	var market_level := 0 if kind == "market_lv0" else 3
+	GameState.landmark_levels = {"CAI_LANDMARK_01": market_level, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	GameState.current_tile_index = 25 if kind.begins_with("pyramid_flow") else (61 if kind.begins_with("ruins_flow") else (43 if kind == "classic" or kind.begins_with("oasis_flow") else (84 if kind in ["wrap", "dunes_flow5"] else 0)))
+	show_game()
+	_set_board_view_mode("classic" if kind == "classic" else "tourism")
+	for ignored: int in range(12): await get_tree().process_frame
+	var capture_delay := 0.24 if kind == "pyramid_flow5" else 0.50
+	await get_tree().create_timer(capture_delay).timeout
+	var result := _save_opaque_capture(path)
+	print("QA_TOURMAP_CAPTURE kind=%s flow=%d market_level=%d path=%s result=%s" % [kind, GameState.flow_level, market_level, path, result])
+	get_tree().quit(0 if result == OK else 1)
+
+func _qa_clean_lap() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	var state := original.duplicate(true)
+	state["applied_resolution_ids"] = []
+	state["total_lap_points"] = 0
+	state["current_lap_bonus"] = 20
+	state["current_lap_roll_count"] = 12
+	state["current_lap_clean"] = true
+	state["current_lap_penalty_count"] = 0
+	state["clean_streak"] = 0
+	state["best_clean_streak"] = 0
+	state["coins"] = 0
+	state["current_dice_count"] = 1
+	var first := LapSystemScript.resolve(state, "qa-clean-1")
+	RewardResolverScript.apply(state, first)
+	state["current_lap_bonus"] = 0
+	state["current_lap_roll_count"] = 12
+	var second := LapSystemScript.resolve(state, "qa-clean-2")
+	RewardResolverScript.apply(state, second)
+	var milestone_snapshot := {"points": int(state.total_lap_points), "coins": int(state.coins), "streak": int(state.clean_streak)}
+	var duplicate := RewardResolverScript.apply(state, second)
+	var clean_ok := int(first.result.points) == 138 and int(second.result.points) == 130 and int(second.result.score) == 208 and int(second.result.milestone) == 2 and int(state.coins) == 42 and milestone_snapshot == {"points": int(state.total_lap_points), "coins": int(state.coins), "streak": int(state.clean_streak)} and not bool(duplicate.applied) and int(state.clean_streak) == 2
+	state["current_lap_clean"] = false
+	var dirty := LapSystemScript.resolve(state, "qa-clean-dirty")
+	RewardResolverScript.apply(state, dirty)
+	var dirty_ok := int(dirty.result.points) == 100 and is_equal_approx(float(dirty.result.multiplier), 1.0) and int(state.clean_streak) == 1
+	var streak_3_state := original.duplicate(true); streak_3_state["applied_resolution_ids"] = []; streak_3_state["clean_streak"] = 2; streak_3_state["current_lap_clean"] = true; streak_3_state["current_dice_count"] = 1
+	var streak_3 := LapSystemScript.resolve(streak_3_state, "qa-clean-3"); RewardResolverScript.apply(streak_3_state, streak_3)
+	var streak_3_duplicate := RewardResolverScript.apply(streak_3_state, streak_3)
+	var streak_3_ok := int(streak_3.result.milestone) == 3 and int(streak_3_state.current_dice_count) == 2 and not bool(streak_3_duplicate.applied)
+	var streak_5_state := original.duplicate(true); streak_5_state["applied_resolution_ids"] = []; streak_5_state["clean_streak"] = 4; streak_5_state["current_lap_clean"] = true; streak_5_state["dice_keep_active"] = false
+	var streak_5 := LapSystemScript.resolve(streak_5_state, "qa-clean-5"); RewardResolverScript.apply(streak_5_state, streak_5)
+	var streak_5_duplicate := RewardResolverScript.apply(streak_5_state, streak_5)
+	var streak_5_ok := int(streak_5.result.milestone) == 5 and bool(streak_5_state.dice_keep_active) and not bool(streak_5_duplicate.applied)
+	var streak_max := LapSystemScript.resolve(streak_5_state, "qa-clean-max"); RewardResolverScript.apply(streak_5_state, streak_max)
+	var streak_max_points := int(streak_5_state.total_lap_points)
+	var streak_max_duplicate := RewardResolverScript.apply(streak_5_state, streak_max)
+	var streak_max_ok := int(streak_max.result.clean_streak) == 5 and int(streak_max.result.milestone) == 0 and (streak_max.rewards as Array).is_empty() and not bool(streak_max_duplicate.applied) and int(streak_5_state.total_lap_points) == streak_max_points
+	var reentry_state := original.duplicate(true); reentry_state["applied_resolution_ids"] = []; reentry_state["clean_streak"] = 5; reentry_state["current_lap_clean"] = false; reentry_state["dice_keep_active"] = false
+	var streak_drop := LapSystemScript.resolve(reentry_state, "qa-clean-drop"); RewardResolverScript.apply(reentry_state, streak_drop)
+	reentry_state["current_lap_clean"] = true
+	var streak_reentry := LapSystemScript.resolve(reentry_state, "qa-clean-reentry"); RewardResolverScript.apply(reentry_state, streak_reentry)
+	var streak_reentry_duplicate := RewardResolverScript.apply(reentry_state, streak_reentry)
+	var reentry_ok := int(streak_drop.result.clean_streak) == 4 and int(streak_reentry.result.milestone) == 5 and bool(reentry_state.dice_keep_active) and not bool(streak_reentry_duplicate.applied)
+	var boundaries_ok := streak_3_ok and streak_5_ok and streak_max_ok and reentry_ok
+	var risk_ok := true
+	var risk_state := {"coins": 20, "presence": 2, "tile": 58, "next_move_bonus": 0, "flow_level": 4, "current_lap_clean": true, "current_lap_penalty_count": 0, "even_guard_active": false, "applied_resolution_ids": []}
+	for risk_tile: int in [27, 44, 58, 68, 80]:
+		var penalties_before := int(risk_state.current_lap_penalty_count)
+		RewardResolverScript.apply(risk_state, RewardResolverScript.resolve_risk(risk_state, "qa-risk-%d" % risk_tile, risk_tile))
+		risk_ok = risk_ok and not bool(risk_state.current_lap_clean) and int(risk_state.current_lap_penalty_count) == penalties_before + 1
+		risk_state["current_lap_clean"] = true
+	risk_ok = risk_ok and int(risk_state.next_move_bonus) == -2 and int(risk_state.coins) == 12 and int(risk_state.tile) == 55 and int(risk_state.flow_level) == 0 and int(risk_state.presence) == 1
+	var noop := risk_state.duplicate(true); noop["coins"] = 0; noop["even_guard_active"] = true; noop["current_lap_clean"] = true; noop["current_lap_penalty_count"] = 0; noop["applied_resolution_ids"] = []
+	RewardResolverScript.apply(noop, RewardResolverScript.resolve_risk(noop, "qa-risk-noop", 44))
+	var noop_ok := bool(noop.current_lap_clean) and bool(noop.even_guard_active) and int(noop.current_lap_penalty_count) == 0
+	var guarded := noop.duplicate(true); guarded["coins"] = 20; guarded["applied_resolution_ids"] = []
+	RewardResolverScript.apply(guarded, RewardResolverScript.resolve_risk(guarded, "qa-risk-guard", 44))
+	var guard_ok := int(guarded.coins) == 20 and bool(guarded.current_lap_clean) and not bool(guarded.even_guard_active)
+	GameState.apply_dictionary(original)
+	GameState.current_lap_clean = false; GameState.current_lap_penalty_count = 3; GameState.clean_streak = 4; GameState.even_guard_active = true
+	var saved := SaveManager.save_now()
+	GameState.current_lap_clean = true; GameState.current_lap_penalty_count = 0; GameState.clean_streak = 0; GameState.even_guard_active = false
+	var restored := SaveManager.load_now() and not GameState.current_lap_clean and GameState.current_lap_penalty_count == 3 and GameState.clean_streak == 4 and GameState.even_guard_active
+	var v5_clean_missing := original.duplicate(true); v5_clean_missing["version"] = 5
+	for clean_key: String in ["current_lap_clean", "current_lap_penalty_count", "clean_streak", "even_guard_active", "best_clean_streak"]: v5_clean_missing.erase(clean_key)
+	GameState.apply_dictionary(v5_clean_missing)
+	var migration_ok := GameState.current_lap_clean and GameState.current_lap_penalty_count == 0 and GameState.clean_streak == 0 and not GameState.even_guard_active and GameState.best_clean_streak == 0 and int(GameState.to_dictionary().version) == 10
+	var passed := clean_ok and dirty_ok and boundaries_ok and risk_ok and noop_ok and guard_ok and saved and restored and migration_ok
+	print("QA_CLEAN_LAP clean=%s dirty=%s boundaries=%s risks=%s noop=%s guard=%s save=%s migration=%s passed=%s" % [clean_ok, dirty_ok, boundaries_ok, risk_ok, noop_ok, guard_ok, restored, migration_ok, passed])
+	GameState.apply_dictionary(original); SaveManager.save_now()
+	if not passed: push_error("CLEAN deterministic QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_clean_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.total_lap_points = 12450
+	GameState.lap_count = 3
+	GameState.clean_streak = 2
+	GameState.current_lap_clean = kind != "dirty"
+	GameState.current_tile_index = 43
+	show_game()
+	if kind == "lap":
+		_build_lap_result_modal({"lap_number": 4, "base_points": 100, "lap_bonus": 85, "clean": true, "clean_streak": 3, "multiplier": 1.5, "points": 277, "score": 337, "roll_count": 11, "next_clean_goal": "あと2回でCLEAN STREAK 5"})
+	for ignored: int in range(12): await get_tree().process_frame
+	await get_tree().create_timer(0.22).timeout
+	var result := _save_opaque_capture(path)
+	print("QA_CLEAN_CAPTURE kind=%s path=%s result=%s" % [kind, path, result])
+	get_tree().quit(0 if result == OK else 1)
+
+func _qa_roll_transaction() -> void:
+	var original: Dictionary = GameState.to_dictionary().duplicate(true)
+	var coin_tile := tile_types.find(&"COIN")
+	var start_tile := posmod(coin_tile - 1, BoardModelScript.TILE_COUNT)
+	var roles := DiceLogicScript.evaluate_current([1], 1)
+	var checks: Array[bool] = []
+
+	GameState.reset_run()
+	GameState.current_tile_index = start_tile
+	GameState.begin_roll_transaction([], 1, start_tile)
+	GameState.mark_roll_started([1])
+	SaveManager.save_now()
+	var rolling_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(rolling_loaded and GameState.current_tile_index == start_tile and GameState.rolls_used == 0 and GameState.roll_transaction.is_empty())
+
+	GameState.reset_run()
+	GameState.current_tile_index = start_tile
+	GameState.begin_roll_transaction([1], 1, start_tile)
+	GameState.commit_roll_result([1], 1, roles, 1, coin_tile, 0, true)
+	SaveManager.save_now()
+	var result_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(result_loaded and dice_values == [1] and GameState.current_tile_index == coin_tile and GameState.rolls_used == 1 and GameState.coins == 18 and GameState.roll_transaction.is_empty())
+
+	GameState.reset_run()
+	GameState.current_tile_index = coin_tile
+	GameState.rolls_used = 1
+	GameState.begin_roll_transaction([1], 1, start_tile)
+	GameState.commit_roll_result([1], 1, roles, 1, coin_tile, 0, false)
+	GameState.commit_roll_movement(coin_tile)
+	SaveManager.save_now()
+	var movement_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(movement_loaded and GameState.current_tile_index == coin_tile and GameState.rolls_used == 1 and GameState.coins == 18 and GameState.roll_transaction.is_empty())
+
+	GameState.reset_run()
+	GameState.current_tile_index = coin_tile
+	GameState.rolls_used = 1
+	GameState.begin_roll_transaction([1], 1, start_tile)
+	GameState.commit_roll_result([1], 1, roles, 1, coin_tile, 0, false)
+	GameState.commit_roll_movement(coin_tile)
+	GameState.commit_roll_space_effect()
+	SaveManager.save_now()
+	var effect_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(effect_loaded and GameState.current_tile_index == coin_tile and GameState.rolls_used == 1 and GameState.coins == 12 and GameState.roll_transaction.is_empty())
+
+	# Interruption after the synchronous COIN mutation but before the result
+	# hold finishes must observe the durable landing receipt and never add +6
+	# a second time.
+	GameState.reset_run()
+	GameState.current_tile_index = coin_tile
+	GameState.rolls_used = 1
+	GameState.begin_roll_transaction([1], 1, start_tile)
+	GameState.commit_roll_result([1], 1, roles, 1, coin_tile, 0, false)
+	GameState.commit_roll_movement(coin_tile)
+	GameState.commit_roll_landing_roles()
+	GameState.coins += 6
+	_commit_landing_core(&"COIN", "古い旅コインを拾った。+6")
+	var coin_core_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(coin_core_loaded and GameState.coins == 18 and GameState.current_tile_index == coin_tile and GameState.roll_transaction.is_empty())
+
+	# RISK harm is already resolution-idempotent; the landing receipt also
+	# prevents reopening the branch after its result was saved.
+	GameState.reset_run()
+	GameState.current_tile_index = 58
+	GameState.rolls_used = 1
+	GameState.begin_roll_transaction([1], 1, 57)
+	GameState.commit_roll_result([1], 1, roles, 1, 58, 0, false)
+	GameState.commit_roll_movement(58)
+	GameState.commit_roll_landing_roles()
+	var risk_memo := _apply_risk_harm(58)
+	_commit_landing_core(&"RISK", risk_memo)
+	var risk_core_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(risk_core_loaded and GameState.current_lap_penalty_count == 1 and not GameState.current_lap_clean and GameState.current_tile_index == 55 and GameState.roll_transaction.is_empty())
+
+	# LANDMARK reward and its receipt share one save boundary, so reopening
+	# after reward application cannot develop the landmark twice.
+	GameState.reset_run()
+	GameState.current_tile_index = 0
+	GameState.rolls_used = 1
+	GameState.begin_roll_transaction([1], 1, 89)
+	GameState.commit_roll_result([1], 1, roles, 1, 0, 0, false)
+	GameState.commit_roll_movement(0)
+	GameState.commit_roll_landing_roles()
+	var landmark_state := GameState.to_dictionary()
+	var landmark_resolution := LandmarkSystemScript.resolve_stop(landmark_state, 0, "qa-03b-landmark")
+	RewardResolverScript.apply(landmark_state, landmark_resolution, GameState.reward_apply_log)
+	GameState.apply_dictionary(landmark_state)
+	_commit_landing_core(&"LANDMARK", "ギザの大スフィンクス Lv.1　旅の記憶 +1")
+	var landmark_core_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(landmark_core_loaded and int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)) == 1 and GameState.roll_transaction.is_empty())
+
+	# Crossing 90 -> 01 from a committed result applies the lap exactly once.
+	GameState.reset_run()
+	GameState.current_tile_index = 89
+	GameState.begin_roll_transaction([2], 1, 89)
+	GameState.commit_roll_result([2], 1, DiceLogicScript.evaluate_current([2], 1), 2, 1, 1, false)
+	SaveManager.save_now()
+	var lap_loaded := SaveManager.load_now()
+	show_game()
+	await _resume_roll_transaction()
+	checks.append(lap_loaded and GameState.current_tile_index == 1 and GameState.rolls_used == 1 and GameState.total_laps == 1 and GameState.roll_transaction.is_empty())
+
+	# EVENT -> boss: the pending boolean may already be consumed while the
+	# durable encounter substate still knows exactly which window to resume.
+	GameState.reset_run()
+	GameState.current_tile_index = coin_tile
+	GameState.begin_roll_transaction([1], 1, start_tile)
+	GameState.commit_roll_result([1], 1, roles, 1, coin_tile, 0, false)
+	GameState.commit_roll_movement(coin_tile)
+	var handoff_reserved := GameState.mark_roll_encounter_handoff(true, 2)
+	GameState.pending_boss_handoff = true
+	var modal_opened := GameState.mark_roll_encounter_open(true, 2)
+	GameState.pending_boss_handoff = false
+	SaveManager.save_now()
+	var consumed_loaded := SaveManager.load_now()
+	checks.append(handoff_reserved and modal_opened and consumed_loaded and not GameState.pending_boss_handoff and str(GameState.roll_transaction.get("encounter_phase", "")) == "MODAL_OPEN" and bool(GameState.roll_transaction.get("encounter_pair_bonus", false)) and int(GameState.roll_transaction.get("encounter_double_bonus", 0)) == 2)
+
+	# The companion and the next individual are one persisted boundary. A
+	# restart here must display the saved card, never register or advance again.
+	var interaction_committed := GameState.commit_roll_encounter_interaction(true, "sleepy_sphinx")
+	GameState.current_boss["gauge"] = 100
+	GameState.register_current_boss()
+	var obtained := GameState.current_boss.duplicate(true)
+	GameState.begin_next_boss()
+	var registration_committed := GameState.commit_roll_encounter_registration(obtained)
+	var next_id := str(GameState.current_boss.get("individual_id", ""))
+	var encyclopedia_count := GameState.encyclopedia.size()
+	SaveManager.save_now()
+	var registration_loaded := SaveManager.load_now()
+	checks.append(interaction_committed and registration_committed and registration_loaded and str(GameState.roll_transaction.get("encounter_phase", "")) == "REGISTRATION_COMMITTED" and str(GameState.current_boss.get("individual_id", "")) == next_id and GameState.encyclopedia.size() == encyclopedia_count and str(GameState.roll_transaction.get("encounter_obtained", {}).get("individual_id", "")) == str(obtained.get("individual_id", "")))
+
+	# Finalizing a recovered get-result choice must not call show_game; it only
+	# closes the durable transaction so the already selected route stays visible.
+	_finalize_recovered_roll_without_navigation()
+	checks.append(GameState.roll_transaction.is_empty() and GameState.encyclopedia.size() == encyclopedia_count and str(GameState.current_boss.get("individual_id", "")) == next_id)
+
+	var passed := coin_tile >= 0 and checks.all(func(value: bool) -> bool: return value)
+	print("QA_ROLL_TRANSACTION coin_tile=%d checks=%s passed=%s" % [coin_tile, checks, passed])
+	GameState.apply_dictionary(original)
+	SaveManager.save_now()
+	if not passed:
+		push_error("Roll transaction recovery QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_lap_landmark() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	GameState.reset_run()
+	GameState.total_lap_points = 0
+	GameState.total_laps = 0
+	GameState.best_lap_score = 0
+	GameState.landmark_levels = GameState.DEFAULT_LANDMARK_LEVELS.duplicate(true)
+	GameState.stage_development = 0
+	GameState.registered_postcards.clear()
+	GameState.applied_resolution_ids.clear()
+	GameState.reward_apply_log.clear()
+	GameState.current_tile_index = 89
+	GameState.current_dice_count = 1
+	GameState.clean_streak = 0
+	show_game()
+	await _resolve_roll([1])
+	var normal_once := GameState.lap_count == 1 and GameState.total_laps == 1 and GameState.total_lap_points == 124
+	var tile_zero_once := int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)) == 1 and GameState.souvenirs == 1 and GameState.coins == 47
+	var normal_loop_reset := not GameState.rare_event_used_this_loop and GameState.events_seen_this_loop.is_empty() and GameState.events_since_rare == 99
+	var levels_after_normal := GameState.landmark_levels.duplicate(true)
+	var points_before_warp := GameState.total_lap_points
+	GameState.reset_run()
+	GameState.current_tile_index = 87
+	GameState.clean_streak = 0
+	show_game()
+	await _resolve_landing(&"WARP", {"main": &"", "support": &"", "labels": []})
+	var warp_once := GameState.lap_count == 1 and GameState.current_tile_index == 3 and GameState.total_lap_points == points_before_warp + 124
+	var warp_no_landmark := GameState.landmark_levels == levels_after_normal
+	var warp_loop_reset := not GameState.rare_event_used_this_loop and GameState.events_seen_this_loop.is_empty() and GameState.events_since_rare == 99
+
+	var idempotent_state := GameState.to_dictionary()
+	idempotent_state["landmark_levels"] = GameState.DEFAULT_LANDMARK_LEVELS.duplicate(true)
+	idempotent_state["current_dice_count"] = 1
+	idempotent_state["coins"] = 0
+	idempotent_state["registered_postcards"] = []
+	idempotent_state["current_lap_bonus"] = 0
+	idempotent_state["applied_resolution_ids"] = []
+	var landmark_duplicate_stable: bool = true
+	for level_index: int in range(3):
+		var landmark_resolution := LandmarkSystemScript.resolve_stop(idempotent_state, 0, "qa-landmark-%d" % level_index)
+		RewardResolverScript.apply(idempotent_state, landmark_resolution)
+		var landmark_snapshot := {
+			"coins": int(idempotent_state.coins),
+			"dice": int(idempotent_state.current_dice_count),
+			"postcards": (idempotent_state.registered_postcards as Array).duplicate(),
+			"bonus": int(idempotent_state.current_lap_bonus),
+		}
+		RewardResolverScript.apply(idempotent_state, landmark_resolution)
+		if landmark_snapshot != {"coins": int(idempotent_state.coins), "dice": int(idempotent_state.current_dice_count), "postcards": (idempotent_state.registered_postcards as Array).duplicate(), "bonus": int(idempotent_state.current_lap_bonus)}:
+			landmark_duplicate_stable = false
+			push_error("Landmark idempotency snapshot changed.")
+	var landmark_idempotent: bool = landmark_duplicate_stable and int(idempotent_state.landmark_levels.CAI_LANDMARK_01) == 3 and idempotent_state.registered_postcards == ["cairo_spice_market_complete"]
+	var lap_resolution := LapSystemScript.resolve(idempotent_state, "qa-lap-idempotent", "NORMAL")
+	RewardResolverScript.apply(idempotent_state, lap_resolution)
+	var lap_snapshot := {"points": int(idempotent_state.total_lap_points), "coins": int(idempotent_state.coins), "dice": int(idempotent_state.current_dice_count), "postcards": (idempotent_state.registered_postcards as Array).duplicate()}
+	var lap_second := RewardResolverScript.apply(idempotent_state, lap_resolution)
+	var lap_idempotent := not bool(lap_second.applied) and lap_snapshot == {"points": int(idempotent_state.total_lap_points), "coins": int(idempotent_state.coins), "dice": int(idempotent_state.current_dice_count), "postcards": (idempotent_state.registered_postcards as Array).duplicate()}
+
+	GameState.total_lap_points = 432
+	GameState.landmark_levels = {"CAI_LANDMARK_01": 3, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	GameState.current_lap_bonus = 28
+	var saved := SaveManager.save_now()
+	GameState.total_lap_points = 0; GameState.landmark_levels = GameState.DEFAULT_LANDMARK_LEVELS.duplicate(true); GameState.current_lap_bonus = 0
+	var restored := SaveManager.load_now() and GameState.total_lap_points == 432 and int(GameState.landmark_levels.CAI_LANDMARK_01) == 3 and int(GameState.landmark_levels.CAI_LANDMARK_02) == 2 and GameState.current_lap_bonus == 28
+	var legacy := GameState.to_dictionary().duplicate(true)
+	legacy["version"] = 5
+	for key: String in ["total_lap_points", "current_lap_bonus", "current_lap_roll_count", "current_lap_clean", "current_lap_penalty_count", "clean_streak", "flow_level", "flow_triggered_this_turn", "flow_reward_3_claimed_this_lap", "flow_reward_5_claimed_this_lap", "even_guard_active", "best_lap_score", "best_clean_streak", "best_flow_level", "total_laps", "highest_laps_in_one_journey", "pending_lap_rewards", "lap_resolution_id", "lap_reward_committed", "last_lap_result", "landmark_levels", "landmark_revisit_stamps", "landmark_collection_flags", "landmark_completion_flags", "stage_development", "stage_development_milestones_claimed", "stage_collection_count", "stage_collection_completed", "pending_landmark_rewards", "landmark_resolution_id", "landmark_reward_committed"]:
+		legacy.erase(key)
+	legacy["current_dice_count"] = 2
+	legacy["master_volume"] = 0.37
+	GameState.apply_dictionary(legacy)
+	var migration := GameState.total_lap_points == 0 and GameState.landmark_levels == GameState.DEFAULT_LANDMARK_LEVELS and GameState.current_dice_count == 2 and is_equal_approx(GameState.master_volume, 0.37) and not GameState.current_boss.is_empty()
+	var passed: bool = normal_once and tile_zero_once and normal_loop_reset and warp_once and warp_no_landmark and warp_loop_reset and landmark_idempotent and lap_idempotent and saved and restored and migration
+	print("QA_LAP_LANDMARK normal=%s tile0=%s warp=%s warp_no_landmark=%s idempotent=%s/%s save=%s migration=%s passed=%s" % [normal_once and normal_loop_reset, tile_zero_once, warp_once and warp_loop_reset, warp_no_landmark, landmark_idempotent, lap_idempotent, restored, migration, passed])
+	GameState.apply_dictionary(original); SaveManager.save_now()
+	if not passed: push_error("LAP/LANDMARK deterministic QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_lap_landmark_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.total_lap_points = 12450
+	GameState.lap_count = 2
+	GameState.landmark_levels = {"CAI_LANDMARK_01": 3, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	GameState.stage_development = 6
+	GameState.current_tile_index = 22
+	show_game()
+	if kind == "landmark":
+		_build_landmark_result_modal({"name": "夕映えの展望広場", "old_level": 1, "new_level": 2, "developed": true}, ["名所 Lv.2", "追加ダイス +1", "ラップボーナス +8"])
+	elif kind == "lap":
+		_build_lap_result_modal({"lap_number": 3, "base_points": 100, "lap_bonus": 46, "points": 146, "score": 206, "roll_count": 12})
+	for ignored: int in range(12): await get_tree().process_frame
+	await get_tree().create_timer(0.22).timeout
+	var result := _save_opaque_capture(path)
+	print("QA_LAP_LANDMARK_CAPTURE kind=%s path=%s result=%s" % [kind, path, result])
+	get_tree().quit(0 if result == OK else 1)
+
+func _qa_spice_scenic() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	var assets_ok := true
+	for level: int in range(4):
+		var asset_path := "res://assets/art/landmarks/cairo/spice_market_lv%d.png" % level
+		var image := Image.load_from_file(ProjectSettings.globalize_path(asset_path))
+		var valid := image != null and image.get_size() == Vector2i(1024, 512) and image.get_pixel(0, 0).a < 0.05 and image.get_pixel(1023, 0).a < 0.05
+		assets_ok = assets_ok and valid
+	GameState.reset_run()
+	GameState.current_tile_index = 0
+	show_game()
+	var levels_ok := true
+	for level: int in range(4):
+		GameState.landmark_levels["CAI_LANDMARK_01"] = level
+		board_view.set_landmark_levels(GameState.landmark_levels)
+		await get_tree().process_frame
+		var expected_path := "res://assets/art/landmarks/cairo/spice_market_lv%d.png" % level
+		levels_ok = levels_ok and board_view.scenic_level == level and board_view.mouse_filter == Control.MOUSE_FILTER_IGNORE and board_view.scenic_texture != null and board_view.scenic_texture.resource_path == expected_path
+	GameState.current_tile_index = 6
+	board_view.set_current_tile(6)
+	await get_tree().process_frame
+	var hidden_outside_neighborhood := board_view.scenic_texture == null
+	GameState.current_tile_index = 89
+	board_view.set_current_tile(89)
+	await get_tree().process_frame
+	var visible_across_loop := board_view.scenic_texture != null
+	var passed := assets_ok and levels_ok and hidden_outside_neighborhood and visible_across_loop
+	print("QA_SPICE_SCENIC assets=%s levels=%s hidden=%s wrapped=%s passed=%s" % [assets_ok, levels_ok, hidden_outside_neighborhood, visible_across_loop, passed])
+	GameState.apply_dictionary(original)
+	if not passed: push_error("Spice scenic QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_spice_scenic_capture(level_text: String, path: String) -> void:
+	GameState.reset_run()
+	var level := clampi(int(level_text), 0, 3)
+	GameState.total_lap_points = 12450
+	GameState.lap_count = 2
+	GameState.current_tile_index = 0
+	GameState.landmark_levels = {"CAI_LANDMARK_01": level, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	GameState.stage_development = level + 3
+	show_game()
+	for ignored: int in range(12): await get_tree().process_frame
+	await get_tree().create_timer(0.28).timeout
+	var result := _save_opaque_capture(path)
+	print("QA_SPICE_SCENIC_CAPTURE level=%d path=%s result=%s" % [level, path, result])
+	get_tree().quit(0 if result == OK else 1)
 
 func _qa_premium_board_capture(path: String) -> void:
 	GameState.reset_run(); GameState.current_dice_count = 2; GameState.current_tile_index = 58; show_game()
@@ -1757,10 +3964,17 @@ func _qa_capture_viewport(path: String) -> void:
 	get_tree().quit(0 if result == OK else 1)
 
 func _save_opaque_capture(path: String) -> Error:
-	var source := get_viewport().get_texture().get_image()
+	var viewport_texture := get_viewport().get_texture()
+	if viewport_texture == null:
+		return ERR_CANT_CREATE
+	var source := viewport_texture.get_image()
+	if source == null:
+		return ERR_CANT_CREATE
 	if source.get_size() != Vector2i(360, 640): source.resize(360, 640, Image.INTERPOLATE_LANCZOS)
 	var opaque := Image.create(360, 640, false, Image.FORMAT_RGBA8)
 	opaque.fill(BG)
 	opaque.blend_rect(source, Rect2i(Vector2i.ZERO, source.get_size()), Vector2i.ZERO)
 	opaque.convert(Image.FORMAT_RGB8)
+	if path.get_extension().to_lower() in ["jpg", "jpeg"]:
+		return opaque.save_jpg(path, 0.96)
 	return opaque.save_png(path)

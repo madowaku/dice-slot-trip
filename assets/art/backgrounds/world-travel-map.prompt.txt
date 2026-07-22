@@ -1,0 +1,17 @@
+Create a production-ready portrait mobile game background for “Dice Slot Trip”,
+9:16 aspect ratio, intended to be cropped to 360x640. View straight down into
+the open interior of a vintage travel suitcase. A softly worn parchment world
+map is pasted inside, with recognizable but simplified continents in muted dusty
+teal and warm sand colors. Add restrained travel ephemera around the edges only:
+brass suitcase corners, leather straps, a compass rose, tiny postage stamp marks,
+faint dotted airline routes and one thin red travel thread with small pinheads.
+Cairo should be subtly emphasized near northeastern Africa with a warm golden
+glow, but do not add a card or label. Keep the center and major continent areas
+clear enough for interactive postcard UI overlays. Premium cozy hand-painted 2D
+mobile game art, clean HD, elegant storybook travel journal aesthetic, warm cream
+paper, subtle fibers, soft shadows, readable at phone size. No characters, no
+dice, no flags, no logos, no UI buttons, no legible text, no gibberish text, no
+watermark, no border outside the suitcase.
+
+Generated with OpenAI image generation on 2026-07-16.
+Runtime crop: 720x1280 PNG.

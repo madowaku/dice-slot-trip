@@ -1,0 +1,6 @@
+Asset: Noto Sans JP Regular
+User-provided package: C:\Users\hiro\Downloads\Noto_Sans_JP
+Package file: static/NotoSansJP-Regular.ttf
+Upstream project: https://github.com/notofonts/noto-cjk
+Upstream license: https://github.com/notofonts/noto-cjk/blob/main/Sans/LICENSE
+Integrated: 2026-07-17

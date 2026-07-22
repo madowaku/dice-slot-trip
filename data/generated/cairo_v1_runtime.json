@@ -1,0 +1,1934 @@
+{
+  "generator_version": "1",
+  "sources": [
+    {
+      "path": "data/stages/cairo_stage_v1.yaml",
+      "sha256": "e6eac105ca4e397380327468cf962acf14b34f12d5dab59a89d2ada979917b53"
+    },
+    {
+      "path": "data/bosses/cairo_boss_race_v1.yaml",
+      "sha256": "02dc67fc5bdd79a3cf0c3070b2228dc637cb4056dbfe32fcfdf3566b325c7f55"
+    }
+  ],
+  "documents": {
+    "cairo_stage_v1.yaml": {
+      "schema_version": "dice-slot-trip.stage/1",
+      "stage": {
+        "id": "cairo_hourglass_v1",
+        "display_name": "砂時計のカイロ",
+        "run_model": "one_run_one_lap_then_boss_race",
+        "engine_target": "Godot 4.7",
+        "viewport": {
+          "reference": [
+            720,
+            1280
+          ],
+          "small_validation": [
+            360,
+            640
+          ],
+          "orientation": "portrait"
+        },
+        "estimated_time_seconds": {
+          "min": 480,
+          "max": 600
+        },
+        "mainline_space_count": 58,
+        "start_node": "main_01",
+        "boss_gate_node": "main_58",
+        "boss_race_id": "cairo_golden_gate_mirror_race_v1"
+      },
+      "shared_rule_refs": {
+        "three_roll_slot": "three_roll_slot_v1",
+        "explorer_cat_skill": "explorer_cat_pinpoint_v1",
+        "boss_race_file": "cairo_boss_race_v1.yaml"
+      },
+      "movement_rules": {
+        "die_range": [
+          1,
+          6
+        ],
+        "branch_choice_when_reached_mid_move": true,
+        "continue_remaining_steps_after_branch_choice": true,
+        "warp_entry": "on_exact_landing_only",
+        "warp_pass_through": "continue_on_mainline",
+        "loop_exit": "on_exact_landing_only",
+        "loop_overshoot": "wrap",
+        "normal_view_offsets": [
+          -1,
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "timer_rules": {
+        "pause_during_map_overlay": true,
+        "pause_during_event_choice": true,
+        "pause_during_branch_choice": true,
+        "pause_during_inventory_overflow": true,
+        "continue_during_non_modal_slot_result": true
+      },
+      "inventory": {
+        "capacity": 3,
+        "duplicates": "disallow",
+        "overflow": {
+          "mode": "prompt_replace_discard_or_convert",
+          "convert_to_coins": 2
+        }
+      },
+      "zones": [
+        {
+          "id": "market",
+          "display_name": "市場地区",
+          "mainline_range": [
+            1,
+            14
+          ]
+        },
+        {
+          "id": "nile",
+          "display_name": "ナイル河岸",
+          "mainline_range": [
+            15,
+            29
+          ]
+        },
+        {
+          "id": "desert",
+          "display_name": "砂漠街道",
+          "mainline_range": [
+            30,
+            44
+          ]
+        },
+        {
+          "id": "necropolis",
+          "display_name": "墓都・黄金門",
+          "mainline_range": [
+            45,
+            58
+          ]
+        }
+      ],
+      "items": {
+        "water_canteen": {
+          "display_name": "水筒",
+          "kind": "consumable_auto",
+          "stackable": false,
+          "trigger": "before_tagged_hp_damage",
+          "effect": {
+            "cancel_hp_damage": 1
+          },
+          "valid_tags": [
+            "risk_hp_damage"
+          ],
+          "consume_on_trigger": true
+        },
+        "compass": {
+          "display_name": "方位磁針",
+          "kind": "consumable_manual",
+          "stackable": false,
+          "use_window": "after_roll_before_move",
+          "effect": {
+            "modify_final_roll_by_choice": [
+              -1,
+              1
+            ],
+            "clamp": [
+              1,
+              6
+            ]
+          }
+        },
+        "sand_goggles": {
+          "display_name": "砂よけゴーグル",
+          "kind": "passive_stage",
+          "stackable": false,
+          "effect": {
+            "immunity_tags": [
+              "sandstorm"
+            ]
+          }
+        },
+        "hourglass_shard": {
+          "display_name": "砂時計の欠片",
+          "kind": "consumable_manual",
+          "stackable": false,
+          "use_window": "after_three_roll_resolution_before_reset",
+          "effect": {
+            "carry_one_selected_slot_value_to_next_set": true
+          }
+        },
+        "golden_scarab": {
+          "display_name": "黄金スカラベ",
+          "kind": "collection",
+          "stackable": false,
+          "effect": {
+            "collection_key": "cairo_golden_scarab",
+            "score_bonus": 500,
+            "album_unlock": "cairo_scarab_entry"
+          }
+        }
+      },
+      "item_sources": {
+        "fixed_water_canteen": {
+          "mode": "fixed",
+          "item_id": "water_canteen"
+        },
+        "fixed_compass": {
+          "mode": "fixed",
+          "item_id": "compass"
+        },
+        "fixed_sand_goggles": {
+          "mode": "fixed",
+          "item_id": "sand_goggles"
+        },
+        "fixed_hourglass_shard": {
+          "mode": "fixed",
+          "item_id": "hourglass_shard"
+        },
+        "market_supply": {
+          "mode": "choose_one_missing",
+          "candidates": [
+            "water_canteen",
+            "compass",
+            "hourglass_shard"
+          ],
+          "fallback": {
+            "add_coins": 2
+          }
+        },
+        "oasis_supply": {
+          "mode": "choose_one_missing",
+          "candidates": [
+            "water_canteen",
+            "compass"
+          ],
+          "fallback": {
+            "add_coins": 2
+          }
+        },
+        "desert_supply": {
+          "mode": "choose_one_missing",
+          "candidates": [
+            "water_canteen",
+            "compass",
+            "hourglass_shard"
+          ],
+          "fallback": {
+            "add_coins": 2
+          }
+        },
+        "supply_box": {
+          "mode": "choose_one_missing",
+          "candidate_count": 2,
+          "candidates": [
+            "water_canteen",
+            "compass",
+            "hourglass_shard"
+          ],
+          "fallback": {
+            "add_coins": 2
+          }
+        },
+        "last_supply": {
+          "mode": "reacquire_one_consumed",
+          "candidates": [
+            "water_canteen",
+            "compass",
+            "hourglass_shard"
+          ],
+          "fallback": {
+            "add_coins": 2
+          }
+        },
+        "golden_scarab_treasure": {
+          "mode": "fixed",
+          "item_id": "golden_scarab"
+        }
+      },
+      "events": {
+        "market_hawker": {
+          "display_name": "市場の呼び込み",
+          "choices": [
+            {
+              "id": "coins_now",
+              "label": "コインを3枚もらう",
+              "effects": [
+                {
+                  "add_coins": 3
+                }
+              ]
+            },
+            {
+              "id": "double_next_coin",
+              "label": "次のCOINマスを2倍",
+              "effects": [
+                {
+                  "set_run_flag": "next_coin_multiplier_2"
+                }
+              ]
+            }
+          ]
+        },
+        "ferry_offer": {
+          "display_name": "渡し船",
+          "choices": [
+            {
+              "id": "ride",
+              "label": "2コインで16マスへ",
+              "requirements": [
+                {
+                  "coins_at_least": 2
+                }
+              ],
+              "effects": [
+                {
+                  "add_coins": -2
+                },
+                {
+                  "teleport_to": "main_16"
+                }
+              ]
+            },
+            {
+              "id": "decline",
+              "label": "歩いて進む",
+              "effects": []
+            }
+          ]
+        },
+        "nile_tailwind": {
+          "display_name": "ナイルの追い風",
+          "choices": [
+            {
+              "id": "gain_skill",
+              "label": "スキルゲージを1つ得る",
+              "effects": [
+                {
+                  "add_skill_charge": 1,
+                  "cap": 3
+                }
+              ]
+            }
+          ]
+        },
+        "ruin_whisper": {
+          "display_name": "遺跡のささやき",
+          "choices": [
+            {
+              "id": "duplicate_slot",
+              "label": "現在のスロット値を1つ複製",
+              "requirements": [
+                {
+                  "filled_slot_count_at_least": 1
+                },
+                {
+                  "empty_slot_count_at_least": 1
+                }
+              ],
+              "effects": [
+                {
+                  "duplicate_selected_slot_into_next_empty_slot": true
+                }
+              ]
+            },
+            {
+              "id": "coins",
+              "label": "コインを3枚得る",
+              "effects": [
+                {
+                  "add_coins": 3
+                }
+              ]
+            }
+          ]
+        },
+        "cat_shrine": {
+          "display_name": "猫像の祠",
+          "choices": [
+            {
+              "id": "heal",
+              "label": "HPを1回復",
+              "effects": [
+                {
+                  "add_hp": 1
+                }
+              ]
+            },
+            {
+              "id": "skill",
+              "label": "スキルゲージを1つ得る",
+              "effects": [
+                {
+                  "add_skill_charge": 1,
+                  "cap": 3
+                }
+              ]
+            }
+          ]
+        },
+        "golden_gate_preparation": {
+          "display_name": "黄金門の支度",
+          "choices": [
+            {
+              "id": "buy_sand_guard",
+              "label": "5コインで最初のSANDを無効化",
+              "requirements": [
+                {
+                  "coins_at_least": 5
+                }
+              ],
+              "effects": [
+                {
+                  "add_coins": -5
+                },
+                {
+                  "set_run_flag": "boss_ignore_first_sand"
+                }
+              ]
+            },
+            {
+              "id": "save_coins",
+              "label": "支度せず進む",
+              "effects": []
+            }
+          ]
+        },
+        "oasis_water_seller": {
+          "display_name": "オアシスの水売り",
+          "choices": [
+            {
+              "id": "buy_heal",
+              "label": "2コインでHPを1回復",
+              "requirements": [
+                {
+                  "coins_at_least": 2
+                }
+              ],
+              "effects": [
+                {
+                  "add_coins": -2
+                },
+                {
+                  "add_hp": 1
+                }
+              ]
+            },
+            {
+              "id": "decline",
+              "label": "買わない",
+              "effects": []
+            }
+          ]
+        },
+        "tomb_stele": {
+          "display_name": "墓廊の石碑",
+          "choices": [
+            {
+              "id": "skill",
+              "label": "スキルゲージを1つ得る",
+              "effects": [
+                {
+                  "add_skill_charge": 1,
+                  "cap": 3
+                }
+              ]
+            },
+            {
+              "id": "coins",
+              "label": "コインを3枚得る",
+              "effects": [
+                {
+                  "add_coins": 3
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "branches": {
+        "bazaar_bypass": {
+          "display_name": "バザール裏路地",
+          "decision_node": "main_11",
+          "merge_node": "main_19",
+          "options": [
+            {
+              "id": "mainline",
+              "label": "本線",
+              "next_node": "main_12"
+            },
+            {
+              "id": "bypass",
+              "label": "裏路地",
+              "next_node": "bazaar_01"
+            }
+          ],
+          "estimated_spaces_saved": 3
+        },
+        "desert_bypass": {
+          "display_name": "砂嵐の抜け道",
+          "decision_node": "main_34",
+          "merge_node": "main_46",
+          "options": [
+            {
+              "id": "mainline",
+              "label": "本線",
+              "next_node": "main_35"
+            },
+            {
+              "id": "bypass",
+              "label": "抜け道",
+              "next_node": "desert_01"
+            }
+          ],
+          "estimated_spaces_saved": 6
+        }
+      },
+      "loops": {
+        "oasis_loop": {
+          "display_name": "オアシス環",
+          "entry_trigger_node": "main_22",
+          "entry_node": "oasis_01",
+          "exit_node": "oasis_08",
+          "return_node": "main_23",
+          "camera_mode": "show_entire_loop"
+        },
+        "tomb_loop": {
+          "display_name": "墓廊の輪",
+          "entry_trigger_node": "main_43",
+          "entry_node": "tomb_01",
+          "exit_node": "tomb_10",
+          "return_node": "main_46",
+          "camera_mode": "show_entire_loop"
+        }
+      },
+      "nodes": {
+        "main_01": {
+          "route": "main",
+          "route_index": 1,
+          "zone": "market",
+          "progress_equivalent": 1,
+          "type": "START",
+          "next": [
+            "main_02"
+          ]
+        },
+        "main_02": {
+          "route": "main",
+          "route_index": 2,
+          "zone": "market",
+          "progress_equivalent": 2,
+          "type": "COIN",
+          "next": [
+            "main_03"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_03": {
+          "route": "main",
+          "route_index": 3,
+          "zone": "market",
+          "progress_equivalent": 3,
+          "type": "NORMAL",
+          "next": [
+            "main_04"
+          ]
+        },
+        "main_04": {
+          "route": "main",
+          "route_index": 4,
+          "zone": "market",
+          "progress_equivalent": 4,
+          "type": "EVENT",
+          "next": [
+            "main_05"
+          ],
+          "event_id": "market_hawker"
+        },
+        "main_05": {
+          "route": "main",
+          "route_index": 5,
+          "zone": "market",
+          "progress_equivalent": 5,
+          "type": "COIN",
+          "next": [
+            "main_06"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_06": {
+          "route": "main",
+          "route_index": 6,
+          "zone": "market",
+          "progress_equivalent": 6,
+          "type": "ITEM",
+          "next": [
+            "main_07"
+          ],
+          "item_source_id": "fixed_water_canteen"
+        },
+        "main_07": {
+          "route": "main",
+          "route_index": 7,
+          "zone": "market",
+          "progress_equivalent": 7,
+          "type": "NORMAL",
+          "next": [
+            "main_08"
+          ]
+        },
+        "main_08": {
+          "route": "main",
+          "route_index": 8,
+          "zone": "market",
+          "progress_equivalent": 8,
+          "type": "RISK",
+          "next": [
+            "main_09"
+          ],
+          "effects": [
+            {
+              "add_coins": -2,
+              "floor_at_zero": true
+            }
+          ],
+          "tags": [
+            "pickpocket"
+          ]
+        },
+        "main_09": {
+          "route": "main",
+          "route_index": 9,
+          "zone": "market",
+          "progress_equivalent": 9,
+          "type": "REST",
+          "next": [
+            "main_10"
+          ],
+          "effects": [
+            {
+              "add_hp": 1
+            }
+          ]
+        },
+        "main_10": {
+          "route": "main",
+          "route_index": 10,
+          "zone": "market",
+          "progress_equivalent": 10,
+          "type": "NORMAL",
+          "next": [
+            "main_11"
+          ]
+        },
+        "main_11": {
+          "route": "main",
+          "route_index": 11,
+          "zone": "market",
+          "progress_equivalent": 11,
+          "type": "BRANCH",
+          "next": [
+            "main_12",
+            "bazaar_01"
+          ],
+          "branch_id": "bazaar_bypass"
+        },
+        "main_12": {
+          "route": "main",
+          "route_index": 12,
+          "zone": "market",
+          "progress_equivalent": 12,
+          "type": "COIN",
+          "next": [
+            "main_13"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_13": {
+          "route": "main",
+          "route_index": 13,
+          "zone": "market",
+          "progress_equivalent": 13,
+          "type": "EVENT",
+          "next": [
+            "main_14"
+          ],
+          "event_id": "ferry_offer"
+        },
+        "main_14": {
+          "route": "main",
+          "route_index": 14,
+          "zone": "market",
+          "progress_equivalent": 14,
+          "type": "NORMAL",
+          "next": [
+            "main_15"
+          ]
+        },
+        "main_15": {
+          "route": "main",
+          "route_index": 15,
+          "zone": "nile",
+          "progress_equivalent": 15,
+          "type": "NORMAL",
+          "next": [
+            "main_16"
+          ]
+        },
+        "main_16": {
+          "route": "main",
+          "route_index": 16,
+          "zone": "nile",
+          "progress_equivalent": 16,
+          "type": "COIN",
+          "next": [
+            "main_17"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_17": {
+          "route": "main",
+          "route_index": 17,
+          "zone": "nile",
+          "progress_equivalent": 17,
+          "type": "ITEM",
+          "next": [
+            "main_18"
+          ],
+          "item_source_id": "fixed_compass"
+        },
+        "main_18": {
+          "route": "main",
+          "route_index": 18,
+          "zone": "nile",
+          "progress_equivalent": 18,
+          "type": "RISK",
+          "next": [
+            "main_19"
+          ],
+          "effects": [
+            {
+              "next_roll_speed_multiplier": 1.15,
+              "duration_rolls": 1
+            }
+          ],
+          "tags": [
+            "wet_stones"
+          ]
+        },
+        "main_19": {
+          "route": "main",
+          "route_index": 19,
+          "zone": "nile",
+          "progress_equivalent": 19,
+          "type": "REST",
+          "next": [
+            "main_20"
+          ],
+          "effects": [
+            {
+              "add_hp": 1
+            }
+          ]
+        },
+        "main_20": {
+          "route": "main",
+          "route_index": 20,
+          "zone": "nile",
+          "progress_equivalent": 20,
+          "type": "NORMAL",
+          "next": [
+            "main_21"
+          ]
+        },
+        "main_21": {
+          "route": "main",
+          "route_index": 21,
+          "zone": "nile",
+          "progress_equivalent": 21,
+          "type": "COIN",
+          "next": [
+            "main_22"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_22": {
+          "route": "main",
+          "route_index": 22,
+          "zone": "nile",
+          "progress_equivalent": 22,
+          "type": "WARP",
+          "next": [
+            "main_23"
+          ],
+          "loop_id": "oasis_loop",
+          "on_exact_land": [
+            {
+              "enter_loop": "oasis_loop"
+            }
+          ]
+        },
+        "main_23": {
+          "route": "main",
+          "route_index": 23,
+          "zone": "nile",
+          "progress_equivalent": 23,
+          "type": "NORMAL",
+          "next": [
+            "main_24"
+          ]
+        },
+        "main_24": {
+          "route": "main",
+          "route_index": 24,
+          "zone": "nile",
+          "progress_equivalent": 24,
+          "type": "EVENT",
+          "next": [
+            "main_25"
+          ],
+          "event_id": "nile_tailwind"
+        },
+        "main_25": {
+          "route": "main",
+          "route_index": 25,
+          "zone": "nile",
+          "progress_equivalent": 25,
+          "type": "RISK",
+          "next": [
+            "main_26"
+          ],
+          "effects": [
+            {
+              "next_move_modifier": -1,
+              "duration_moves": 1
+            }
+          ],
+          "tags": [
+            "mud"
+          ]
+        },
+        "main_26": {
+          "route": "main",
+          "route_index": 26,
+          "zone": "nile",
+          "progress_equivalent": 26,
+          "type": "ITEM",
+          "next": [
+            "main_27"
+          ],
+          "item_source_id": "fixed_sand_goggles"
+        },
+        "main_27": {
+          "route": "main",
+          "route_index": 27,
+          "zone": "nile",
+          "progress_equivalent": 27,
+          "type": "COIN",
+          "next": [
+            "main_28"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_28": {
+          "route": "main",
+          "route_index": 28,
+          "zone": "nile",
+          "progress_equivalent": 28,
+          "type": "NORMAL",
+          "next": [
+            "main_29"
+          ]
+        },
+        "main_29": {
+          "route": "main",
+          "route_index": 29,
+          "zone": "nile",
+          "progress_equivalent": 29,
+          "type": "REST",
+          "next": [
+            "main_30"
+          ],
+          "effects": [
+            {
+              "add_hp": 1
+            }
+          ]
+        },
+        "main_30": {
+          "route": "main",
+          "route_index": 30,
+          "zone": "desert",
+          "progress_equivalent": 30,
+          "type": "NORMAL",
+          "next": [
+            "main_31"
+          ]
+        },
+        "main_31": {
+          "route": "main",
+          "route_index": 31,
+          "zone": "desert",
+          "progress_equivalent": 31,
+          "type": "RISK",
+          "next": [
+            "main_32"
+          ],
+          "effects": [
+            {
+              "add_hp": -1
+            }
+          ],
+          "tags": [
+            "risk_hp_damage",
+            "sandstorm"
+          ]
+        },
+        "main_32": {
+          "route": "main",
+          "route_index": 32,
+          "zone": "desert",
+          "progress_equivalent": 32,
+          "type": "COIN",
+          "next": [
+            "main_33"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_33": {
+          "route": "main",
+          "route_index": 33,
+          "zone": "desert",
+          "progress_equivalent": 33,
+          "type": "NORMAL",
+          "next": [
+            "main_34"
+          ]
+        },
+        "main_34": {
+          "route": "main",
+          "route_index": 34,
+          "zone": "desert",
+          "progress_equivalent": 34,
+          "type": "BRANCH",
+          "next": [
+            "main_35",
+            "desert_01"
+          ],
+          "branch_id": "desert_bypass"
+        },
+        "main_35": {
+          "route": "main",
+          "route_index": 35,
+          "zone": "desert",
+          "progress_equivalent": 35,
+          "type": "RISK",
+          "next": [
+            "main_36"
+          ],
+          "effects": [
+            {
+              "next_move_modifier": -1,
+              "duration_moves": 1
+            }
+          ],
+          "tags": [
+            "headwind"
+          ]
+        },
+        "main_36": {
+          "route": "main",
+          "route_index": 36,
+          "zone": "desert",
+          "progress_equivalent": 36,
+          "type": "ITEM",
+          "next": [
+            "main_37"
+          ],
+          "item_source_id": "fixed_hourglass_shard"
+        },
+        "main_37": {
+          "route": "main",
+          "route_index": 37,
+          "zone": "desert",
+          "progress_equivalent": 37,
+          "type": "NORMAL",
+          "next": [
+            "main_38"
+          ]
+        },
+        "main_38": {
+          "route": "main",
+          "route_index": 38,
+          "zone": "desert",
+          "progress_equivalent": 38,
+          "type": "COIN",
+          "next": [
+            "main_39"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_39": {
+          "route": "main",
+          "route_index": 39,
+          "zone": "desert",
+          "progress_equivalent": 39,
+          "type": "REST",
+          "next": [
+            "main_40"
+          ],
+          "effects": [
+            {
+              "add_hp": 1
+            }
+          ]
+        },
+        "main_40": {
+          "route": "main",
+          "route_index": 40,
+          "zone": "desert",
+          "progress_equivalent": 40,
+          "type": "RISK",
+          "next": [
+            "main_41"
+          ],
+          "effects": [
+            {
+              "add_hp": -1
+            }
+          ],
+          "tags": [
+            "risk_hp_damage",
+            "sandstorm"
+          ]
+        },
+        "main_41": {
+          "route": "main",
+          "route_index": 41,
+          "zone": "desert",
+          "progress_equivalent": 41,
+          "type": "EVENT",
+          "next": [
+            "main_42"
+          ],
+          "event_id": "ruin_whisper"
+        },
+        "main_42": {
+          "route": "main",
+          "route_index": 42,
+          "zone": "desert",
+          "progress_equivalent": 42,
+          "type": "NORMAL",
+          "next": [
+            "main_43"
+          ]
+        },
+        "main_43": {
+          "route": "main",
+          "route_index": 43,
+          "zone": "desert",
+          "progress_equivalent": 43,
+          "type": "WARP",
+          "next": [
+            "main_44"
+          ],
+          "loop_id": "tomb_loop",
+          "on_exact_land": [
+            {
+              "enter_loop": "tomb_loop"
+            }
+          ]
+        },
+        "main_44": {
+          "route": "main",
+          "route_index": 44,
+          "zone": "desert",
+          "progress_equivalent": 44,
+          "type": "COIN",
+          "next": [
+            "main_45"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_45": {
+          "route": "main",
+          "route_index": 45,
+          "zone": "necropolis",
+          "progress_equivalent": 45,
+          "type": "ITEM",
+          "next": [
+            "main_46"
+          ],
+          "item_source_id": "supply_box"
+        },
+        "main_46": {
+          "route": "main",
+          "route_index": 46,
+          "zone": "necropolis",
+          "progress_equivalent": 46,
+          "type": "NORMAL",
+          "next": [
+            "main_47"
+          ]
+        },
+        "main_47": {
+          "route": "main",
+          "route_index": 47,
+          "zone": "necropolis",
+          "progress_equivalent": 47,
+          "type": "RISK",
+          "next": [
+            "main_48"
+          ],
+          "effects": [
+            {
+              "add_coins": -2,
+              "floor_at_zero": true
+            }
+          ],
+          "tags": [
+            "tomb_toll"
+          ]
+        },
+        "main_48": {
+          "route": "main",
+          "route_index": 48,
+          "zone": "necropolis",
+          "progress_equivalent": 48,
+          "type": "COIN",
+          "next": [
+            "main_49"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_49": {
+          "route": "main",
+          "route_index": 49,
+          "zone": "necropolis",
+          "progress_equivalent": 49,
+          "type": "REST",
+          "next": [
+            "main_50"
+          ],
+          "effects": [
+            {
+              "add_hp": 1
+            }
+          ]
+        },
+        "main_50": {
+          "route": "main",
+          "route_index": 50,
+          "zone": "necropolis",
+          "progress_equivalent": 50,
+          "type": "NORMAL",
+          "next": [
+            "main_51"
+          ]
+        },
+        "main_51": {
+          "route": "main",
+          "route_index": 51,
+          "zone": "necropolis",
+          "progress_equivalent": 51,
+          "type": "EVENT",
+          "next": [
+            "main_52"
+          ],
+          "event_id": "cat_shrine"
+        },
+        "main_52": {
+          "route": "main",
+          "route_index": 52,
+          "zone": "necropolis",
+          "progress_equivalent": 52,
+          "type": "COIN",
+          "next": [
+            "main_53"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_53": {
+          "route": "main",
+          "route_index": 53,
+          "zone": "necropolis",
+          "progress_equivalent": 53,
+          "type": "RISK",
+          "next": [
+            "main_54"
+          ],
+          "effects": [
+            {
+              "add_coins": -3,
+              "floor_at_zero": true
+            }
+          ],
+          "tags": [
+            "curse"
+          ]
+        },
+        "main_54": {
+          "route": "main",
+          "route_index": 54,
+          "zone": "necropolis",
+          "progress_equivalent": 54,
+          "type": "ITEM",
+          "next": [
+            "main_55"
+          ],
+          "item_source_id": "last_supply"
+        },
+        "main_55": {
+          "route": "main",
+          "route_index": 55,
+          "zone": "necropolis",
+          "progress_equivalent": 55,
+          "type": "NORMAL",
+          "next": [
+            "main_56"
+          ]
+        },
+        "main_56": {
+          "route": "main",
+          "route_index": 56,
+          "zone": "necropolis",
+          "progress_equivalent": 56,
+          "type": "COIN",
+          "next": [
+            "main_57"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ]
+        },
+        "main_57": {
+          "route": "main",
+          "route_index": 57,
+          "zone": "necropolis",
+          "progress_equivalent": 57,
+          "type": "EVENT",
+          "next": [
+            "main_58"
+          ],
+          "event_id": "golden_gate_preparation"
+        },
+        "main_58": {
+          "route": "main",
+          "route_index": 58,
+          "zone": "necropolis",
+          "progress_equivalent": 58,
+          "type": "BOSS_GATE",
+          "next": [],
+          "on_exact_land": [
+            {
+              "start_boss_race": "cairo_golden_gate_mirror_race_v1"
+            }
+          ]
+        },
+        "bazaar_01": {
+          "route": "bazaar_bypass",
+          "route_index": 1,
+          "zone": "market",
+          "progress_equivalent": 13,
+          "type": "RISK",
+          "next": [
+            "bazaar_02"
+          ],
+          "effects": [
+            {
+              "add_coins": -2,
+              "floor_at_zero": true
+            }
+          ],
+          "tags": [
+            "pickpocket"
+          ]
+        },
+        "bazaar_02": {
+          "route": "bazaar_bypass",
+          "route_index": 2,
+          "zone": "market",
+          "progress_equivalent": 15,
+          "type": "COIN",
+          "next": [
+            "bazaar_03"
+          ],
+          "effects": [
+            {
+              "add_coins": 4
+            }
+          ]
+        },
+        "bazaar_03": {
+          "route": "bazaar_bypass",
+          "route_index": 3,
+          "zone": "market",
+          "progress_equivalent": 17,
+          "type": "ITEM",
+          "next": [
+            "bazaar_04"
+          ],
+          "item_source_id": "market_supply"
+        },
+        "bazaar_04": {
+          "route": "bazaar_bypass",
+          "route_index": 4,
+          "zone": "market",
+          "progress_equivalent": 18,
+          "type": "NORMAL",
+          "next": [
+            "main_19"
+          ]
+        },
+        "desert_01": {
+          "route": "desert_bypass",
+          "route_index": 1,
+          "zone": "desert",
+          "progress_equivalent": 36,
+          "type": "RISK",
+          "next": [
+            "desert_02"
+          ],
+          "effects": [
+            {
+              "add_hp": -1
+            }
+          ],
+          "tags": [
+            "risk_hp_damage",
+            "sandstorm"
+          ]
+        },
+        "desert_02": {
+          "route": "desert_bypass",
+          "route_index": 2,
+          "zone": "desert",
+          "progress_equivalent": 38,
+          "type": "NORMAL",
+          "next": [
+            "desert_03"
+          ]
+        },
+        "desert_03": {
+          "route": "desert_bypass",
+          "route_index": 3,
+          "zone": "desert",
+          "progress_equivalent": 41,
+          "type": "ITEM",
+          "next": [
+            "desert_04"
+          ],
+          "item_source_id": "desert_supply"
+        },
+        "desert_04": {
+          "route": "desert_bypass",
+          "route_index": 4,
+          "zone": "desert",
+          "progress_equivalent": 44,
+          "type": "RISK",
+          "next": [
+            "desert_05"
+          ],
+          "effects": [
+            {
+              "next_move_modifier": -1,
+              "duration_moves": 1
+            }
+          ],
+          "tags": [
+            "collapsed_path"
+          ]
+        },
+        "desert_05": {
+          "route": "desert_bypass",
+          "route_index": 5,
+          "zone": "desert",
+          "progress_equivalent": 45,
+          "type": "NORMAL",
+          "next": [
+            "main_46"
+          ]
+        },
+        "oasis_01": {
+          "route": "oasis_loop",
+          "route_index": 1,
+          "zone": "nile",
+          "progress_equivalent": 22,
+          "type": "COIN",
+          "next": [
+            "oasis_02"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ],
+          "persistence": {
+            "once_per_run": true,
+            "after_use_type": "NORMAL"
+          }
+        },
+        "oasis_02": {
+          "route": "oasis_loop",
+          "route_index": 2,
+          "zone": "nile",
+          "progress_equivalent": 22,
+          "type": "REST",
+          "next": [
+            "oasis_03"
+          ],
+          "effects": [
+            {
+              "add_hp": 1
+            }
+          ],
+          "persistence": {
+            "once_per_run": true,
+            "after_use_type": "NORMAL"
+          }
+        },
+        "oasis_03": {
+          "route": "oasis_loop",
+          "route_index": 3,
+          "zone": "nile",
+          "progress_equivalent": 22,
+          "type": "NORMAL",
+          "next": [
+            "oasis_04"
+          ]
+        },
+        "oasis_04": {
+          "route": "oasis_loop",
+          "route_index": 4,
+          "zone": "nile",
+          "progress_equivalent": 22,
+          "type": "COIN",
+          "next": [
+            "oasis_05"
+          ],
+          "effects": [
+            {
+              "add_coins": 2
+            }
+          ],
+          "persistence": {
+            "once_per_run": true,
+            "after_use_type": "NORMAL"
+          }
+        },
+        "oasis_05": {
+          "route": "oasis_loop",
+          "route_index": 5,
+          "zone": "nile",
+          "progress_equivalent": 22,
+          "type": "EVENT",
+          "next": [
+            "oasis_06"
+          ],
+          "event_id": "oasis_water_seller",
+          "persistence": {
+            "once_per_run": true,
+            "after_use_type": "NORMAL"
+          }
+        },
+        "oasis_06": {
+          "route": "oasis_loop",
+          "route_index": 6,
+          "zone": "nile",
+          "progress_equivalent": 22,
+          "type": "RISK",
+          "next": [
+            "oasis_07"
+          ],
+          "effects": [
+            {
+              "next_move_modifier": -1,
+              "duration_moves": 1
+            }
+          ],
+          "tags": [
+            "mud"
+          ]
+        },
+        "oasis_07": {
+          "route": "oasis_loop",
+          "route_index": 7,
+          "zone": "nile",
+          "progress_equivalent": 22,
+          "type": "ITEM",
+          "next": [
+            "oasis_08"
+          ],
+          "item_source_id": "oasis_supply",
+          "persistence": {
+            "once_per_run": true,
+            "after_use_type": "NORMAL"
+          }
+        },
+        "oasis_08": {
+          "route": "oasis_loop",
+          "route_index": 8,
+          "zone": "nile",
+          "progress_equivalent": 22,
+          "type": "EXIT",
+          "next": [
+            "oasis_01"
+          ],
+          "on_exact_land": [
+            {
+              "exit_loop_to": "main_23"
+            }
+          ]
+        },
+        "tomb_01": {
+          "route": "tomb_loop",
+          "route_index": 1,
+          "zone": "necropolis",
+          "progress_equivalent": 43,
+          "type": "RISK",
+          "next": [
+            "tomb_02"
+          ],
+          "effects": [
+            {
+              "add_hp": -1
+            }
+          ],
+          "tags": [
+            "risk_hp_damage"
+          ]
+        },
+        "tomb_02": {
+          "route": "tomb_loop",
+          "route_index": 2,
+          "zone": "necropolis",
+          "progress_equivalent": 43,
+          "type": "COIN",
+          "next": [
+            "tomb_03"
+          ],
+          "effects": [
+            {
+              "add_coins": 3
+            }
+          ],
+          "persistence": {
+            "once_per_run": true,
+            "after_use_type": "NORMAL"
+          }
+        },
+        "tomb_03": {
+          "route": "tomb_loop",
+          "route_index": 3,
+          "zone": "necropolis",
+          "progress_equivalent": 43,
+          "type": "NORMAL",
+          "next": [
+            "tomb_04"
+          ]
+        },
+        "tomb_04": {
+          "route": "tomb_loop",
+          "route_index": 4,
+          "zone": "necropolis",
+          "progress_equivalent": 43,
+          "type": "EVENT",
+          "next": [
+            "tomb_05"
+          ],
+          "event_id": "tomb_stele",
+          "persistence": {
+            "once_per_run": true,
+            "after_use_type": "NORMAL"
+          }
+        },
+        "tomb_05": {
+          "route": "tomb_loop",
+          "route_index": 5,
+          "zone": "necropolis",
+          "progress_equivalent": 43,
+          "type": "TREASURE",
+          "next": [
+            "tomb_06"
+          ],
+          "item_source_id": "golden_scarab_treasure",
+          "persistence": {
+            "once_per_run": true,
+            "after_use_type": "NORMAL"
+          }
+        },
+        "tomb_06": {
+          "route": "tomb_loop",
+          "route_index": 6,
+          "zone": "necropolis",
+          "progress_equivalent": 43,
+          "type": "RISK",
+          "next": [
+            "tomb_07"
+          ],
+          "effects": [
+            {
+              "next_move_modifier": -1,
+              "duration_moves": 1
+            }
+          ],
+          "tags": [
+            "tomb_drag"
+          ]
+        },
+        "tomb_07": {
+          "route": "tomb_loop",
+          "route_index": 7,
+          "zone": "necropolis",
+          "progress_equivalent": 43,
+          "type": "COIN",
+          "next": [
+            "tomb_08"
+          ],
+          "effects": [
+            {
+              "add_coins": 3
+            }
+          ],
+          "persistence": {
+            "once_per_run": true,
+            "after_use_type": "NORMAL"
+          }
+        },
+        "tomb_08": {
+          "route": "tomb_loop",
+          "route_index": 8,
+          "zone": "necropolis",
+          "progress_equivalent": 43,
+          "type": "REST",
+          "next": [
+            "tomb_09"
+          ],
+          "effects": [
+            {
+              "add_hp": 1
+            }
+          ],
+          "persistence": {
+            "once_per_run": true,
+            "after_use_type": "NORMAL"
+          }
+        },
+        "tomb_09": {
+          "route": "tomb_loop",
+          "route_index": 9,
+          "zone": "necropolis",
+          "progress_equivalent": 43,
+          "type": "RISK",
+          "next": [
+            "tomb_10"
+          ],
+          "effects": [
+            {
+              "add_coins": -3,
+              "floor_at_zero": true
+            }
+          ],
+          "tags": [
+            "curse"
+          ]
+        },
+        "tomb_10": {
+          "route": "tomb_loop",
+          "route_index": 10,
+          "zone": "necropolis",
+          "progress_equivalent": 43,
+          "type": "EXIT",
+          "next": [
+            "tomb_01"
+          ],
+          "on_exact_land": [
+            {
+              "exit_loop_to": "main_46"
+            }
+          ]
+        }
+      },
+      "stage_end": {
+        "trigger_node": "main_58",
+        "action": "start_boss_race",
+        "boss_race_id": "cairo_golden_gate_mirror_race_v1",
+        "complete_stage_after_boss_result": true,
+        "boss_loss_blocks_completion": false
+      },
+      "validation": {
+        "expected_counts": {
+          "main": 58,
+          "bazaar_bypass": 4,
+          "desert_bypass": 5,
+          "oasis_loop": 8,
+          "tomb_loop": 10,
+          "total": 85
+        },
+        "assertions": [
+          "all_next_node_ids_exist",
+          "all_event_ids_exist",
+          "all_item_source_ids_exist",
+          "mainline_indices_contiguous_1_to_58",
+          "branch_targets_exist",
+          "loop_entry_exit_return_nodes_exist",
+          "boss_gate_is_terminal",
+          "all_nodes_reachable_from_start_with_special_transitions"
+        ]
+      }
+    },
+    "cairo_boss_race_v1.yaml": {
+      "schema_version": "dice-slot-trip.boss-race/1",
+      "boss_race": {
+        "id": "cairo_golden_gate_mirror_race_v1",
+        "display_name": "黄金門の鏡面レース",
+        "stage_id": "cairo_hourglass_v1",
+        "boss_id": "hourglass_gate_warden",
+        "boss_display_name": "砂時計門の番人",
+        "course_kind": "parallel_straight",
+        "course_length": 13,
+        "start_position": 0,
+        "goal_position": 13,
+        "estimated_time_seconds": {
+          "min": 25,
+          "max": 45
+        },
+        "retry_policy": "no_retry_record_result_and_finish_stage"
+      },
+      "carry_in": {
+        "three_roll_slot_values": true,
+        "skill_charge_and_ready_state": true,
+        "inventory": true,
+        "hp": true,
+        "coins": true,
+        "run_flags": [
+          "boss_ignore_first_sand"
+        ]
+      },
+      "dice_rules": {
+        "player_roll_range": [
+          1,
+          6
+        ],
+        "boss_roll_formula": "7 - effective_player_roll",
+        "effective_player_roll_order": [
+          "commit_tapped_face",
+          "apply_allowed_player_roll_modifiers",
+          "clamp_to_1_6",
+          "derive_boss_roll"
+        ],
+        "allowed_player_roll_modifiers": [
+          "compass"
+        ],
+        "boss_roll_is_public": true,
+        "boss_uses_separate_random_roll": false
+      },
+      "turn_order": [
+        "commit_player_roll",
+        "apply_allowed_player_roll_modifiers",
+        "derive_and_reveal_boss_roll",
+        "transfer_player_roll_to_three_roll_slot",
+        "resolve_three_roll_role_and_skill_charge",
+        "apply_pending_sand_or_wind_modifiers",
+        "move_both_racers_logically_simultaneously",
+        "check_goal_during_base_movement",
+        "resolve_landing_tile_effects_for_non_finished_racers",
+        "check_goal_after_boost",
+        "advance_turn"
+      ],
+      "movement_rules": {
+        "minimum_move_after_modifiers": 1,
+        "goal_condition": "reach_or_pass_goal",
+        "base_movement_is_simultaneous": true,
+        "visual_start_offset_ms": {
+          "player": 0,
+          "boss": 100
+        },
+        "landing_effects_trigger_only_after_base_move_ends": true,
+        "boost_extra_move_triggers_no_landing_effect": true,
+        "safety_max_turns": 12
+      },
+      "tie_rules": {
+        "compare_arrival_step_within_turn": true,
+        "exact_same_arrival_step_winner": "player",
+        "boost_same_step_tie_winner": "player"
+      },
+      "tile_effects": {
+        "NORMAL": {
+          "effects": []
+        },
+        "BOOST": {
+          "effects": [
+            {
+              "move_relative": 2
+            }
+          ],
+          "extra_move_triggers_tile": false
+        },
+        "SAND": {
+          "effects": [
+            {
+              "set_next_base_move_modifier": -1
+            }
+          ],
+          "player_first_sand_can_be_ignored_by_flag": "boss_ignore_first_sand"
+        },
+        "WIND": {
+          "effects": [
+            {
+              "set_next_base_move_modifier": 1
+            }
+          ]
+        },
+        "GOAL": {
+          "effects": [
+            {
+              "finish_race": true
+            }
+          ]
+        }
+      },
+      "course": {
+        "1": {
+          "type": "NORMAL"
+        },
+        "2": {
+          "type": "BOOST"
+        },
+        "3": {
+          "type": "SAND"
+        },
+        "4": {
+          "type": "NORMAL"
+        },
+        "5": {
+          "type": "WIND"
+        },
+        "6": {
+          "type": "BOOST"
+        },
+        "7": {
+          "type": "SAND"
+        },
+        "8": {
+          "type": "NORMAL"
+        },
+        "9": {
+          "type": "BOOST"
+        },
+        "10": {
+          "type": "WIND"
+        },
+        "11": {
+          "type": "SAND"
+        },
+        "12": {
+          "type": "BOOST"
+        },
+        "13": {
+          "type": "GOAL"
+        }
+      },
+      "three_roll_slot": {
+        "rule_ref": "three_roll_slot_v1",
+        "continues_from_stage": true,
+        "boss_race_uses_same_role_rewards": true,
+        "coins_earned_during_race_count_for_final_score": true
+      },
+      "explorer_cat_skill": {
+        "rule_ref": "explorer_cat_pinpoint_v1",
+        "usable": true,
+        "focus_highlight_target": "player_landing_tile_for_current_face",
+        "does_not_change_boss_formula": true
+      },
+      "result": {
+        "win": {
+          "record_boss_win": true,
+          "boss_stamp": "cairo_hourglass_warden_win",
+          "score_bonus": 1000,
+          "stage_rating_bonus": 1,
+          "time_adjustment_seconds": 0
+        },
+        "lose": {
+          "record_boss_loss": true,
+          "score_bonus": 0,
+          "stage_rating_bonus": 0,
+          "time_adjustment_seconds": 0,
+          "remove_items": false,
+          "restart_stage": false
+        },
+        "stage_completes_after_result": true,
+        "result_fields": [
+          "winner",
+          "turn_count",
+          "player_final_position",
+          "boss_final_position",
+          "player_roll_history",
+          "boss_roll_history",
+          "win_reason"
+        ]
+      },
+      "validation": {
+        "assertions": [
+          "course_positions_contiguous_1_to_13",
+          "position_13_is_goal",
+          "mirror_roll_pairs_sum_to_7",
+          "all_non_goal_tiles_have_known_effects",
+          "minimum_movement_prevents_deadlock",
+          "race_result_never_requests_retry"
+        ]
+      }
+    }
+  }
+}

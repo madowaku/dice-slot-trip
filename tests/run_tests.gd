@@ -2,14 +2,37 @@ extends SceneTree
 
 const DiceLogicScript = preload("res://scripts/core/dice_logic.gd")
 const BoardModelScript = preload("res://scripts/game/board_model.gd")
+const BoardViewScript = preload("res://scripts/game/board_view.gd")
 const BossSystemScript = preload("res://scripts/game/boss_system.gd")
 const RewardResolverScript = preload("res://scripts/game/reward_resolver.gd")
 const EventSystemScript = preload("res://scripts/game/event_system.gd")
 const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3d.gd")
+const DiceAudioControllerScript = preload("res://scripts/game/dice_audio_controller.gd")
+const LapSystemScript = preload("res://scripts/game/lap_system.gd")
+const LandmarkSystemScript = preload("res://scripts/game/landmark_system.gd")
+const LandmarkScenicViewScript = preload("res://scripts/game/landmark_scenic_view.gd")
+const TourismMapViewScript = preload("res://scripts/game/tourism_map_view.gd")
+const DistrictFlowVisualScript = preload("res://scripts/game/tourism_district_flow_visual.gd")
+const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
+const PopupBookTransitionScript = preload("res://scripts/game/popup_book_transition.gd")
+const GameStateScript = preload("res://autoload/game_state.gd")
+const AppFont: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 
 var failures: int = 0
 
 func _init() -> void:
+	var font_samples: Array[String] = ["砂時計のカイロ", "眠そうなスフィンクスがいる", "サイコロをそろえて、世界をめぐる。", "旅人を選ぶ", "香辛料市場通り", "PAIR／STRAIGHT／TRIPLE", "1234567890！？・◇●"]
+	var font_coverage := true
+	for sample: String in font_samples:
+		for index: int in range(sample.length()): font_coverage = font_coverage and AppFont.has_char(sample.unicode_at(index))
+	_expect(font_coverage and BoardViewScript.APP_FONT == AppFont and TourismMapViewScript.TOURISM_FONT == AppFont, "bundled Noto Sans JP covers Android UI strings and canvas text")
+	var mode_state: Node = GameStateScript.new()
+	_expect(mode_state.board_view_mode == "tourism", "new state defaults to Tourism")
+	var explicit_classic: Dictionary = mode_state.to_dictionary(); explicit_classic["board_view_mode"] = "classic"; mode_state.apply_dictionary(explicit_classic)
+	_expect(mode_state.board_view_mode == "classic", "explicit saved Classic mode is preserved")
+	var legacy_mode: Dictionary = explicit_classic.duplicate(true); legacy_mode.erase("board_view_mode"); mode_state.apply_dictionary(legacy_mode)
+	_expect(mode_state.board_view_mode == "tourism", "legacy save without display mode migrates to Tourism")
+	mode_state.free()
 	_expect(DiceLogicScript.evaluate([3, 3, 5]).main == &"PAIR", "PAIR")
 	_expect(DiceLogicScript.evaluate([4, 2, 3]).main == &"STRAIGHT", "STRAIGHT unordered")
 	_expect(DiceLogicScript.evaluate([5, 5, 5]).main == &"TRIPLE", "TRIPLE priority")
@@ -24,8 +47,85 @@ func _init() -> void:
 	_expect(is_equal_approx(face_orientations[2].z, PI * 0.5) and is_equal_approx(face_orientations[3].z, -PI * 0.5), "faces 3 and 4 are opposite")
 	var five_layout: Array[Vector3] = DicePresentation3DScript.layout_for_count(5)
 	_expect(five_layout.size() == 5 and five_layout.slice(0, 3).all(func(position: Vector3) -> bool: return position.z < 0) and five_layout.slice(3, 5).all(func(position: Vector3) -> bool: return position.z > 0), "five dice layout is three plus two")
+	var throw_start: Vector3 = DicePresentation3DScript.throw_offset(0.0, 0); var throw_peak: Vector3 = DicePresentation3DScript.throw_offset(0.5, 0); var throw_end: Vector3 = DicePresentation3DScript.throw_offset(1.0, 0)
+	_expect(throw_peak.y > throw_start.y and throw_peak.y > throw_end.y and throw_start.z > throw_end.z, "dice use a forward launch arc before settling")
+	_expect(DiceAudioControllerScript.PLAYER_POOL_SIZE == 9 and DiceAudioControllerScript.MAX_ROLL_VOICES == 2, "dice audio uses bounded shared pools")
+	_expect(DiceAudioControllerScript.next_variation_index(4, 2, 0) != 2 and DiceAudioControllerScript.next_variation_index(4, 2, 99) != 2, "dice audio avoids immediate variation repeats")
 	var wrapped: Dictionary = BoardModelScript.move(89, 4)
 	_expect(wrapped.index == 3 and wrapped.laps == 1, "89 to 0 lap")
+	_expect(is_equal_approx(BoardViewScript.hop_offset_for_progress(0.0), 0.0) and BoardViewScript.hop_offset_for_progress(0.5) < -13.9 and is_equal_approx(BoardViewScript.hop_offset_for_progress(1.0), 0.0), "route token hop starts grounded peaks mid-step and lands grounded")
+	var popup_start: Dictionary = PopupBookTransitionScript.phase_receipt(0.0)
+	var popup_middle: Dictionary = PopupBookTransitionScript.phase_receipt(0.58)
+	var popup_end: Dictionary = PopupBookTransitionScript.phase_receipt(1.0)
+	_expect(is_zero_approx(float(popup_start.maze_rise)) and float(popup_middle.door_open) > 0.99 and float(popup_middle.maze_rise) > 0.4 and is_equal_approx(float(popup_end.tray_slide), 1.0), "popup-book phases open the door before raising the maze and finish with the dice tray")
+	var route_main := BoardModelScript.route_definition("main")
+	var route_bypass := BoardModelScript.route_definition("bypass_caravan")
+	var route_loop := BoardModelScript.route_definition("loop_royal_maze")
+	_expect(int(route_loop.source_tile) == 18 and int(route_loop.entry_tile) == 4 and int(route_loop.return_gate_tile) == 0 and int(route_loop.return_tile) == 26, "royal maze uses the pyramid transfer floor and fixed return point")
+	_expect((route_loop.tiles as Array) == [&"RETURN_GATE", &"RISK", &"TREASURE", &"RISK", &"ANCIENT_ITEM", &"STRONG_RISK", &"MURAL", &"RISK"], "royal maze has one gate three hazards and three reward spaces")
+	_expect(int(route_main.tile_count) == 90 and route_main.counts_for_lap and int(route_bypass.tile_count) == 10 and not route_bypass.counts_for_lap and int(route_loop.tile_count) == 8 and route_loop.exact_stop_exit, "ROUTE-01 defines main bypass and loop topology")
+	var bypass_move := BoardModelScript.advance_route("bypass_caravan", 8, 4)
+	_expect(str(bypass_move.route_id) == "main" and int(bypass_move.tile_index) == 60 and int(bypass_move.laps) == 0 and (bypass_move.path as Array).size() == 4, "bypass rejoins main and preserves remaining steps")
+	var loop_move := BoardModelScript.advance_route("loop_royal_maze", 6, 10)
+	_expect(str(loop_move.route_id) == "loop_royal_maze" and int(loop_move.tile_index) == 0 and int(loop_move.maze_loops) == 2 and int(loop_move.laps) == 0, "maze loops independently without main lap")
+	var loop_pass_gate := BoardModelScript.advance_route("loop_royal_maze", 7, 2)
+	_expect(int(loop_pass_gate.tile_index) == 1 and int(loop_pass_gate.maze_loops) == 1, "passing the return gate does not leave the maze")
+	var loop_ten_laps := BoardModelScript.advance_route("loop_royal_maze", 4, 80)
+	_expect(int(loop_ten_laps.tile_index) == 4 and int(loop_ten_laps.maze_loops) == 10 and int(loop_ten_laps.laps) == 0, "royal maze permits ten loops without a forced rescue")
+	var entry_state := GameStateScript.new()
+	entry_state.reset_run()
+	entry_state.set_route_position("main", 18)
+	_expect(entry_state.commit_royal_maze_entry("main", 26) and entry_state.current_route_id == "loop_royal_maze" and entry_state.current_route_tile_index == 4, "royal maze entry stores the return and starts opposite the gate")
+	entry_state.set_route_position("loop_royal_maze", 7)
+	_expect(not entry_state.commit_royal_maze_exit(), "royal maze cannot exit away from the return gate")
+	entry_state.set_route_position("loop_royal_maze", 0)
+	_expect(entry_state.commit_royal_maze_exit() and entry_state.current_route_id == "main" and entry_state.current_route_tile_index == 26 and not entry_state.commit_royal_maze_exit(), "royal maze gate exits exactly once")
+	var secret_state := GameStateScript.new()
+	secret_state.reset_run()
+	_expect(secret_state.is_bypass_tile_revealed(0) and secret_state.is_bypass_tile_revealed(9) and not secret_state.is_bypass_tile_revealed(1), "new journey exposes only caravan entrance and exit")
+	secret_state.set_route_position("bypass_caravan", 0)
+	secret_state.begin_roll_transaction([], 3, 0)
+	var secret_move := BoardModelScript.advance_route("bypass_caravan", 0, 3)
+	secret_state.commit_roll_result([1, 1, 1], 3, {}, 3, 3, 0, false, "bypass_caravan", secret_move.path, 0)
+	secret_state.set_route_position("bypass_caravan", 3)
+	secret_state.commit_roll_movement(3, "bypass_caravan")
+	var first_reveal: Dictionary = secret_state.commit_bypass_tile_reveal(3)
+	var duplicate_reveal: Dictionary = secret_state.commit_bypass_tile_reveal(3)
+	_expect(first_reveal.committed and first_reveal.newly_revealed and not duplicate_reveal.committed and secret_state.bypass_revealed_tiles == [3], "only the final caravan stop is revealed exactly once")
+	_expect(not secret_state.is_bypass_tile_revealed(1) and not secret_state.is_bypass_tile_revealed(2), "caravan pass-through tiles stay secret")
+	var secret_save := secret_state.to_dictionary()
+	var secret_loaded := GameStateScript.new(); secret_loaded.apply_dictionary(secret_save)
+	_expect(secret_loaded.bypass_revealed_tiles == [3] and bool(secret_loaded.roll_transaction.bypass_tile_reveal_committed), "caravan reveal and receipt survive save reload")
+	var malformed_secret_save := secret_save.duplicate(true); malformed_secret_save["bypass_revealed_tiles"] = [-1, 2, 2, 9, 99, "3"]
+	secret_loaded.apply_dictionary(malformed_secret_save)
+	_expect(secret_loaded.bypass_revealed_tiles == [2], "malformed caravan reveal indices migrate safely")
+	secret_loaded.reset_run()
+	_expect(secret_loaded.bypass_revealed_tiles.is_empty(), "new journey clears caravan reveal memory")
+	_expect(BoardViewScript.bypass_display_type(1, 10, &"RISK", []) == &"SECRET" and BoardViewScript.bypass_display_type(1, 10, &"COIN", []) == &"SECRET" and BoardViewScript.bypass_display_type(1, 10, &"STRONG_RISK", []) == &"SECRET", "unrevealed caravan danger and rewards share one presentation type")
+	_expect(BoardViewScript.bypass_display_type(1, 10, &"RISK", [1]) == &"RISK" and BoardViewScript.bypass_display_type(0, 10, &"RISK", []) == &"RISK", "revealed and entrance caravan tiles expose their actual type")
+	var route_state: Node = GameStateScript.new()
+	route_state.set_route_position("loop_royal_maze", 6)
+	route_state.pending_route_choice = {"choice_id": "route:test", "entry_tile": 32}
+	route_state.route_choice_remaining_steps = 5
+	route_state.begin_roll_transaction([], 1, 6)
+	route_state.commit_roll_result([6], 1, {}, 6, 4, 0, false, "loop_royal_maze", BoardModelScript.advance_route("loop_royal_maze", 6, 6).path, 1)
+	var route_save: Dictionary = route_state.to_dictionary()
+	var route_loaded: Node = GameStateScript.new(); route_loaded.apply_dictionary(route_save)
+	_expect(int(route_save.version) == 10 and str(route_loaded.current_route_id) == "loop_royal_maze" and int(route_loaded.current_route_tile_index) == 6 and int(route_loaded.route_choice_remaining_steps) == 5 and str(route_loaded.roll_transaction.start_route_id) == "loop_royal_maze" and str(route_loaded.roll_transaction.target_route_id) == "loop_royal_maze" and (route_loaded.roll_transaction.movement_path as Array).size() == 6, "route position choice and interrupted movement survive save")
+	var legacy_route := route_save.duplicate(true); legacy_route.erase("current_route_id"); legacy_route.erase("current_route_tile_index"); legacy_route["tile"] = 42; legacy_route["roll_transaction"] = {}; route_loaded.apply_dictionary(legacy_route)
+	_expect(str(route_loaded.current_route_id) == "main" and int(route_loaded.current_route_tile_index) == 42, "v7 tile-only save migrates to main route")
+	route_state.free(); route_loaded.free()
+	var bypass_tiles: Array = route_bypass.tiles
+	_expect(bypass_tiles.count(&"RISK") == 4 and bypass_tiles.count(&"STRONG_RISK") == 2 and bypass_tiles.count(&"GAMBLE") == 1 and bypass_tiles.size() == 10, "caravan bypass has four risk two strong risk and one gamble")
+	var branch := BoardModelScript.route_choice_encounter("main", 30, 5)
+	_expect(int(branch.steps_to_entry) == 2 and int(branch.remaining_steps) == 3 and (branch.movement_path as Array).size() == 2 and BoardModelScript.route_choice_encounter("main", 32, 5).is_empty(), "route choice pauses at entry and does not reopen next turn")
+	var choice_state: Node = GameStateScript.new(); choice_state.set_route_position("main", 30); choice_state.begin_roll_transaction([], 1, 30)
+	var reserved: bool = choice_state.reserve_route_choice([5], 1, {}, 5, branch, false)
+	var pending_save: Dictionary = choice_state.to_dictionary(); choice_state.apply_dictionary(pending_save)
+	var arrived: bool = choice_state.commit_route_choice_arrival(); var arrived_save: Dictionary = choice_state.to_dictionary(); choice_state.apply_dictionary(arrived_save)
+	var chose_bypass: bool = choice_state.commit_route_choice("bypass_caravan"); var duplicate_choice: bool = choice_state.commit_route_choice("main")
+	_expect(reserved and arrived and chose_bypass and not duplicate_choice and int(choice_state.rolls_used) == 1 and str(choice_state.current_route_id) == "bypass_caravan" and int(choice_state.roll_transaction.target_tile_index) == 3 and int(choice_state.route_choice_remaining_steps) == 3 and int(choice_state.bypass_use_count) == 1, "route choice survives interruption and commits bypass exactly once")
+	choice_state.free()
 	var long_move: Dictionary = BoardModelScript.move(0, 378)
 	_expect(long_move.index == 18 and long_move.laps == 4, "multi lap")
 	var simulated_index: int = 0
@@ -37,6 +137,163 @@ func _init() -> void:
 	_expect(simulated_index >= 0 and simulated_index < 90 and simulated_laps == 2, "20 consecutive rolls stay valid")
 	var tiles: Array[StringName] = BoardModelScript.build_tile_types()
 	_expect(tiles.size() == 90, "90 tiles")
+	var tour_offsets: Array[int] = TourismMapViewScript.neighborhood_offsets()
+	var tour_wrap: Array[int] = TourismMapViewScript.neighborhood_indices(89)
+	var tour_rects: Array[Rect2] = TourismMapViewScript.tile_rects(Vector2(360, 250))
+	var tour_rects_large: Array[Rect2] = TourismMapViewScript.tile_rects(Vector2(720, 390))
+	var tour_centers: Array[Vector2] = TourismMapViewScript.route_centers(Vector2(360, 250))
+	var distinct_y: Dictionary = {}
+	for center: Vector2 in tour_centers: distinct_y[roundi(center.y)] = true
+	_expect(tour_offsets.size() == 19 and tour_offsets.front() == -3 and tour_offsets.back() == 15, "tourism map keeps three history tiles and fifteen forward targets")
+	_expect(tour_wrap == [86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], "tourism map wraps 87..90 to 01..15")
+	_expect(TourismMapViewScript.rects_fit_without_overlap(tour_rects, Rect2(0, 0, 360, 250), 2.0), "tourism tiles fit 360x250 without overlap")
+	_expect(TourismMapViewScript.rects_fit_without_overlap(tour_rects_large, Rect2(0, 0, 720, 390), 2.0) and Rect2(0, 0, 360, 250).encloses(TourismMapViewScript.player_rect(Vector2(360, 250))) and Rect2(0, 0, 720, 390).encloses(TourismMapViewScript.player_rect(Vector2(720, 390))), "tourism tiles and enlarged player fit reference and runtime bounds")
+	_expect(tour_centers[3].x > 360.0 * 0.40 and tour_centers[3].x < 360.0 * 0.60 and tour_centers[3].y > 250.0 * 0.70 and distinct_y.size() >= 10, "tourism route keeps current lower-middle on a continuous non-grid path")
+	_expect(TourismMapViewScript.is_offset_reachable(1, 1, &"NORMAL") and TourismMapViewScript.is_offset_reachable(6, 1, &"NORMAL") and not TourismMapViewScript.is_offset_reachable(7, 1, &"LANDMARK"), "one die highlights exact one through six range")
+	_expect(TourismMapViewScript.is_offset_reachable(9, 2, &"RISK") and TourismMapViewScript.is_offset_reachable(10, 3, &"EVENT") and not TourismMapViewScript.is_offset_reachable(9, 2, &"NORMAL"), "multi dice highlights visible special destinations only")
+	_expect(TourismMapViewScript.is_offset_reachable(15, 3, &"ITEM") and tour_offsets.has(15), "three dice can inspect targets through fifteen steps")
+	var bypass_points := BoardViewScript.bypass_route_points(Vector2(360, 250), 10)
+	_expect(bypass_points.size() == 10 and bypass_points[0].x < bypass_points[-1].x and BoardViewScript.bypass_exit_distance(4, 10) == 5 and BoardViewScript.bypass_exit_distance(9, 10) == 0, "bypass exposes direction and exact distance to exit")
+	_expect(TourismMapViewScript.normalized_view_mode("tourism") == "tourism" and TourismMapViewScript.normalized_view_mode("unknown") == "classic", "unknown board mode falls back to classic")
+	var scenic_fit := TourismMapViewScript.aspect_fit_rect(Vector2(1024, 512), Rect2(18, 42, 324, 125))
+	_expect(is_equal_approx(scenic_fit.size.x / scenic_fit.size.y, 2.0) and is_equal_approx(scenic_fit.size.y, 125.0), "tourism scenic preserves its two-to-one aspect ratio")
+	var market_props_lv0: Array[Dictionary] = TourismMapViewScript.market_prop_specs(Vector2(360, 250), 0, 0)
+	var market_props_lv3: Array[Dictionary] = TourismMapViewScript.market_prop_specs(Vector2(360, 250), 0, 3)
+	_expect(market_props_lv0.size() == 4 and market_props_lv3.size() == 6 and TourismMapViewScript.market_prop_specs(Vector2(360, 250), 18, 3).is_empty(), "hybrid props stay market-only and preserve landmark growth")
+	_expect(TourismMapViewScript.prop_specs_are_clear(market_props_lv0, Vector2(360, 250)) and TourismMapViewScript.prop_specs_are_clear(market_props_lv3, Vector2(360, 250)), "hybrid props avoid route tiles player and map-dice reserve")
+	var screen_map := Rect2(0, 120, 360, 250)
+	var landing_screen := MapDiceOverlayScript.landing_rect_in_screen(screen_map, TourismMapViewScript.map_dice_landing_rect(screen_map.size))
+	var arc_start := Vector2(180, 610); var arc_end := landing_screen.get_center(); var arc_peak := MapDiceOverlayScript.arc_position(arc_start, arc_end, 0.5)
+	_expect(screen_map.encloses(landing_screen) and landing_screen.size.x > 0.0 and landing_screen.size.y > 0.0 and TourismMapViewScript.landing_zone_is_clear(screen_map.size), "map dice landing zone stays inside tourism map and clear of player/reachable tiles")
+	_expect(arc_peak.y < arc_start.lerp(arc_end, 0.5).y - 80.0 and MapDiceOverlayScript.arc_position(arc_start, arc_end, 0.0) == arc_start and MapDiceOverlayScript.arc_position(arc_start, arc_end, 1.0).is_equal_approx(arc_end), "map die launch uses a continuous readable arc")
+	var multi_landing := TourismMapViewScript.map_dice_landing_rect(Vector2(360, 250), 5)
+	var multi_footprint := TourismMapViewScript.map_dice_footprint_rect(Vector2(360, 250), 5)
+	var multi_bounds := Rect2(0, 0, 360, 250)
+	var multi_route_clear := true
+	for tile: Rect2 in TourismMapViewScript.tile_rects(Vector2(360, 250)):
+		multi_route_clear = multi_route_clear and not multi_footprint.intersects(tile.grow(2.0))
+	var all_multi_clear := TourismMapViewScript.landing_zone_is_clear(Vector2(360, 250), 2) and TourismMapViewScript.landing_zone_is_clear(Vector2(360, 250), 3) and TourismMapViewScript.landing_zone_is_clear(Vector2(360, 250), 5)
+	_expect(MapDiceOverlayScript.uses_map_presentation(true, 1) and MapDiceOverlayScript.uses_map_presentation(true, 2) and MapDiceOverlayScript.uses_map_presentation(true, 3) and MapDiceOverlayScript.uses_map_presentation(true, 5) and not MapDiceOverlayScript.uses_map_presentation(true, 4) and not MapDiceOverlayScript.uses_map_presentation(false, 2) and all_multi_clear and multi_bounds.encloses(multi_landing) and multi_bounds.encloses(multi_footprint) and multi_route_clear, "map die presentation routes Tourism 1/2/3/5 with count-aware landing footprint")
+	_expect(MapDiceOverlayScript.formation_offsets(2).size() == 2 and MapDiceOverlayScript.formation_offsets(3).size() == 3 and MapDiceOverlayScript.formation_offsets(5).size() == 5 and MapDiceOverlayScript.formation_scale(5) < MapDiceOverlayScript.formation_scale(3), "map die formations use two, three, and three-plus-two layouts")
+	_expect(MapDiceOverlayScript.formation_offsets(3).size() == 3 and MapDiceOverlayScript.MAX_DICE == 5, "three dice reserve a dedicated slot formation without changing the five-die pool")
+	_expect(MapDiceOverlayScript.role_visual_mode(["PAIR"]) == "PAIR" and MapDiceOverlayScript.role_visual_mode(["STRAIGHT"]) == "STRAIGHT" and MapDiceOverlayScript.role_visual_mode(["ALL EVEN"]) == "" and MapDiceOverlayScript.role_visual_mode(["TRIPLE", "ALL ODD"]) == "TRIPLE", "slot role line modes keep main role priority and support colors separate")
+	_expect(MapDiceOverlayScript.TRIPLE_CONVERGENCE_FACTOR > 0.80 and MapDiceOverlayScript.TRIPLE_CONVERGENCE_FACTOR < 1.0 and MapDiceOverlayScript.TRIPLE_RESULT_HOLD_DURATION >= 0.6 and MapDiceOverlayScript.TRIPLE_RESULT_HOLD_DURATION <= 0.8, "triple convergence is a restrained inward move with readable result hold")
+	var flow_zero := TourismMapViewScript.flow_visual_strength(0)
+	var flow_three := TourismMapViewScript.flow_visual_strength(3)
+	var flow_five := TourismMapViewScript.flow_visual_strength(5)
+	_expect(float(flow_zero.intensity) == 0.0 and float(flow_three.intensity) > float(flow_zero.intensity) and float(flow_five.map_motion) > 0.0 and float(flow_five.slot_glow) > float(flow_three.slot_glow), "flow visual strength rises from stillness to map motion without changing gameplay")
+	var dunes_zero := DistrictFlowVisualScript.dunes_reaction_profile(0)
+	var dunes_one := DistrictFlowVisualScript.dunes_reaction_profile(1)
+	var dunes_five := DistrictFlowVisualScript.dunes_reaction_profile(5)
+	_expect(int(dunes_zero.sand_streaks) == 0 and int(dunes_one.sand_streaks) == 2 and int(dunes_one.ground_particles) == 0 and int(dunes_five.distant_wind_bands) == 2, "dunes FLOW reaction adds sand, ripples, flags, and distant bands by shared level")
+	var oasis_zero := DistrictFlowVisualScript.oasis_reaction_profile(0)
+	var oasis_two := DistrictFlowVisualScript.oasis_reaction_profile(2)
+	var oasis_five := DistrictFlowVisualScript.oasis_reaction_profile(5)
+	_expect(int(oasis_zero.surface_ripples) == 0 and int(oasis_two.palm_sway) == 2 and int(oasis_two.light_streaks) == 0 and int(oasis_five.tailwind_waves) == 3, "oasis FLOW reaction adds ripples, palms, light, scene accents, and tailwind waves by shared level")
+	var ruins_zero := DistrictFlowVisualScript.ruins_reaction_profile(0)
+	var ruins_three := DistrictFlowVisualScript.ruins_reaction_profile(3)
+	var ruins_five := DistrictFlowVisualScript.ruins_reaction_profile(5)
+	_expect(int(ruins_zero.dust_threads) == 0 and int(ruins_three.floor_lights) == 2 and int(ruins_three.loose_fragments) == 0 and int(ruins_five.long_wind_lines) == 1 and float(ruins_five.intensity_scale) < 0.7, "ruins FLOW stays restrained while adding dust, hanging accents, floor light, fragments, and one long wind line")
+	var pyramid_zero := DistrictFlowVisualScript.pyramid_reaction_profile(0)
+	var pyramid_four := DistrictFlowVisualScript.pyramid_reaction_profile(4)
+	var pyramid_five := DistrictFlowVisualScript.pyramid_reaction_profile(5)
+	_expect(int(pyramid_zero.distant_sand) == 0 and int(pyramid_four.ground_ripples) == 3 and int(pyramid_four.edge_trace) == 0 and int(pyramid_five.edge_trace) == 1, "pyramid FLOW adds distance and scale while reserving the landmark edge trace for level five")
+	var dunes_visual := DistrictFlowVisualScript.new()
+	dunes_visual.set_district(&"DUNES")
+	dunes_visual.set_district_active(true)
+	dunes_visual.set_flow_visual_level(7)
+	var dunes_receipt := dunes_visual.receipt()
+	_expect(int(dunes_receipt.flow_level) == 5 and bool(dunes_receipt.district_active) and bool(dunes_receipt.visible), "dunes visual clamps FLOW to 0..5 and exposes the district-only interface")
+	dunes_visual.play_flow_pulse(&"role_resolved")
+	var pulse_receipt := dunes_visual.receipt()
+	dunes_visual.play_flow_pulse(&"flow_broken")
+	_expect(int(pulse_receipt.pulse_count) == 1 and str(dunes_visual.receipt().pulse_event_type) == "", "dunes pulse events are transient and flow_broken clears without animating FLOW 0")
+	dunes_visual.set_flow_visual_level(0)
+	dunes_visual.set_district(&"OASIS")
+	var oasis_idle_receipt := dunes_visual.receipt()
+	dunes_visual.play_flow_pulse(&"flow_broken")
+	var oasis_break_receipt := dunes_visual.receipt()
+	_expect(bool(oasis_idle_receipt.supported) and int(oasis_idle_receipt.flow_level) == 0 and not bool(oasis_idle_receipt.processing) and str(oasis_break_receipt.pulse_event_type) == "flow_broken" and bool(oasis_break_receipt.processing), "oasis FLOW 0 stays still while flow_broken gets one bounded flattening pulse")
+	dunes_visual.set_district(&"RUINS")
+	var ruins_idle_receipt := dunes_visual.receipt()
+	dunes_visual.play_flow_pulse(&"flow_broken")
+	var ruins_break_receipt := dunes_visual.receipt()
+	_expect(bool(ruins_idle_receipt.supported) and not bool(ruins_idle_receipt.processing) and str(ruins_break_receipt.pulse_event_type) == "flow_broken" and bool(ruins_break_receipt.processing), "ruins FLOW 0 stays still while flow_broken briefly dims lamps and settles dust")
+	dunes_visual.set_district(&"PYRAMID")
+	dunes_visual.set_flow_visual_level(4)
+	dunes_visual.set_flow_visual_level(5)
+	var pyramid_five_receipt := dunes_visual.receipt()
+	dunes_visual.set_flow_visual_level(5)
+	var pyramid_repeat_receipt := dunes_visual.receipt()
+	_expect(bool(pyramid_five_receipt.supported) and bool(pyramid_five_receipt.edge_trace_active) and int(pyramid_five_receipt.edge_trace_count) == 1 and int(pyramid_repeat_receipt.edge_trace_count) == 1, "pyramid edge trace fires once on entering FLOW 5 and not when the same level is repeated")
+	dunes_visual.set_flow_visual_level(0)
+	dunes_visual.play_flow_pulse(&"flow_broken")
+	var pyramid_break_receipt := dunes_visual.receipt()
+	_expect(str(pyramid_break_receipt.pulse_event_type) == "flow_broken" and bool(pyramid_break_receipt.processing), "pyramid FLOW break briefly stops flags and settles distant sand at level zero")
+	dunes_visual.set_district(&"MARKET")
+	var unsupported_receipt := dunes_visual.receipt()
+	_expect(not bool(unsupported_receipt.supported) and int(unsupported_receipt.visual_count) == 4 and not bool(unsupported_receipt.processing), "district coordinator keeps four fixed visuals and does not update unsupported districts")
+	dunes_visual.set_district_active(false)
+	_expect(not bool(dunes_visual.receipt().processing) and not bool(dunes_visual.visible), "non-visible dunes district stops processing")
+	dunes_visual.free()
+	var summed_preview := TourismMapViewScript.new()
+	summed_preview.highlight_destination(12, 18)
+	_expect(summed_preview.highlighted_destination_value == 18 and summed_preview.offscreen_destination_distance == 18, "multi-die destination preview flags targets beyond fifteen steps")
+	summed_preview.highlight_destination(12, 15)
+	_expect(summed_preview.offscreen_destination_distance == 0, "fifteen-step targets stay on the visible route")
+	summed_preview.clear_destination_highlight()
+	_expect(summed_preview.highlighted_destination_value == 0 and summed_preview.offscreen_destination_distance == 0, "destination guidance clears after result hold")
+	summed_preview.free()
+	_expect(MapDiceOverlayScript.can_request_stop(MapDiceOverlayScript.Phase.ROLLING_ON_MAP, false) and not MapDiceOverlayScript.can_request_stop(MapDiceOverlayScript.Phase.ROLLING_ON_MAP, true) and not MapDiceOverlayScript.can_request_stop(MapDiceOverlayScript.Phase.LAUNCHING_TO_MAP, false), "map die early stop gate accepts one rolling request only")
+	_expect(MapDiceOverlayScript.is_visual_rolling(true, 0, 1) and not MapDiceOverlayScript.is_visual_rolling(true, 1, 1) and not MapDiceOverlayScript.is_visual_rolling(false, 0, 1), "map die billboard stops as soon as the one die locks")
+	var transaction_state: Node = GameStateScript.new()
+	transaction_state.reset_run()
+	transaction_state.current_tile_index = 89
+	transaction_state.begin_roll_transaction([], 1, 89)
+	var transaction_id := str(transaction_state.roll_transaction.transaction_id)
+	_expect(str(transaction_state.roll_transaction.phase) == "PRE_ROLL" and transaction_id != "" and int(transaction_state.roll_transaction.start_tile_index) == 89 and transaction_state.roll_transaction.final_dice_values.is_empty() and not bool(transaction_state.roll_transaction.result_committed), "roll transaction reserves canonical PRE_ROLL without committing gameplay")
+	transaction_state.mark_roll_started([4])
+	_expect(str(transaction_state.roll_transaction.phase) == "ROLLING" and transaction_state.roll_transaction.values == [4] and transaction_state.roll_transaction.final_dice_values.is_empty(), "rolling transaction stores presentation values but no final result")
+	_expect(not transaction_state.mark_roll_started([2]), "roll transaction rejects duplicate start")
+	var transaction_roles := DiceLogicScript.evaluate_current([4], 1)
+	transaction_state.commit_roll_result([4], 1, transaction_roles, 4, 3, 1, true)
+	_expect(not transaction_state.commit_roll_result([2], 1, {}, 2, 1, 0, false), "roll transaction rejects duplicate result commit")
+	var transaction_snapshot: Dictionary = transaction_state.to_dictionary().duplicate(true)
+	transaction_state.clear_roll_transaction()
+	transaction_state.apply_dictionary(transaction_snapshot)
+	_expect(str(transaction_state.roll_transaction.phase) == "RESULT_COMMITTED" and str(transaction_state.roll_transaction.roll_transaction_id) == transaction_id and transaction_state.roll_transaction.final_dice_values == [4] and int(transaction_state.roll_transaction.target_tile_index) == 3 and bool(transaction_state.roll_transaction.result_committed), "committed roll result survives save round trip")
+	transaction_state.commit_roll_movement(3)
+	_expect(str(transaction_state.roll_transaction.phase) == "MOVEMENT_COMMITTED" and bool(transaction_state.roll_transaction.movement_committed), "movement commit advances once")
+	_expect(not transaction_state.commit_roll_movement(4), "movement commit cannot run twice")
+	_expect(transaction_state.commit_roll_landing_roles() and not transaction_state.commit_roll_landing_roles() and transaction_state.commit_roll_landing_core(&"COIN", "coin +6") and not transaction_state.commit_roll_landing_core(&"COIN", "duplicate"), "landing role and core effects each commit once")
+	_expect(transaction_state.mark_roll_encounter_handoff(true, 2) and transaction_state.mark_roll_encounter_open(true, 2), "event to boss handoff is durable after reservation consumption")
+	_expect(bool(transaction_state.roll_transaction.encounter_pair_bonus) and int(transaction_state.roll_transaction.encounter_double_bonus) == 2, "PAIR and DOUBLE encounter bonuses remain authoritative on resume")
+	_expect(transaction_state.commit_roll_encounter_interaction(true, "sleepy_sphinx"), "boss interaction is durably committed")
+	var registered_boss: Dictionary = transaction_state.current_boss.duplicate(true)
+	registered_boss["gauge"] = 100
+	_expect(transaction_state.commit_roll_encounter_registration(registered_boss), "joined individual payload is durable before result modal")
+	var encounter_snapshot: Dictionary = transaction_state.to_dictionary().duplicate(true)
+	transaction_state.apply_dictionary(encounter_snapshot)
+	_expect(str(transaction_state.roll_transaction.encounter_phase) == "REGISTRATION_COMMITTED" and int(transaction_state.roll_transaction.encounter_obtained.gauge) == 100, "joined registration recovery window survives reload")
+	_expect(transaction_state.complete_roll_encounter() and not transaction_state.complete_roll_encounter(), "encounter substate rejects duplicate completion")
+	transaction_state.commit_roll_space_effect()
+	_expect(str(transaction_state.roll_transaction.phase) == "SPACE_EFFECT_COMMITTED" and bool(transaction_state.roll_transaction.space_effect_committed), "space effect commit advances once")
+	transaction_state.mark_roll_turn_resolved()
+	_expect(str(transaction_state.roll_transaction.phase) == "TURN_RESOLVED", "turn resolution reaches durable terminal phase")
+	_expect(not transaction_state.commit_roll_space_effect() and not transaction_state.commit_roll_movement(3), "roll transaction rejects reverse transitions")
+	transaction_state.clear_roll_transaction()
+	_expect(transaction_state.roll_transaction.is_empty(), "resolved roll transaction clears for the next turn")
+	var pre_transaction_save: Dictionary = transaction_state.to_dictionary().duplicate(true)
+	pre_transaction_save.erase("roll_transaction")
+	transaction_state.apply_dictionary(pre_transaction_save)
+	_expect(transaction_state.roll_transaction.is_empty(), "pre-03B save migrates with no pending roll")
+	transaction_state.free()
+	var destination_wrap := TourismMapViewScript.destination_rect(Vector2(360, 250), 89, 2)
+	var destination_far := TourismMapViewScript.destination_rect(Vector2(360, 250), 89, 20)
+	_expect(destination_wrap.has_area() and destination_wrap == tour_rects[6] and not destination_far.has_area(), "map destination highlight wraps 90 to 03 and rejects offscreen targets")
+	var market_prop_ids: Dictionary = {}
+	for spec: Dictionary in market_props_lv3: market_prop_ids[str(spec.id)] = true
+	_expect(market_prop_ids.size() <= 8 and TourismMapViewScript.MARKET_PROP_TEXTURES.size() <= 8, "hybrid pack selection and visible props stay within eight")
 	var expected: Dictionary = {&"NORMAL": 39, &"EVENT": 11, &"ITEM": 10, &"COIN": 6, &"WARP": 3, &"SHOP": 3, &"REST": 4, &"LANDMARK": 3, &"BOSS_SCENT": 4, &"STAGE_SPECIAL": 2, &"RISK": 5}
 	for tile_type: StringName in expected:
 		_expect(tiles.count(tile_type) == expected[tile_type], "distribution " + tile_type)
@@ -55,6 +312,92 @@ func _init() -> void:
 	_expect(BoardModelScript.item_space_rewards_for_roll(35) == [&"ITEM"] and BoardModelScript.item_space_rewards_for_roll(89) == [&"ITEM"], "item roll 35-89 gives item")
 	_expect(BoardModelScript.item_space_rewards_for_roll(90) == [&"ITEM_CHOICE"] and BoardModelScript.item_space_rewards_for_roll(99) == [&"ITEM_CHOICE"], "item roll 90-99 gives choice")
 	_expect(BoardModelScript.item_space_rewards_for_roll(50, true) == [&"DICE_ADD_1", &"ITEM"], "DOUBLE item guarantees die plus item")
+	for scenic_level: int in range(4):
+		var scenic_path := LandmarkScenicViewScript.asset_path_for_level(scenic_level)
+		var scenic_image := Image.load_from_file(ProjectSettings.globalize_path(scenic_path))
+		_expect(scenic_image != null and scenic_image.get_size() == Vector2i(1024, 512), "spice scenic Lv%d is 1024x512" % scenic_level)
+		_expect(scenic_image != null and scenic_image.get_pixel(0, 0).a < 0.05 and scenic_image.get_pixel(1023, 0).a < 0.05, "spice scenic Lv%d has transparent corners" % scenic_level)
+	# LAP-01 + LANDMARK-01: pure data and idempotent reward application.
+	var landmarks := LandmarkSystemScript.definitions()
+	_expect(landmarks.size() == 3, "three data-driven Cairo landmarks")
+	_expect(BoardModelScript.landmark_id_for_tile(0) == "CAI_LANDMARK_01" and BoardModelScript.landmark_id_for_tile(22) == "CAI_LANDMARK_02" and BoardModelScript.landmark_id_for_tile(54) == "CAI_LANDMARK_03", "landmark tile ids")
+	var landmark_state := _lap_landmark_state()
+	var landmark_1 := LandmarkSystemScript.resolve_stop(landmark_state, 0, "lm-1", landmarks)
+	var landmark_1_once := RewardResolverScript.apply(landmark_state, landmark_1)
+	var landmark_1_twice := RewardResolverScript.apply(landmark_state, landmark_1)
+	_expect(landmark_1_once.applied and not landmark_1_twice.applied and int(landmark_state.landmark_levels.CAI_LANDMARK_01) == 1 and int(landmark_state.coins) == 20, "landmark Lv1 coin reward idempotent")
+	var landmark_2 := LandmarkSystemScript.resolve_stop(landmark_state, 0, "lm-2", landmarks)
+	RewardResolverScript.apply(landmark_state, landmark_2); var dice_after_level_2 := int(landmark_state.current_dice_count); RewardResolverScript.apply(landmark_state, landmark_2)
+	_expect(int(landmark_state.landmark_levels.CAI_LANDMARK_01) == 2 and dice_after_level_2 == 2 and int(landmark_state.current_dice_count) == 2, "landmark Lv2 die reward once")
+	var landmark_3 := LandmarkSystemScript.resolve_stop(landmark_state, 0, "lm-3", landmarks)
+	RewardResolverScript.apply(landmark_state, landmark_3); var cards_after_level_3: Array = landmark_state.registered_postcards.duplicate(); var bonus_after_level_3 := int(landmark_state.current_lap_bonus); RewardResolverScript.apply(landmark_state, landmark_3)
+	_expect(int(landmark_state.landmark_levels.CAI_LANDMARK_01) == 3 and cards_after_level_3 == ["cairo_spice_market_complete"] and landmark_state.registered_postcards == cards_after_level_3 and int(landmark_state.current_lap_bonus) == bonus_after_level_3, "landmark Lv3 postcard and lap bonus once")
+	var completed_stop := LandmarkSystemScript.resolve_stop(landmark_state, 0, "lm-4", landmarks); RewardResolverScript.apply(landmark_state, completed_stop)
+	_expect(int(landmark_state.landmark_levels.CAI_LANDMARK_01) == 3 and not bool(completed_stop.result.developed), "completed landmark stays Lv3")
+	var triple_odd_roles := DiceLogicScript.evaluate([5, 5, 5])
+	var all_odd_roles := DiceLogicScript.evaluate([1, 3, 5])
+	var all_even_roles := DiceLogicScript.evaluate([2, 4, 6])
+	_expect(LapSystemScript.role_bonus_for(triple_odd_roles, 3) == 30, "lap role bonus uses main priority")
+	_expect(LapSystemScript.role_bonus_for(all_odd_roles, 3) == 20, "actual ALL ODD output adds 20 lap bonus")
+	_expect(LapSystemScript.role_bonus_for(all_even_roles, 3) == 12, "actual ALL EVEN output adds 12 lap bonus")
+	landmark_state.current_lap_roll_count = 12
+	var lap_resolution := LapSystemScript.resolve(landmark_state, "lap-unit", "NORMAL")
+	var lap_once := RewardResolverScript.apply(landmark_state, lap_resolution); var points_after_lap := int(landmark_state.total_lap_points); var coins_after_lap := int(landmark_state.coins); var lap_twice := RewardResolverScript.apply(landmark_state, lap_resolution)
+	_expect(lap_once.applied and not lap_twice.applied and points_after_lap >= 100 and int(landmark_state.total_lap_points) == points_after_lap and int(landmark_state.coins) == coins_after_lap, "lap points and legacy coins commit once")
+	_expect(int(landmark_state.laps) == 1 and int(landmark_state.total_laps) == 1 and landmark_state.events_seen_this_loop.is_empty() and not landmark_state.rare_event_used_this_loop, "lap common commit resets loop state")
+	# CLEAN: updated streak drives the multiplier and milestone rewards share the
+	# same idempotent lap resolution.
+	var clean_state := _lap_landmark_state()
+	clean_state.current_lap_bonus = 20
+	var clean_1 := LapSystemScript.resolve(clean_state, "clean-1")
+	RewardResolverScript.apply(clean_state, clean_1)
+	_expect(int(clean_1.result.points) == 138 and int(clean_state.clean_streak) == 1, "first clean lap uses updated streak x1.15")
+	clean_state.current_lap_bonus = 0
+	clean_state.current_lap_roll_count = 12
+	var clean_2 := LapSystemScript.resolve(clean_state, "clean-2")
+	var clean_2_once := RewardResolverScript.apply(clean_state, clean_2)
+	var clean_2_coins := int(clean_state.coins)
+	var clean_2_twice := RewardResolverScript.apply(clean_state, clean_2)
+	_expect(clean_2_once.applied and not clean_2_twice.applied and int(clean_2.result.points) == 130 and int(clean_2.result.score) == 208 and int(clean_2.result.milestone) == 2 and int(clean_state.clean_streak) == 2 and clean_2_coins == 42 and int(clean_state.coins) == clean_2_coins, "CLEAN 2 reward and lap commit are atomic")
+	clean_state.current_lap_clean = false
+	var dirty := LapSystemScript.resolve(clean_state, "clean-dirty")
+	RewardResolverScript.apply(clean_state, dirty)
+	_expect(int(dirty.result.points) == 100 and is_equal_approx(float(dirty.result.multiplier), 1.0) and int(clean_state.clean_streak) == 1, "dirty lap uses x1 and lowers streak one step")
+	var clean_3_state := _lap_landmark_state(); clean_3_state.clean_streak = 2; clean_3_state.current_lap_roll_count = 12
+	var clean_3 := LapSystemScript.resolve(clean_3_state, "clean-3")
+	RewardResolverScript.apply(clean_3_state, clean_3)
+	var clean_3_snapshot := {"dice": int(clean_3_state.current_dice_count), "streak": int(clean_3_state.clean_streak)}
+	var clean_3_duplicate := RewardResolverScript.apply(clean_3_state, clean_3)
+	_expect(int(clean_3.result.milestone) == 3 and clean_3_state.current_dice_count == 2 and not bool(clean_3_duplicate.applied) and clean_3_snapshot == {"dice": int(clean_3_state.current_dice_count), "streak": int(clean_3_state.clean_streak)}, "CLEAN 3 DICE_ADD_1 is idempotent")
+	var clean_5_state := _lap_landmark_state(); clean_5_state.clean_streak = 4; clean_5_state["dice_keep_active"] = false
+	var clean_5 := LapSystemScript.resolve(clean_5_state, "clean-5")
+	RewardResolverScript.apply(clean_5_state, clean_5)
+	var clean_5_duplicate := RewardResolverScript.apply(clean_5_state, clean_5)
+	_expect(int(clean_5.result.milestone) == 5 and bool(clean_5_state.dice_keep_active) and not bool(clean_5_duplicate.applied), "CLEAN 5 DICE_KEEP is idempotent")
+	var clean_max := LapSystemScript.resolve(clean_5_state, "clean-max")
+	RewardResolverScript.apply(clean_5_state, clean_max)
+	var clean_max_points := int(clean_5_state.total_lap_points)
+	var clean_max_duplicate := RewardResolverScript.apply(clean_5_state, clean_max)
+	_expect(int(clean_max.result.clean_streak) == 5 and int(clean_max.result.milestone) == 0 and (clean_max.rewards as Array).is_empty() and not bool(clean_max_duplicate.applied) and int(clean_5_state.total_lap_points) == clean_max_points, "CLEAN 5 to 5 does not retrigger and is idempotent")
+	var reentry_state := _lap_landmark_state(); reentry_state.clean_streak = 5; reentry_state.current_lap_clean = false; reentry_state["dice_keep_active"] = false
+	var clean_drop := LapSystemScript.resolve(reentry_state, "clean-drop"); RewardResolverScript.apply(reentry_state, clean_drop)
+	reentry_state.current_lap_clean = true
+	var clean_reentry := LapSystemScript.resolve(reentry_state, "clean-reentry"); RewardResolverScript.apply(reentry_state, clean_reentry)
+	var reentry_duplicate := RewardResolverScript.apply(reentry_state, clean_reentry)
+	_expect(int(clean_drop.result.clean_streak) == 4 and int(clean_reentry.result.milestone) == 5 and bool(reentry_state.dice_keep_active) and not bool(reentry_duplicate.applied), "dirty 5 to 4 then clean 4 to 5 rewards re-entry once")
+	var risk_state := _risk_state()
+	for tile_index: int in [27, 44, 58, 68, 80]:
+		var before_penalties := int(risk_state.current_lap_penalty_count)
+		RewardResolverScript.apply(risk_state, RewardResolverScript.resolve_risk(risk_state, "risk-%d" % tile_index, tile_index))
+		_expect(not bool(risk_state.current_lap_clean) and int(risk_state.current_lap_penalty_count) == before_penalties + 1, "risk %d actual harm marks CLEAN once" % tile_index)
+		risk_state.current_lap_clean = true
+	_expect(int(risk_state.next_move_bonus) == -2 and int(risk_state.coins) == 12 and int(risk_state.tile) == 55 and int(risk_state.flow_level) == 0 and int(risk_state.presence) == 1, "five Cairo risk effects apply")
+	var noop_state := _risk_state(); noop_state.coins = 0; noop_state.current_lap_clean = true; noop_state.even_guard_active = true
+	RewardResolverScript.apply(noop_state, RewardResolverScript.resolve_risk(noop_state, "risk-noop", 44))
+	_expect(bool(noop_state.current_lap_clean) and bool(noop_state.even_guard_active) and int(noop_state.current_lap_penalty_count) == 0, "risk no-op preserves CLEAN and guard")
+	var guard_state := _risk_state(); guard_state.even_guard_active = true
+	RewardResolverScript.apply(guard_state, RewardResolverScript.resolve_risk(guard_state, "risk-guard", 44))
+	_expect(int(guard_state.coins) == 20 and bool(guard_state.current_lap_clean) and not bool(guard_state.even_guard_active), "ALL EVEN guard blocks one effective risk")
 	# M3: deterministic, UI-free travel-companion rules.
 	var bosses := BossSystemScript.definitions()
 	_expect(bosses.size() >= 3, "three Cairo individuals")
@@ -119,7 +462,7 @@ func _init() -> void:
 		var v5_round_trip: Dictionary = state_node.to_dictionary().duplicate(true)
 		state_node.current_dice_count = 1
 		state_node.apply_dictionary(v5_round_trip)
-		_expect(int(state_node.current_dice_count) == 2 and int(state_node.to_dictionary().version) == 5, "v5 restores current dice")
+		_expect(int(state_node.current_dice_count) == 2 and int(state_node.to_dictionary().version) == 10, "v7 restores current dice into v10")
 		var before_extra := int(state_node.current_dice_count)
 		state_node.apply_dice_roll_transition(5, DiceLogicScript.evaluate_many([1, 2, 3, 4, 5]))
 		_expect(int(state_node.current_dice_count) == before_extra, "temporary five dice preserves current")
@@ -131,6 +474,12 @@ func _init() -> void:
 		old_state["unlocked_dice_count"] = 3
 		state_node.apply_dictionary(old_state)
 		_expect(int(state_node.current_dice_count) == 2, "v4 three-dice save migrates once to DOUBLE CHANCE")
+		var v5_clean_missing := state_original.duplicate(true)
+		v5_clean_missing["version"] = 5
+		for clean_key: String in ["current_lap_clean", "current_lap_penalty_count", "clean_streak", "even_guard_active", "best_clean_streak"]:
+			v5_clean_missing.erase(clean_key)
+		state_node.apply_dictionary(v5_clean_missing)
+		_expect(state_node.current_lap_clean and state_node.current_lap_penalty_count == 0 and state_node.clean_streak == 0 and not state_node.even_guard_active and state_node.best_clean_streak == 0 and int(state_node.to_dictionary().version) == 10, "v5 missing CLEAN fields migrates to neutral v10 defaults")
 		state_node.apply_dictionary(state_original)
 	# M4A: data-driven event foundation.
 	var events := EventSystemScript.definitions()
@@ -212,3 +561,43 @@ func _event_state() -> Dictionary:
 
 func _reward_state() -> Dictionary:
 	return {"coins": 0, "presence": 0, "inventory": {}, "registered_travel_notes": [], "registered_postcards": [], "applied_resolution_ids": [], "pending_boss_handoff": false, "character_skill_charge": 1}
+
+func _lap_landmark_state() -> Dictionary:
+	return {
+		"coins": 0,
+		"souvenirs": 0,
+		"presence": 0,
+		"inventory": {},
+		"registered_postcards": [],
+		"applied_resolution_ids": [],
+		"current_dice_count": 1,
+		"landmark_levels": {"CAI_LANDMARK_01": 0, "CAI_LANDMARK_02": 0, "CAI_LANDMARK_03": 0},
+		"current_lap_bonus": 0,
+		"current_lap_roll_count": 0,
+		"current_lap_penalty_count": 0,
+		"current_lap_clean": true,
+		"clean_streak": 0,
+		"best_clean_streak": 0,
+		"total_lap_points": 0,
+		"best_lap_score": 0,
+		"laps": 0,
+		"total_laps": 0,
+		"stamps": [],
+		"memos": [],
+		"events_seen_this_loop": ["CAI-E30"],
+		"rare_event_used_this_loop": true,
+		"events_since_rare": 0,
+	}
+
+func _risk_state() -> Dictionary:
+	return {
+		"coins": 20,
+		"presence": 2,
+		"tile": 58,
+		"next_move_bonus": 0,
+		"flow_level": 4,
+		"current_lap_clean": true,
+		"current_lap_penalty_count": 0,
+		"even_guard_active": false,
+		"applied_resolution_ids": [],
+	}
