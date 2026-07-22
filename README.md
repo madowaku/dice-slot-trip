@@ -1,49 +1,51 @@
-# DICE SLOT TRIP
+# Dice Slot Trip
 
-Godot 4.7 / GDScriptで制作中の、縦持ち一人用・世界旅行すごろくです。
+Godot 4.7で開発中の、目押し型すごろくゲームです。
 
-## 現在遊べる範囲
+## ゲームの核
 
-- タイトル → カイロ選択 → 3キャラクター選択 → 旅
-- 90マスの閉じたPath2Dループ
-- 3ダイス、1ダイス、5ダイスから3個選択
-- PAIR / STRAIGHT / TRIPLE / ALL ODD / ALL EVEN
-- 通常、イベント、アイテム、コイン、ワープ、ショップ、休憩、名所、ボス気配マス
-- 周回、旅スタンプ、一行旅メモ、ボス気配
-- 自動保存と「つづきから」
-- DEBUGからPAIR / STRAIGHT / TRIPLE / ALL ODD / ALL EVEN固定
-- ロール中の追加タップで左から1個ずつ早止め。放置時は自動停止
-- 転がり中はダイスが軽く回転・跳ね、停止済みは水平に整列。「残りを一括停止」で現在の目をまとめて固定可能
+1回のロールで、次の2つを同時に考えます。
+
+- どのマスへ止まりたいか
+- 3投目にどの役を作りたいか
+
+旅・ルート・アイテム・ボスは、この判断を支える要素として扱います。
+
+## 現在の正本
+
+- 仕様入口: `docs/PROJECT_BASELINE.md`
+- Drive同期仕様: `docs/specs/v1/`
+- カイロコース: `data/stages/cairo_stage_v1.yaml`
+- ボスレース: `data/bosses/cairo_boss_race_v1.yaml`
+- 新規アート受け皿: `assets/art/cairo/v1/`
+
+Driveのv1.0文書とYAMLを確定仕様とします。`00-design-context.md`は検討経緯であり、確定仕様と競合するときはv1.0文書とYAMLを優先します。
+
+## 実装状況
+
+既定起動はv1.0の独立プレイ画面です。3ROLL SLOT、探検猫のピンポイント、58マスのカイロ、分岐・ワープ・ボスゲート、反転ダイス式ボスレースを一連のセッションとして遊べます。
 
 ## 起動
 
-PowerShellで次を実行します。
-
-    & 'C:\Dev\Tools\Godot-4.7-stable\Godot_v4.7-stable_win64.exe' --path .
+```powershell
+& 'C:\Dev\Tools\Godot-4.7-stable\Godot_v4.7-stable_win64.exe' --path .
+```
 
 ## テスト
 
-    & 'C:\Dev\Tools\Godot-4.7-stable\Godot_v4.7-stable_win64_console.exe' --headless --path . --script tests/run_tests.gd
+```powershell
+$godot = 'C:\Dev\Tools\Godot-4.7-stable\Godot_v4.7-stable_win64_console.exe'
+& $godot --headless --path . --script tests/run_v1_logic_tests.gd
+& $godot --headless --path . --script tests/run_v1_play_session_tests.gd
+& $godot --headless --path . --script tests/run_v1_stage_model_tests.gd
+& $godot --headless --path . --script tests/run_v1_stage_movement_tests.gd
+& $godot --headless --path . --script tests/run_v1_play_screen_tests.gd
+& $godot --headless --path . --script tools/generate_v1_runtime_data.gd -- --check
+```
 
-## M3: ループボス交流
+## 運用ルール
 
-- 通常マスのランダム遭遇、ボス気配マス、未遭遇救済、TRIPLEの確定交流
-- 3個体のスフィンクスとの二択交流、交流100%の図鑑登録、次個体と保存復元
-- `docs/マス種類と役割表v0.1.md`を基に、盤面へ4つのボス気配マスを追加
-
-イベント30本とアイテム20個のカタログは、M4でデータ駆動の獲得・使用フローとして実装予定です。
-
-## M4A: イベント基盤
-
-- カイロの代表10イベントをJSONから読み込み、現在地の5地区から抽選
-- 直前イベント除外、直近3件の重み低下、未発生補正、CAI-E30の周回制限
-- 到着時ロールを固定したまま、二択と追加1／3／5ダイスを処理
-- 共通RewardResolverでコイン、旅道具、旅メモ、ポストカード、ボス気配、次回予約を一度だけ適用
-- イベント確定遭遇は結果画面からスフィンクス交流へ直接接続
-- セーブv3。イベント中断復帰と解決IDによる二重報酬防止に対応
-
-DEBUGではイベントID指定、E30強制、追加ダイス固定、履歴初期化、レア制限解除、ボス接続切替を利用できます。
-
-通常1／3／5ダイスとイベント追加1／3／5ダイスは同じ停止操作を使います。左から1個ずつ狙う操作、一括停止、放置時の自動停止を併用できます。
-
-イベント確定のスフィンクス交流は画面遷移前に保存され、途中で終了しても次回起動時に一度だけ再開します。砂丘のサイコロ祭りは周回を越えると再び抽選対象になります。
+- 新しい仕様は `docs/specs/v1/` を更新する
+- 生成物、動画、QAスクリーンショットをリポジトリ直下へ置かない
+- 新規カイロ画像は `assets/art/cairo/v1/` の分類に従う
+- 旧ランタイムのコードや素材は、v1移行で参照が消えたことを確認してから削除する
