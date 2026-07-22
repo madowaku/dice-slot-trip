@@ -31,6 +31,20 @@ Driveのv1.0文書とYAMLを確定仕様とします。`00-design-context.md`は
 & 'C:\Dev\Tools\Godot-4.7-stable\Godot_v4.7-stable_win64.exe' --path .
 ```
 
+## Android実機
+
+Android presetは `export_presets.cfg` に定義しています。Godot 4.7のExport Template、Android SDK、Java 17を設定したうえで、実機をUSBデバッグ接続して次を実行します。
+
+```powershell
+$godot = 'C:\Dev\Tools\Godot-4.7-stable\Godot_v4.7-stable_win64_console.exe'
+New-Item -ItemType Directory -Path build\android -Force | Out-Null
+& $godot --headless --path . --export-debug Android build\android\dice-slot-trip-debug.apk
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" install -r build\android\dice-slot-trip-debug.apk
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" shell monkey -p com.madowaku.diceslottrip.dev 1
+```
+
+縦持ち・arm64-v8a・immersive modeを前提にしています。
+
 ## テスト
 
 ```powershell
