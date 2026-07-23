@@ -105,6 +105,7 @@ func _init() -> void:
 	_expect(not entry_state.commit_royal_maze_exit(), "royal maze cannot exit away from the return gate")
 	entry_state.set_route_position("loop_royal_maze", 0)
 	_expect(entry_state.commit_royal_maze_exit() and entry_state.current_route_id == "main" and entry_state.current_route_tile_index == 26 and not entry_state.commit_royal_maze_exit(), "royal maze gate exits exactly once")
+	entry_state.free()
 	var secret_state := GameStateScript.new()
 	secret_state.reset_run()
 	_expect(secret_state.is_bypass_tile_revealed(0) and secret_state.is_bypass_tile_revealed(9) and not secret_state.is_bypass_tile_revealed(1), "new journey exposes only caravan entrance and exit")
@@ -128,6 +129,8 @@ func _init() -> void:
 	_expect(secret_loaded.bypass_revealed_tiles.is_empty(), "new journey clears caravan reveal memory")
 	_expect(BoardViewScript.bypass_display_type(1, 10, &"RISK", []) == &"SECRET" and BoardViewScript.bypass_display_type(1, 10, &"COIN", []) == &"SECRET" and BoardViewScript.bypass_display_type(1, 10, &"STRONG_RISK", []) == &"SECRET", "unrevealed caravan danger and rewards share one presentation type")
 	_expect(BoardViewScript.bypass_display_type(1, 10, &"RISK", [1]) == &"RISK" and BoardViewScript.bypass_display_type(0, 10, &"RISK", []) == &"RISK", "revealed and entrance caravan tiles expose their actual type")
+	secret_state.free()
+	secret_loaded.free()
 	var route_state: Node = GameStateScript.new()
 	route_state.set_route_position("loop_royal_maze", 6)
 	route_state.pending_route_choice = {"choice_id": "route:test", "entry_tile": 32}
