@@ -1197,13 +1197,14 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	stop_all_button.visible = extra_controls_parent == null
 	if map_overlay_roll and is_instance_valid(stop_all_button):
 		map_dice_overlay.set_input_exempt_rect(stop_all_button.get_global_rect())
+	var extra_controls: HBoxContainer = null
 	if extra_controls_parent != null:
-		var controls := HBoxContainer.new(); controls.name = "extra_dice_stop_controls"; controls.add_theme_constant_override("separation", 10)
+		extra_controls = HBoxContainer.new(); extra_controls.name = "extra_dice_stop_controls"; extra_controls.add_theme_constant_override("separation", 10)
 		active_extra_left_stop = _button("左から1個停止", func() -> void: _lock_next_die(false), true)
 		active_extra_all_stop = _button("残りを一括停止", _stop_all_dice)
 		active_extra_left_stop.name = "extra_left_stop"; active_extra_all_stop.name = "extra_all_stop"
 		active_extra_left_stop.size_flags_horizontal = Control.SIZE_EXPAND_FILL; active_extra_all_stop.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		controls.add_child(active_extra_left_stop); controls.add_child(active_extra_all_stop); extra_controls_parent.add_child(controls)
+		extra_controls.add_child(active_extra_left_stop); extra_controls.add_child(active_extra_all_stop); extra_controls_parent.add_child(extra_controls)
 		if map_overlay_roll and is_instance_valid(active_extra_all_stop):
 			map_dice_overlay.set_input_exempt_rect(active_extra_all_stop.get_global_rect())
 	role_label.text = "目を追えば、少しだけ狙えるかも"
@@ -1291,9 +1292,7 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		_render_dice(rolling_values, false)
 	roll_button.text = "サイコロを振る"
 	stop_all_button.visible = false
-	if is_instance_valid(active_extra_left_stop): active_extra_left_stop.disabled = true
-	if is_instance_valid(active_extra_all_stop): active_extra_all_stop.disabled = true
-	active_extra_left_stop = null; active_extra_all_stop = null
+	_clear_extra_dice_controls(extra_controls)
 	if is_instance_valid(map_dice_overlay):
 		map_dice_overlay.set_input_exempt_rect(Rect2())
 	return committed_values.duplicate()
@@ -1343,6 +1342,16 @@ func _abort_map_dice_roll() -> void:
 		dice_presentation.visible = true
 	roll_button.text = "サイコロを振る"
 	stop_all_button.visible = false
+	_clear_extra_dice_controls()
+
+func _clear_extra_dice_controls(controls: HBoxContainer = null) -> void:
+	if controls == null and is_instance_valid(active_extra_left_stop):
+		controls = active_extra_left_stop.get_parent() as HBoxContainer
+	if is_instance_valid(active_extra_left_stop): active_extra_left_stop.disabled = true
+	if is_instance_valid(active_extra_all_stop): active_extra_all_stop.disabled = true
+	if is_instance_valid(controls): controls.queue_free()
+	active_extra_left_stop = null
+	active_extra_all_stop = null
 
 func _lock_next_die(automatic: bool) -> void:
 	if not rolling_dice or locked_dice_count >= rolling_values.size():
@@ -3649,7 +3658,7 @@ func _qa_m4a_capture(kind: String, path: String) -> void:
 
 func _qa_stop_all() -> void:
 	GameState.reset_run(); GameState.current_dice_count = 3; show_game(); _set_mode(3)
-	_on_roll_pressed()
+	_animate_dice_roll(3)
 	while not rolling_dice: await get_tree().process_frame
 	await get_tree().create_timer(0.16).timeout
 	_lock_next_die(false)
@@ -3661,6 +3670,10 @@ func _qa_stop_all() -> void:
 	var all_stayed := locked_dice_count == 3 and rolling_values == values_before_all
 	var no_double := locked_dice_count; _stop_all_dice(); no_double = no_double == locked_dice_count
 	var passed := first_stayed and all_stayed and no_double
+	while turn_phase != TurnPhase.MOVING or (is_instance_valid(map_dice_overlay) and map_dice_overlay.is_active()):
+		await get_tree().process_frame
+	while is_instance_valid(dice_audio) and int(dice_audio.receipt().get("active_voices", 0)) > 0:
+		await get_tree().process_frame
 	print("QA_DICE_STOP left_stable=%s all_current=%s no_double=%s passed=%s" % [first_stayed, all_stayed, no_double, passed])
 	if not passed: push_error("Dice stop controls QA failed.")
 	get_tree().quit(0 if passed else 1)
@@ -3676,7 +3689,9 @@ func _qa_extra_dice_controls() -> void:
 		var locked_before_all := locked_dice_count
 		active_extra_all_stop.pressed.emit(); await get_tree().process_frame
 		passed = passed and controls_exist and locked_dice_count == count and locked_before_all <= count
-		while rolling_dice: await get_tree().process_frame
+		while turn_phase != TurnPhase.MOVING or (is_instance_valid(map_dice_overlay) and map_dice_overlay.is_active()):
+			await get_tree().process_frame
+		await get_tree().process_frame
 	print("QA_EXTRA_DICE_CONTROLS counts=1,3,5 passed=%s" % passed)
 	if not passed: push_error("Extra dice stop controls QA failed.")
 	get_tree().quit(0 if passed else 1)
