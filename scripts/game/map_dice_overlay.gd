@@ -299,6 +299,7 @@ var landing_center := Vector2.ZERO
 var active_count := 1
 var locked_count := 0
 var stop_sent := false
+var ignore_emulated_mouse_until_msec: int = 0
 var stop_request_count := 0
 var launch_count := 0
 var completion_count := 0
@@ -476,6 +477,29 @@ func begin_launch(values: Array[int], tray_global_rect: Rect2, map_global_rect: 
 	_set_presentation_center(landing_center, active_count)
 	phase = Phase.ROLLING_ON_MAP
 
+func begin_map_roll(values: Array[int], map_global_rect: Rect2, reserved_local_rect: Rect2) -> void:
+	if phase != Phase.TRAY_IDLE and phase != Phase.COMPLETE:
+		cancel_to_tray()
+	phase = Phase.ROLLING_ON_MAP
+	stop_sent = false
+	locked_count = 0
+	active_count = clampi(values.size(), 1, MAX_DICE)
+	_set_slot_mode(false)
+	launch_count += 1
+	visible = true
+	set_process_input(true)
+	landing_center = landing_rect_in_screen(map_global_rect, reserved_local_rect).get_center()
+	tray_center = landing_center
+	presentation.present(values, true, 0)
+	for index: int in range(MAX_DICE):
+		var billboard := billboards[index]
+		billboard.visible = index < active_count
+		if index < values.size():
+			billboard.reset_roll_visual(values[index])
+			billboard.show_face(values[index], true)
+	_set_formation_scale(1.0)
+	_set_presentation_center(landing_center, active_count)
+
 func present(values: Array[int], rolling: bool, locked_value_count: int) -> void:
 	if not visible:
 		return
@@ -534,6 +558,14 @@ func hold_and_return(final_values: Variant) -> void:
 	for billboard: MapDieBillboard in billboards:
 		billboard.visible = false
 	phase = Phase.TRAY_IDLE
+
+func hold_and_clear(final_values: Variant) -> void:
+	if not visible:
+		return
+	begin_result_hold(final_values)
+	await get_tree().create_timer(result_hold_duration, false).timeout
+	completion_count += 1
+	cancel_to_tray()
 
 func begin_result_hold(final_values: Variant) -> void:
 	if not visible:
@@ -702,6 +734,8 @@ func _input(event: InputEvent) -> void:
 		return
 	var event_position := Vector2.ZERO
 	if event is InputEventMouseButton:
+		if Time.get_ticks_msec() < ignore_emulated_mouse_until_msec:
+			return
 		event_position = event.position
 	elif event is InputEventScreenTouch:
 		event_position = event.position
@@ -711,6 +745,10 @@ func _input(event: InputEvent) -> void:
 	var pressed: bool = event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
 	pressed = pressed or (event is InputEventScreenTouch and event.pressed)
 	if pressed:
+		if event is InputEventScreenTouch:
+			# Mobile platforms can emit an emulated mouse press immediately
+			# after the touch. Keep one physical tap equal to one stopped die.
+			ignore_emulated_mouse_until_msec = Time.get_ticks_msec() + 120
 		request_early_stop()
 
 func set_input_exempt_rect(rect: Rect2) -> void:

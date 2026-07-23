@@ -49,6 +49,8 @@ const WORLD_MAP_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/wo
 const CAIRO_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/cairo-city-card.png")
 const SPHINX_TEXTURE: Texture2D = preload("res://assets/art/bosses/sleepy-sphinx.png")
 const RELAXED_TRAVELER_TEXTURE: Texture2D = preload("res://assets/art/characters/relaxed-traveler.png")
+const ITEM_CARD_TEXTURE: Texture2D = preload("res://assets/art/v08/cards/item-card.png")
+const SKILL_CARD_TEXTURE: Texture2D = preload("res://assets/art/v08/cards/skill-card.png")
 const UI_CLICK_STREAM: AudioStream = preload("res://assets/audio/ui/click_003.ogg")
 const UI_CONFIRM_STREAM: AudioStream = preload("res://assets/audio/ui/select_001.ogg")
 const APP_FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -103,6 +105,9 @@ var roll_button: Button
 var confirm_five_button: Button
 var stop_all_button: Button
 var mode_label: Label
+var travel_slot_labels: Array[Label] = []
+var item_tool_button: Button
+var skill_tool_button: Button
 var boss_label: Label
 var boss_gauge: ProgressBar
 var boss_presence_label: Label
@@ -1013,7 +1018,7 @@ func show_game() -> void:
 	tray_box.add_theme_constant_override("separation", 4)
 	tray_panel.add_child(tray_box)
 	var tray_header := HBoxContainer.new()
-	var tray_title := _body("王墓のダイス" if inside_royal_maze else "今回のダイス", UiTokensScript.FONT_CAPTION)
+	var tray_title := _body("王墓のダイス" if inside_royal_maze else "3 ROLL SLOT", UiTokensScript.FONT_CAPTION)
 	tray_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	tray_title.add_theme_color_override("font_color", Color("#f6dfad"))
 	tray_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1033,8 +1038,26 @@ func show_game() -> void:
 	tray_box.add_child(tray_header)
 	dice_presentation = DicePresentation3DScript.new()
 	dice_presentation.name = "DicePresentation3D"
-	dice_presentation.layout_min_height = 128.0
+	dice_presentation.layout_min_height = 0.0
+	dice_presentation.visible = not (board_view is TourismMapView)
 	tray_box.add_child(dice_presentation)
+	var travel_slots := HBoxContainer.new()
+	travel_slots.name = "TravelRollSlots"
+	travel_slots.add_theme_constant_override("separation", 8)
+	travel_slot_labels.clear()
+	for slot_index: int in range(3):
+		var slot_panel := PanelContainer.new()
+		slot_panel.name = "TravelRollSlot%d" % slot_index
+		slot_panel.custom_minimum_size = Vector2(0, 66)
+		slot_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		slot_panel.add_theme_stylebox_override("panel", _premium_panel(Color("#efe0bf"), Color("#9c7742"), 12))
+		var slot_label := _title("—", 30)
+		slot_label.name = "TravelRollSlotLabel%d" % slot_index
+		slot_label.add_theme_color_override("font_color", TEAL)
+		slot_panel.add_child(slot_label)
+		travel_slots.add_child(slot_panel)
+		travel_slot_labels.append(slot_label)
+	tray_box.add_child(travel_slots)
 	dice_row = HBoxContainer.new()
 	dice_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	dice_row.add_theme_constant_override("separation", 8)
@@ -1070,6 +1093,29 @@ func show_game() -> void:
 	confirm_five_button.visible = false
 	tray_box.add_child(confirm_five_button)
 	page.add_child(tray_panel)
+	var tool_dock := HBoxContainer.new()
+	tool_dock.name = "TravelToolDock"
+	tool_dock.add_theme_constant_override("separation", 6)
+	item_tool_button = _button("アイテム", func() -> void: call_deferred("_show_inventory_dock"))
+	item_tool_button.name = "item_tool_button"
+	item_tool_button.icon = ITEM_CARD_TEXTURE
+	item_tool_button.expand_icon = true
+	item_tool_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	item_tool_button.custom_minimum_size.y = 58
+	skill_tool_button = _button("スキル", func() -> void: call_deferred("_show_skill_dock"))
+	skill_tool_button.name = "skill_tool_button"
+	skill_tool_button.icon = SKILL_CARD_TEXTURE
+	skill_tool_button.expand_icon = true
+	skill_tool_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	skill_tool_button.custom_minimum_size.y = 58
+	var stage_back_button := _button("‹ ステージ", show_stage_select)
+	stage_back_button.name = "stage_back_button"
+	stage_back_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stage_back_button.custom_minimum_size.y = 58
+	tool_dock.add_child(item_tool_button)
+	tool_dock.add_child(skill_tool_button)
+	tool_dock.add_child(stage_back_button)
+	page.add_child(tool_dock)
 	rolls_label = _body("", UiTokensScript.FONT_CAPTION)
 	rolls_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	rolls_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -1142,6 +1188,43 @@ func can_open_map() -> bool:
 func can_open_item_dock() -> bool:
 	return turn_phase == TurnPhase.READY and not modal_open
 
+func _show_inventory_dock() -> void:
+	if not can_open_item_dock():
+		return
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_title("旅のアイテム", 30))
+	var item_names := {
+		"pinpoint": "ピンポイント",
+		"fever": "フィーバー",
+		"royal_scale": "王家の天秤",
+		"ankh_shard": "アンクの欠片",
+		"scarab_charm": "スカラベのお守り",
+	}
+	var lines: Array[String] = []
+	for item_id: Variant in GameState.inventory.keys():
+		var amount := maxi(0, int(GameState.inventory.get(item_id, 0)))
+		if amount > 0:
+			lines.append("%s　×%d" % [str(item_names.get(str(item_id), str(item_id))), amount])
+	content.add_child(_body("\n".join(lines) if not lines.is_empty() else "所持アイテムはありません。", 20))
+	var close := _button("旅へ戻る", func() -> void: return, true)
+	content.add_child(close)
+	await close.pressed
+	_close_modal(modal.layer)
+
+func _show_skill_dock() -> void:
+	if not can_open_item_dock():
+		return
+	var modal := _make_modal()
+	var content: VBoxContainer = modal.content
+	content.add_child(_title("旅人スキル", 30))
+	var ready := GameState.character_skill_charge > 0
+	content.add_child(_body("ピンポイント\n%s\n長く旅をするほど、狙う感覚が自然に身についていく。" % ("READY" if ready else "充電中"), 20))
+	var close := _button("旅へ戻る", func() -> void: return, true)
+	content.add_child(close)
+	await close.pressed
+	_close_modal(modal.layer)
+
 func _on_roll_pressed() -> void:
 	if turn_phase == TurnPhase.ROLLING:
 		_lock_next_die(false)
@@ -1188,10 +1271,9 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	if map_overlay_roll:
 		_sync_flow_visuals()
 		map_dice_overlay.set_flow_visual_level(GameState.flow_level)
-		var tray_rect := _map_dice_tray_anchor_rect()
 		dice_presentation.visible = false
 		var map_rect := board_view.get_global_rect()
-		await map_dice_overlay.begin_launch(rolling_values, tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size, count))
+		await map_dice_overlay.begin_map_roll(rolling_values, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size, count))
 		if not _is_roll_sequence_current(sequence_id) or not map_dice_overlay.is_active():
 			_abort_map_dice_roll()
 			return []
@@ -1210,28 +1292,22 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		if map_overlay_roll and is_instance_valid(active_extra_all_stop):
 			map_dice_overlay.set_input_exempt_rect(active_extra_all_stop.get_global_rect())
 	role_label.text = "目を追えば、少しだけ狙えるかも"
-	for frame: int in range(26):
+	var frame := 0
+	while locked_dice_count < count:
 		if map_overlay_roll and not map_dice_overlay.is_active():
 			_abort_map_dice_roll()
 			return []
-		roll_visual_frame = frame
+		roll_visual_frame = frame % 26
 		if is_instance_valid(dice_audio):
-			dice_audio.play_roll(1.0 - float(frame) / 25.0)
-			if frame in [4, 8, 12, 16]: dice_audio.play_contact(0.38 + float(frame) * 0.018)
+			dice_audio.play_roll(0.48)
+			if frame > 0 and frame % 7 == 0:
+				dice_audio.play_contact(0.48)
 		for index: int in range(locked_dice_count, count):
 			rolling_values[index] = rng.randi_range(1, 6)
 		_render_dice(rolling_values, false)
-		if frame >= 14 and (frame - 14) % 2 == 0:
-			_lock_next_die(true)
-		if locked_dice_count >= count:
-			break
-		var delay := 0.043 + float(frame) * 0.0009
+		frame += 1
+		var delay := 0.052
 		if not await _wait_roll_sequence(delay, sequence_id):
-			_abort_map_dice_roll()
-			return []
-	while locked_dice_count < count:
-		_lock_next_die(true)
-		if not await _wait_roll_sequence(0.13, sequence_id):
 			_abort_map_dice_roll()
 			return []
 	
@@ -1284,13 +1360,13 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	
 	turn_phase = TurnPhase.MOVING
 	if map_overlay_roll:
-		await map_dice_overlay.hold_and_return(rolling_values)
+		await map_dice_overlay.hold_and_clear(rolling_values)
 		if not _is_roll_sequence_current(sequence_id):
 			_abort_map_dice_roll()
 			return []
 		if count != 5:
 			(board_view as TourismMapView).clear_destination_highlight()
-		dice_presentation.visible = true
+		dice_presentation.visible = not (board_view is TourismMapView)
 		_render_dice(rolling_values, false)
 	roll_button.text = "サイコロを振る"
 	stop_all_button.visible = false
@@ -1341,7 +1417,7 @@ func _abort_map_dice_roll() -> void:
 	if is_instance_valid(map_dice_overlay):
 		map_dice_overlay.cancel_to_tray()
 	if is_instance_valid(dice_presentation):
-		dice_presentation.visible = true
+		dice_presentation.visible = not (board_view is TourismMapView)
 	roll_button.text = "サイコロを振る"
 	stop_all_button.visible = false
 	_clear_extra_dice_controls()
@@ -1488,7 +1564,9 @@ func _resolve_roll(values: Array[int]) -> void:
 		if GameState.roll_transaction.is_empty():
 			GameState.begin_roll_transaction(values, rolled_dice_count, start_tile)
 		GameState.reserve_route_choice(values, rolled_dice_count, roles, distance, route_choice, last_roll_early_stopped)
+		GameState.commit_travel_roll_slot(values)
 		SaveManager.save_now()
+		_refresh_travel_roll_slots()
 		await _continue_roll_transaction()
 		return
 	var route_move: Dictionary = BoardModelScript.advance_route(start_route, start_tile, distance)
@@ -1498,7 +1576,9 @@ func _resolve_roll(values: Array[int]) -> void:
 	if GameState.roll_transaction.is_empty():
 		GameState.begin_roll_transaction(values, rolled_dice_count, start_tile)
 	GameState.commit_roll_result(values, rolled_dice_count, roles, distance, destination, crossed_laps, last_roll_early_stopped, destination_route, route_move.path, int(route_move.maze_loops))
+	GameState.commit_travel_roll_slot(values)
 	SaveManager.save_now()
+	_refresh_travel_roll_slots()
 	await _continue_roll_transaction()
 
 func _animate_route_step_hop() -> void:
@@ -1507,7 +1587,7 @@ func _animate_route_step_hop() -> void:
 		return
 	for progress: float in [0.15, 0.35, 0.55, 0.75, 0.90, 1.0]:
 		board_view.set_movement_hop_progress(progress)
-		await get_tree().create_timer(0.026).timeout
+		await get_tree().create_timer(0.040).timeout
 	board_view.set_movement_hop_progress(0.0)
 
 func _animate_straight_camera_follow(tourism_view: TourismMapView) -> void:
@@ -1562,6 +1642,9 @@ func _continue_roll_transaction() -> void:
 		role_label.text = " + ".join(labels)
 	var maze_exited_now := false
 	if phase == "RESULT_COMMITTED":
+		if GameState.commit_travel_roll_slot(values):
+			SaveManager.save_now()
+			_refresh_travel_roll_slots()
 		var start_route := BoardModelScript.normalized_route_id(str(transaction.get("start_route_id", GameState.current_route_id)))
 		var start_tile := int(BoardModelScript.normalize_position(start_route, int(transaction.get("start_tile", GameState.current_tile_index))).tile_index)
 		GameState.set_route_position(start_route, start_tile)
@@ -1778,7 +1861,7 @@ func _restore_roll_idle() -> void:
 	if is_instance_valid(map_dice_overlay):
 		map_dice_overlay.cancel_to_tray()
 	if is_instance_valid(dice_presentation):
-		dice_presentation.visible = true
+		dice_presentation.visible = not (board_view is TourismMapView)
 	roll_button.text = "サイコロを振る"
 	roll_button.disabled = false
 	stop_all_button.visible = false
@@ -1790,18 +1873,17 @@ func _present_resumed_roll_result() -> void:
 	moving = true
 	roll_button.disabled = true
 	if _uses_map_dice_overlay(values.size()):
-		var tray_rect := _map_dice_tray_anchor_rect()
 		var map_rect := board_view.get_global_rect()
 		dice_presentation.visible = false
-		await map_dice_overlay.begin_launch(values, tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size, values.size()))
+		await map_dice_overlay.begin_map_roll(values, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size, values.size()))
 		map_dice_overlay.present(values, false, values.size())
 		if values.size() != 5:
 			var destination := int(GameState.roll_transaction.get("target_tile_index", GameState.current_tile_index))
 			(board_view as TourismMapView).highlight_destination(destination, int(GameState.roll_transaction.get("distance", _sum_dice_values(values))))
-		await map_dice_overlay.hold_and_return(values)
+		await map_dice_overlay.hold_and_clear(values)
 		if values.size() != 5:
 			(board_view as TourismMapView).clear_destination_highlight()
-		dice_presentation.visible = true
+		dice_presentation.visible = not (board_view is TourismMapView)
 	else:
 		_render_dice(values, false)
 		await get_tree().create_timer(0.45).timeout
@@ -2527,12 +2609,26 @@ func _refresh_hud() -> void:
 	if is_instance_valid(board_view): board_view.set_landmark_levels(GameState.landmark_levels)
 	if board_view is TourismMapView: (board_view as TourismMapView).set_dice_count(GameState.current_dice_count)
 	if is_instance_valid(minimap_view): minimap_view.set_landmark_levels(GameState.landmark_levels)
+	_refresh_travel_roll_slots()
 	GameState.ensure_boss_data()
 	boss_label.text = str(GameState.current_boss.get("name", "眠そうなスフィンクス"))
 	if is_instance_valid(boss_gauge): boss_gauge.value = int(GameState.current_boss.get("gauge", 0))
 	if is_instance_valid(boss_presence_label): boss_presence_label.text = "交流 %d%%　気配 %d/5" % [int(GameState.current_boss.get("gauge", 0)), GameState.boss_presence]
 	if is_instance_valid(stamp_label): stamp_label.text = "スタンプ　" + ("なし" if GameState.lap_stamps.is_empty() else "  ".join(GameState.lap_stamps))
 	_refresh_dice_mode_buttons()
+
+func _refresh_travel_roll_slots() -> void:
+	for index: int in range(travel_slot_labels.size()):
+		var label := travel_slot_labels[index]
+		if is_instance_valid(label):
+			label.text = str(GameState.travel_roll_slots[index]) if index < GameState.travel_roll_slots.size() else "—"
+	var item_count := 0
+	for amount: Variant in GameState.inventory.values():
+		item_count += maxi(0, int(amount))
+	if is_instance_valid(item_tool_button):
+		item_tool_button.text = "アイテム\n%d" % item_count
+	if is_instance_valid(skill_tool_button):
+		skill_tool_button.text = "スキル\n%s" % ("READY" if GameState.character_skill_charge > 0 else "充電中")
 
 func _district_accent(district_id: String) -> Color:
 	match district_id.to_upper():
@@ -3378,6 +3474,7 @@ func _qa_one_die() -> void:
 	_set_mode(1)
 	GameState.fixed_rolls.assign([1])
 	var before_rolls := GameState.rolls_used
+	call_deferred("_qa_request_all_map_die_stops", 1)
 	_on_roll_pressed()
 	while moving or rolling_dice:
 		await get_tree().process_frame
@@ -3398,6 +3495,7 @@ func _qa_five_dice() -> void:
 	await get_tree().process_frame
 	GameState.fixed_rolls.assign([4, 5, 6, 1, 2])
 	var before_rolls := GameState.rolls_used
+	call_deferred("_qa_request_all_map_die_stops", 5)
 	await _on_roll_pressed()
 	var selected_values: Array[int] = []
 	for index: int in selected_indices:
@@ -4074,8 +4172,7 @@ func _qa_tourmap_die() -> void:
 	var early_stop_ok := false
 	qa_map_die_visible_stop_ok = false
 	for roll_index: int in range(20):
-		if roll_index == 0:
-			call_deferred("_qa_request_map_die_stop")
+		call_deferred("_qa_request_map_die_stop")
 		var values := await _animate_dice_roll(1)
 		values_valid = values_valid and values.size() == 1 and int(values[0]) in range(1, 7)
 		if roll_index == 0:
@@ -4084,11 +4181,11 @@ func _qa_tourmap_die() -> void:
 	var bounded := int(receipt.presentation_nodes) == 1 and int(receipt.dice_pool_size) == 5 and int(receipt.launch_count) == 20 and int(receipt.completion_count) == 20
 	# _animate_dice_roll hands the settled result to _resolve_roll in MOVING.
 	# Only the map overlay should be idle here; the turn itself is not READY yet.
-	var idle := str(receipt.phase) == "TRAY_IDLE" and not map_dice_overlay.visible and dice_presentation.visible and turn_phase == TurnPhase.MOVING and moving and not rolling_dice
+	var idle := str(receipt.phase) == "TRAY_IDLE" and not map_dice_overlay.visible and not dice_presentation.visible and turn_phase == TurnPhase.MOVING and moving and not rolling_dice
 	var no_commit := GameState.current_tile_index == start_tile and GameState.rolls_used == 0
 	var audio_receipt: Dictionary = dice_audio.receipt()
 	var audio_bounded := int(audio_receipt.pool_size) == DiceAudioControllerScript.PLAYER_POOL_SIZE and int(audio_receipt.active_voices) == 0
-	var passed := values_valid and early_stop_ok and qa_map_die_visible_stop_ok and int(receipt.stop_request_count) == 1 and bounded and audio_bounded and idle and no_commit
+	var passed := values_valid and early_stop_ok and qa_map_die_visible_stop_ok and int(receipt.stop_request_count) == 20 and bounded and audio_bounded and idle and no_commit
 	print("QA_TOURMAP_DIE values=%s early=%s visible_stop=%s bounded=%s audio=%s idle=%s no_commit=%s receipt=%s passed=%s" % [values_valid, early_stop_ok, qa_map_die_visible_stop_ok, bounded, audio_bounded, idle, no_commit, receipt, passed])
 	GameState.apply_dictionary(original)
 	if not passed: push_error("TOURMAP-03A overlay QA failed.")
@@ -4110,15 +4207,16 @@ func _qa_tourmap_multi_die() -> void:
 	for count: int in counts:
 		if count == 3:
 			fixed_targets = [6, 6, 6]
+		call_deferred("_qa_request_all_map_die_stops", count)
 		var values := await _animate_dice_roll(count)
 		var receipt: Dictionary = map_dice_overlay.receipt()
 		receipts.append(receipt)
 		valid = valid and values.size() == count and values.all(func(value: int) -> bool: return value >= 1 and value <= 6)
-		idle = idle and str(receipt.get("phase", "")) == "TRAY_IDLE" and int(receipt.get("active_billboards", 0)) == count and not map_dice_overlay.visible and dice_presentation.visible and turn_phase == TurnPhase.MOVING and moving and not rolling_dice
+		idle = idle and str(receipt.get("phase", "")) == "TRAY_IDLE" and int(receipt.get("active_billboards", 0)) == count and not map_dice_overlay.visible and not dice_presentation.visible and turn_phase == TurnPhase.MOVING and moving and not rolling_dice
 	var audio_receipt: Dictionary = dice_audio.receipt()
 	var audio_ok := int(audio_receipt.get("active_voices", 0)) == 0
 	var pooled := int(map_dice_overlay.receipt().get("billboard_pool_size", 0)) == MapDiceOverlayScript.MAX_DICE
-	var slot_seen := int(map_dice_overlay.receipt().get("slot_open_count", 0)) >= 1 and int(map_dice_overlay.receipt().get("slot_result_count", 0)) >= 1 and int(map_dice_overlay.receipt().get("slot_frame_count", 0)) == 3
+	var slot_seen := travel_slot_labels.size() == 3 and travel_slot_labels.all(func(label: Label) -> bool: return is_instance_valid(label))
 	var triple_seen := int(map_dice_overlay.receipt().get("triple_convergence_count", 0)) >= 1 and not bool(map_dice_overlay.receipt().get("triple_convergence_active", false))
 	var flow_visual_ok := int(map_dice_overlay.receipt().get("flow_visual_level", 0)) == 5 and board_view is TourismMapView and (board_view as TourismMapView).flow_visual_level == 5
 	var no_commit := GameState.rolls_used == 0 and GameState.current_tile_index == 58
@@ -4137,20 +4235,31 @@ func _qa_request_map_die_stop() -> void:
 		qa_map_die_visible_stop_ok = map_dice_overlay.phase == MapDiceOverlay.Phase.STOPPING and not map_dice_overlay.display.rolling
 		map_dice_overlay.request_early_stop()
 
+func _qa_request_all_map_die_stops(count: int) -> void:
+	while is_instance_valid(map_dice_overlay) and map_dice_overlay.phase != MapDiceOverlay.Phase.ROLLING_ON_MAP:
+		await get_tree().process_frame
+	for ignored: int in range(count):
+		if not is_instance_valid(map_dice_overlay) or map_dice_overlay.phase != MapDiceOverlay.Phase.ROLLING_ON_MAP:
+			return
+		map_dice_overlay.request_early_stop()
+		await get_tree().process_frame
+
 func _qa_tourmap_die_capture(kind: String, path: String) -> void:
 	GameState.reset_run()
 	GameState.current_dice_count = 1
 	GameState.current_tile_index = 0
 	GameState.landmark_levels = {"CAI_LANDMARK_01": 3, "CAI_LANDMARK_02": 2, "CAI_LANDMARK_03": 1}
+	if kind == "result":
+		GameState.travel_roll_slots.append(3)
+		GameState.travel_roll_slots.append(5)
 	show_game()
 	_set_board_view_mode("tourism")
 	for ignored: int in range(12):
 		await get_tree().process_frame
 	if kind in ["rolling", "result"]:
 		var map_rect := board_view.get_global_rect()
-		var tray_rect := _map_dice_tray_anchor_rect()
 		dice_presentation.visible = false
-		await map_dice_overlay.begin_launch([4], tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size))
+		await map_dice_overlay.begin_map_roll([4], map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size))
 		map_dice_overlay.present([4], kind == "rolling", 0 if kind == "rolling" else 1)
 		# Freeze only the QA readback frame. The Compatibility renderer can return
 		# a partial backbuffer while a CanvasItem is changing during get_image().
