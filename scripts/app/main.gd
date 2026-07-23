@@ -4041,7 +4041,9 @@ func _qa_tourmap_die() -> void:
 			early_stop_ok = last_roll_early_stopped
 	var receipt: Dictionary = map_dice_overlay.receipt()
 	var bounded := int(receipt.presentation_nodes) == 1 and int(receipt.dice_pool_size) == 5 and int(receipt.launch_count) == 20 and int(receipt.completion_count) == 20
-	var idle := str(receipt.phase) == "TRAY_IDLE" and not map_dice_overlay.visible and dice_presentation.visible and not moving and not rolling_dice
+	# _animate_dice_roll hands the settled result to _resolve_roll in MOVING.
+	# Only the map overlay should be idle here; the turn itself is not READY yet.
+	var idle := str(receipt.phase) == "TRAY_IDLE" and not map_dice_overlay.visible and dice_presentation.visible and turn_phase == TurnPhase.MOVING and moving and not rolling_dice
 	var no_commit := GameState.current_tile_index == start_tile and GameState.rolls_used == 0
 	var audio_receipt: Dictionary = dice_audio.receipt()
 	var audio_bounded := int(audio_receipt.pool_size) == DiceAudioControllerScript.PLAYER_POOL_SIZE and int(audio_receipt.active_voices) == 0
@@ -4071,7 +4073,7 @@ func _qa_tourmap_multi_die() -> void:
 		var receipt: Dictionary = map_dice_overlay.receipt()
 		receipts.append(receipt)
 		valid = valid and values.size() == count and values.all(func(value: int) -> bool: return value >= 1 and value <= 6)
-		idle = idle and str(receipt.get("phase", "")) == "TRAY_IDLE" and int(receipt.get("active_billboards", 0)) == count and not map_dice_overlay.visible and not rolling_dice and not moving
+		idle = idle and str(receipt.get("phase", "")) == "TRAY_IDLE" and int(receipt.get("active_billboards", 0)) == count and not map_dice_overlay.visible and dice_presentation.visible and turn_phase == TurnPhase.MOVING and moving and not rolling_dice
 	var audio_receipt: Dictionary = dice_audio.receipt()
 	var audio_ok := int(audio_receipt.get("active_voices", 0)) == 0
 	var pooled := int(map_dice_overlay.receipt().get("billboard_pool_size", 0)) == MapDiceOverlayScript.MAX_DICE
