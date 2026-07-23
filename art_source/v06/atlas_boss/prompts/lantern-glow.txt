@@ -1,0 +1,12 @@
+Use case: stylized-concept
+Asset type: candidate production four-frame lantern-gold effect sprite sheet for boss-only mobile game states
+Input images: Image 1 is a STYLE AND PALETTE REFERENCE ONLY. Use only its restrained antique-gold storybook accent language. Do not copy its gate, route, UI, text, cat, die, labels, or composition.
+Primary request: one square 2-by-2 production sheet with exactly four isolated variants of the same tall warm lantern-light aura, designed as a subtle breathing sequence for boss arrival, TRIPLE feedback, and enhanced-lap emphasis.
+Scene/backdrop: perfectly flat solid #00FF00 chroma-key background for local background removal. Exactly uniform background with no paper texture, floor plane, reflections, scene lighting, or background gradient. Do not use #00FF00 in the effect artwork.
+Frame sequence: top-left = smallest quiet amber flame-and-halo motif; top-right = slightly fuller warm-gold motif; bottom-left = brightest restrained antique-gold motif with a simple symmetric three-lobe crown suggesting a TRIPLE beat but no symbols; bottom-right = settling warm-gold motif with subtle brass sparks. All four remain the same effect family.
+Style/medium: soft storybook gouache light sprite, layered amber/gold brush shapes with a crisp readable core and controlled feathered halo, production effect rather than concept art.
+Composition/framing: four equal square cells, one vertical effect centered in each cell, shared bottom-center anchor and common baseline, same width family, at least 20% clear padding, no overlap, no dividers.
+Lighting/mood: warm lantern light only, restrained bloom, dark-scene readable but not neon.
+Color palette: amber, honey gold, antique brass, tiny cream-hot core; no teal or green.
+Constraints: exactly four variants; no lantern object; no gate; no text; no letters; no numbers; no icons; no UI; no route; no nodes; no character; no animal; no die; no floor shadow; no watermark; no signature.
+Avoid: smoke, glass, realistic fire, large explosive starburst, lightning, lens flare, scene background, strong white bloom, poster layout.

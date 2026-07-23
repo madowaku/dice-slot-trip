@@ -1,0 +1,2 @@
+Kenney Board Game Icons. License: CC0 1.0 Universal.
+Selected originals are retained unchanged; generated runtime masks live under assets/art/v06/tile_kind_icons.

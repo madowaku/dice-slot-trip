@@ -1,0 +1,355 @@
+--- /mnt/data/main_original.gd	2026-07-20 13:26:01.232141987 +0000
++++ /mnt/data/main.gd	2026-07-20 13:26:41.413611496 +0000
+@@ -58,6 +58,14 @@
+ const TEAL := Color("#287b80")
+ const GOLD := Color("#c79c48")
+ const MUTED := Color("#8c7862")
++
++# Roll-to-Move Feel Pass timings. Keep these centralized so QA can tune the
++# complete stop-to-move rhythm without hunting through await chains.
++const ROLL_SETTLING_SECONDS := 0.14
++const ROLL_RESULT_LOCK_SECONDS := 0.20
++const ROLL_SLOT_TRANSFER_SECONDS := 0.14
++const ROLL_MOVE_PREP_SECONDS := 0.10
++
+ const CHARACTER_OPTIONS: Array[Dictionary] = [
+ 	{
+ 		"id": &"relaxed",
+@@ -145,12 +153,14 @@
+ 		moving = value
+ 		if _syncing_phase_flags:
+ 			return
++		# Compatibility bridge for legacy callers. New code must set turn_phase
++		# directly; this only prevents old `moving = false` cleanup paths from
++		# leaving the UI stuck in a post-roll phase.
+ 		if moving:
+ 			if turn_phase == TurnPhase.READY:
+ 				turn_phase = TurnPhase.MOVING
+-		else:
+-			if turn_phase == TurnPhase.MOVING:
+-				turn_phase = TurnPhase.READY
++		elif turn_phase in [TurnPhase.SETTLING, TurnPhase.RESULT_LOCK, TurnPhase.SLOT_TRANSFER, TurnPhase.MOVE_PREP, TurnPhase.MOVING, TurnPhase.RESOLVING_TILE]:
++			turn_phase = TurnPhase.READY
+ 
+ var rolling_dice: bool = false:
+ 	set(value):
+@@ -1130,8 +1140,13 @@
+ func _wait_roll_sequence(duration: float, sequence_id: int) -> bool:
+ 	if not _is_roll_sequence_current(sequence_id):
+ 		return false
+-	await get_tree().create_timer(duration, false).timeout
+-	return _is_roll_sequence_current(sequence_id) and turn_phase != TurnPhase.PAUSED
++	await get_tree().create_timer(maxf(0.0, duration), false).timeout
++	# Application pause or an in-game pause must not turn a valid sequence into
++	# an abort merely because its timer completed while PAUSED. Wait for the
++	# phase to be restored, while still honoring cancellation and scene exit.
++	while _is_roll_sequence_current(sequence_id) and turn_phase == TurnPhase.PAUSED:
++		await get_tree().process_frame
++	return _is_roll_sequence_current(sequence_id)
+ 
+ func can_start_roll() -> bool:
+ 	return turn_phase == TurnPhase.READY and not modal_open
+@@ -1163,6 +1178,10 @@
+ 	if dice_values.is_empty():
+ 		return
+ 	if dice_mode == 5:
++		# The roll presentation is complete, but movement must wait for the
++		# player's three-die selection. RESULT_LOCK keeps roll input disabled
++		# without pretending the board is already moving.
++		turn_phase = TurnPhase.RESULT_LOCK
+ 		selected_indices = DiceLogicScript.recommended_indices(dice_values)
+ 		_render_dice(dice_values, true)
+ 		role_label.text = "おすすめの3個を選択中"
+@@ -1236,16 +1255,25 @@
+ 		if not await _wait_roll_sequence(0.13, sequence_id):
+ 			_abort_map_dice_roll()
+ 			return []
+-	
++
++	# All gameplay and presentation after this point use the committed snapshot.
++	# Preview values may keep changing internally in another presenter, but they
++	# can no longer alter the face the player stopped or the value sent to rules.
++	var final_values: Array[int] = committed_values.duplicate()
++	for index: int in range(final_values.size()):
++		if final_values[index] <= 0:
++			final_values[index] = clampi(rolling_values[index], 1, 6)
++	rolling_values = final_values.duplicate()
++
+ 	# サイコロ停止演出 (SETTLING) 開始
+ 	turn_phase = TurnPhase.SETTLING
+-	_render_dice(rolling_values, false)
++	_render_dice(final_values, false)
+ 	if is_instance_valid(dice_audio): dice_audio.end_roll()
+ 	if map_overlay_roll and is_instance_valid(map_dice_overlay):
+ 		map_dice_overlay.result_hold_duration = 0.0
+ 	
+ 	# SETTLING時間 (140ms)
+-	if not await _wait_roll_sequence(0.14, sequence_id):
++	if not await _wait_roll_sequence(ROLL_SETTLING_SECONDS, sequence_id):
+ 		_abort_map_dice_roll()
+ 		return []
+ 	
+@@ -1253,21 +1281,21 @@
+ 	turn_phase = TurnPhase.RESULT_LOCK
+ 	if map_overlay_roll:
+ 		if count == 3:
+-			var slot_roles: Dictionary = DiceLogicScript.evaluate_current(rolling_values, count)
++			var slot_roles: Dictionary = DiceLogicScript.evaluate_current(final_values, count)
+ 			var slot_labels: Array = slot_roles.get("labels", [])
+-			map_dice_overlay.show_slot_result(" + ".join(slot_labels) if not slot_labels.is_empty() else "DICE SLOT", rolling_values, slot_labels)
++			map_dice_overlay.show_slot_result(" + ".join(slot_labels) if not slot_labels.is_empty() else "DICE SLOT", final_values, slot_labels)
+ 			_play_flow_pulse(&"role_resolved")
+ 		if count != 5:
+-			var preview_distance := maxi(0, _sum_dice_values(rolling_values) + GameState.next_move_bonus)
++			var preview_distance := maxi(0, _sum_dice_values(final_values) + GameState.next_move_bonus)
+ 			var destination := posmod(GameState.current_tile_index + preview_distance, BoardModelScript.TILE_COUNT)
+ 			(board_view as TourismMapView).highlight_destination(destination, preview_distance)
+-	if not await _wait_roll_sequence(0.20, sequence_id):
++	if not await _wait_roll_sequence(ROLL_RESULT_LOCK_SECONDS, sequence_id):
+ 		_abort_map_dice_roll()
+ 		return []
+ 	
+ 	# SLOT_TRANSFER (140ms)
+ 	turn_phase = TurnPhase.SLOT_TRANSFER
+-	if not await _wait_roll_sequence(0.14, sequence_id):
++	if not await _wait_roll_sequence(ROLL_SLOT_TRANSFER_SECONDS, sequence_id):
+ 		_abort_map_dice_roll()
+ 		return []
+ 	
+@@ -1276,7 +1304,7 @@
+ 	if is_instance_valid(board_view):
+ 		board_view.movement_hop_offset_y = 4.5
+ 		board_view.queue_redraw()
+-	if not await _wait_roll_sequence(0.10, sequence_id):
++	if not await _wait_roll_sequence(ROLL_MOVE_PREP_SECONDS, sequence_id):
+ 		_abort_map_dice_roll()
+ 		return []
+ 	
+@@ -1286,14 +1314,14 @@
+ 	
+ 	turn_phase = TurnPhase.MOVING
+ 	if map_overlay_roll:
+-		await map_dice_overlay.hold_and_return(rolling_values)
++		await map_dice_overlay.hold_and_return(final_values)
+ 		if not _is_roll_sequence_current(sequence_id):
+ 			_abort_map_dice_roll()
+ 			return []
+ 		if count != 5:
+ 			(board_view as TourismMapView).clear_destination_highlight()
+ 		dice_presentation.visible = true
+-		_render_dice(rolling_values, false)
++		_render_dice(final_values, false)
+ 	roll_button.text = "サイコロを振る"
+ 	stop_all_button.visible = false
+ 	if is_instance_valid(active_extra_left_stop): active_extra_left_stop.disabled = true
+@@ -1301,7 +1329,7 @@
+ 	active_extra_left_stop = null; active_extra_all_stop = null
+ 	if is_instance_valid(map_dice_overlay):
+ 		map_dice_overlay.set_input_exempt_rect(Rect2())
+-	return committed_values.duplicate()
++	return final_values
+ 
+ func _uses_map_dice_overlay(count: int) -> bool:
+ 	return is_instance_valid(map_dice_overlay) and MapDiceOverlayScript.uses_map_presentation(board_view is TourismMapView, count)
+@@ -1335,8 +1363,8 @@
+ 		fixed_targets.clear()
+ 	GameState.rollback_uncommitted_roll()
+ 	SaveManager.save_now()
+-	rolling_dice = false
+-	moving = false
++	turn_phase = TurnPhase.READY
++	phase_before_pause = TurnPhase.READY
+ 	locked_dice_count = 0
+ 	rolling_values.clear()
+ 	committed_values.clear()
+@@ -1344,13 +1372,27 @@
+ 		dice_audio.stop_all_roll_sounds()
+ 	if is_instance_valid(map_dice_overlay):
+ 		map_dice_overlay.cancel_to_tray()
++		map_dice_overlay.set_input_exempt_rect(Rect2())
++	if board_view is TourismMapView:
++		(board_view as TourismMapView).clear_destination_highlight()
++	if is_instance_valid(board_view):
++		board_view.movement_hop_offset_y = 0.0
++		board_view.set_movement_hop_progress(0.0)
++		board_view.queue_redraw()
+ 	if is_instance_valid(dice_presentation):
+ 		dice_presentation.visible = true
+ 	roll_button.text = "サイコロを振る"
++	roll_button.disabled = false
+ 	stop_all_button.visible = false
++	if is_instance_valid(active_extra_left_stop):
++		active_extra_left_stop.disabled = true
++	if is_instance_valid(active_extra_all_stop):
++		active_extra_all_stop.disabled = true
++	active_extra_left_stop = null
++	active_extra_all_stop = null
+ 
+ func _lock_next_die(automatic: bool) -> void:
+-	if not rolling_dice or locked_dice_count >= rolling_values.size():
++	if not can_stop_roll() or locked_dice_count >= rolling_values.size():
+ 		return
+ 	var index := locked_dice_count
+ 	if index < fixed_targets.size():
+@@ -1366,7 +1408,7 @@
+ 		role_label.text = "%d個目を早止め" % locked_dice_count
+ 
+ func _stop_all_dice() -> void:
+-	if not rolling_dice or locked_dice_count >= rolling_values.size(): return
++	if not can_stop_roll() or locked_dice_count >= rolling_values.size(): return
+ 	var remaining := rolling_values.size() - locked_dice_count
+ 	while locked_dice_count < rolling_values.size(): _lock_next_die(false)
+ 	role_label.text = "残り%d個を現在の目で一括停止" % remaining
+@@ -1434,7 +1476,10 @@
+ 	await _resolve_roll(chosen)
+ 
+ func _resolve_roll(values: Array[int]) -> void:
+-	turn_phase = TurnPhase.RESOLVING_TILE
++	# Rule evaluation and transaction preparation happen after the presentation
++	# handoff, but the board is still in its movement phase until the path has
++	# actually completed. Landing effects switch to RESOLVING_TILE later.
++	turn_phase = TurnPhase.MOVING
+ 	roll_button.disabled = true
+ 	# A committed transaction can be resumed without re-applying roles, dice
+ 	# transitions, lap bonuses, or next-move bonuses.
+@@ -1523,6 +1568,9 @@
+ 
+ func _continue_roll_transaction() -> void:
+ 	var transaction: Dictionary = GameState.roll_transaction
++	if transaction.is_empty():
++		_restore_roll_idle()
++		return
+ 	var phase := str(transaction.get("phase", transaction.get("roll_phase", "")))
+ 	if phase == "ROUTE_CHOICE_PENDING":
+ 		await _continue_route_choice_transaction()
+@@ -1532,8 +1580,7 @@
+ 		# no-op. This also restores the pre-03B behavior for old saves.
+ 		GameState.rollback_uncommitted_roll()
+ 		SaveManager.save_now()
+-		moving = false
+-		roll_button.disabled = false
++		_restore_roll_idle()
+ 		return
+ 	var values := _transaction_values(transaction)
+ 	var roles: Dictionary = (transaction.get("role_result", transaction.get("roles", {})) as Dictionary).duplicate(true)
+@@ -1548,6 +1595,7 @@
+ 		role_label.text = " + ".join(labels)
+ 	var maze_exited_now := false
+ 	if phase == "RESULT_COMMITTED":
++		turn_phase = TurnPhase.MOVING
+ 		var start_route := BoardModelScript.normalized_route_id(str(transaction.get("start_route_id", GameState.current_route_id)))
+ 		var start_tile := int(BoardModelScript.normalize_position(start_route, int(transaction.get("start_tile", GameState.current_tile_index))).tile_index)
+ 		GameState.set_route_position(start_route, start_tile)
+@@ -1570,15 +1618,20 @@
+ 			GameState.rolls_used += 1
+ 			GameState.roll_transaction["roll_count_committed"] = true
+ 		GameState.commit_roll_movement(destination, destination_route)
++		turn_phase = TurnPhase.RESOLVING_TILE
+ 		var movement_start_route := str(transaction.get("start_route_id", BoardModelScript.ROUTE_MAIN))
+ 		if movement_start_route == BoardModelScript.ROUTE_BYPASS_CARAVAN and destination_route == BoardModelScript.ROUTE_MAIN:
+ 			_finalize_bypass_exit()
+ 		if movement_start_route == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and destination_route == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE and destination == int(BoardModelScript.route_definition(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE).return_gate_tile) and int(transaction.get("distance", 0)) > 0:
+ 			maze_exited_now = _commit_royal_maze_exit()
+ 		SaveManager.save_now()
++	elif phase in ["MOVEMENT_COMMITTED", "SPACE_EFFECT_COMMITTED"]:
++		turn_phase = TurnPhase.RESOLVING_TILE
+ 	# Persist a bypass stop before presentation and before its space effect.
+ 	# Resuming MOVEMENT_COMMITTED then observes the reveal and applies only the
+ 	# still-pending landing effect.
++	if turn_phase != TurnPhase.RESOLVING_TILE:
++		turn_phase = TurnPhase.RESOLVING_TILE
+ 	if str(GameState.roll_transaction.get("phase", "")) == "MOVEMENT_COMMITTED" and GameState.current_route_id == BoardModelScript.ROUTE_BYPASS_CARAVAN:
+ 		var reveal_result := GameState.commit_bypass_tile_reveal(GameState.current_tile_index)
+ 		if bool(reveal_result.get("committed", false)):
+@@ -1618,6 +1671,7 @@
+ 	if str(transaction.get("phase", "")) != "ROUTE_CHOICE_PENDING":
+ 		return
+ 	if not bool(transaction.get("route_choice_arrival_committed", false)):
++		turn_phase = TurnPhase.MOVING
+ 		var start_route := str(transaction.get("start_route_id", BoardModelScript.ROUTE_MAIN))
+ 		var start_tile := int(transaction.get("start_tile_index", GameState.current_tile_index))
+ 		GameState.set_route_position(start_route, start_tile)
+@@ -1628,6 +1682,7 @@
+ 				await _animate_route_step_hop()
+ 		GameState.commit_route_choice_arrival()
+ 		SaveManager.save_now()
++	turn_phase = TurnPhase.RESOLVING_TILE
+ 	_refresh_hud()
+ 	await _show_route_choice_modal()
+ 	await _continue_roll_transaction()
+@@ -1741,12 +1796,21 @@
+ 
+ func _restore_roll_idle() -> void:
+ 	show_game()
+-	rolling_dice = false
+-	moving = false
++	_invalidate_roll_sequence()
++	turn_phase = TurnPhase.READY
++	phase_before_pause = TurnPhase.READY
+ 	locked_dice_count = 0
+ 	rolling_values.clear()
++	committed_values.clear()
+ 	if is_instance_valid(map_dice_overlay):
+ 		map_dice_overlay.cancel_to_tray()
++		map_dice_overlay.set_input_exempt_rect(Rect2())
++	if board_view is TourismMapView:
++		(board_view as TourismMapView).clear_destination_highlight()
++	if is_instance_valid(board_view):
++		board_view.movement_hop_offset_y = 0.0
++		board_view.set_movement_hop_progress(0.0)
++		board_view.queue_redraw()
+ 	if is_instance_valid(dice_presentation):
+ 		dice_presentation.visible = true
+ 	roll_button.text = "サイコロを振る"
+@@ -1757,7 +1821,7 @@
+ 	var values := _transaction_values(GameState.roll_transaction)
+ 	if values.is_empty():
+ 		return
+-	moving = true
++	turn_phase = TurnPhase.RESULT_LOCK
+ 	roll_button.disabled = true
+ 	if _uses_map_dice_overlay(values.size()):
+ 		var tray_rect := _map_dice_tray_anchor_rect()
+@@ -1774,8 +1838,8 @@
+ 		dice_presentation.visible = true
+ 	else:
+ 		_render_dice(values, false)
+-		await get_tree().create_timer(0.45).timeout
+-	moving = false
++		await get_tree().create_timer(0.45, false).timeout
++	turn_phase = TurnPhase.MOVING
+ 
+ func _sum_dice_values(values: Array[int]) -> int:
+ 	var total := 0
+@@ -1820,8 +1884,8 @@
+ 	SaveManager.save_now()
+ 	GameState.clear_roll_transaction()
+ 	SaveManager.save_now()
+-	moving = false
+-	rolling_dice = false
++	turn_phase = TurnPhase.READY
++	roll_button.disabled = false
+ 
+ func _commit_lap_crossings(count: int, source: String) -> void:
+ 	for crossing_index: int in range(maxi(0, count)):
+@@ -3977,7 +4041,7 @@
+ 	var minimap_ok: bool = minimap_view.get_script() == BoardViewScript and minimap_view.is_minimap
+ 	var tourism_ok: bool = _set_board_view_mode("tourism") and board_view is TourismMapView
+ 	var wrapped_indices: Array[int] = TourismMapViewScript.neighborhood_indices(board_view.current_tile)
+-	var wrap_ok: bool = wrapped_indices == [86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
++	var wrap_ok: bool = wrapped_indices == [88, 89, 0, 1, 2, 3, 4, 5]
+ 	var scenic_ok: bool = board_view.scenic_level == 3 and board_view.scenic_texture != null
+ 	var input_ok: bool = board_view.mouse_filter == Control.MOUSE_FILTER_IGNORE
+ 	var district_flow_repeat_ok := false
+@@ -3996,9 +4060,9 @@
+ 		var hidden_receipt := tourism_view.district_flow_receipt()
+ 		district_flow_repeat_ok = active_receipts_ok and child_count_before == tourism_view.get_child_count() and not bool(hidden_receipt.get("supported", true)) and not bool(hidden_receipt.get("processing", true)) and not bool(hidden_receipt.get("visible", true))
+ 		tourism_view.set_current_tile(89)
+-	moving = true
++	turn_phase = TurnPhase.MOVING
+ 	var blocked_while_moving: bool = not _set_board_view_mode("classic") and board_view is TourismMapView
+-	moving = false
++	turn_phase = TurnPhase.READY
+ 	var fallback_ok: bool = _set_board_view_mode("not-a-mode") and not (board_view is TourismMapView) and board_view_mode == "classic"
+ 	var passed: bool = classic_ok and minimap_ok and tourism_ok and wrap_ok and scenic_ok and input_ok and district_flow_repeat_ok and blocked_while_moving and fallback_ok
+ 	print("QA_TOURMAP classic=%s tourism=%s minimap=%s wrap=%s scenic=%s input=%s district_flow_repeat=%s idle_guard=%s fallback=%s passed=%s" % [classic_ok, tourism_ok, minimap_ok, wrap_ok, scenic_ok, input_ok, district_flow_repeat_ok, blocked_while_moving, fallback_ok, passed])

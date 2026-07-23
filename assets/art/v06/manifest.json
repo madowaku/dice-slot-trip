@@ -1,0 +1,492 @@
+{
+  "assets": [
+    {
+      "anchor": null,
+      "cells": {
+        "count": 1,
+        "ids": [
+          "base"
+        ],
+        "layout": [
+          1,
+          1
+        ],
+        "size": [
+          1024,
+          1024
+        ]
+      },
+      "content_review": {
+        "contains_boss_sphinx_character": false,
+        "no_baked_die_or_explorer_cat": true,
+        "no_baked_exit_or_ui": true,
+        "no_baked_numbers": true,
+        "no_baked_text": true,
+        "no_runtime_topology_in_background": true
+      },
+      "decoded_byte_estimate": 3145728,
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "id": "parchment_base",
+      "import_intent": {
+        "compression": "vram_compressed_etc2_astc",
+        "filter": true,
+        "fix_alpha_border": false,
+        "godot_compress_mode": 2,
+        "mipmaps": false
+      },
+      "lighting_scope": "daylight_neutral",
+      "mode": "RGB",
+      "path": "res://assets/art/v06/atlas/parchment-base.png",
+      "provenance_sha256": "837038ebd99d0fa5f01c6a8e9a1ebd492fa650ee6d22d9ccc4bdf0e1df7046dc",
+      "residency": "normal",
+      "sha256": "03c41ad8638500a40d4b76fba1ff25d72c39613c63f1f1b529c78077f2db60ed",
+      "source_bytes": 1499444,
+      "use": "Opaque edge-safe daylight atlas base; never contains gameplay topology."
+    },
+    {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.24184036,
+        "green_dominant_partial_pixels": 453,
+        "green_dominant_partial_ratio": 0.00704839,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 189318,
+        "partial_pixels": 64270,
+        "transparent_pixels": 794988
+      },
+      "anchor": null,
+      "cells": {
+        "count": 1,
+        "ids": [
+          "ink"
+        ],
+        "layout": [
+          1,
+          1
+        ],
+        "size": [
+          1024,
+          1024
+        ]
+      },
+      "content_review": {
+        "contains_boss_sphinx_character": false,
+        "no_baked_die_or_explorer_cat": true,
+        "no_baked_exit_or_ui": true,
+        "no_baked_numbers": true,
+        "no_baked_text": true,
+        "no_runtime_topology_in_background": true
+      },
+      "decoded_byte_estimate": 4194304,
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "id": "cairo_cartography_ink",
+      "import_intent": {
+        "compression": "vram_compressed_etc2_astc",
+        "filter": true,
+        "fix_alpha_border": true,
+        "godot_compress_mode": 2,
+        "mipmaps": false
+      },
+      "lighting_scope": "daylight_neutral",
+      "mode": "RGBA",
+      "path": "res://assets/art/v06/atlas/cairo-cartography-ink.png",
+      "provenance_sha256": "837038ebd99d0fa5f01c6a8e9a1ebd492fa650ee6d22d9ccc4bdf0e1df7046dc",
+      "residency": "normal",
+      "sha256": "c7c02c31751b6384222ffa072cea6adb47ce847156aa966469b8ab153665eed0",
+      "source_bytes": 788146,
+      "use": "Transparent Nile and sparse Cairo landmark ink; no route, nodes, labels, or UI."
+    },
+    {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.56948853,
+        "green_dominant_partial_pixels": 17,
+        "green_dominant_partial_ratio": 0.00171665,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 27419,
+        "partial_pixels": 9903,
+        "transparent_pixels": 28214
+      },
+      "anchor": {
+        "kind": "bottom_center_per_cell",
+        "point": [
+          64,
+          118
+        ]
+      },
+      "cells": {
+        "common_baseline_y": 118,
+        "count": 4,
+        "ids": [
+          "main",
+          "bypass",
+          "loop",
+          "current"
+        ],
+        "layout": [
+          4,
+          1
+        ],
+        "safety_margin_px": 5,
+        "size": [
+          128,
+          128
+        ]
+      },
+      "content_review": {
+        "contains_boss_sphinx_character": false,
+        "no_baked_die_or_explorer_cat": true,
+        "no_baked_exit_or_ui": true,
+        "no_baked_numbers": true,
+        "no_baked_text": true,
+        "no_runtime_topology_in_background": false
+      },
+      "decoded_byte_estimate": 262144,
+      "dimensions": [
+        512,
+        128
+      ],
+      "id": "raised_route_tiles",
+      "import_intent": {
+        "compression": "lossless",
+        "filter": true,
+        "fix_alpha_border": true,
+        "godot_compress_mode": 0,
+        "mipmaps": false
+      },
+      "lighting_scope": "daylight_neutral",
+      "mode": "RGBA",
+      "path": "res://assets/art/v06/atlas/raised-route-tiles.png",
+      "provenance_sha256": "837038ebd99d0fa5f01c6a8e9a1ebd492fa650ee6d22d9ccc4bdf0e1df7046dc",
+      "residency": "normal",
+      "sha256": "83d253ff54d97aac3db87d19efdb797ef6e1746ed1735cbded0a11ca7ab59453",
+      "source_bytes": 96359,
+      "use": "Blank raised tile treatments applied locally by canonical runtime route data."
+    },
+    {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.62577057,
+        "green_dominant_partial_pixels": 50,
+        "green_dominant_partial_ratio": 0.00320041,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 66398,
+        "partial_pixels": 15623,
+        "transparent_pixels": 49051
+      },
+      "anchor": {
+        "kind": "bottom_center_per_cell",
+        "point": [
+          128,
+          246
+        ]
+      },
+      "cells": {
+        "common_baseline_y": 246,
+        "count": 2,
+        "ids": [
+          "sleeping_unlit",
+          "awakened_warm_gold"
+        ],
+        "layout": [
+          2,
+          1
+        ],
+        "safety_margin_px": 8,
+        "size": [
+          256,
+          256
+        ]
+      },
+      "content_review": {
+        "contains_boss_sphinx_character": false,
+        "no_baked_die_or_explorer_cat": true,
+        "no_baked_exit_or_ui": true,
+        "no_baked_numbers": true,
+        "no_baked_text": true,
+        "no_runtime_topology_in_background": false
+      },
+      "decoded_byte_estimate": 524288,
+      "dimensions": [
+        512,
+        256
+      ],
+      "id": "gold_boss_gate",
+      "import_intent": {
+        "compression": "lossless",
+        "filter": true,
+        "fix_alpha_border": true,
+        "godot_compress_mode": 0,
+        "mipmaps": false
+      },
+      "lighting_scope": "awakened_cell_boss_only",
+      "mode": "RGBA",
+      "path": "res://assets/art/v06/boss/gold-boss-gate.png",
+      "provenance_sha256": "837038ebd99d0fa5f01c6a8e9a1ebd492fa650ee6d22d9ccc4bdf0e1df7046dc",
+      "residency": "normal_and_boss",
+      "sha256": "9c33de338d249f57ad51b738177081711d10715829c5d65df75d5e0c0c994431",
+      "source_bytes": 207933,
+      "use": "Sleeping daylight gate and awakened internally lit boss state; identical bottom anchor."
+    },
+    {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.53551483,
+        "green_dominant_partial_pixels": 9,
+        "green_dominant_partial_ratio": 0.00177445,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 135310,
+        "partial_pixels": 5072,
+        "transparent_pixels": 121762
+      },
+      "anchor": {
+        "kind": "bottom_center",
+        "point": [
+          256,
+          485
+        ]
+      },
+      "cells": {
+        "count": 1,
+        "ids": [
+          "sleeping"
+        ],
+        "layout": [
+          1,
+          1
+        ],
+        "size": [
+          512,
+          512
+        ]
+      },
+      "content_review": {
+        "contains_boss_sphinx_character": true,
+        "no_baked_die_or_explorer_cat": false,
+        "no_baked_exit_or_ui": true,
+        "no_baked_numbers": true,
+        "no_baked_text": true,
+        "no_runtime_topology_in_background": false
+      },
+      "decoded_byte_estimate": 1048576,
+      "dimensions": [
+        512,
+        512
+      ],
+      "id": "sleepy_sphinx",
+      "import_intent": {
+        "compression": "lossless",
+        "filter": true,
+        "fix_alpha_border": true,
+        "godot_compress_mode": 0,
+        "mipmaps": false
+      },
+      "lighting_scope": "boss_only",
+      "mode": "RGBA",
+      "path": "res://assets/art/v06/boss/sleepy-sphinx.png",
+      "provenance_sha256": "837038ebd99d0fa5f01c6a8e9a1ebd492fa650ee6d22d9ccc4bdf0e1df7046dc",
+      "residency": "boss_only",
+      "sha256": "f0281a68144bdac418cb596cda45b6a0c5af8e0dd74248e76e014547ef08d087",
+      "source_bytes": 338500,
+      "use": "Deterministic Lanczos derivative of the immutable existing sphinx source."
+    },
+    {
+      "anchor": null,
+      "cells": {
+        "count": 1,
+        "ids": [
+          "mask"
+        ],
+        "layout": [
+          1,
+          1
+        ],
+        "size": [
+          720,
+          1280
+        ]
+      },
+      "content_review": {
+        "contains_boss_sphinx_character": false,
+        "no_baked_die_or_explorer_cat": true,
+        "no_baked_exit_or_ui": true,
+        "no_baked_numbers": true,
+        "no_baked_text": true,
+        "no_runtime_topology_in_background": false
+      },
+      "decoded_byte_estimate": 921600,
+      "dimensions": [
+        720,
+        1280
+      ],
+      "id": "night_vignette",
+      "import_intent": {
+        "compression": "lossless_l8",
+        "filter": true,
+        "fix_alpha_border": false,
+        "godot_compress_mode": 0,
+        "mipmaps": false
+      },
+      "lighting_scope": "boss_only",
+      "mode": "L",
+      "path": "res://assets/art/v06/boss/night-vignette.png",
+      "provenance_sha256": "837038ebd99d0fa5f01c6a8e9a1ebd492fa650ee6d22d9ccc4bdf0e1df7046dc",
+      "residency": "boss_only",
+      "sha256": "b51851071e5746f511109a8318424ada9612943df2d3d03ab964ecdf959b1e98",
+      "source_bytes": 60761,
+      "use": "Single-channel boss-only edge darkening mask with HUD, center, and tray readability windows."
+    },
+    {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.26810455,
+        "green_dominant_partial_pixels": 5,
+        "green_dominant_partial_ratio": 0.00025103,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 15223,
+        "partial_pixels": 19918,
+        "transparent_pixels": 95931
+      },
+      "anchor": {
+        "kind": "bottom_center_per_cell",
+        "point": [
+          64,
+          244
+        ]
+      },
+      "cells": {
+        "common_baseline_y": 244,
+        "count": 4,
+        "ids": [
+          "quiet",
+          "full",
+          "triple_peak",
+          "settle"
+        ],
+        "layout": [
+          4,
+          1
+        ],
+        "safety_margin_px": 4,
+        "size": [
+          128,
+          256
+        ]
+      },
+      "content_review": {
+        "contains_boss_sphinx_character": false,
+        "no_baked_die_or_explorer_cat": true,
+        "no_baked_exit_or_ui": true,
+        "no_baked_numbers": true,
+        "no_baked_text": true,
+        "no_runtime_topology_in_background": false
+      },
+      "decoded_byte_estimate": 524288,
+      "dimensions": [
+        512,
+        256
+      ],
+      "id": "lantern_glow",
+      "import_intent": {
+        "compression": "lossless",
+        "filter": true,
+        "fix_alpha_border": true,
+        "godot_compress_mode": 0,
+        "mipmaps": false
+      },
+      "lighting_scope": "boss_triple_enhanced_only",
+      "mode": "RGBA",
+      "path": "res://assets/art/v06/effects/lantern-glow.png",
+      "provenance_sha256": "837038ebd99d0fa5f01c6a8e9a1ebd492fa650ee6d22d9ccc4bdf0e1df7046dc",
+      "residency": "boss_only",
+      "sha256": "ea2ecf101a48dc68b55f2750015c4209c279acaf628dd73d7ff8958fa7b7e0e2",
+      "source_bytes": 95470,
+      "use": "Four warm lantern/gold variants reserved for boss, TRIPLE, and enhanced states."
+    }
+  ],
+  "budgets": {
+    "boss_peak_decoded_bytes": 10620928,
+    "boss_peak_decoded_mib": 10.1289,
+    "boss_peak_limit_bytes": 16777216,
+    "mandated_screen_mask_exception": {
+      "applies_to_any_other_asset": false,
+      "dimensions": [
+        720,
+        1280
+      ],
+      "path": "res://assets/art/v06/boss/night-vignette.png",
+      "reason": "exact viewport-sized single-channel contract"
+    },
+    "maximum_general_runtime_edge_limit_px": 1152,
+    "maximum_general_runtime_edge_px": 1024,
+    "maximum_runtime_edge_px_including_mandated_mask": 1280,
+    "normal_resident_decoded_bytes": 8126464,
+    "normal_resident_decoded_mib": 7.75,
+    "normal_resident_limit_bytes": 14680064,
+    "runtime_png_source_bytes": 3086613,
+    "runtime_png_source_limit_bytes": 8388608,
+    "runtime_png_source_mib": 2.9436
+  },
+  "generation_call_count": 5,
+  "immutable_source_guard": {
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "is_third_party": false,
+    "path": "res://assets/art/bosses/sleepy-sphinx.png",
+    "sha256": "27759bf53575c42a8db3a700bcfb11dfb37e1e19885f32e1f271c052aaf70f0e",
+    "source_bytes": 1954756,
+    "source_prompt_path": "res://assets/art/bosses/sleepy-sphinx.prompt.txt",
+    "source_prompt_sha256": "652c89e6bdd01acd1a7ca6195aeb9340d946f3d5e64e7e2d11811323a8c79300"
+  },
+  "pack_id": "v06_daylight_atlas_boss_climax_01",
+  "pack_policy": {
+    "background_contains_runtime_topology": false,
+    "baked_text_numbers_exit_or_ui": false,
+    "daylight_contains_boss_lighting": false,
+    "raw_or_qc_under_runtime_root": false,
+    "runtime_png_count": 7
+  },
+  "provenance_path": "res://art_source/v06/atlas_boss/provenance.json",
+  "provenance_sha256": "837038ebd99d0fa5f01c6a8e9a1ebd492fa650ee6d22d9ccc4bdf0e1df7046dc",
+  "runtime_root": "res://assets/art/v06",
+  "runtime_wiring": true,
+  "schema_version": 1
+}

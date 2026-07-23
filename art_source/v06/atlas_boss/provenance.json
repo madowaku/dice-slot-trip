@@ -1,0 +1,383 @@
+{
+  "content_review": {
+    "baked_text_risk": "visual review PASS; all five exact prompts explicitly prohibited text, letters, numbers, labels and UI",
+    "c_lighting_absent_from_daylight_assets_and_daylight_preview": true,
+    "c_lighting_confined_to_awakened_gate_lantern_vignette_and_boss_preview": true,
+    "chroma_cleanup_preserves_silhouettes": true,
+    "concept_or_document_crop_used": false,
+    "native_transparency_fallback_used": false,
+    "no_route_or_node_topology_in_parchment_or_cairo_ink": true,
+    "no_text_numbers_exit_ui_labels_die_or_explorer_cat_in_generated_runtime_layers": true,
+    "reviewed_all_raw_mattes_runtime_contact_and_previews": true
+  },
+  "generation_call_count": 5,
+  "generation_calls": [
+    {
+      "accepted": true,
+      "asset": "parchment",
+      "call": 1,
+      "generator_output_origin": "C:/Users/hiro/.codex/generated_images/019f7511-16b9-79f0-819d-fc748f323519/exec-61d8aafb-1944-416a-9998-466dd8a7eeaf.png",
+      "mode": "built_in_image_gen_default",
+      "prompt_exact": "Use case: stylized-concept\nAsset type: production tileable game texture for a mobile 2D travel map\nInput images: Image 1 is a STYLE AND PALETTE REFERENCE ONLY. Do not copy its composition, map, route, UI, text, objects, cat, die, gate, landmarks, or topology.\nPrimary request: create one square warm parchment surface, a subtle low-stimulation travel-journal paper texture suitable as a daylight map base.\nScene/backdrop: edge-to-edge flat parchment material only.\nStyle/medium: soft storybook gouache and printed travel-journal paper, restrained painterly grain, production texture rather than concept art.\nComposition/framing: orthographic, uniform detail density, no focal point, visually edge-safe and seamless/tile-friendly.\nLighting/mood: diffuse neutral daylight only, no vignette, no directional cast light, no night lighting, no gold glow.\nColor palette: warm sand, oat, muted cream, very subtle desaturated tan fibers.\nMaterials/textures: fine paper tooth, faint fibers and age variation, extremely subtle mottling; avoid strong cracks or stains.\nConstraints: opaque square texture; no border; no map ink; no cartography; no route; no nodes; no numbers; no letters; no labels; no UI; no landmarks; no compass; no character; no animal; no die; no gate; no watermark; no signature.\nAvoid: high contrast, dark corners, obvious repeating motif, dramatic lighting, heavy grunge, torn edges, folds.",
+      "prompt_path": "art_source/v06/atlas_boss/prompts/parchment.txt",
+      "prompt_sha256": "1855261f4d5d4cfe0c57fd877cedb95f3be39f1b1e6a9d6428d1d0d709839219",
+      "raw_sha256": "9e9bf72275712407bc3f7b3fcbb67ffe799d0c8b6587397e15dfefe8599a7bd2",
+      "raw_workspace_copy": "art_source/v06/atlas_boss/raw/parchment-raw.png",
+      "reference_role": "selected atlas target used only for style and palette",
+      "retry_or_competing_variant": false,
+      "use_case": "stylized-concept"
+    },
+    {
+      "accepted": true,
+      "asset": "ink",
+      "call": 2,
+      "generator_output_origin": "C:/Users/hiro/.codex/generated_images/019f7511-16b9-79f0-819d-fc748f323519/exec-242266b4-afe8-4c0a-8d04-9f0a7fdfad26.png",
+      "mode": "built_in_image_gen_default",
+      "prompt_exact": "Use case: stylized-concept\nAsset type: production transparent cartography-ink overlay for a mobile 2D travel map\nInput images: Image 1 is a STYLE AND PALETTE REFERENCE ONLY. Do not copy its composition, route, UI, text, cat, die, gate, or topology.\nPrimary request: create one square sparse Cairo cartography ink layer: a gently winding Nile ribbon plus isolated hand-drawn landmark vignettes of Giza pyramids, one Cairo mosque silhouette, a small market canopy cluster, and a few palms.\nScene/backdrop: perfectly flat solid #00FF00 chroma-key background for local background removal. The background must be exactly uniform with no shadows, gradients, paper texture, reflections, floor plane, or lighting variation.\nStyle/medium: delicate antique travel-journal pen-and-wash cartography, muted blue-gray and desaturated teal ink, restrained storybook linework, production overlay rather than concept art.\nComposition/framing: square orthographic overlay, generous open space, sparse balanced landmark clusters, Nile clearly reads as water not a road. Keep all ink at least 48 pixels from every edge.\nLighting/mood: neutral daylight ink only; no glow, no lantern light, no night vignette.\nColor palette: muted slate-blue, dusty teal, faint warm-gray linework; do not use #00FF00 in any artwork.\nConstraints: no route line; no dotted path; no dashed path; no connected gameplay trail; no nodes; no circles intended as spaces; no arrows; no numbers; no letters; no words; no labels; no EXIT; no UI; no HUD; no character; no animal; no die; no gate; no compass rose; no border; no signature; no watermark. No cast shadow. Crisp separated ink edges with generous padding.\nAvoid: dense city scene, photorealism, perspective map, parchment background, decorative typography, glyphs, seals, stamps, repeated icons.",
+      "prompt_path": "art_source/v06/atlas_boss/prompts/cairo-ink.txt",
+      "prompt_sha256": "5cb3931d5a6e8f83a6e73d19bf06dd285a676664ae26b8a4ef97fd2002618a7f",
+      "raw_sha256": "9336810666f1e3a5c73ee384299ae937d1280a6bbaf777269eefbf40452a513e",
+      "raw_workspace_copy": "art_source/v06/atlas_boss/raw/cairo-ink-chroma-raw.png",
+      "reference_role": "selected atlas target used only for style and palette",
+      "retry_or_competing_variant": false,
+      "use_case": "stylized-concept"
+    },
+    {
+      "accepted": true,
+      "asset": "tiles",
+      "call": 3,
+      "generator_output_origin": "C:/Users/hiro/.codex/generated_images/019f7511-16b9-79f0-819d-fc748f323519/exec-6e2a0636-3f96-4351-ba66-4bd850d311d4.png",
+      "mode": "built_in_image_gen_default",
+      "prompt_exact": "Use case: stylized-concept\nAsset type: candidate production sprite sheet for raised route tiles in a mobile 2D game\nInput images: Image 1 is a STYLE AND PALETTE REFERENCE ONLY. Use only its restrained storybook parchment/teal/brass/rust material language. Do not copy its route, numbers, UI, cat, die, gate, labels, or composition.\nPrimary request: one square 2-by-2 production sheet containing exactly four isolated raised circular travel-map tile treatments, one centered tile per equal quadrant.\nScene/backdrop: perfectly flat solid #00FF00 chroma-key background for local background removal. Exactly uniform background, no shadows, gradients, texture, reflections, floor plane, or lighting variation. Do not use #00FF00 in the tile artwork.\nCell layout and order: top-left MAIN = warm parchment face with restrained teal rim; top-right BYPASS = warm parchment face with a rust-red rim using a clearly broken/dashed rim language; bottom-left LOOP = warm parchment face with concentric antique-brass and muted-teal ring; bottom-right CURRENT = visibly more raised warm parchment tile with a crisp muted-teal outer rim and restrained antique-gold inner accent.\nStyle/medium: soft storybook gouache game sprite, shallow 2.5D painted bevel, crisp mobile silhouette, production asset rather than concept art.\nComposition/framing: four equal square cells, one tile centered in each cell, identical apparent diameter and perspective, identical common bottom-center baseline, at least 18% clear padding around each tile, no overlap, no dividers.\nLighting/mood: diffuse daylight only; very subtle internal bevel shading; no cast shadows; no glow; no lantern or night lighting.\nColor palette: warm parchment, muted deep teal, antique brass, restrained dusty rust.\nConstraints: exactly four tiles; no text; no letters; no numbers; no icons; no pictograms; no arrows; no route line outside the tiles; no nodes; no character; no animal; no die; no UI; no watermark; no signature. Faces must remain blank.\nAvoid: jewel-like saturation, strong bloom, photoreal materials, floor shadows, labels, poster composition, decorative border around the whole sheet.",
+      "prompt_path": "art_source/v06/atlas_boss/prompts/route-tiles.txt",
+      "prompt_sha256": "1d47038c88080b2e5bea5dba2da8267847602c0303a068fd080a26ef4a02d074",
+      "raw_sha256": "94a403e7b917ce27288d7ac3f0e5f33d26e59c575ff917b1b490427486a7f150",
+      "raw_workspace_copy": "art_source/v06/atlas_boss/raw/route-tiles-chroma-raw.png",
+      "reference_role": "selected atlas target used only for style and palette",
+      "retry_or_competing_variant": false,
+      "use_case": "stylized-concept"
+    },
+    {
+      "accepted": true,
+      "asset": "gate",
+      "call": 4,
+      "generator_output_origin": "C:/Users/hiro/.codex/generated_images/019f7511-16b9-79f0-819d-fc748f323519/exec-d794be6d-c27a-4833-a8a7-2e8e24c4eb00.png",
+      "mode": "built_in_image_gen_default",
+      "prompt_exact": "Use case: stylized-concept\nAsset type: candidate production two-state boss-gate sprite sheet for a mobile 2D game\nInput images: Image 1 is a STYLE AND PALETTE REFERENCE ONLY. Use only its storybook Egyptian travel-journal material language. Do not copy its route, UI, text, cat, die, labels, or composition.\nPrimary request: one square production sheet with exactly two isolated versions of the same compact Egyptian boss gate, left and right, sharing an identical architectural silhouette and bottom-center anchor.\nScene/backdrop: perfectly flat solid #00FF00 chroma-key background for local background removal. Exactly uniform background, no shadows, gradients, texture, floor plane, reflections, or lighting variation. Do not use #00FF00 anywhere in the gate artwork.\nState layout: LEFT = sleeping/unlit state, closed arched doorway, muted sandstone, antique brass, restrained teal inlay, dark interior, no emitted light. RIGHT = awakened state of the identical gate and silhouette, same closed architecture and proportions, warm antique-gold illumination contained inside its doorway and carved inlays, restrained and readable, no broad scene lighting.\nSubject: compact symmetrical Egyptian arched gate with two short sandstone pylons and a simple feline/sphinx relief crown; no creature, no statue figures, no letters, no hieroglyph-like glyphs.\nStyle/medium: soft storybook gouache game sprite, crisp mobile silhouette, shallow painted depth, production asset rather than concept art.\nComposition/framing: two equal vertical half-canvas cells, one gate centered per cell, same scale, same perspective, same bottom baseline, at least 12% padding, no overlap, no dividers.\nLighting/mood: left diffuse daylight and unlit; right internal warm-gold awakening only. No external cast shadow, no ground plane, no lanterns, no night vignette.\nColor palette: warm sandstone, muted deep teal, antique brass; awakened accents in restrained amber-gold.\nConstraints: exactly two gate states; no text; no letters; no numbers; no labels; no route; no nodes; no UI; no character; no animal; no die; no watermark; no signature; no poster framing.\nAvoid: different silhouettes between states, open portal scenery, fire, lightning, neon, strong bloom, photorealism, floor shadow, decorative sheet border.",
+      "prompt_path": "art_source/v06/atlas_boss/prompts/boss-gate.txt",
+      "prompt_sha256": "2986d7d065e1e6b0e00d37d4b5ece609d6ea43d4dbb2171b095b038e671d3717",
+      "raw_sha256": "c43dc0ebadf2fcaf8abeff8c5912a949fdd9acc6b61c69ec657fd44744af9706",
+      "raw_workspace_copy": "art_source/v06/atlas_boss/raw/boss-gate-chroma-raw.png",
+      "reference_role": "selected atlas target used only for style and palette",
+      "retry_or_competing_variant": false,
+      "use_case": "stylized-concept"
+    },
+    {
+      "accepted": true,
+      "asset": "lantern",
+      "call": 5,
+      "generator_output_origin": "C:/Users/hiro/.codex/generated_images/019f7511-16b9-79f0-819d-fc748f323519/exec-120f2fb6-1615-46d0-bf6a-d5a13ec17f76.png",
+      "mode": "built_in_image_gen_default",
+      "prompt_exact": "Use case: stylized-concept\nAsset type: candidate production four-frame lantern-gold effect sprite sheet for boss-only mobile game states\nInput images: Image 1 is a STYLE AND PALETTE REFERENCE ONLY. Use only its restrained antique-gold storybook accent language. Do not copy its gate, route, UI, text, cat, die, labels, or composition.\nPrimary request: one square 2-by-2 production sheet with exactly four isolated variants of the same tall warm lantern-light aura, designed as a subtle breathing sequence for boss arrival, TRIPLE feedback, and enhanced-lap emphasis.\nScene/backdrop: perfectly flat solid #00FF00 chroma-key background for local background removal. Exactly uniform background with no paper texture, floor plane, reflections, scene lighting, or background gradient. Do not use #00FF00 in the effect artwork.\nFrame sequence: top-left = smallest quiet amber flame-and-halo motif; top-right = slightly fuller warm-gold motif; bottom-left = brightest restrained antique-gold motif with a simple symmetric three-lobe crown suggesting a TRIPLE beat but no symbols; bottom-right = settling warm-gold motif with subtle brass sparks. All four remain the same effect family.\nStyle/medium: soft storybook gouache light sprite, layered amber/gold brush shapes with a crisp readable core and controlled feathered halo, production effect rather than concept art.\nComposition/framing: four equal square cells, one vertical effect centered in each cell, shared bottom-center anchor and common baseline, same width family, at least 20% clear padding, no overlap, no dividers.\nLighting/mood: warm lantern light only, restrained bloom, dark-scene readable but not neon.\nColor palette: amber, honey gold, antique brass, tiny cream-hot core; no teal or green.\nConstraints: exactly four variants; no lantern object; no gate; no text; no letters; no numbers; no icons; no UI; no route; no nodes; no character; no animal; no die; no floor shadow; no watermark; no signature.\nAvoid: smoke, glass, realistic fire, large explosive starburst, lightning, lens flare, scene background, strong white bloom, poster layout.",
+      "prompt_path": "art_source/v06/atlas_boss/prompts/lantern-glow.txt",
+      "prompt_sha256": "98bd98a49507d77f13449ff19c7e7acf1dae9522e1f254f30b65813fce2ae631",
+      "raw_sha256": "b6d9f8be7c93c2554960f16c6384d1a484ae362d487fefbc4b1cf7d9399b7d1b",
+      "raw_workspace_copy": "art_source/v06/atlas_boss/raw/lantern-glow-chroma-raw.png",
+      "reference_role": "selected atlas target used only for style and palette",
+      "retry_or_competing_variant": false,
+      "use_case": "stylized-concept"
+    }
+  ],
+  "generation_date": "2026-07-18",
+  "generator": "OpenAI built-in image_gen tool",
+  "immutable_sphinx_source": {
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "path": "assets/art/bosses/sleepy-sphinx.png",
+    "sha256": "27759bf53575c42a8db3a700bcfb11dfb37e1e19885f32e1f271c052aaf70f0e",
+    "source_bytes": 1954756,
+    "source_prompt_path": "assets/art/bosses/sleepy-sphinx.prompt.txt",
+    "source_prompt_sha256": "652c89e6bdd01acd1a7ca6195aeb9340d946f3d5e64e7e2d11811323a8c79300",
+    "third_party_provenance": {
+      "basis": "existing project-generated source has a repository prompt record and no third_party sphinx record",
+      "is_third_party": false,
+      "third_party_record_found": false
+    }
+  },
+  "model_mode": "built_in_image_gen_default",
+  "normalization_pipeline": "art_source/v06/atlas_boss/build_v06_asset_pack.py",
+  "pack_id": "v06_daylight_atlas_boss_climax_01",
+  "pipeline_metadata": "art_source/v06/atlas_boss/pipeline.json",
+  "qc_artifacts": [
+    {
+      "dimensions": [
+        720,
+        1280
+      ],
+      "lighting": "daylight",
+      "path": "art_source/v06/atlas_boss/qc/daylight-pack-preview-720x1280.png",
+      "role": "QC_PREVIEW_NOT_RUNTIME"
+    },
+    {
+      "derived_from": "art_source/v06/atlas_boss/qc/daylight-pack-preview-720x1280.png",
+      "dimensions": [
+        360,
+        640
+      ],
+      "lighting": "daylight",
+      "path": "art_source/v06/atlas_boss/qc/daylight-pack-preview-360x640.png",
+      "role": "QC_PREVIEW_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        720,
+        1280
+      ],
+      "lighting": "boss_lit",
+      "path": "art_source/v06/atlas_boss/qc/boss-lit-pack-preview-720x1280.png",
+      "role": "QC_PREVIEW_NOT_RUNTIME"
+    },
+    {
+      "derived_from": "art_source/v06/atlas_boss/qc/boss-lit-pack-preview-720x1280.png",
+      "dimensions": [
+        360,
+        640
+      ],
+      "lighting": "boss_lit",
+      "path": "art_source/v06/atlas_boss/qc/boss-lit-pack-preview-360x640.png",
+      "role": "QC_PREVIEW_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        1024,
+        256
+      ],
+      "path": "art_source/v06/atlas_boss/qc/tiles-cell-contact.png",
+      "role": "QC_CELL_CONTACT_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        1024,
+        512
+      ],
+      "path": "art_source/v06/atlas_boss/qc/gate-cell-contact.png",
+      "role": "QC_CELL_CONTACT_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        1024,
+        512
+      ],
+      "path": "art_source/v06/atlas_boss/qc/lantern-cell-contact.png",
+      "role": "QC_CELL_CONTACT_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        1024,
+        768
+      ],
+      "path": "art_source/v06/atlas_boss/qc/alpha-fringe-checks.png",
+      "role": "QC_ALPHA_FRINGE_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "path": "art_source/v06/atlas_boss/qc/runtime-pack-contact-sheet.png",
+      "role": "QC_PACK_CONTACT_NOT_RUNTIME"
+    }
+  ],
+  "reference_inputs": [
+    {
+      "excluded_from_shipping": "composition, topology, route, nodes, numbers, EXIT, UI text, cat, die, gate and labels",
+      "generator_input": true,
+      "path": "docs/design/v06/d-selected-atlas-living-map.png",
+      "role": "ImageGen style_and_palette_reference_only",
+      "sha256": "7ec23ee3a1d2dcd74031b291a1a0faebde65c9c541252fcee1cdb867d0274075"
+    },
+    {
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "generator_input": false,
+      "mode": "RGBA",
+      "path": "assets/art/bosses/sleepy-sphinx.png",
+      "role": "immutable derivative source for 512x512 sleepy sphinx",
+      "sha256": "27759bf53575c42a8db3a700bcfb11dfb37e1e19885f32e1f271c052aaf70f0e",
+      "source_bytes": 1954756
+    },
+    {
+      "generator_input": false,
+      "path": "C:/tmp/v06-boss-ready-720.png",
+      "role": "read-only boss-screen context reference; not sent to ImageGen",
+      "sha256": "76fc2f6339653b2399136c0f405f0e912bd1033f0191ce3dd102ae85ac895152",
+      "source_bytes": 163029
+    },
+    {
+      "generator_input": false,
+      "path": "C:/tmp/v06-lap10-enhanced-720.png",
+      "role": "read-only enhanced-lap context reference; not sent to ImageGen",
+      "sha256": "65d270caba81466cc4fb6ae43058b2f390f7e1b58b2ab20cfcb3bd91969ac18f",
+      "source_bytes": 164273
+    }
+  ],
+  "runtime_outputs": {
+    "gate": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.62577057,
+        "green_dominant_partial_pixels": 50,
+        "green_dominant_partial_ratio": 0.00320041,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 66398,
+        "partial_pixels": 15623,
+        "transparent_pixels": 49051
+      },
+      "dimensions": [
+        512,
+        256
+      ],
+      "mode": "RGBA",
+      "path": "assets/art/v06/boss/gold-boss-gate.png",
+      "sha256": "9c33de338d249f57ad51b738177081711d10715829c5d65df75d5e0c0c994431",
+      "source_bytes": 207933
+    },
+    "ink": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.24184036,
+        "green_dominant_partial_pixels": 453,
+        "green_dominant_partial_ratio": 0.00704839,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 189318,
+        "partial_pixels": 64270,
+        "transparent_pixels": 794988
+      },
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "path": "assets/art/v06/atlas/cairo-cartography-ink.png",
+      "sha256": "c7c02c31751b6384222ffa072cea6adb47ce847156aa966469b8ab153665eed0",
+      "source_bytes": 788146
+    },
+    "lantern": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.26810455,
+        "green_dominant_partial_pixels": 5,
+        "green_dominant_partial_ratio": 0.00025103,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 15223,
+        "partial_pixels": 19918,
+        "transparent_pixels": 95931
+      },
+      "dimensions": [
+        512,
+        256
+      ],
+      "mode": "RGBA",
+      "path": "assets/art/v06/effects/lantern-glow.png",
+      "sha256": "ea2ecf101a48dc68b55f2750015c4209c279acaf628dd73d7ff8958fa7b7e0e2",
+      "source_bytes": 95470
+    },
+    "parchment": {
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGB",
+      "path": "assets/art/v06/atlas/parchment-base.png",
+      "sha256": "03c41ad8638500a40d4b76fba1ff25d72c39613c63f1f1b529c78077f2db60ed",
+      "source_bytes": 1499444
+    },
+    "sphinx": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.53551483,
+        "green_dominant_partial_pixels": 9,
+        "green_dominant_partial_ratio": 0.00177445,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 135310,
+        "partial_pixels": 5072,
+        "transparent_pixels": 121762
+      },
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "path": "assets/art/v06/boss/sleepy-sphinx.png",
+      "sha256": "f0281a68144bdac418cb596cda45b6a0c5af8e0dd74248e76e014547ef08d087",
+      "source_bytes": 338500
+    },
+    "tiles": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.56948853,
+        "green_dominant_partial_pixels": 17,
+        "green_dominant_partial_ratio": 0.00171665,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 27419,
+        "partial_pixels": 9903,
+        "transparent_pixels": 28214
+      },
+      "dimensions": [
+        512,
+        128
+      ],
+      "mode": "RGBA",
+      "path": "assets/art/v06/atlas/raised-route-tiles.png",
+      "sha256": "83d253ff54d97aac3db87d19efdb797ef6e1746ed1735cbded0a11ca7ab59453",
+      "source_bytes": 96359
+    },
+    "vignette": {
+      "dimensions": [
+        720,
+        1280
+      ],
+      "mode": "L",
+      "path": "assets/art/v06/boss/night-vignette.png",
+      "sha256": "b51851071e5746f511109a8318424ada9612943df2d3d03ab964ecdf959b1e98",
+      "source_bytes": 60761
+    }
+  },
+  "schema_version": 1,
+  "source_overwrite": false
+}

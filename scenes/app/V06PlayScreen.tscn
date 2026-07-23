@@ -1,0 +1,777 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://scripts/app/v06_play_screen.gd" id="1_screen"]
+[ext_resource type="Script" path="res://scripts/game/v06_atlas_view.gd" id="2_atlas"]
+[ext_resource type="Theme" path="res://assets/ui/theme_mobile.tres" id="3_theme"]
+[ext_resource type="Texture2D" path="res://assets/art/v06/boss/sleepy-sphinx.png" id="4_sphinx"]
+[ext_resource type="Texture2D" path="res://assets/art/v06/boss/night-vignette.png" id="5_vignette"]
+[ext_resource type="Texture2D" path="res://assets/art/v06/effects/lantern-glow.png" id="6_lantern"]
+[ext_resource type="Texture2D" path="res://assets/art/v07/ui/dark-walnut-leather.png" id="7_leather"]
+[ext_resource type="Script" path="res://scripts/game/dice_presentation_3d.gd" id="8_dice"]
+[ext_resource type="Texture2D" path="res://assets/art/v08/cards/item-card.png" id="9_item_card"]
+[ext_resource type="Texture2D" path="res://assets/art/v08/cards/skill-card.png" id="10_skill_card"]
+
+[sub_resource type="Shader" id="Shader_night_vignette"]
+code = "shader_type canvas_item;\n\nvoid fragment() {\n\tfloat mask_value = texture(TEXTURE, UV).r;\n\tCOLOR = vec4(0.025, 0.055, 0.075, mask_value * 0.58);\n}\n"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_night_vignette"]
+shader = SubResource("Shader_night_vignette")
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lantern_full"]
+atlas = ExtResource("6_lantern")
+region = Rect2(128, 0, 128, 256)
+
+[node name="V06PlayScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+clip_contents = true
+theme = ExtResource("3_theme")
+script = ExtResource("1_screen")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("7_leather")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="SafeMargin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Page" type="VBoxContainer" parent="SafeMargin"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HudPanel" type="PanelContainer" parent="SafeMargin/Page"]
+unique_name_in_owner = true
+z_index = 20
+custom_minimum_size = Vector2(0, 116)
+layout_mode = 2
+
+[node name="Hud" type="HBoxContainer" parent="SafeMargin/Page/HudPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="LapLabel" type="Label" parent="SafeMargin/Page/HudPanel/Hud"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.94, 0.84, 0.62, 1)
+theme_override_font_sizes/font_size = 23
+text = "LAP 1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Separator1" type="VSeparator" parent="SafeMargin/Page/HudPanel/Hud"]
+layout_mode = 2
+
+[node name="HPLabel" type="Label" parent="SafeMargin/Page/HudPanel/Hud"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(88, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.67, 0.50, 1)
+theme_override_font_sizes/font_size = 23
+text = "HP 3/3"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Separator2" type="VSeparator" parent="SafeMargin/Page/HudPanel/Hud"]
+layout_mode = 2
+
+[node name="PBLabel" type="Label" parent="SafeMargin/Page/HudPanel/Hud"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.50, 0.86, 0.82, 1)
+theme_override_font_sizes/font_size = 22
+text = "PB --"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Separator3" type="VSeparator" parent="SafeMargin/Page/HudPanel/Hud"]
+layout_mode = 2
+
+[node name="TimeBox" type="VBoxContainer" parent="SafeMargin/Page/HudPanel/Hud"]
+custom_minimum_size = Vector2(144, 0)
+layout_mode = 2
+theme_override_constants/separation = -4
+
+[node name="TimeCaption" type="Label" parent="SafeMargin/Page/HudPanel/Hud/TimeBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.84, 0.58, 1)
+theme_override_font_sizes/font_size = 17
+text = "TIME"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TimeLabel" type="Label" parent="SafeMargin/Page/HudPanel/Hud/TimeBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(144, 52)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.84, 0.58, 1)
+theme_override_font_sizes/font_size = 31
+text = "00:00.0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Separator4" type="VSeparator" parent="SafeMargin/Page/HudPanel/Hud"]
+layout_mode = 2
+
+[node name="ProgressLabel" type="Label" parent="SafeMargin/Page/HudPanel/Hud"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.94, 0.84, 0.62, 1)
+theme_override_font_sizes/font_size = 23
+text = "1/58"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="MapButton" type="Button" parent="SafeMargin/Page/HudPanel/Hud"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(82, 100)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "MAP\n全体"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="StageBand" type="PanelContainer" parent="SafeMargin/Page"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+
+[node name="StageRow" type="HBoxContainer" parent="SafeMargin/Page/StageBand"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="StageLabel" type="Label" parent="SafeMargin/Page/StageBand/StageRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.25, 0.20, 0.15, 1)
+theme_override_font_sizes/font_size = 28
+text = "砂時計のカイロ"
+vertical_alignment = 1
+
+[node name="RouteLabel" type="Label" parent="SafeMargin/Page/StageBand/StageRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.12, 0.42, 0.43, 1)
+theme_override_font_sizes/font_size = 23
+text = "本線"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TileKindLabel" type="Label" parent="SafeMargin/Page/StageBand/StageRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(124, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.48, 0.34, 0.22, 1)
+theme_override_font_sizes/font_size = 21
+text = "START"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="AtlasFrame" type="PanelContainer" parent="SafeMargin/Page"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 520)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="AtlasView" type="Control" parent="SafeMargin/Page/AtlasFrame"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 520)
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("2_atlas")
+
+[node name="MessageLabel" type="Label" parent="SafeMargin/Page"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.91, 0.82, 0.67, 1)
+theme_override_font_sizes/font_size = 18
+text = "ダイス1個で、1マスずつ進む"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TrayPanel" type="PanelContainer" parent="SafeMargin/Page"]
+unique_name_in_owner = true
+z_index = 20
+custom_minimum_size = Vector2(0, 226)
+layout_mode = 2
+
+[node name="TrayContent" type="VBoxContainer" parent="SafeMargin/Page/TrayPanel"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="TrayStatusLabel" type="Label" parent="SafeMargin/Page/TrayPanel/TrayContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.91, 0.78, 0.53, 1)
+theme_override_font_sizes/font_size = 22
+text = "3 ROLL SLOT    0 / 3"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="RollRow" type="HBoxContainer" parent="SafeMargin/Page/TrayPanel/TrayContent"]
+custom_minimum_size = Vector2(0, 116)
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="DieWell" type="PanelContainer" parent="SafeMargin/Page/TrayPanel/TrayContent/RollRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(112, 112)
+layout_mode = 2
+
+[node name="DicePresentation" type="SubViewportContainer" parent="SafeMargin/Page/TrayPanel/TrayContent/RollRow/DieWell"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(104, 104)
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("8_dice")
+overlay_compact = true
+compact_single = true
+layout_min_height = 104.0
+tray_surface_visible = true
+
+[node name="SlotsRow" type="HBoxContainer" parent="SafeMargin/Page/TrayPanel/TrayContent/RollRow"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="SlotPanel0" type="PanelContainer" parent="SafeMargin/Page/TrayPanel/TrayContent/RollRow/SlotsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(84, 112)
+layout_mode = 2
+
+[node name="Slot0" type="Label" parent="SafeMargin/Page/TrayPanel/TrayContent/RollRow/SlotsRow/SlotPanel0"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.12, 0.41, 0.42, 1)
+theme_override_font_sizes/font_size = 43
+text = "—"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SlotPanel1" type="PanelContainer" parent="SafeMargin/Page/TrayPanel/TrayContent/RollRow/SlotsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(84, 112)
+layout_mode = 2
+
+[node name="Slot1" type="Label" parent="SafeMargin/Page/TrayPanel/TrayContent/RollRow/SlotsRow/SlotPanel1"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.12, 0.41, 0.42, 1)
+theme_override_font_sizes/font_size = 43
+text = "—"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SlotPanel2" type="PanelContainer" parent="SafeMargin/Page/TrayPanel/TrayContent/RollRow/SlotsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(84, 112)
+layout_mode = 2
+
+[node name="Slot2" type="Label" parent="SafeMargin/Page/TrayPanel/TrayContent/RollRow/SlotsRow/SlotPanel2"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.12, 0.41, 0.42, 1)
+theme_override_font_sizes/font_size = 43
+text = "—"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DieButton" type="Button" parent="SafeMargin/Page/TrayPanel/TrayContent/RollRow" groups=["v06_die"]]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 112)
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+text = "READY\nROLL"
+
+[node name="TrayHintLabel" type="Label" parent="SafeMargin/Page/TrayPanel/TrayContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.79, 0.65, 1)
+theme_override_font_sizes/font_size = 19
+text = "ダイスをタップ。もう一度で停止。"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ToolDock" type="PanelContainer" parent="SafeMargin/Page"]
+unique_name_in_owner = true
+z_index = 20
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+
+[node name="ToolRow" type="HBoxContainer" parent="SafeMargin/Page/ToolDock"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="ItemToolButton" type="Button" parent="SafeMargin/Page/ToolDock/ToolRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(216, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+icon = ExtResource("9_item_card")
+expand_icon = true
+icon_max_width = 68
+text = "アイテム\n0 / 3"
+
+[node name="SkillToolButton" type="Button" parent="SafeMargin/Page/ToolDock/ToolRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(216, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+icon = ExtResource("10_skill_card")
+expand_icon = true
+icon_max_width = 68
+text = "スキル\nREADY"
+
+[node name="BackButton" type="Button" parent="SafeMargin/Page/ToolDock/ToolRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(208, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "‹  戻る"
+
+[node name="UtilityOverlay" type="Control" parent="."]
+unique_name_in_owner = true
+visible = false
+z_index = 45
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="UtilityOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.08, 0.07, 0.05, 0.72)
+
+[node name="Center" type="CenterContainer" parent="UtilityOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="UtilityPanel" type="PanelContainer" parent="UtilityOverlay/Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(620, 500)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="UtilityOverlay/Center/UtilityPanel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="UtilityTitle" type="Label" parent="UtilityOverlay/Center/UtilityPanel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.12, 0.42, 0.43, 1)
+theme_override_font_sizes/font_size = 34
+text = "アイテム"
+horizontal_alignment = 1
+
+[node name="CardRow" type="HBoxContainer" parent="UtilityOverlay/Center/UtilityPanel/Content"]
+custom_minimum_size = Vector2(0, 270)
+layout_mode = 2
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="UtilityCardArt" type="TextureRect" parent="UtilityOverlay/Center/UtilityPanel/Content/CardRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(250, 250)
+layout_mode = 2
+texture = ExtResource("9_item_card")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="UtilityDetail" type="Label" parent="UtilityOverlay/Center/UtilityPanel/Content/CardRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(310, 250)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.25, 0.20, 0.15, 1)
+theme_override_font_sizes/font_size = 23
+text = "所持数  0 / 3\n\n旅の途中で見つけた道具を、\nここから確認して使います。"
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="UtilityCloseButton" type="Button" parent="UtilityOverlay/Center/UtilityPanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+text = "閉じる"
+
+[node name="ChoiceOverlay" type="Control" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="ChoiceOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.08, 0.07, 0.05, 0.64)
+
+[node name="Center" type="CenterContainer" parent="ChoiceOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ChoicePanel" type="PanelContainer" parent="ChoiceOverlay/Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(610, 380)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="ChoiceOverlay/Center/ChoicePanel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="ChoiceOverlay/Center/ChoicePanel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 35
+text = "進むルートを選ぶ"
+horizontal_alignment = 1
+
+[node name="Detail" type="Label" parent="ChoiceOverlay/Center/ChoicePanel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "出目と残り歩数はそのまま保持されます"
+horizontal_alignment = 1
+
+[node name="ChoiceMainButton" type="Button" parent="ChoiceOverlay/Center/ChoicePanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+text = "本線　・　準備マスを通る"
+
+[node name="ChoiceBypassButton" type="Button" parent="ChoiceOverlay/Center/ChoicePanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+text = "近道　・　3歩短い / RISK×2"
+
+[node name="ResolutionOverlay" type="Control" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="ResolutionOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.08, 0.07, 0.05, 0.64)
+
+[node name="Center" type="CenterContainer" parent="ResolutionOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ResolutionPanel" type="PanelContainer" parent="ResolutionOverlay/Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(590, 360)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="ResolutionOverlay/Center/ResolutionPanel"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="ResolutionTitle" type="Label" parent="ResolutionOverlay/Center/ResolutionPanel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.12, 0.42, 0.43, 1)
+theme_override_font_sizes/font_size = 46
+text = "PAIR"
+horizontal_alignment = 1
+
+[node name="ResolutionDetail" type="Label" parent="ResolutionOverlay/Center/ResolutionPanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "3投の移動が完了"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ResolutionAckButton" type="Button" parent="ResolutionOverlay/Center/ResolutionPanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "結果を確認して次へ"
+
+[node name="BossOverlay" type="Control" parent="."]
+unique_name_in_owner = true
+visible = false
+z_index = 10
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Dim" type="ColorRect" parent="BossOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.06, 0.08, 0.08, 0.52)
+mouse_filter = 2
+
+[node name="NightVignette" type="TextureRect" parent="BossOverlay"]
+unique_name_in_owner = true
+material = SubResource("ShaderMaterial_night_vignette")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("5_vignette")
+expand_mode = 1
+
+[node name="BossLanternLeft" type="TextureRect" parent="BossOverlay"]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0.55)
+layout_mode = 0
+offset_left = 18.0
+offset_top = 244.0
+offset_right = 146.0
+offset_bottom = 500.0
+mouse_filter = 2
+texture = SubResource("AtlasTexture_lantern_full")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="BossLanternRight" type="TextureRect" parent="BossOverlay"]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0.55)
+layout_mode = 0
+offset_left = 574.0
+offset_top = 244.0
+offset_right = 702.0
+offset_bottom = 500.0
+mouse_filter = 2
+texture = SubResource("AtlasTexture_lantern_full")
+expand_mode = 1
+stretch_mode = 5
+flip_h = true
+
+[node name="Center" type="CenterContainer" parent="BossOverlay"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+anchor_bottom = 0.72
+offset_top = 128.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="BossPanel" type="PanelContainer" parent="BossOverlay/Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(600, 748)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="BossOverlay/Center/BossPanel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="BossTitle" type="Label" parent="BossOverlay/Center/BossPanel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.67, 0.45, 0.14, 1)
+theme_override_font_sizes/font_size = 42
+text = "SLEEPY SPHINX"
+horizontal_alignment = 1
+
+[node name="BossImage" type="TextureRect" parent="BossOverlay/Center/BossPanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 230)
+layout_mode = 2
+texture = ExtResource("4_sphinx")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="BossHPLabel" type="Label" parent="BossOverlay/Center/BossPanel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "PLAYER HP 3/3    BOSS HP 3/3"
+horizontal_alignment = 1
+
+[node name="BossActionLabel" type="Label" parent="BossOverlay/Center/BossPanel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.67, 0.45, 0.14, 1)
+theme_override_font_sizes/font_size = 26
+text = "SAND GAZE  ·  DEF 9"
+horizontal_alignment = 1
+
+[node name="BossResultLabel" type="Label" parent="BossOverlay/Center/BossPanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "3回振って攻撃しよう"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="BossRoundAckButton" type="Button" parent="BossOverlay/Center/BossPanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "ラウンド結果を確認"
+
+[node name="NextLapButton" type="Button" parent="BossOverlay/Center/BossPanel/Content"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "次のLAPへ"
+
+[node name="RetryButton" type="Button" parent="BossOverlay/Center/BossPanel/Content"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "LAP 1から再挑戦"
+
+[node name="BossBackButton" type="Button" parent="BossOverlay/Center/BossPanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "ステージ選択へ戻る"
+
+[node name="MapOverlay" type="Control" parent="."]
+unique_name_in_owner = true
+visible = false
+z_index = 40
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="MapOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.08, 0.07, 0.05, 0.72)
+
+[node name="Center" type="CenterContainer" parent="MapOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MapPanel" type="PanelContainer" parent="MapOverlay/Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(620, 780)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="MapOverlay/Center/MapPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="OverviewTitle" type="Label" parent="MapOverlay/Center/MapPanel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.20, 0.39, 0.39, 1)
+theme_override_font_sizes/font_size = 30
+text = "全体ミニマップ"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="OverviewAtlasView" type="Control" parent="MapOverlay/Center/MapPanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(590, 590)
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+script = ExtResource("2_atlas")
+
+[node name="MapCloseButton" type="Button" parent="MapOverlay/Center/MapPanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "閉じる"

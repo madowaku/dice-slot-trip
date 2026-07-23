@@ -2,3 +2,8 @@
 *.tmp
 *.log
 export/
+build/
+.codex-remote-attachments/
+*.mp4
+*.apk
+*.aab

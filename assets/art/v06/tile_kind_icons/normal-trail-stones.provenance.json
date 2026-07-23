@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "asset_id": "normal-trail-stones",
+  "kind": "NORMAL",
+  "runtime_path": "assets/art/v06/tile_kind_icons/normal-trail-stones.png",
+  "source_path": "docs/design/v07/art-source/normal-trail-stones-imagegen-source.png",
+  "alpha_path": "docs/design/v07/art-source/normal-trail-stones-alpha.png",
+  "generation": {
+    "provider": "OpenAI built-in ImageGen",
+    "model": "built-in ImageGen (model identifier not exposed)",
+    "generated_on": "2026-07-20",
+    "original_output_path": "C:/Users/hiro/.codex/generated_images/019f7302-171d-7e83-b62c-7e7b91d5009a/exec-02c8e52f-7828-40d1-ba55-30731bfa20c0.png",
+    "prompt": "Use case: ui-mockup\nAsset type: central tile-kind glyph for a premium mobile game map\nPrimary request: a single neutral explorer trail marker made from three simple stacked path stones, read instantly as an ordinary walkable route tile rather than a direction arrow, warning, house, facility, reward, or item.\nScene/backdrop: one perfectly flat solid #00ff00 chroma-key background for local alpha removal.\nSubject: centered compact three-stone cairn / path pebble silhouette, clean geometric edges, no arrowhead, no lettering.\nStyle/medium: monochrome Kenney-like board-game icon, bold even dark ink silhouette, simple high-contrast bitmap-ready shape.\nComposition/framing: one glyph centered in a square 128x128 canvas with generous padding, no other objects.\nLighting/mood: flat graphic, no shadows, no gradients.\nColor palette: near-black warm ink subject only on green key background.\nConstraints: keep one clear silhouette, no text, no numbers, no logo, no watermark, no skull, no triangle, no bag, no swirl, no arrow, no house, no coin.\nAvoid: texture, perspective, 3D rendering, thin detail, multiple variants, border, frame, background variation."
+  },
+  "source": {
+    "sha256": "727165e5d083cc470199a625fdf64aebf443b53da8cc7bbc490abb183b298645",
+    "bytes": 953428,
+    "width": 1254,
+    "height": 1254,
+    "mode": "RGB"
+  },
+  "alpha_cleanup": {
+    "method": "remove_chroma_key.py",
+    "key_color_sampled": "#06f912",
+    "soft_matte": true,
+    "despill": true,
+    "transparent_threshold": 12,
+    "opaque_threshold": 220,
+    "sha256": "fabe198d150cc22ed5ae04ee043324cf67b1ef08e8b2c2d91f0c63d3437672b3",
+    "bytes": 233380,
+    "width": 1254,
+    "height": 1254,
+    "mode": "RGBA"
+  },
+  "runtime": {
+    "sha256": "68e1de3174d54ec917ced77b681bdbec51209312891e2665f50ebe99d5e53e3d",
+    "bytes": 2350,
+    "width": 128,
+    "height": 128,
+    "mode": "RGBA"
+  },
+  "normalization": {
+    "method": "alpha-bounds-crop-uniform-scale-maxfilter-3-white-mask",
+    "optical_envelope": 104,
+    "canvas": [128, 128],
+    "resized_uniformly": true,
+    "cropped_to_alpha_bounds": true,
+    "color_converted_to_white_mask": true,
+    "runtime_text_or_topology_baked": false
+  },
+  "license": {
+    "type": "project-owned AI-generated asset",
+    "kenney_reference": "style reference only; not claimed as Kenney source"
+  },
+  "review": {
+    "neutral_walkable_semantics": true,
+    "no_text": true,
+    "no_logo": true,
+    "no_watermark": true,
+    "no_arrow": true,
+    "no_warning_or_risk_symbol": true
+  }
+}

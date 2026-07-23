@@ -5,40 +5,118 @@ signal early_stop_requested
 
 class MapDieBillboard extends Control:
 	var face_value := 1
+	var face_locked := false
 	var rolling := false
 	var motion_time := 0.0
+	var settling := false
+	var settle_time := 0.0
+	const SETTLE_DURATION := 0.14
+
+	var roll_visual_seed: float = 0.0
+	var drift_direction: Vector2 = Vector2.RIGHT
+	var drift_distance: float = 12.0
+	var bounce_height: float = 10.0
+	var bounce_speed: float = 12.0
+	var drift_speed: float = 3.0
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		pivot_offset = size * 0.5
 		set_process(true)
+		_init_random()
+
+	func _init_random() -> void:
+		var r: float = randf()
+		roll_visual_seed = r * 100.0
+		var angle: float = r * TAU
+		drift_direction = Vector2(cos(angle), sin(angle))
+		drift_distance = randf_range(10.0, 16.0)
+		bounce_height = randf_range(8.0, 12.0)
+		bounce_speed = randf_range(10.0, 14.0)
+		drift_speed = randf_range(2.5, 4.0)
+
+	func reset_roll_visual(value: int) -> void:
+		face_value = clampi(value, 1, 6)
+		face_locked = false
+		rolling = false
+		settling = false
+		motion_time = 0.0
+		settle_time = 0.0
+		rotation = 0.0
+		_init_random()
 
 	func show_face(value: int, is_rolling: bool) -> void:
-		face_value = clampi(value, 1, 6)
-		rolling = is_rolling
-		if not rolling:
+		var next_value := clampi(value, 1, 6)
+		if is_rolling:
+			if not rolling and not settling:
+				face_locked = false
+			if face_locked:
+				return
+			face_value = next_value
+			rolling = true
+			queue_redraw()
+			return
+		if rolling:
+			face_value = next_value
+			face_locked = true
+			settling = true
+			settle_time = 0.0
+			rolling = false
+		elif not face_locked:
+			face_value = next_value
+		if not settling:
 			rotation = 0.0
 		queue_redraw()
 
 	func _process(delta: float) -> void:
-		if not rolling:
-			return
-		motion_time += delta
-		rotation = sin(motion_time * 10.0) * 0.11
-		queue_redraw()
+		if rolling:
+			motion_time += delta
+			rotation = sin(motion_time * 10.0) * 0.11
+			queue_redraw()
+		elif settling:
+			settle_time += delta
+			var settle_ratio := clampf(settle_time / SETTLE_DURATION, 0.0, 1.0)
+			rotation = sin(motion_time * 10.0) * 0.11 * (1.0 - settle_ratio)
+			if settle_time >= SETTLE_DURATION:
+				settling = false
+				rotation = 0.0
+			queue_redraw()
+
+	func draw_filled_ellipse(center: Vector2, radius: Vector2, color: Color) -> void:
+		var points := PackedVector2Array()
+		var steps := 24
+		for i in range(steps):
+			var angle := i * TAU / steps
+			points.append(center + Vector2(cos(angle) * radius.x, sin(angle) * radius.y))
+		draw_colored_polygon(points, color)
 
 	func _draw() -> void:
+		var bounce_y := 0.0
+		var drift_offset := Vector2.ZERO
+		if rolling:
+			var t_bounce := motion_time * bounce_speed
+			bounce_y = absf(sin(t_bounce)) * bounce_height
+			drift_offset = drift_direction * sin(motion_time * drift_speed) * drift_distance
+		elif settling:
+			var t_settle := clampf(settle_time / SETTLE_DURATION, 0.0, 1.0)
+			bounce_y = maxf(0.0, sin(t_settle * PI) * 5.0 * (1.0 - t_settle))
+			drift_offset = (drift_direction * sin(motion_time * drift_speed) * drift_distance) * (1.0 - t_settle)
+		
 		var die_rect := Rect2(Vector2(28.0, 7.0), Vector2(68.0, 68.0))
-		draw_style_box(_rounded_box(Color(0.18, 0.12, 0.07, 0.28), Color.TRANSPARENT, 13), Rect2(die_rect.position + Vector2(6.0, 9.0), die_rect.size))
-		var side := PackedVector2Array([
-			die_rect.position + Vector2(5.0, die_rect.size.y - 1.0),
-			die_rect.end - Vector2(1.0, 1.0),
-			die_rect.end + Vector2(7.0, 7.0),
-			die_rect.position + Vector2(12.0, die_rect.size.y + 7.0),
-		])
-		draw_colored_polygon(side, Color("#bda978"))
-		draw_style_box(_rounded_box(Color("#fff8e8"), Color("#d5c39b"), 13), die_rect)
-		var center := die_rect.get_center()
+		var shadow_c := Vector2(die_rect.get_center().x, die_rect.end.y + 1.0) + drift_offset
+		var bounce_ratio := clampf(bounce_y / bounce_height if bounce_height > 0.0 else 0.0, 0.0, 1.0)
+		var shadow_w := lerpf(38.0, 27.0, bounce_ratio) * 0.5
+		var shadow_h := lerpf(10.0, 6.5, bounce_ratio) * 0.5
+		var shadow_a := lerpf(0.33, 0.14, bounce_ratio)
+		
+		draw_set_transform(Vector2.ZERO, -rotation, Vector2.ONE)
+		draw_filled_ellipse(shadow_c, Vector2(shadow_w, shadow_h), Color(0.18, 0.12, 0.07, shadow_a))
+		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+		
+		var animated_die_rect := Rect2(die_rect.position + drift_offset + Vector2(0, -bounce_y), die_rect.size)
+		draw_style_box(_rounded_box(Color("#fff8e8"), Color("#d5c39b"), 13), animated_die_rect)
+		
+		var center := animated_die_rect.get_center()
 		var offset := 17.0
 		var positions: Array[Vector2] = []
 		match face_value:
@@ -298,8 +376,10 @@ func _ready() -> void:
 			display = billboard
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_PAUSED and phase in [Phase.LAUNCHING_TO_MAP, Phase.ROLLING_ON_MAP]:
-		cancel_to_tray()
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		set_process_input(false)
+	elif what == NOTIFICATION_APPLICATION_RESUMED and is_active():
+		set_process_input(true)
 
 static func arc_position(start: Vector2, finish: Vector2, progress: float, height: float = 92.0) -> Vector2:
 	var t := clampf(progress, 0.0, 1.0)
@@ -381,6 +461,7 @@ func begin_launch(values: Array[int], tray_global_rect: Rect2, map_global_rect: 
 		var billboard := billboards[index]
 		billboard.visible = index < active_count
 		if index < values.size():
+			billboard.reset_roll_visual(values[index])
 			billboard.show_face(values[index], true)
 	_set_presentation_center(tray_center, active_count)
 	var elapsed := 0.0
@@ -421,7 +502,7 @@ func hold_and_return(final_values: Variant) -> void:
 		return
 	var values := _normalize_values(final_values)
 	begin_result_hold(values)
-	await get_tree().create_timer(result_hold_duration).timeout
+	await get_tree().create_timer(result_hold_duration, false).timeout
 	phase = Phase.RETURNING_TO_TRAY
 	var start := landing_center
 	var elapsed := 0.0

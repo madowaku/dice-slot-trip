@@ -1,0 +1,90 @@
+{
+  "schema": "dice-slot-trip.v06.explorer-cat-seed.pipeline.v1",
+  "candidate_count": 1,
+  "raw_generation": {
+    "dimensions": [1254, 1254],
+    "mode": "RGB",
+    "requested_chroma_key": "#00FF00",
+    "corner_rgb": [[16, 239, 19], [15, 240, 15], [17, 240, 19], [17, 244, 18]],
+    "border_unique_rgb_count": 175,
+    "dominant_border_rgb": [3, 249, 8],
+    "dominant_border_pixel_count": 20424,
+    "note": "The built-in raster returned a visually flat near-key green with small pixel variation rather than literal #00FF00. No floor, cast shadow, scenery or texture is present. Auto-key sampling handled this without a generation retry."
+  },
+  "chroma_cleanup": {
+    "script": "C:\\Users\\hiro\\.codex\\skills\\.system\\imagegen\\scripts\\remove_chroma_key.py",
+    "arguments": [
+      "--auto-key", "border",
+      "--soft-matte",
+      "--transparent-threshold", "12",
+      "--opaque-threshold", "220",
+      "--despill"
+    ],
+    "sampled_key": "#02F807",
+    "edge_contract_retry_used": false,
+    "source_alpha_bbox": [191, 66, 946, 1177],
+    "alpha_statistics": {
+      "transparent": 1070289,
+      "partial": 33732,
+      "opaque": 468495,
+      "visible": 502227,
+      "total": 1572516
+    },
+    "partial_alpha_fringe_check": {
+      "partial_pixels_checked": 33732,
+      "neon_green_pixels": 0,
+      "green_excess_over_80_pixels": 0,
+      "maximum_green_excess_over_red_or_blue": 0
+    }
+  },
+  "normalization": {
+    "method": "single shared scale from the nonzero alpha bbox; Pillow Lanczos; alpha-weighted lowest-16-percent boot band for horizontal anchor",
+    "source_alpha_bbox": [191, 66, 946, 1177],
+    "source_anchor_x_in_crop": 456.5784142853876,
+    "source_foot_band_start_y": 999,
+    "scale": 0.1548154815481548,
+    "resized_subject_dimensions": [117, 172],
+    "paste_origin": [26, 8],
+    "output_dimensions": [192, 192],
+    "output_mode": "RGBA",
+    "feet_anchor": [96, 179],
+    "anchor_semantics": "virtual bottom-center between the two boots; both nonzero-alpha foot groups reach y=179",
+    "final_alpha_bbox": [26, 8, 143, 180],
+    "safety_margins_left_top_right_bottom": [26, 8, 49, 12],
+    "alpha_statistics": {
+      "transparent": 23775,
+      "partial": 3332,
+      "opaque": 9757,
+      "visible": 13089,
+      "total": 36864
+    },
+    "corner_alpha": [0, 0, 0, 0]
+  },
+  "preview": {
+    "native_dimensions": [720, 1280],
+    "native_source_sha256": "be6c9bb3d3d78e59eaaaf9ab39d30d41e805cc82a2fb518332821dece574611f",
+    "seed_display_canvas": [100, 100],
+    "seed_display_alpha_bbox": [11, 2, 75, 96],
+    "seed_display_subject_height_px": 94,
+    "route_tile_visual_diameter_px": 63,
+    "cat_to_route_tile_ratio": 1.492063492063492,
+    "feet_anchor_in_preview": [143, 594],
+    "preview_paste_origin": [93, 501],
+    "procedural_cat_cleanup_source_box": [69, 284, 167, 394],
+    "procedural_cat_cleanup_destination_box": [94, 484, 192, 594],
+    "native_rgb_diff_bbox": [94, 484, 192, 597],
+    "native_text_or_hud_regions_modified": false,
+    "derivative_dimensions": [360, 640],
+    "derivative_filter": "Pillow Lanczos from the completed 720x1280 preview"
+  },
+  "validation": {
+    "exactly_one_candidate": true,
+    "seed_is_192x192_rgba": true,
+    "transparent_corners": true,
+    "anchor_is_96_179": true,
+    "alpha_bbox_within_safety_margins": true,
+    "green_fringe_detected": false,
+    "animation_strip_created": false,
+    "runtime_asset_created": false
+  }
+}

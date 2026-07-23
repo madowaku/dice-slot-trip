@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "course_id": "cairo_v06",
+  "stage": {
+    "name": "CAIRO GRAND ROUTE",
+    "name_ja": "砂時計のカイロ",
+    "expected_minutes": "8〜10分",
+    "difficulty": "STANDARD",
+    "branch_count": 1,
+    "loop_count": 1,
+    "main_tile_count": 58
+  },
+  "routes": {
+    "main": [
+      {"index":0,"kind":"START"},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"COIN"},{"index":3,"kind":"NORMAL"},
+      {"index":4,"kind":"EVENT"},{"index":5,"kind":"ITEM"},{"index":6,"kind":"NORMAL"},{"index":7,"kind":"REST"},
+      {"index":8,"kind":"COIN"},{"index":9,"kind":"NORMAL"},{"index":10,"kind":"EVENT"},{"index":11,"kind":"ITEM"},
+      {"index":12,"kind":"BYPASS_FORK"},{"index":13,"kind":"COIN"},{"index":14,"kind":"ITEM"},{"index":15,"kind":"NORMAL"},
+      {"index":16,"kind":"REST"},{"index":17,"kind":"COIN"},{"index":18,"kind":"ITEM"},{"index":19,"kind":"NORMAL"},
+      {"index":20,"kind":"NORMAL"},{"index":21,"kind":"RISK"},{"index":22,"kind":"LOOP_PORTAL"},{"index":23,"kind":"NORMAL"},
+      {"index":24,"kind":"COIN"},{"index":25,"kind":"EVENT"},{"index":26,"kind":"ITEM"},{"index":27,"kind":"NORMAL"},
+      {"index":28,"kind":"REST"},{"index":29,"kind":"RISK"},{"index":30,"kind":"NORMAL"},{"index":31,"kind":"NORMAL"},
+      {"index":32,"kind":"COIN"},{"index":33,"kind":"NORMAL"},{"index":34,"kind":"EVENT"},{"index":35,"kind":"ITEM"},
+      {"index":36,"kind":"NORMAL"},{"index":37,"kind":"RISK"},{"index":38,"kind":"REST"},{"index":39,"kind":"COIN"},
+      {"index":40,"kind":"NORMAL"},{"index":41,"kind":"EVENT"},{"index":42,"kind":"ITEM"},{"index":43,"kind":"NORMAL"},
+      {"index":44,"kind":"RISK"},{"index":45,"kind":"COIN"},{"index":46,"kind":"NORMAL"},{"index":47,"kind":"REST"},
+      {"index":48,"kind":"EVENT"},{"index":49,"kind":"NORMAL"},{"index":50,"kind":"ITEM"},{"index":51,"kind":"RISK"},
+      {"index":52,"kind":"COIN"},{"index":53,"kind":"NORMAL"},{"index":54,"kind":"REST"},{"index":55,"kind":"RISK"},
+      {"index":56,"kind":"NORMAL"},{"index":57,"kind":"BOSS_GATE"}
+    ],
+    "bypass_sirocco": [
+      {"index":0,"kind":"RISK"},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"RISK"},{"index":3,"kind":"NORMAL"}
+    ],
+    "loop_souk_ring": [
+      {"index":0,"kind":"LOOP_ENTRY"},{"index":1,"kind":"COIN"},{"index":2,"kind":"RISK"},{"index":3,"kind":"ITEM"},
+      {"index":4,"kind":"EXIT_GATE"},{"index":5,"kind":"COIN"},{"index":6,"kind":"RISK"},{"index":7,"kind":"ITEM"}
+    ]
+  },
+  "bypass": {"route_id":"bypass_sirocco","choice":{"route_id":"main","tile_index":12},"rejoin":{"route_id":"main","tile_index":20},"standard_distance":8,"bypass_distance":5,"saved_steps":3},
+  "loop": {"route_id":"loop_souk_ring","portal":{"route_id":"main","tile_index":22},"entry_index":0,"exit_index":4,"return":{"route_id":"main","tile_index":23}}
+}

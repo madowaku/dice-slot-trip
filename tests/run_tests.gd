@@ -15,12 +15,33 @@ const TourismMapViewScript = preload("res://scripts/game/tourism_map_view.gd")
 const DistrictFlowVisualScript = preload("res://scripts/game/tourism_district_flow_visual.gd")
 const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
 const PopupBookTransitionScript = preload("res://scripts/game/popup_book_transition.gd")
+const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
+const UiThemeNamesScript = preload("res://scripts/ui/ui_theme_names.gd")
+const ReleasePolicyScript = preload("res://scripts/ui/release_policy.gd")
+const MobileTheme: Theme = preload("res://assets/ui/theme_mobile.tres")
 const GameStateScript = preload("res://autoload/game_state.gd")
 const AppFont: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 
 var failures: int = 0
 
 func _init() -> void:
+	_expect(UiTokensScript.FONT_BODY == 32 and UiTokensScript.FONT_CAPTION == 28 and UiTokensScript.BUTTON_HEIGHT >= 104 and UiTokensScript.TOUCH_MIN >= 96, "720 baseline UI tokens preserve 16px copy 14px captions and 48px touch targets")
+	var button_theme_complete := MobileTheme.has_stylebox(&"normal", &"Button")
+	for variation: StringName in UiThemeNamesScript.BUTTON_VARIATIONS:
+		button_theme_complete = button_theme_complete and MobileTheme.is_type_variation(variation, &"Button")
+		for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"focus", &"disabled"]:
+			button_theme_complete = button_theme_complete and MobileTheme.has_stylebox(state, variation)
+	_expect(button_theme_complete, "mobile theme defines complete shared button states and five semantic variations")
+	_expect(ReleasePolicyScript.preferred_board_view_mode("classic", false, "classic") == "tourism" and not ReleasePolicyScript.can_request_board_view("classic", false), "release policy forces Tourism and rejects Classic even with saved or environment overrides")
+	_expect(ReleasePolicyScript.preferred_board_view_mode("classic", true) == "classic" and ReleasePolicyScript.preferred_board_view_mode("tourism", true, "classic") == "classic" and ReleasePolicyScript.can_request_board_view("classic", true), "debug policy preserves saved and explicit board switching")
+	var safe_insets := UiTokensScript.safe_insets_for(Vector2(720, 1280), Vector2i(360, 640), Rect2i(0, 24, 360, 600))
+	_expect(safe_insets == Vector4(0, 48, 0, 32), "physical mobile safe area converts into 720 design coordinates")
+	var expanded_393 := UiTokensScript.expanded_viewport_size_for(Vector2(720, 1280), Vector2i(393, 852))
+	var safe_393 := UiTokensScript.safe_insets_for(Vector2(720, 1280), Vector2i(393, 852), Rect2i(0, 47, 393, 771))
+	_expect(is_equal_approx(expanded_393.x, 720.0) and expanded_393.y > 1560.0 and is_equal_approx(safe_393.y, 47.0 * 720.0 / 393.0) and is_equal_approx(safe_393.w, 34.0 * 720.0 / 393.0), "393 x 852 expands vertically and keeps physical top and bottom insets")
+	var expanded_412 := UiTokensScript.expanded_viewport_size_for(Vector2(720, 1280), Vector2i(412, 915))
+	var safe_412 := UiTokensScript.safe_insets_for(Vector2(720, 1280), Vector2i(412, 915), Rect2i(0, 48, 412, 833))
+	_expect(is_equal_approx(expanded_412.x, 720.0) and expanded_412.y > 1599.0 and is_equal_approx(safe_412.y, 48.0 * 720.0 / 412.0) and is_equal_approx(safe_412.w, 34.0 * 720.0 / 412.0), "412 x 915 expands vertically and keeps physical top and bottom insets")
 	var font_samples: Array[String] = ["砂時計のカイロ", "眠そうなスフィンクスがいる", "サイコロをそろえて、世界をめぐる。", "旅人を選ぶ", "香辛料市場通り", "PAIR／STRAIGHT／TRIPLE", "1234567890！？・◇●"]
 	var font_coverage := true
 	for sample: String in font_samples:
@@ -28,6 +49,10 @@ func _init() -> void:
 	_expect(font_coverage and BoardViewScript.APP_FONT == AppFont and TourismMapViewScript.TOURISM_FONT == AppFont, "bundled Noto Sans JP covers Android UI strings and canvas text")
 	var mode_state: Node = GameStateScript.new()
 	_expect(mode_state.board_view_mode == "tourism", "new state defaults to Tourism")
+	mode_state.selected_character_id = &"gambler"
+	var character_round_trip: Node = GameStateScript.new(); character_round_trip.apply_dictionary(mode_state.to_dictionary())
+	_expect(character_round_trip.selected_character_id == &"gambler", "selected traveler survives save round trip")
+	character_round_trip.free()
 	var explicit_classic: Dictionary = mode_state.to_dictionary(); explicit_classic["board_view_mode"] = "classic"; mode_state.apply_dictionary(explicit_classic)
 	_expect(mode_state.board_view_mode == "classic", "explicit saved Classic mode is preserved")
 	var legacy_mode: Dictionary = explicit_classic.duplicate(true); legacy_mode.erase("board_view_mode"); mode_state.apply_dictionary(legacy_mode)
@@ -144,14 +169,14 @@ func _init() -> void:
 	var tour_centers: Array[Vector2] = TourismMapViewScript.route_centers(Vector2(360, 250))
 	var distinct_y: Dictionary = {}
 	for center: Vector2 in tour_centers: distinct_y[roundi(center.y)] = true
-	_expect(tour_offsets.size() == 19 and tour_offsets.front() == -3 and tour_offsets.back() == 15, "tourism map keeps three history tiles and fifteen forward targets")
-	_expect(tour_wrap == [86, 87, 88, 89, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], "tourism map wraps 87..90 to 01..15")
+	_expect(tour_offsets.size() == 8 and tour_offsets.front() == -1 and tour_offsets.back() == 6, "tourism map keeps one history tile, current tile, and six forward targets")
+	_expect(tour_wrap == [88, 89, 0, 1, 2, 3, 4, 5], "tourism map wraps the eight-tile neighborhood")
 	_expect(TourismMapViewScript.rects_fit_without_overlap(tour_rects, Rect2(0, 0, 360, 250), 2.0), "tourism tiles fit 360x250 without overlap")
 	_expect(TourismMapViewScript.rects_fit_without_overlap(tour_rects_large, Rect2(0, 0, 720, 390), 2.0) and Rect2(0, 0, 360, 250).encloses(TourismMapViewScript.player_rect(Vector2(360, 250))) and Rect2(0, 0, 720, 390).encloses(TourismMapViewScript.player_rect(Vector2(720, 390))), "tourism tiles and enlarged player fit reference and runtime bounds")
 	_expect(tour_centers[3].x > 360.0 * 0.40 and tour_centers[3].x < 360.0 * 0.60 and tour_centers[3].y > 250.0 * 0.70 and distinct_y.size() >= 10, "tourism route keeps current lower-middle on a continuous non-grid path")
 	_expect(TourismMapViewScript.is_offset_reachable(1, 1, &"NORMAL") and TourismMapViewScript.is_offset_reachable(6, 1, &"NORMAL") and not TourismMapViewScript.is_offset_reachable(7, 1, &"LANDMARK"), "one die highlights exact one through six range")
-	_expect(TourismMapViewScript.is_offset_reachable(9, 2, &"RISK") and TourismMapViewScript.is_offset_reachable(10, 3, &"EVENT") and not TourismMapViewScript.is_offset_reachable(9, 2, &"NORMAL"), "multi dice highlights visible special destinations only")
-	_expect(TourismMapViewScript.is_offset_reachable(15, 3, &"ITEM") and tour_offsets.has(15), "three dice can inspect targets through fifteen steps")
+	_expect(TourismMapViewScript.is_offset_reachable(6, 2, &"RISK") and TourismMapViewScript.is_offset_reachable(5, 3, &"EVENT") and not TourismMapViewScript.is_offset_reachable(6, 2, &"NORMAL"), "multi dice highlights visible special destinations only")
+	_expect(not TourismMapViewScript.is_offset_reachable(15, 3, &"ITEM") and not tour_offsets.has(15), "offscreen multi-die destinations use the distance indicator")
 	var bypass_points := BoardViewScript.bypass_route_points(Vector2(360, 250), 10)
 	_expect(bypass_points.size() == 10 and bypass_points[0].x < bypass_points[-1].x and BoardViewScript.bypass_exit_distance(4, 10) == 5 and BoardViewScript.bypass_exit_distance(9, 10) == 0, "bypass exposes direction and exact distance to exit")
 	_expect(TourismMapViewScript.normalized_view_mode("tourism") == "tourism" and TourismMapViewScript.normalized_view_mode("unknown") == "classic", "unknown board mode falls back to classic")
@@ -240,7 +265,7 @@ func _init() -> void:
 	summed_preview.highlight_destination(12, 18)
 	_expect(summed_preview.highlighted_destination_value == 18 and summed_preview.offscreen_destination_distance == 18, "multi-die destination preview flags targets beyond fifteen steps")
 	summed_preview.highlight_destination(12, 15)
-	_expect(summed_preview.offscreen_destination_distance == 0, "fifteen-step targets stay on the visible route")
+	_expect(summed_preview.offscreen_destination_distance == 15, "offscreen destinations keep their distance indicator")
 	summed_preview.clear_destination_highlight()
 	_expect(summed_preview.highlighted_destination_value == 0 and summed_preview.offscreen_destination_distance == 0, "destination guidance clears after result hold")
 	summed_preview.free()
@@ -290,7 +315,7 @@ func _init() -> void:
 	transaction_state.free()
 	var destination_wrap := TourismMapViewScript.destination_rect(Vector2(360, 250), 89, 2)
 	var destination_far := TourismMapViewScript.destination_rect(Vector2(360, 250), 89, 20)
-	_expect(destination_wrap.has_area() and destination_wrap == tour_rects[6] and not destination_far.has_area(), "map destination highlight wraps 90 to 03 and rejects offscreen targets")
+	_expect(destination_wrap.has_area() and destination_wrap == tour_rects[4] and not destination_far.has_area(), "map destination highlight wraps 90 to 03 and rejects offscreen targets")
 	var market_prop_ids: Dictionary = {}
 	for spec: Dictionary in market_props_lv3: market_prop_ids[str(spec.id)] = true
 	_expect(market_prop_ids.size() <= 8 and TourismMapViewScript.MARKET_PROP_TEXTURES.size() <= 8, "hybrid pack selection and visible props stay within eight")

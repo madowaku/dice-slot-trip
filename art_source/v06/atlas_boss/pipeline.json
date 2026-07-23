@@ -1,0 +1,781 @@
+{
+  "chroma_helper": {
+    "arguments": [
+      "--auto-key",
+      "border",
+      "--soft-matte",
+      "--transparent-threshold",
+      "12",
+      "--opaque-threshold",
+      "220",
+      "--despill"
+    ],
+    "detected_keys": {
+      "gate": "#06f911",
+      "ink": "#34ef37",
+      "lantern": "#03f90a",
+      "tiles": "#02f906"
+    },
+    "edge_contract_retry_used": false,
+    "native_transparency_or_cli_fallback_used": false,
+    "path": "C:/Users/hiro/.codex/skills/.system/imagegen/scripts/remove_chroma_key.py",
+    "post_resize_cleanup": "clear only near-pure key green at alpha<=16; no silhouette contraction",
+    "requested_key": "#00FF00"
+  },
+  "matte_sources": {
+    "gate": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.32114649,
+        "green_dominant_partial_pixels": 0,
+        "green_dominant_partial_ratio": 0.0,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 460498,
+        "partial_pixels": 44510,
+        "transparent_pixels": 1067508
+      },
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "mode": "RGBA",
+      "path": "art_source/v06/atlas_boss/matte/boss-gate-matte.png",
+      "sha256": "dd496ec81997d2ee57f30ab04e018fdeb168e7ee014c4f382c06caf5c73b95ff",
+      "source_bytes": 1226312
+    },
+    "ink": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.24696474,
+        "green_dominant_partial_pixels": 0,
+        "green_dominant_partial_ratio": 0.0,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 341043,
+        "partial_pixels": 47313,
+        "transparent_pixels": 1184160
+      },
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "mode": "RGBA",
+      "path": "art_source/v06/atlas_boss/matte/cairo-ink-matte.png",
+      "sha256": "3bc8bd0a2d8a87b3749c7616793d8450e92b2126a39d09e6f36d9809b2b78835",
+      "source_bytes": 1170360
+    },
+    "lantern": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.29415535,
+        "green_dominant_partial_pixels": 0,
+        "green_dominant_partial_ratio": 0.0,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 236153,
+        "partial_pixels": 226411,
+        "transparent_pixels": 1109952
+      },
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "mode": "RGBA",
+      "path": "art_source/v06/atlas_boss/matte/lantern-glow-matte.png",
+      "sha256": "e7e33601713c0e7a7c5a33a27c4efde21defc5cd09b4bc37da708cc1cfa4219b",
+      "source_bytes": 1058311
+    },
+    "tiles": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.41215288,
+        "green_dominant_partial_pixels": 0,
+        "green_dominant_partial_ratio": 0.0,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 595940,
+        "partial_pixels": 52177,
+        "transparent_pixels": 924399
+      },
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "mode": "RGBA",
+      "path": "art_source/v06/atlas_boss/matte/route-tiles-matte.png",
+      "sha256": "7f8ff5c529f7578b662a7faa07f7ade630a14bf1fc3134efab25d886e59595e9",
+      "source_bytes": 1659712
+    }
+  },
+  "normalization": {
+    "gate": {
+      "baseline_y": 246,
+      "cells": [
+        {
+          "anchor": [
+            128,
+            246
+          ],
+          "normalized_size": [
+            220,
+            232
+          ],
+          "paste_xy": [
+            18,
+            14
+          ],
+          "post_cleanup_baseline_shift": 0,
+          "source_alpha_bbox_local": [
+            35,
+            326,
+            588,
+            910
+          ],
+          "source_cell": [
+            0,
+            0,
+            627,
+            1254
+          ]
+        },
+        {
+          "anchor": [
+            384,
+            246
+          ],
+          "normalized_size": [
+            220,
+            232
+          ],
+          "paste_xy": [
+            274,
+            14
+          ],
+          "post_cleanup_baseline_shift": 0,
+          "source_alpha_bbox_local": [
+            37,
+            326,
+            590,
+            910
+          ],
+          "source_cell": [
+            627,
+            0,
+            1254,
+            1254
+          ]
+        }
+      ],
+      "max_content": [
+        238,
+        232
+      ],
+      "shared_scale": 0.397260274,
+      "target_cell": [
+        256,
+        256
+      ]
+    },
+    "ink": {
+      "method": "full-sheet Lanczos normalization with 22px transparent outer safety pad",
+      "paste_xy": [
+        22,
+        22
+      ]
+    },
+    "lantern": {
+      "baseline_y": 244,
+      "cells": [
+        {
+          "anchor": [
+            64,
+            244
+          ],
+          "normalized_size": [
+            76,
+            127
+          ],
+          "paste_xy": [
+            26,
+            118
+          ],
+          "post_cleanup_baseline_shift": 1,
+          "source_alpha_bbox_local": [
+            173,
+            110,
+            453,
+            578
+          ],
+          "source_cell": [
+            0,
+            0,
+            627,
+            627
+          ]
+        },
+        {
+          "anchor": [
+            192,
+            244
+          ],
+          "normalized_size": [
+            98,
+            139
+          ],
+          "paste_xy": [
+            143,
+            105
+          ],
+          "post_cleanup_baseline_shift": 0,
+          "source_alpha_bbox_local": [
+            105,
+            69,
+            465,
+            581
+          ],
+          "source_cell": [
+            627,
+            0,
+            1254,
+            627
+          ]
+        },
+        {
+          "anchor": [
+            320,
+            244
+          ],
+          "normalized_size": [
+            118,
+            144
+          ],
+          "paste_xy": [
+            261,
+            100
+          ],
+          "post_cleanup_baseline_shift": 0,
+          "source_alpha_bbox_local": [
+            102,
+            21,
+            536,
+            552
+          ],
+          "source_cell": [
+            0,
+            627,
+            627,
+            1254
+          ]
+        },
+        {
+          "anchor": [
+            448,
+            244
+          ],
+          "normalized_size": [
+            95,
+            138
+          ],
+          "paste_xy": [
+            400,
+            106
+          ],
+          "post_cleanup_baseline_shift": 0,
+          "source_alpha_bbox_local": [
+            116,
+            35,
+            465,
+            544
+          ],
+          "source_cell": [
+            627,
+            627,
+            1254,
+            1254
+          ]
+        }
+      ],
+      "max_content": [
+        118,
+        232
+      ],
+      "shared_scale": 0.2718894009,
+      "target_cell": [
+        128,
+        256
+      ]
+    },
+    "parchment": {
+      "edge_sha": {
+        "bottom": "097bdebebb7a7b0491881a1ecc584148cffde5c766f56af1b36d4e6f52768e5f",
+        "left": "ff97d6c0d064b1b9e40ad21623f57694a0e0107e191b0cffd5e20afc3b1ab8e6",
+        "right": "ff97d6c0d064b1b9e40ad21623f57694a0e0107e191b0cffd5e20afc3b1ab8e6",
+        "top": "097bdebebb7a7b0491881a1ecc584148cffde5c766f56af1b36d4e6f52768e5f"
+      },
+      "method": "1254 square source Lanczos-resized to 512 then mirrored 2x2 for exact edge continuity",
+      "resample": "Pillow.Image.Resampling.LANCZOS"
+    },
+    "sphinx": {
+      "method": "immutable source resized directly from 1254x1254 to 512x512",
+      "normalized_alpha_bbox": [
+        31,
+        41,
+        484,
+        486
+      ],
+      "resample": "Pillow.Image.Resampling.LANCZOS",
+      "source_dimensions": [
+        1254,
+        1254
+      ],
+      "source_path": "assets/art/bosses/sleepy-sphinx.png",
+      "source_sha256": "27759bf53575c42a8db3a700bcfb11dfb37e1e19885f32e1f271c052aaf70f0e"
+    },
+    "tiles": {
+      "baseline_y": 118,
+      "cells": [
+        {
+          "anchor": [
+            64,
+            118
+          ],
+          "normalized_size": [
+            111,
+            104
+          ],
+          "paste_xy": [
+            8,
+            14
+          ],
+          "post_cleanup_baseline_shift": 0,
+          "source_alpha_bbox_local": [
+            101,
+            105,
+            572,
+            548
+          ],
+          "source_cell": [
+            0,
+            0,
+            627,
+            627
+          ]
+        },
+        {
+          "anchor": [
+            192,
+            118
+          ],
+          "normalized_size": [
+            110,
+            104
+          ],
+          "paste_xy": [
+            137,
+            14
+          ],
+          "post_cleanup_baseline_shift": 0,
+          "source_alpha_bbox_local": [
+            60,
+            105,
+            528,
+            547
+          ],
+          "source_cell": [
+            627,
+            0,
+            1254,
+            627
+          ]
+        },
+        {
+          "anchor": [
+            320,
+            118
+          ],
+          "normalized_size": [
+            102,
+            99
+          ],
+          "paste_xy": [
+            269,
+            19
+          ],
+          "post_cleanup_baseline_shift": 0,
+          "source_alpha_bbox_local": [
+            116,
+            70,
+            548,
+            489
+          ],
+          "source_cell": [
+            0,
+            627,
+            627,
+            1254
+          ]
+        },
+        {
+          "anchor": [
+            448,
+            118
+          ],
+          "normalized_size": [
+            111,
+            108
+          ],
+          "paste_xy": [
+            392,
+            10
+          ],
+          "post_cleanup_baseline_shift": 0,
+          "source_alpha_bbox_local": [
+            57,
+            42,
+            529,
+            501
+          ],
+          "source_cell": [
+            627,
+            627,
+            1254,
+            1254
+          ]
+        }
+      ],
+      "max_content": [
+        116,
+        108
+      ],
+      "shared_scale": 0.2352941176,
+      "target_cell": [
+        128,
+        128
+      ]
+    },
+    "vignette": {
+      "method": "deterministic analytic elliptical smoothstep mask with three readability windows",
+      "samples": {
+        "bottom_right": 188,
+        "center": 12,
+        "top_center_hud": 107,
+        "top_left": 188,
+        "tray_center": 18
+      },
+      "value_range": [
+        12,
+        188
+      ]
+    }
+  },
+  "pillow": "12.2.0",
+  "pipeline_version": "v06-atlas-boss-normalize-1",
+  "previews": [
+    {
+      "dimensions": [
+        720,
+        1280
+      ],
+      "lighting": "daylight",
+      "path": "art_source/v06/atlas_boss/qc/daylight-pack-preview-720x1280.png",
+      "role": "QC_PREVIEW_NOT_RUNTIME"
+    },
+    {
+      "derived_from": "art_source/v06/atlas_boss/qc/daylight-pack-preview-720x1280.png",
+      "dimensions": [
+        360,
+        640
+      ],
+      "lighting": "daylight",
+      "path": "art_source/v06/atlas_boss/qc/daylight-pack-preview-360x640.png",
+      "role": "QC_PREVIEW_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        720,
+        1280
+      ],
+      "lighting": "boss_lit",
+      "path": "art_source/v06/atlas_boss/qc/boss-lit-pack-preview-720x1280.png",
+      "role": "QC_PREVIEW_NOT_RUNTIME"
+    },
+    {
+      "derived_from": "art_source/v06/atlas_boss/qc/boss-lit-pack-preview-720x1280.png",
+      "dimensions": [
+        360,
+        640
+      ],
+      "lighting": "boss_lit",
+      "path": "art_source/v06/atlas_boss/qc/boss-lit-pack-preview-360x640.png",
+      "role": "QC_PREVIEW_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        1024,
+        256
+      ],
+      "path": "art_source/v06/atlas_boss/qc/tiles-cell-contact.png",
+      "role": "QC_CELL_CONTACT_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        1024,
+        512
+      ],
+      "path": "art_source/v06/atlas_boss/qc/gate-cell-contact.png",
+      "role": "QC_CELL_CONTACT_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        1024,
+        512
+      ],
+      "path": "art_source/v06/atlas_boss/qc/lantern-cell-contact.png",
+      "role": "QC_CELL_CONTACT_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        1024,
+        768
+      ],
+      "path": "art_source/v06/atlas_boss/qc/alpha-fringe-checks.png",
+      "role": "QC_ALPHA_FRINGE_NOT_RUNTIME"
+    },
+    {
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "path": "art_source/v06/atlas_boss/qc/runtime-pack-contact-sheet.png",
+      "role": "QC_PACK_CONTACT_NOT_RUNTIME"
+    }
+  ],
+  "python": "3.14.3",
+  "raw_sources": {
+    "gate": {
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "mode": "RGB",
+      "path": "art_source/v06/atlas_boss/raw/boss-gate-chroma-raw.png",
+      "sha256": "c43dc0ebadf2fcaf8abeff8c5912a949fdd9acc6b61c69ec657fd44744af9706",
+      "source_bytes": 1699370
+    },
+    "ink": {
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "mode": "RGB",
+      "path": "art_source/v06/atlas_boss/raw/cairo-ink-chroma-raw.png",
+      "sha256": "9336810666f1e3a5c73ee384299ae937d1280a6bbaf777269eefbf40452a513e",
+      "source_bytes": 1832154
+    },
+    "lantern": {
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "mode": "RGB",
+      "path": "art_source/v06/atlas_boss/raw/lantern-glow-chroma-raw.png",
+      "sha256": "b6d9f8be7c93c2554960f16c6384d1a484ae362d487fefbc4b1cf7d9399b7d1b",
+      "source_bytes": 1550674
+    },
+    "parchment": {
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "mode": "RGB",
+      "path": "art_source/v06/atlas_boss/raw/parchment-raw.png",
+      "sha256": "9e9bf72275712407bc3f7b3fcbb67ffe799d0c8b6587397e15dfefe8599a7bd2",
+      "source_bytes": 2458078
+    },
+    "tiles": {
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "mode": "RGB",
+      "path": "art_source/v06/atlas_boss/raw/route-tiles-chroma-raw.png",
+      "sha256": "94a403e7b917ce27288d7ac3f0e5f33d26e59c575ff917b1b490427486a7f150",
+      "source_bytes": 2027487
+    }
+  },
+  "resampling": "Pillow.Image.Resampling.LANCZOS",
+  "runtime_outputs": {
+    "gate": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.62577057,
+        "green_dominant_partial_pixels": 50,
+        "green_dominant_partial_ratio": 0.00320041,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 66398,
+        "partial_pixels": 15623,
+        "transparent_pixels": 49051
+      },
+      "dimensions": [
+        512,
+        256
+      ],
+      "mode": "RGBA",
+      "path": "assets/art/v06/boss/gold-boss-gate.png",
+      "sha256": "9c33de338d249f57ad51b738177081711d10715829c5d65df75d5e0c0c994431",
+      "source_bytes": 207933
+    },
+    "ink": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.24184036,
+        "green_dominant_partial_pixels": 453,
+        "green_dominant_partial_ratio": 0.00704839,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 189318,
+        "partial_pixels": 64270,
+        "transparent_pixels": 794988
+      },
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "path": "assets/art/v06/atlas/cairo-cartography-ink.png",
+      "sha256": "c7c02c31751b6384222ffa072cea6adb47ce847156aa966469b8ab153665eed0",
+      "source_bytes": 788146
+    },
+    "lantern": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.26810455,
+        "green_dominant_partial_pixels": 5,
+        "green_dominant_partial_ratio": 0.00025103,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 15223,
+        "partial_pixels": 19918,
+        "transparent_pixels": 95931
+      },
+      "dimensions": [
+        512,
+        256
+      ],
+      "mode": "RGBA",
+      "path": "assets/art/v06/effects/lantern-glow.png",
+      "sha256": "ea2ecf101a48dc68b55f2750015c4209c279acaf628dd73d7ff8958fa7b7e0e2",
+      "source_bytes": 95470
+    },
+    "parchment": {
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGB",
+      "path": "assets/art/v06/atlas/parchment-base.png",
+      "sha256": "03c41ad8638500a40d4b76fba1ff25d72c39613c63f1f1b529c78077f2db60ed",
+      "source_bytes": 1499444
+    },
+    "sphinx": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.53551483,
+        "green_dominant_partial_pixels": 9,
+        "green_dominant_partial_ratio": 0.00177445,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 135310,
+        "partial_pixels": 5072,
+        "transparent_pixels": 121762
+      },
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "path": "assets/art/v06/boss/sleepy-sphinx.png",
+      "sha256": "f0281a68144bdac418cb596cda45b6a0c5af8e0dd74248e76e014547ef08d087",
+      "source_bytes": 338500
+    },
+    "tiles": {
+      "alpha": {
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "coverage_ratio": 0.56948853,
+        "green_dominant_partial_pixels": 17,
+        "green_dominant_partial_ratio": 0.00171665,
+        "low_alpha_key_like_alpha_sum": 0,
+        "low_alpha_key_like_pixels": 0,
+        "opaque_pixels": 27419,
+        "partial_pixels": 9903,
+        "transparent_pixels": 28214
+      },
+      "dimensions": [
+        512,
+        128
+      ],
+      "mode": "RGBA",
+      "path": "assets/art/v06/atlas/raised-route-tiles.png",
+      "sha256": "83d253ff54d97aac3db87d19efdb797ef6e1746ed1735cbded0a11ca7ab59453",
+      "source_bytes": 96359
+    },
+    "vignette": {
+      "dimensions": [
+        720,
+        1280
+      ],
+      "mode": "L",
+      "path": "assets/art/v06/boss/night-vignette.png",
+      "sha256": "b51851071e5746f511109a8318424ada9612943df2d3d03ab964ecdf959b1e98",
+      "source_bytes": 60761
+    }
+  },
+  "schema_version": 1
+}

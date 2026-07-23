@@ -1,0 +1,2241 @@
+version: 2
+
+goal:
+  title: "DICE SLOT TRIP v0.7 製品化"
+  slug: "dice-slot-trip-v06-productization"
+  kind: open_ended
+  tranche: "v0.7のデータ駆動ステージ長と通常画面の前方6マス設計を実装し、B+A+Cの製品縦切りを再検証する"
+  status: blocked
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "現行Godot実装、画面、素材、テストをv0.6へ照合し、旧仕様との衝突と移行境界を具体的なファイル証拠で整理する。"
+    inputs:
+      - "docs/改善統合仕様書 v0.6.md"
+      - "project.godot"
+      - "scenes/**"
+      - "scripts/**"
+      - "autoload/**"
+      - "data/**"
+      - "tests/**"
+      - "docs/reference/**"
+      - "完了済み docs/goals/** receipts"
+    constraints:
+      - "Read-only."
+      - "ユーザーのdirty worktreeを変更しない。"
+      - "旧90マス・複数ダイスとv0.6の衝突を明示する。"
+      - "コード、UI、素材、Android検証を分けて評価する。"
+    expected_output:
+      - "Repo and runtime map"
+      - "v0.6 gap matrix"
+      - "Verification commands and current health"
+      - "Ranked safe implementation candidates"
+      - "Visual target inputs and missing evidence"
+    receipt:
+      result: done
+      scope_valid: false
+      scope_note: "scripts/game/dice_presentation_3d.gd was changed but omitted from T042 allowed_files; T044 explicitly owns and revalidates that change."
+      note: "notes/T001-v06-gap-map.md"
+      summary: "現行基盤は健全だが旧90マス・同時複数ダイスを強く固定しており、v0.6は新しい縦切りモデルから安全に並行移行する必要がある。"
+      evidence:
+        - "Godot 4.7 parse: pass"
+        - "tests/run_tests.gd: failures=0 with exit leak warnings"
+        - "tests/run_roll_transaction_tests.gd: failures=0"
+        - "scripts/game/board_model.gd:4"
+        - "autoload/game_state.gd:79-85"
+        - "scripts/app/main.gd:1297-1474"
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Scout結果をレビューし、ゲームループ移行と製品ビジュアル設計の順序を決め、最初の安全な実装候補を定義する。"
+    inputs:
+      - "T001 receipt"
+      - "docs/改善統合仕様書 v0.6.md"
+      - "ユーザーのGoogle Play有料級という品質目標"
+    constraints:
+      - "Do not implement."
+      - "visual target選定前に製品UI実装を許可しない。"
+      - "既存dirty差分と重なる場合は停止条件を明記する。"
+    expected_output:
+      - "Decision and sequencing"
+      - "Exact visual ideation Worker objective"
+      - "Exact first implementation Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+    receipt:
+      result: done
+      note: "notes/T002-sequencing-decision.md"
+      decision: "3 visual targetsを先行し、所有者選択待ち中も新規v0.6 roll-set domain modelを進める。main UI統合は両方が揃うまで禁止。"
+      next_allowed_task: T003
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "既存画面とv0.6を参照し、同一のゲーム状態を720x1280で示す、空間階層と素材表現が明確に異なる3つの製品版visual targetを作成し、比較表・生成prompt・asset provenanceを保存する。"
+    allowed_files:
+      - "docs/design/v06/**"
+    verify:
+      - "3 PNGすべて720x1280であることを確認する。"
+      - "全案が第4周、HP2/3、PB-2.4秒、18/32、円環EXIT 4、slot[6][6][_]、1ダイスREADYを示す。"
+      - "360x640相当で経路、EXIT、slot、主要数値を目視できる。"
+      - "prompts.md、comparison.md、asset-inventory.mdが揃う。"
+    stop_if:
+      - "T002が3案の方向と比較軸を定義していない。"
+      - "既存画面を参照として開けない。"
+      - "画像生成結果を検証できない。"
+      - "3案で同一ゲーム状態を維持できない。"
+      - "第三者素材の利用条件・出典が特定できない。"
+    receipt:
+      result: done
+      changed_files:
+        - "docs/design/v06/a-sunlit-cairo-diorama.png"
+        - "docs/design/v06/b-explorers-atlas.png"
+        - "docs/design/v06/c-lantern-night-bazaar.png"
+        - "docs/design/v06/prompts.md"
+        - "docs/design/v06/comparison.md"
+        - "docs/design/v06/asset-inventory.md"
+      commands:
+        - cmd: "3 built-in ImageGen calls"
+          status: pass
+        - cmd: "ffmpeg resize to 720x1280"
+          status: pass
+        - cmd: "ffprobe dimensions"
+          status: pass
+        - cmd: "360x640 visual inspection"
+          status: pass
+        - cmd: "git diff --check -- docs/design/v06"
+          status: pass
+      summary: "同一v0.6状態で、陽光2.5Dジオラマ、旅行地図、夜市リズム重視の3方向を作成・検証した。"
+      caveat: "生成された経路番号は説明用で重複・欠番がある。shipping topologyとUI文字はGodotで再構築する。"
+
+  - id: T006
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "既存runtimeへ接続せず、1〜6の出目を1投ずつ3枠へ蓄積し、3投目後だけNONE/PAIR/TRIPLEを判定し、明示的resolution後にresetできる純粋なv0.6 roll-set domain modelと専用テストを追加する。"
+    allowed_files:
+      - "scripts/game/v06_roll_set.gd"
+      - "scripts/game/v06_roll_set.gd.uid"
+      - "tests/run_v06_roll_set_tests.gd"
+      - "tests/run_v06_roll_set_tests.gd.uid"
+    verify:
+      - "Godot 4.7 --headless --path . --editor --quit"
+      - "Godot 4.7 --headless --path . --script tests/run_v06_roll_set_tests.gd"
+      - "Godot 4.7 --headless --path . --script tests/run_tests.gd"
+      - "git diff --check -- scripts/game/v06_roll_set.gd tests/run_v06_roll_set_tests.gd"
+    stop_if:
+      - "main.gd、GameState、既存dice logic、save、board modelへの変更が必要。"
+      - "対象ファイルが既に存在し、未所有のdirty差分がある。"
+      - "PAIR/TRIPLEの報酬、移動順序、UI演出まで決める必要が生じる。"
+      - "Godot parseまたは専用テストが2回失敗する。"
+      - "既存テストに新しい回帰が出る。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_roll_set.gd"
+        - "scripts/game/v06_roll_set.gd.uid"
+        - "tests/run_v06_roll_set_tests.gd"
+        - "tests/run_v06_roll_set_tests.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 --headless --path . --editor --quit"
+          status: pass
+        - cmd: "Godot 4.7 --headless --path . --script tests/run_v06_roll_set_tests.gd"
+          status: pass
+        - cmd: "Godot 4.7 --headless --path . --script tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check -- scripts/game/v06_roll_set.gd tests/run_v06_roll_set_tests.gd"
+          status: pass
+      summary: "1投ずつ3枠へ蓄積し、3投目だけNONE/PAIR/TRIPLEを判定し、明示resetまで結果を保持する純粋domain modelを追加した。"
+
+  - id: T004
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: default
+    objective: "3つのvisual targetを所有者へ提示し、実装対象を1つ選んでもらう。"
+    inputs:
+      - "T003 receipt"
+    constraints:
+      - "Owner choice required."
+      - "選択を推測しない。"
+    expected_output:
+      - "Selected visual target"
+      - "Selection rationale or owner note"
+    receipt:
+      result: done
+      note: "notes/T004-selected-visual-direction.md"
+      selection: "Bを骨格に、現在地周辺だけAのミニチュア移動感、山場だけCの夜景と発光を採用する。"
+      required_revision: "現在地中心・先8〜12マス、キャラ1.3〜1.5倍、追従カメラ、実マス移動、slotとdie近接、弱い待機発光、番号の局所表示。"
+
+  - id: T007
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "v0.6の32マス本線、1本のバイパス、独立8マス円環、周回末boss gateを純粋course modelとして実装できるよう、正確なトポロジーと契約を定義する。"
+    inputs:
+      - "docs/改善統合仕様書 v0.6.md"
+      - "notes/T001-v06-gap-map.md"
+      - "notes/T002-sequencing-decision.md"
+      - "scripts/game/board_model.gd"
+    constraints:
+      - "Do not implement."
+      - "本線32にはstartとboss gateを含め、円環8とバイパス固有マスは含めない。"
+      - "既存90マスmodelとdirty runtimeを変更しない新規ファイルscopeにする。"
+      - "UI、save、報酬数値、演出を扱わない。"
+    expected_output:
+      - "Route topology and tile indices"
+      - "Advance and exact-stop loop contracts"
+      - "Bypass length and tradeoff"
+      - "Data schema"
+      - "Exact Worker objective, allowed_files, verify, stop_if"
+    receipt:
+      result: done
+      note: "notes/T007-course-contract.md"
+      decision: "本線32、バイパス固有4、独立円環8の44-node graphを新規pure modelとして実装し、BOSS_GATEを終端とする。"
+      next_allowed_task: T008
+
+  - id: T008
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "T007の正確なトポロジー、移動、分岐、portal、円環exact-stop、終端boss gate契約を実装する、v0.6 Cairo course JSON、純粋validated model、専用headless testを追加する。既存runtimeへ接続しない。"
+    allowed_files:
+      - "data/stages/v06_cairo_course.json"
+      - "scripts/game/v06_course_model.gd"
+      - "scripts/game/v06_course_model.gd.uid"
+      - "tests/run_v06_course_model_tests.gd"
+      - "tests/run_v06_course_model_tests.gd.uid"
+    verify:
+      - "Godot 4.7 --headless --path . --editor --quit"
+      - "Godot 4.7 --headless --path . --script tests/run_v06_course_model_tests.gd"
+      - "Godot 4.7 --headless --path . --script tests/run_v06_roll_set_tests.gd"
+      - "Godot 4.7 --headless --path . --script tests/run_tests.gd"
+      - "git diff --check on T008 files"
+      - "git diff --exit-code -- scripts/game/board_model.gd"
+    stop_if:
+      - "Any allowed file exists with unowned changes when T008 starts."
+      - "Any existing runtime, project, save, UI, reward, combat, art, or legacy board file must change."
+      - "Implementation requires choosing reward values, boss resolution, next-lap policy, UI behavior, or save representation."
+      - "The model would need to normalize invalid input, wrap past BOSS_GATE, or weaken exact-stop semantics."
+      - "Dedicated validation or movement tests fail twice."
+      - "Existing roll-set or legacy regression tests acquire a new failure."
+    receipt:
+      result: done
+      changed_files:
+        - "data/stages/v06_cairo_course.json"
+        - "scripts/game/v06_course_model.gd"
+        - "scripts/game/v06_course_model.gd.uid"
+        - "tests/run_v06_course_model_tests.gd"
+        - "tests/run_v06_course_model_tests.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 --headless --path . --editor --quit"
+          status: pass
+        - cmd: "Godot 4.7 dedicated course-model test"
+          status: pass
+        - cmd: "Godot 4.7 v0.6 roll-set test"
+          status: pass
+        - cmd: "Godot 4.7 legacy tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff and legacy board unchanged checks"
+          status: pass
+      summary: "T009 recoveryを経て、44-node course model、strict validation、分岐・exact-stop円環・終端boss gate契約が全検証を通過した。"
+
+  - id: T009
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "T008のcanonical JSON validationをGodotのJSON float数値に対応させ、load失敗時に専用testが安全に終了するguardを追加して、T008全検証を完了する。"
+    allowed_files:
+      - "scripts/game/v06_course_model.gd"
+      - "tests/run_v06_course_model_tests.gd"
+    verify:
+      - "Godot 4.7 --headless --path . --editor --quit"
+      - "Godot 4.7 --headless --path . --script tests/run_v06_course_model_tests.gd"
+      - "Godot 4.7 --headless --path . --script tests/run_v06_roll_set_tests.gd"
+      - "Godot 4.7 --headless --path . --script tests/run_tests.gd"
+      - "git diff --check on T008/T009 files"
+      - "git diff --exit-code -- scripts/game/board_model.gd"
+    stop_if:
+      - "Any file outside allowed_files must change."
+      - "Canonical JSON itself must change."
+      - "Movement semantics or T007 topology must change."
+      - "Dedicated test still fails after one focused fix."
+      - "Existing tests acquire a new failure."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_course_model.gd"
+        - "tests/run_v06_course_model_tests.gd"
+      commands:
+        - cmd: "Godot 4.7 --headless --path . --script tests/run_v06_course_model_tests.gd"
+          status: pass
+        - cmd: "Godot 4.7 --headless --path . --script tests/run_v06_roll_set_tests.gd"
+          status: pass
+        - cmd: "Godot 4.7 --headless --path . --script tests/run_tests.gd"
+          status: pass
+      summary: "JSON float数値をexact integralとして検証し、nested positionをfield単位で検証。canonical load失敗時のtest guardも追加した。"
+
+  - id: T010
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "所有者が選定したB骨格+A局所ミニチュア移動+C限定山場の条件を忠実に反映した、720x1280の最終selected visual targetを生成・検証する。"
+    allowed_files:
+      - "docs/design/v06/**"
+    verify:
+      - "selected target PNG is 720x1280"
+      - "Bの簡潔HUD・固定tray・地図可読性を維持する"
+      - "現在地中心で先8〜12マス、キャラ1.3〜1.5倍、周辺だけ立体化する"
+      - "slot3枠と1ダイスを近接し、待機発光を抑える"
+      - "Cの光はboss gate等の山場予告に限定する"
+      - "360x640縮小でHP、周回、PB差、18/32、EXIT 4、[6][6][_], READYが読める"
+      - "prompt、reference roles、implementation notesを保存する"
+    stop_if:
+      - "既存A/B/C targetを参照として開けない。"
+      - "選定条件を一枚で表現できない。"
+      - "docs/design/v06/**以外への書き込みが必要。"
+      - "生成文字をshipping UIとして採用する必要がある。"
+    receipt:
+      result: done
+      changed_files:
+        - "docs/design/v06/d-selected-atlas-living-map.png"
+        - "docs/design/v06/selected-direction-prompt.md"
+        - "docs/design/v06/selected-direction-implementation.md"
+      commands:
+        - cmd: "Built-in ImageGen"
+          status: pass
+        - cmd: "Lanczos normalization to 720x1280"
+          status: pass
+        - cmd: "720x1280 and 360x640 visual inspection"
+          status: pass
+        - cmd: "ffprobe dimension check"
+          status: pass
+      summary: "B骨格、Aの局所2.5D移動感、Cの限定boss光を統合した正式selected visual targetを作成・検証した。"
+
+  - id: T011
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "selected visual target、v0.6 roll-set、44-node course modelを製品ランタイムへ接続する最初の実統合スライスを、dirty worktreeを保持しつつ定義する。"
+    inputs:
+      - "docs/design/v06/d-selected-atlas-living-map.png"
+      - "docs/design/v06/selected-direction-implementation.md"
+      - "scripts/game/v06_roll_set.gd"
+      - "scripts/game/v06_course_model.gd"
+      - "data/stages/v06_cairo_course.json"
+      - "scripts/app/main.gd"
+      - "scenes/app/Main.tscn"
+      - "project.godot"
+    constraints:
+      - "Do not implement."
+      - "製品へ段階的に置換できる実ランタイム境界にし、孤立した静的デモで終えない。"
+      - "visual targetの通常状態を正とし、画像内文字・経路を直接shipping assetにしない。"
+      - "既存dirty差分を巻き戻さない。"
+      - "一投1ダイス、3投slot、32本線、固定tray、簡潔HUD、局所地図を優先する。"
+      - "最初のsliceでboss combat、save v11、全マス効果、全animationを同時実装しない。"
+    expected_output:
+      - "Integration architecture"
+      - "Exact playable acceptance flow"
+      - "Exact allowed_files and ownership boundary"
+      - "Verification and same-state visual QA"
+      - "Stop conditions and deferred work"
+    receipt:
+      result: done
+      note: "notes/T011-runtime-integration.md"
+      decision: "Stage Selectから明示的な保存なしv0.6試遊へ入り、新規session/atlas/screenに隔離し、main.gdは4 integration hunksだけ変更する。"
+      next_allowed_task: T005
+
+  - id: T005
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "既存アプリのステージ選択から明示的な保存なしv0.6試遊へ入り、1投1ダイス、3投slot、canonical 32-space course、main/bypass/loop、cat実hop、簡略HUD、固定trayを720x1280でboss gateまで遊べる最初の実ランタイム縦切りとして実装する。"
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_play_session.gd.uid"
+      - "scripts/game/v06_atlas_view.gd"
+      - "scripts/game/v06_atlas_view.gd.uid"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/app/v06_play_screen.gd.uid"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_play_session_tests.gd.uid"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd.uid"
+      - "scripts/app/main.gd"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "v06 roll-set, course, play-session, play-screen dedicated tests"
+      - "legacy tests/run_tests.gd"
+      - "Session: 1 face/roll, movement before slot, 3rd-role, ack reset, fork resume once, exact loop, boss terminal"
+      - "Screen: named HUD/atlas/tray/3 slots/one die, touch minimum, 720x1280 fit, 8-12 prominent spaces, distinct route styles"
+      - "DICE_QA_SCREEN=v06 deterministic 720x1280 capture"
+      - "source target vs runtime at 720x1280 and 360x640 visual QA"
+      - "git diff check and ownership review"
+    stop_if:
+      - "visual targetが未選定。"
+      - "T006が検証済みでない。"
+      - "Need files outside allowed_files."
+      - "Behavior is ambiguous."
+      - "Verification fails twice."
+      - "main.gdの4 integration hunks以外のdirty差分を変更する必要がある。"
+      - "GameState、SaveManager、save version、legacy BoardModelまたは旧roll transactionを変更する必要がある。"
+      - "一つを超えるdie、3slot合計移動、duplicate face commitが必要になる。"
+      - "8〜12 prominent spacesとmain/bypass/loopの識別を維持できない。"
+      - "新規raster、boss combat、reward値、tile-effect policyを発明する必要がある。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_play_session.gd.uid"
+        - "scripts/game/v06_atlas_view.gd"
+        - "scripts/game/v06_atlas_view.gd.uid"
+        - "scripts/app/v06_play_screen.gd"
+        - "scripts/app/v06_play_screen.gd.uid"
+        - "scenes/app/V06PlayScreen.tscn"
+        - "tests/run_v06_play_session_tests.gd"
+        - "tests/run_v06_play_session_tests.gd.uid"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd.uid"
+        - "scripts/app/main.gd (specified four integration hunks only)"
+      commands:
+        - cmd: "Godot 4.7 editor parse"
+          status: pass
+        - cmd: "v06 roll-set, course-model, play-session, play-screen tests"
+          status: pass
+        - cmd: "legacy tests/run_tests.gd"
+          status: "pass; known 5 ObjectDB leak and 1 resource warning only"
+        - cmd: "git diff --check and ownership review"
+          status: pass
+        - cmd: "generic main capture at 360x640"
+          status: pass
+        - cmd: "OS-independent SubViewport native capture at 720x1280"
+          status: pass
+      captures:
+        - "C:/tmp/dice-v06-atlas18-native-720.png"
+        - "C:/tmp/v06-atlas-18.png"
+      summary: "Stage Selectから入れる保存なしv0.6試遊を追加し、1ダイス3投、分岐、exact円環、boss終端、実hop、soft follow、局所8〜12マス、固定trayを遊べる縦切りとして実装した。"
+      ownership: "main.gdはpreload、QA entry、追加CTA、show_v06_gameの11追加行だけ。GameState、save、legacy BoardModel、既存Cairo導線、assetsは変更なし。"
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "実装された最初のスライスがv0.6、選定visual target、Google Play有料級への前進を満たすか監査する。"
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current dirty diff"
+      - "Source visual and same-state runtime capture"
+    constraints:
+      - "Do not implement."
+      - "必要なWorker作業がqueuedまたはactiveならcompleteにしない。"
+    expected_output:
+      - "complete | not_complete"
+      - "mapping to v0.6 acceptance"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt:
+      result: done
+      completion_decision: not_complete
+      decision: "T005は大部分で受入可能だが、boss gate到達が3投目と重なる場合にslot result/ackを飛ばす順序欠陥があるため、current trancheはT012修正まで閉じない。"
+      evidence:
+        - "roll/course/session/screen/legacy tests failures=0; native 720x1280 and generic 360x640 captures pass."
+        - "B skeleton、A local hop/follow、C restrained climax accent、main.gd ownership boundaryは受入可能。"
+        - "v06_play_session.gdがboss terminalをcomplete roll-setより先にphaseへ反映し、screenがBossOverlayへ直行する。"
+      required_fix: "3投目boss arrivalはNONE/PAIR/TRIPLEを表示・ack/reset後にBossOverlayへ進める。1/2投目到達は即boss terminalを維持する。"
+      next_task: T012
+
+  - id: T012
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "boss gate到達が3投目と重なる時も、移動完了後に完成slotのNONE/PAIR/TRIPLE resultを一度だけ表示・acknowledgeしてresetし、その後にboss terminal bannerへ遷移するよう修正する。"
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "v06 play-session and play-screen tests"
+      - "v06 roll-set and course-model tests"
+      - "legacy tests/run_tests.gd"
+      - "Canonical main23 then [3,3,2]: before ack RESOLUTION_REQUIRED/PAIR/boss_terminal=true; ResolutionOverlay visible and BossOverlay hidden."
+      - "After one ack: slots reset once, phase BOSS_GATE, ResolutionOverlay hidden, BossOverlay visible, further roll blocked."
+      - "Boss arrival on first or second slot still enters BOSS_GATE directly."
+      - "git diff --check and ownership review"
+    stop_if:
+      - "Boss combat、role reward、HP damage、next-lap policyを決める必要がある。"
+      - "main.gd、course model、roll-set、GameState、save、scene、assetの変更が必要。"
+      - "slotのdouble commit/reset、boss terminal解除、surplus movement復活が必要。"
+      - "Dedicated or legacy verification fails twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_session_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      commands:
+        - cmd: "Godot 4.7 editor parse"
+          status: pass
+        - cmd: "v06 play-session and play-screen tests"
+          status: pass
+        - cmd: "v06 roll-set and course-model tests"
+          status: pass
+        - cmd: "legacy tests/run_tests.gd"
+          status: "pass; known exit warnings only"
+        - cmd: "four-file diff check and ownership review"
+          status: pass
+      summary: "3投目boss arrivalだけterminal遷移を保留し、slot resultを表示・単一ack/reset後にBOSS_GATEへ進める。1/2投目到達は即terminalを維持。"
+
+  - id: T013
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T012後にcurrent trancheのslot/boss orderingと全T005受入を再監査し、最初の安全な実装スライスを閉じられるか決定する。"
+    inputs:
+      - "T999 receipt"
+      - "T012 receipt"
+      - "Current verification"
+    constraints:
+      - "Do not implement."
+      - "T012がdoneでなければcompleteにしない。"
+    expected_output:
+      - "complete | not_complete"
+      - "regression evidence"
+      - "next productization tranche"
+    receipt:
+      result: done
+      completion_decision: complete
+      goal_completion: "最初の安全なruntime縦切りtrancheは完了。open-ended paid-product goalは未完了で継続。"
+      decision: "T012で唯一のmaterial defectを解消し、T005をapp-accessible、legacy-safe、boss gateまで遊べる最初の統合スライスとして受入。"
+      evidence:
+        - "main23 + [3,3,2] はPAIR結果を先に表示し、単一ack/reset後にBOSS_GATEへ進む。"
+        - "first/second-slot boss arrivalは即BOSS_GATEを維持。"
+        - "roll/course/session/screen/legacy suites failures=0; known exit warnings only."
+        - "720x1280/360x640 capturesとB+A+C direction mappingは有効。"
+      accepted_deferred: "boss combat/next lap、save v11、tile/role rewards、final art/audio、実HP/PB。"
+      next_task: T014
+
+  - id: T014
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "優先度Sの最小boss/lap契約と本番アセットmanifestを実装前に定義する。player/boss HP、3投比較、PAIR/TRIPLE効果、勝敗、次周reset、time/PB境界、asset layers/anchors/sizes/provenance、Android budgets、Worker分割を決める。"
+    inputs:
+      - "docs/改善統合仕様書 v0.6.md"
+      - "T005/T012/T013 receipts and runtime"
+      - "docs/design/v06/d-selected-atlas-living-map.png"
+      - "Agent Sprite Forge README and installed sprite/image generation skills"
+      - "Current assets, audio, Android project settings"
+    constraints:
+      - "Read-only; ambiguous combat/lap semanticsを解決するまで実装しない。"
+      - "exactly one dieと既存three-slot interactionを再利用する。"
+      - "save v11、全tile効果、複数boss、character abilityを開始しない。"
+      - "通常はB+A daylight、広いC lightingはboss-only。"
+      - "全assetのprompt/provenance/source/normalization/texture budget/runtime ownershipを追跡する。"
+    expected_output:
+      - "Pure boss/lap model contract and deterministic acceptance cases"
+      - "Exact runtime integration boundary"
+      - "Production asset manifest with provenance and Android budgets"
+      - "Disjoint Worker tasks with allowed_files, verify, stop_if"
+    receipt:
+      result: done
+      completion_decision: not_complete
+      note: "notes/T014-boss-lap-asset-contract.md"
+      decision: "新規pure V06BossBattleとV06PlaySession orchestratorでHP3・3投比較・PAIR guard・TRIPLE 2 damage・next lap・in-memory PBを実装し、catはapproved seed hashからwhole-strip生成する。"
+      next_allowed_task: T015
+
+  - id: T015
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "選定B+A+C targetに忠実なexplorer-catの本番seed候補をexactly one生成し、192x192透明seed、720x1280/360x640 in-context preview、prompt/provenance/hash/anchor reviewを保存する。"
+    allowed_files:
+      - "art_source/.gdignore"
+      - "art_source/v06/explorer_cat_seed/**"
+      - "docs/design/v06/production-assets/explorer-cat-seed-review.md"
+    verify:
+      - "Exactly one candidate; 192x192 RGBA; transparent corners; bottom-center feet anchor (96,179)."
+      - "Orange/cream animal cat, brass safari hat, teal scarf, tan backpack; no human traits."
+      - "In-context previews are exactly 720x1280 and 360x640 and show the cat at 1.3-1.5x route-tile scale."
+      - "Prompt, provenance, pipeline metadata, SHA-256 and preview inspection are recorded."
+      - "No strip, runtime asset, baked UI text, or route topology is produced."
+      - "git diff --check and ownership review."
+    stop_if:
+      - "More than one candidate or frame-by-frame animation generation is attempted."
+      - "The result becomes human, loses selected explorer-cat identity, or alpha cleanup touches the silhouette."
+      - "A runtime/scene/project/save file must change."
+      - "Native transparency, exact dimensions, anchor, or in-context legibility cannot be verified."
+    receipt:
+      result: done
+      changed_files:
+        - "art_source/.gdignore"
+        - "art_source/v06/explorer_cat_seed/**"
+        - "docs/design/v06/production-assets/explorer-cat-seed-review.md"
+      candidate: "art_source/v06/explorer_cat_seed/explorer-cat-seed-192.png"
+      sha256: "eccf84a8ca380f2c1ad662868abdce664ad866e6072a0d67b5e00173e63cb1cd"
+      commands:
+        - cmd: "Built-in ImageGen generate exactly once"
+          status: pass
+        - cmd: "Installed chroma-key soft matte/despill"
+          status: "pass; transparent corners and green fringe count 0"
+        - cmd: "192x192 RGBA, alpha bbox, feet anchor and SHA validation"
+          status: pass
+        - cmd: "720x1280 and Lanczos 360x640 in-context visual inspection"
+          status: "pass; visible cat/tile ratio 1.492x"
+        - cmd: "JSON/hash/ownership validation and git diff --check"
+          status: pass
+      summary: "B+A+C targetに沿う橙/creamのexplorer catを単一候補として生成し、192px透明seed、足anchor、実画面preview、prompt/provenance/hashを固定した。runtime/stripは未作成。"
+      owner_gate: "T019はT022でこのexact pathとSHA-256が明示承認されるまでblock。"
+
+  - id: T022
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: default
+    objective: "T015のcandidate pathとSHA-256をownerへ提示し、cat animation stripsのsource seedとして明示承認を得る。"
+    inputs:
+      - "T015 receipt"
+    constraints:
+      - "Owner approval required; approvalを推測しない。"
+      - "T019だけをblockし、T016/T017/T018は継続可能。"
+    expected_output:
+      - "Approved seed path and SHA-256, or rejection reason."
+    receipt:
+      result: done
+      approved_seed: "art_source/v06/explorer_cat_seed/explorer-cat-seed-192.png"
+      sha256: "eccf84a8ca380f2c1ad662868abdce664ad866e6072a0d67b5e00173e63cb1cd"
+      owner_instruction: "共通スケール・共通足元アンカーで全ストリップを生成し、idle / crouch / jump / apex / landを優先。顔の可読性とシルエット維持を最優先し、低ちらつきにする。"
+      summary: "OwnerがT015のexact seed path/hashを明示承認したため、T019の生成gateを解除した。"
+
+  - id: T016
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "T014の比較、PAIR guard、TRIPLE damage、HP、enhanced-lap境界を実装するpure V06BossBattleと専用testsを追加する。"
+    allowed_files:
+      - "scripts/game/v06_boss_battle.gd"
+      - "scripts/game/v06_boss_battle.gd.uid"
+      - "tests/run_v06_boss_battle_tests.gd"
+      - "tests/run_v06_boss_battle_tests.gd.uid"
+    verify:
+      - "Godot 4.7 editor parse and dedicated boss tests."
+      - "[2,3,4] hit; [2,2,6] PAIR guard; [1,1,1] TRIPLE victory; three failed rounds defeat."
+      - "Lap 10/20 DEF+2 and lap 9/11 base DEF."
+      - "Fourth roll, double ack, invalid input and mutation-after-terminal are rejected."
+      - "All v06 domain and legacy tests; git diff check."
+    stop_if:
+      - "Session/UI/save/assets or existing V06RollSet semantics must change."
+      - "Random boss action, extra die, STRAIGHT, reward, or different numeric contract is required."
+      - "Dedicated or legacy tests fail twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_boss_battle.gd"
+        - "scripts/game/v06_boss_battle.gd.uid"
+        - "tests/run_v06_boss_battle_tests.gd"
+        - "tests/run_v06_boss_battle_tests.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 editor parse"
+          status: pass
+        - cmd: "tests/run_v06_boss_battle_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "v06 roll-set and course-model tests"
+          status: "pass; failures=0"
+        - cmd: "legacy tests/run_tests.gd"
+          status: "pass; failures=0; known 5 ObjectDB leaks and 1 resource warning only"
+        - cmd: "four-file diff and ownership review"
+          status: pass
+      focused_recovery: "Judge指摘後、configure_lap(lap, player_hp)で次周HP carryを可能にし、勝敗候補もresult表示→single ack→terminalの順に修正した。"
+      judge_reaudit: "accept; T017はboss battle fileを変更せず統合可能。"
+      summary: "1ダイス3投のdeterministic boss battle、PAIR guard、TRIPLE 2 damage、HP3、10周ごとDEF+2、終端ack gate、次周HP carryをpure modelとして実装・検証した。"
+
+  - id: T017
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "V06BossBattleを保存なしV06PlaySession/Screenへ統合し、gate normalization、3投boss round、victory/loss、next lap、TIME/PBを同じ1-die固定trayで遊べるようにする。"
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd.uid"
+    verify:
+      - "Gate arrival on travel slot 1/2/3 always starts boss with blank three slots."
+      - "Boss round result/ack, victory, run over, next LAP2, HP carry, timer/PB and pause cases pass deterministically."
+      - "Exactly one die and fixed tray remain; 720x1280/360x640 boss/result/enhanced captures pass."
+      - "All dedicated and legacy tests; diff/ownership review."
+    stop_if:
+      - "main.gd, save, legacy BossSystem, course topology, or new raster is required."
+      - "Boss input commits to travel and battle in the same roll."
+      - "Timing cannot be caller-injected and deterministic."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "scenes/app/V06PlayScreen.tscn"
+        - "tests/run_v06_play_session_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_boss_play_screen_tests.gd"
+        - "tests/run_v06_boss_play_screen_tests.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 editor parse"
+          status: pass
+        - cmd: "v06 boss-screen, play-session, play-screen, boss-model, roll-set and course-model tests"
+          status: "pass; failures=0"
+        - cmd: "legacy tests/run_tests.gd"
+          status: "pass; failures=0; known 5 ObjectDB leaks and 1 resource warning only"
+        - cmd: "actual screen boss-roll path and 720 geometry audit"
+          status: "pass; HUD 24..128, BossPanel 140..900, Tray 922..1148, one die"
+        - cmd: "GPU render at 720x1280 plus Lanczos 360x640 visual inspection"
+          status: pass
+        - cmd: "seven-file diff and ownership review"
+          status: pass
+      captures:
+        - "C:/tmp/v06-boss-ready-720.png"
+        - "C:/tmp/v06-boss-ready-360.png"
+        - "C:/tmp/v06-boss-round-result-720.png"
+        - "C:/tmp/v06-boss-round-result-360.png"
+        - "C:/tmp/v06-lap-result-720.png"
+        - "C:/tmp/v06-lap-result-360.png"
+        - "C:/tmp/v06-lap10-enhanced-720.png"
+        - "C:/tmp/v06-lap10-enhanced-360.png"
+      focused_recovery: "Overlay入力遮断、boss rollのtravel finish誤配送、runtime pause、signed PB、HP2 carry、HUD overlapを修正し、回帰testと実描画を追加した。"
+      judge_reaudit: "T017 accept; overall tranche remains active."
+      summary: "同じ1ダイス固定trayでtravel→fresh boss rounds→result ack→lap clear/run over→next lapを接続し、caller-injected TIME、pause除外、strict in-memory PB、実HP carry、boss-only night overlayを実装・検証した。"
+
+  - id: T018
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "B daylight atlasとC boss-only climaxの最初のproduction environment packを生成・正規化し、manifest/provenance/budget validationを追加する。"
+    allowed_files:
+      - "art_source/v06/atlas_boss/**"
+      - "assets/art/v06/atlas/**"
+      - "assets/art/v06/boss/**"
+      - "assets/art/v06/effects/**"
+      - "assets/art/v06/manifest.json"
+      - "tools/validate_v06_asset_pack.py"
+      - "tests/run_v06_asset_pack_tests.gd"
+      - "tests/run_v06_asset_pack_tests.gd.uid"
+    verify:
+      - "Exact dimensions, alpha, anchors, hashes, prompts, provenance and normalization metadata."
+      - "No baked route, number, EXIT, or UI text."
+      - "Normal resident <=14 MiB, boss peak <=16 MiB, runtime PCK delta <=8 MiB."
+      - "Existing 1254 sphinx source is not overwritten; 512 derivative is deterministic."
+      - "Strict validator, Godot import/test, 720/360 daylight and boss-lit previews, diff check."
+    stop_if:
+      - "Raw/QC must enter exportable assets or docs/concept must be cropped as shipping art."
+      - "C lighting leaks into normal daylight or budget/provenance fails."
+      - "Cat seed/strip or runtime wiring becomes necessary."
+    receipt:
+      result: done
+      changed_files:
+        - "art_source/v06/atlas_boss/**"
+        - "assets/art/v06/atlas/**"
+        - "assets/art/v06/boss/**"
+        - "assets/art/v06/effects/**"
+        - "assets/art/v06/manifest.json"
+        - "tools/validate_v06_asset_pack.py"
+        - "tests/run_v06_asset_pack_tests.gd"
+        - "tests/run_v06_asset_pack_tests.gd.uid"
+      commands:
+        - cmd: "python tools/validate_v06_asset_pack.py"
+          status: "pass; 405 passes / 0 failures"
+        - cmd: "Godot 4.7 editor parse/import"
+          status: pass
+        - cmd: "tests/run_v06_asset_pack_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "dedicated and legacy regression suites"
+          status: "pass; known exit warnings only"
+        - cmd: "git diff --check"
+          status: pass
+      summary: "B daylight atlasとC boss-only climaxの7 runtime assetを正規化し、manifest/provenance/QCとbudget検証を追加した。runtime wiringは未実施。720x1280 vignetteのみpath固定のscreen-mask例外をmanifestへ記録した。"
+
+  - id: T023
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "v0.7の固定マス数廃止を最初の実装スライスとして、カイロを58マス級へ拡張し、コース移動・進捗HUD・専用テストをJSON定義から駆動する。"
+    allowed_files:
+      - "data/stages/v06_cairo_course.json"
+      - "scripts/game/v06_course_model.gd"
+      - "scripts/game/v06_course_model.gd.uid"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_course_model_tests.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Cairo main route is 54-60 spaces (target 58) and stage metadata retains expected minutes, difficulty, branch and loop counts."
+      - "Course limits, boss gate, fork, portal, bypass rejoin, and loop exit are read from validated JSON rather than a 32-space constant."
+      - "HUD progress is current/total from the loaded stage definition; no 1/32 or 18/32 literals remain in the v0.7 screen path."
+      - "Godot editor parse, dedicated course/play-screen tests, roll/session tests, and legacy tests pass."
+      - "git diff --check on owned files."
+    stop_if:
+      - "Existing legacy board, save, project, or unrelated runtime files need changes."
+      - "The model must change boss/loop semantics beyond the v0.7 length/data contract."
+      - "The stage cannot preserve a stable deterministic test fixture while adding 58-space data."
+      - "Dedicated or legacy verification fails twice."
+    receipt:
+      result: done
+      changed_files:
+        - "data/stages/v06_cairo_course.json"
+        - "scripts/game/v06_course_model.gd"
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "scenes/app/V06PlayScreen.tscn"
+        - "tests/run_v06_course_model_tests.gd"
+        - "tests/run_v06_play_session_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      commands:
+        - cmd: "Godot 4.7 course model test"
+          status: "pass; failures=0"
+        - cmd: "Godot 4.7 play session test"
+          status: "pass; failures=0"
+        - cmd: "Godot 4.7 play screen test"
+          status: "pass; failures=0"
+        - cmd: "Godot 4.7 boss battle, roll set, and legacy tests"
+          status: "pass; legacy failures=0 with known exit warnings only"
+        - cmd: "fixed-literal scan for 1/32, 18/32, and route limit constants"
+          status: pass
+      summary: "v0.7 Cairo metadataを追加し、main 58 / bypass 4 / loop 8へ拡張。fork、portal、loop exit、boss gateとHUD進捗を検証済みJSONから駆動した。"
+
+  - id: T024
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "v0.7通常移動画面を、キャラクターをほぼ固定位置に保ち、前方5〜7マスだけを大きく見せる低刺激スクロールへ改修する。円環進入時だけ全8マスを中央表示し、分岐線種と局所番号の可読性を維持する。"
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "At main start, prominent_positions exposes exactly 6 forward spaces; near the end it remains 5-7 by bounded local fill."
+      - "Normal camera focus keeps current tile at the stable focal point; hop remains 0.10-0.25s and camera follow remains soft."
+      - "Distant route tiles stay flat/quiet; local tiles are raised; loop view exposes all 8 spaces and EXIT only while inside the loop."
+      - "58-space route points are data-sized; no main 32/31 constants remain in atlas rendering."
+      - "Godot editor parse, play-screen test, and git diff --check pass."
+    stop_if:
+      - "Scene layout, runtime session semantics, project, save, or legacy board changes are required."
+      - "Normal state needs broad C lighting, full-map tile labels, or a second die/tray."
+      - "The fixed focal point cannot be achieved without changing the course contract."
+      - "Dedicated verification fails twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      commands:
+        - cmd: "Godot 4.7 editor parse"
+          status: pass
+        - cmd: "tests/run_v06_play_screen.gd"
+          status: "pass; failures=0"
+        - cmd: "git diff --check"
+          status: pass
+      summary: "通常表示を前方5〜7マスへ限定し、通常時はcurrent tileを固定焦点へ置くsoft follow、円環入場時だけ全8マスとEXITを表示する描画へ更新した。局所タイルのみ立体化し、猫の焦点比を1.42xへ調整した。"
+
+  - id: T025
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "添付ラフの上部構成を製品UIへ反映し、横長の状態HUDと右上の全体ミニマップ導線を追加する。MAPを開くと一時停止して全体ルートを確認でき、閉じると元の局所視線へ戻る。"
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/game/dice_presentation_3d.gd"
+      - "scripts/game/v06_atlas_view.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "assets/art/v06_scenic/cairo-scenic-band.png"
+      - "art_source/v06/atlas_boss/prompts/cairo-scenic-band.txt"
+    verify:
+      - "720x1280で状態HUD、右上MAPボタン、中央の風景/前方6マス、固定トレイが同時に見える。"
+      - "MAPボタンは56px相当以上で、押下時にゲーム時計を止め、全体ルート・現在地・ゴール・分岐・円環だけを簡略表示する。"
+      - "MAPを閉じると局所6マス表示と現在地の焦点へ戻り、操作位置は変わらない。"
+      - "文字・数値はGodot Label/Noto Sans JPで読みやすく、ラフの上部余白と中央の視線を維持する。"
+      - "Godot editor parse、play-screen/session/legacy tests、720/360 visual captures、git diff --checkが通る。"
+    stop_if:
+      - "既存保存、legacy board、project/main.gdの変更が必要。"
+      - "MAP表示が通常プレイの中央領域や固定トレイを恒常的に覆う。"
+      - "追加のダイス、常時点滅、画像内文字、外部権利素材が必要。"
+      - "ownerのラフとv0.7の固定視線設計が両立しない。"
+    receipt:
+      result: done
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "assets/art/v06_scenic/cairo-scenic-band.png"
+        - "art_source/v06/atlas_boss/prompts/cairo-scenic-band.txt"
+      commands:
+        - cmd: "Godot 4.7 editor parse/import"
+          status: pass
+        - cmd: "tests/run_v06_play_screen_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_play_session_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_course_model_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_boss_battle_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_roll_set_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_tests.gd"
+          status: "pass; failures=0; known exit warnings only"
+        - cmd: "python tools/validate_v06_asset_pack.py"
+          status: "pass; 405 passes / 0 failures"
+        - cmd: "git diff --check"
+          status: pass
+      summary: "添付ラフに合わせて上部状態HUD、右上MAP導線、全体ルートオーバーレイを実装。MAP中は時計を止め、閉じると現在地中心の前方5〜7マスへ戻る。生成したカイロ背景帯は既存7資産パック外のv06_scenicへ隔離し、低アルファでのみ描画する。"
+      caveat: "720x1280/360x640の現行T025キャプチャはGodot headlessのRenderingServer.frame_post_draw待ちで完了せず未取得。既存のT018キャプチャは保持。猫アニメ stripsはT022のowner承認待ちのため未生成。"
+
+  - id: T019
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "T022で承認されたexact seed hashからcat idle / crouch-jump-apex / land stripsをwhole-strip生成し、顔とシルエットを維持した低ちらつきの基本ループとしてshared scale/bottom-center anchorで正規化・previewする。"
+    allowed_files:
+      - "art_source/v06/explorer_cat_animations/**"
+      - "assets/art/v06/characters/**"
+      - "tests/run_v06_cat_asset_tests.gd"
+      - "tests/run_v06_cat_asset_tests.gd.uid"
+      - "tools/validate_v06_asset_pack.py"
+    verify:
+      - "Approved seed path/hash matches T022."
+      - "Idle 4、crouch-jump-apex 6、land 4。全フレーム192px、共通足元anchor (96,179)、指定stripではframe-1を承認seedへlockする。"
+      - "Whole-strip generation, no identity/scale drift, transparent safety margin, preview and in-engine approval."
+      - "顔、帽子、スカーフ、バックパック、橙/cream配色とシルエットを維持し、装飾の過剰な揺れや長時間プレイ向けでないちらつきを避ける。"
+      - "Asset budget/provenance validator and diff check."
+    stop_if:
+      - "T022 is not approved or seed hash differs."
+      - "Independent per-frame generation, silhouette drift, edge touch, or anchor variance occurs."
+      - "Runtime wiring or files outside ownership are required."
+    receipt:
+      result: done
+      changed_files:
+        - "art_source/v06/explorer_cat_animations/**"
+        - "assets/art/v06/characters/explorer_cat/**"
+        - "tests/run_v06_cat_asset_tests.gd"
+        - "tests/run_v06_cat_asset_tests.gd.uid"
+        - "tools/validate_v06_asset_pack.py"
+      commands:
+        - cmd: "3 built-in ImageGen whole-strip edit calls"
+          status: pass
+        - cmd: "installed remove_chroma_key.py with soft matte, despill, edge-contract 1"
+          status: pass
+        - cmd: "game-studio build/normalize/preview scripts plus cross-strip anchor pass"
+          status: pass
+        - cmd: "python art_source/v06/explorer_cat_animations/validate-animation-assets.py"
+          status: "pass; 84 passes / 0 failures"
+        - cmd: "Godot 4.7 editor parse/import"
+          status: pass
+        - cmd: "tests/run_v06_cat_asset_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "python tools/validate_v06_asset_pack.py"
+          status: "pass; 405 passes / 0 failures"
+        - cmd: "tests/run_v06_asset_pack_tests.gd, run_v06_play_screen_tests.gd, and legacy tests"
+          status: "pass; failures=0; known legacy exit warnings only"
+      summary: "承認seedからidle 4、crouch-jump-apex 6、land 4をwhole-strip生成。全14枚を192px、anchor (96,179)、承認seedの見かけの足中心±1pxへ統一し、idle01/jump01/land04をseedへpixel-lockした。runtimeは重複frameを含めず3 stripのみ、543450 source bytes / 2064384 decoded bytes。"
+      visual_review: "顔、青い目、cream muzzle、帽子、goggles、teal scarf、backpack、橙/cream silhouetteを全frameで確認。idleはbreath+single blink、jump/landは抑制された姿勢変化で、装飾の大振りと常時ちらつきなし。"
+
+  - id: T020
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "T019のproduction cat stripsをv06 atlasへ接続し、procedural仮猫を低刺激idleと1マスごとのcrouch-jump-apex-land表示へ置き換える。"
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "tests/run_v06_visual_asset_tests.gd.uid"
+    verify:
+      - "Idle 4、jump 6、land 4 stripがGodotへimportされ、idleとhop key sequenceをruntime testで検証する。"
+      - "Cat is focal at 1.3-1.5x tile scale; route topology/text stays runtime canonical."
+      - "No alpha fringe, anchor drift, camera/background slip, or normal-state broad glow."
+      - "Memory/PCK budgets and all dedicated/legacy tests pass."
+    stop_if:
+      - "Project/main/save/legacy changes, baked topology, or budget exceedance is required."
+      - "T017/T018/T019 are not all verified."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "tests/run_v06_visual_asset_tests.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 editor parse/import"
+          status: pass
+        - cmd: "tests/run_v06_visual_asset_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_cat_asset_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_play_screen_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_asset_pack_tests.gd and legacy tests/run_tests.gd"
+          status: "pass; failures=0; known legacy exit warnings only"
+        - cmd: "git diff --check"
+          status: pass
+      summary: "procedural仮猫を3本のproduction strip描画へ置換。idleは6秒周期の大半をapproved seedで静止し、微呼吸と0.15秒blinkのみ。hopは0.24秒でcrouch、takeoff、apex、contact、compressionの抑制keyを使い、route側の弧移動と共通足anchorを維持する。"
+      caveat: "headless dummy rendererはSubViewport texture imageを返さず、現行runtime 720/360 captureは未取得。strip preview、Godot import、deterministic animation mapping、全回帰はpass。"
+
+  - id: T021
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "反復可能な1周、boss semantics、B+A+C asset fidelity、Android budgetsとexport evidenceを監査する。"
+    inputs:
+      - "T015-T020 receipts"
+      - "Runtime captures and asset manifests"
+      - "Current full verification"
+    constraints:
+      - "Do not implement."
+      - "Required Worker/owner approvalが未完ならcompleteにしない。"
+    expected_output:
+      - "complete | not_complete"
+      - "requirement/evidence mapping"
+      - "next productization tranche"
+    receipt:
+      result: done
+      completion_decision: not_complete
+      decision: "ロジック、猫、個別assetは強いが、boss画面geometry回帰、T018の7環境asset未接続、現行runtime capture不在、Android export/device証拠不在のため製品化trancheは未完了。"
+      evidence:
+        - "Fresh verification: boss play-screenのみHUD.bottom=144 > BossPanel.top=140でfailures=1。他の専用、asset、cat、visual、legacy suitesとvalidator 405/0はpass。"
+        - "反復周回、HP carry、PB、pause、victory/loss、LAP10 DEFのboss semanticsはdeterministic testでpass。"
+        - "T018 production environment packは0/7 runtime wiring。現行はprocedural atlas/gate、scenic band、legacy sphinxを使用。"
+        - "通常7.75 MiB、boss peak 10.13 MiB、PNG source 2.94 MiB見積りはpass。ただしPCK delta、APK/AAB、release signing、実機performance QAは未取得。"
+        - "現在のcat/HUDを含む720x1280・360x640 GPU captureはheadless制約で未取得。"
+      next_allowed_task: T026
+
+  - id: T026
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "T025のboss-screen geometry回帰を修復し、canonical 720x1280でBossPanelが拡張HUDにも固定trayにも重ならない状態へ戻す。boss挙動、touch target、visual assetは変更しない。"
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_boss_play_screen_tests.gd failures=0"
+      - "720x1280でHUD.bottom <= BossPanel.topかつBossPanel.bottom <= Tray.top"
+      - "play-screen、play-session、boss-model、roll-set、course-model、asset、cat、visual、legacy suitesがpass"
+      - "git diff --check -- scenes/app/V06PlayScreen.tscn"
+    stop_if:
+      - "既存overlap assertionを弱める、または削除する必要がある。"
+      - "script、test、asset、project、save、legacy fileの変更が必要。"
+      - "48px相当touch targetを縮小、または固定trayを移動する必要がある。"
+      - "専用検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+      commands:
+        - cmd: "Godot 4.7 editor parse"
+          status: pass
+        - cmd: "tests/run_v06_boss_play_screen_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "v06 play-screen/session/boss/course/roll/asset/cat/visual and legacy suites"
+          status: "pass; failures=0; known legacy exit warnings only"
+        - cmd: "git diff --check -- scenes/app/V06PlayScreen.tscn"
+          status: pass
+      geometry: "HUD 24..144, BossPanel 144..904, fixed tray 922..1148 at 720x1280."
+      summary: "Boss overlay Center offsetを120から128へ変更し、touch target、tray、boss behaviorを変えずにT025の4px overlapを解消した。"
+
+  - id: T027
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "T018の7 production environment assetsをv0.7 runtimeへ接続する。通常時はBの低刺激daylight atlas、局所マスだけraised tile、boss gate到達とboss overlayだけCのnight vignette・gold gate・lantern glow・production sphinxを使用し、通常状態へ強い発光を漏らさない。"
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "assets/art/v06/manifest.json"
+      - "tools/validate_v06_asset_pack.py"
+      - "tests/run_v06_asset_pack_tests.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "docs/reference/v06-current-runtime/**"
+    verify:
+      - "全7assetがruntimeから参照され、manifest runtime_wiring=trueになる。"
+      - "parchment/cartographyはB daylight背景、raised tilesは局所/currentだけ、gold gateはboss接近、night vignetteとlantern glowはboss overlayだけ、production sphinxはlegacy textureを置換する。"
+      - "normal stateにbroad C lighting、baked topology/UI text、常時強発光がない。"
+      - "720x1280でHUD、前方5-7マス、cat、fixed trayが読みやすく、boss overlayはHUD/trayと重ならない。"
+      - "Godot editor parse、全v06専用suite、validator 405/0相当、legacy suite、diff checkがpass。"
+      - "可能ならGPU runtimeを720x1280と360x640で取得し、headless制約なら再現コマンドと未取得理由をreceiptに残す。"
+    stop_if:
+      - "project/main/save/legacy boardまたはT018 source asset変更が必要。"
+      - "既存route semantics、boss semantics、cat animation contractを変更する必要がある。"
+      - "通常時へnight vignette/lantern glowを常設する必要がある。"
+      - "asset budgetを超過する、または専用検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "scenes/app/V06PlayScreen.tscn"
+        - "assets/art/v06/manifest.json"
+        - "tools/validate_v06_asset_pack.py"
+        - "tests/run_v06_asset_pack_tests.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_boss_play_screen_tests.gd"
+        - "docs/reference/v06-current-runtime/**"
+      commands:
+        - cmd: "Godot 4.7 editor parse/import"
+          status: pass
+        - cmd: "all v06 dedicated suites and legacy tests/run_tests.gd"
+          status: "pass; failures=0; known legacy exit warnings only"
+        - cmd: "python tools/validate_v06_asset_pack.py"
+          status: "pass; 405 passes / 0 failures"
+        - cmd: "normal GPU SubViewport capture"
+          status: "pass; 720x1280 and Lanczos 360x640"
+        - cmd: "boss GPU SubViewport capture"
+          status: "pass; 720x1280 and Lanczos 360x640"
+        - cmd: "git diff --check"
+          status: pass
+      captures:
+        - "docs/reference/v06-current-runtime/atlas-daylight-720x1280.png"
+        - "docs/reference/v06-current-runtime/atlas-daylight-360x640.png"
+        - "docs/reference/v06-current-runtime/boss-ready-720x1280.png"
+        - "docs/reference/v06-current-runtime/boss-ready-360x640.png"
+      summary: "T018の7 production assetを全接続。通常はparchment/cartographyと局所raised tiles、gateは通常unlit/到達時lit、boss時だけnight luminance mask・lantern・production sphinxを使用。前方6マスが実際に画面内へ入る進行方向先読みcameraもGPU実写で調整した。"
+      budgets: "normal 7.75 MiB, boss peak 10.13 MiB, PNG source 2.94 MiB; validator pass."
+
+  - id: T028
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T026/T027後の現行GPU capture、7asset runtime wiring、前方6マス、boss-only C lighting、全検証を監査し、次の製品化Workerを一つに絞る。"
+    inputs:
+      - "T021、T026、T027 receipts"
+      - "docs/reference/v06-current-runtime/**"
+      - "assets/art/v06/manifest.json"
+      - "current runtime and tests"
+    constraints:
+      - "Do not implement."
+      - "Google Play有料級、v0.7仕様、長時間低刺激を基準にする。"
+      - "Android/export evidence不足とtile kind icon不足を明示比較する。"
+    expected_output:
+      - "accept | revise"
+      - "requirement/evidence mapping"
+      - "one exact next Worker task with allowed_files, verify, stop_if"
+    receipt:
+      result: done
+      decision: accept
+      completion_decision: not_complete
+      evidence:
+        - "T027 accept。manifest runtime_wiring=true、7/7 production assets runtime参照、validator 405/0、全専用/legacy suite pass。"
+        - "GPU captureで通常は低刺激daylight、boss時だけnight vignette/lantern/production sphinx。HUD/BossPanel/tray overlapなし。"
+        - "通常captureは前方6マス、cat、fixed trayを720x1280/360x640で維持。"
+        - "次の優先度S gapは6種類以上のtile kindを文章なしで判別するruntime icon。Android実機最終受入れはその後。"
+      next_allowed_task: T029
+
+  - id: T029
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "canonical course kindから通常前方5〜7マスと円環8マスへ、色だけに依存しない大きな種別アイコンをruntime描画する。NORMAL、COIN、REST、RISK、ITEM、EVENTの6種以上を形で即読可能にし、番号は補助情報へ下げ、構造マスの分岐・portal・EXIT・bossも固有記号を持たせる。"
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "docs/reference/v06-current-runtime/**"
+    verify:
+      - "kindはdata/stages/v06_cairo_course.jsonから取得し、描画側へtopologyを複製しない。"
+      - "NORMAL/COIN/REST/RISK/ITEM/EVENTが色なしでも異なる形を持つことをdeterministic testで検証する。"
+      - "720x1280と360x640 captureで前方6マス最奥のicon、cat、HUD、fixed trayを同時に判別できる。"
+      - "円環全8マス、EXIT、現在地、進行方向が競合せず読める。"
+      - "常時点滅や強発光を追加せず、boss-only C lightingを維持する。"
+      - "Godot editor parse、全v06専用suite、legacy suite、git diff --checkがpass。"
+    stop_if:
+      - "course/session/boss semantics、scene geometry、project、save、legacy boardの変更が必要。"
+      - "画像内文字、外部権利素材、常時animation、通常時C lightingが必要。"
+      - "360x640で最奥iconを判別可能にするとcatまたはtrayの可読性を失う。"
+      - "専用検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "docs/reference/v06-current-runtime/**"
+      commands:
+        - cmd: "Godot 4.7 editor parse/import"
+          status: pass
+        - cmd: "all v06 dedicated suites and legacy tests/run_tests.gd"
+          status: "pass; failures=0; known legacy exit warnings only"
+        - cmd: "python tools/validate_v06_asset_pack.py"
+          status: "pass; 405 passes / 0 failures"
+        - cmd: "GPU 720x1280, Lanczos 360x640, six-up and grayscale captures"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      captures:
+        - "docs/reference/v06-current-runtime/tile-kinds-daylight-720x1280.png"
+        - "docs/reference/v06-current-runtime/tile-kinds-daylight-360x640.png"
+        - "docs/reference/v06-current-runtime/tile-kinds-boss-720x1280.png"
+        - "docs/reference/v06-current-runtime/tile-kinds-boss-360x640.png"
+        - "docs/reference/v06-current-runtime/tile-kinds-six-up-720x1280.png"
+        - "docs/reference/v06-current-runtime/tile-kinds-six-up-360x640.png"
+        - "docs/reference/v06-current-runtime/tile-kinds-six-up-grayscale-720x1280.png"
+      summary: "canonical JSON kindからNORMAL/COIN/REST/RISK/ITEM/EVENTを描画。6種は外形と中央記号がすべて固有で、WARP/START/FORK/EXIT/BOSSも固有記号を持つ。番号は下端補助へ移し、静止描画のみでboss-only C lightingを維持。QA six-up overrideはcourse dataを変更しない。"
+
+  - id: T030
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T029を実装メモ、v0.7優先度S、720/360、six-up、grayscale、boss capture、全回帰へ照合し、accept/reviseと次の製品化Workerを決定する。"
+    inputs:
+      - "T029 receipt"
+      - "docs/Dice_Slot_Trip_T029_マス種別アイコン実装メモ.md"
+      - "docs/reference/v06-current-runtime/tile-kinds-*.png"
+      - "current atlas runtime and tests"
+    constraints:
+      - "Do not implement."
+      - "色なし判別、RISK/REST即読、長時間低刺激、JSON data-drivenを優先する。"
+      - "Android export/device evidence gapも再評価する。"
+    expected_output:
+      - "accept | revise"
+      - "requirement/evidence mapping"
+      - "one exact next Worker task with allowed_files, verify, stop_if"
+    receipt:
+      result: superseded
+      decision: "Ownerのサイズ感feedbackにより監査を中断。T029の意味体系は維持し、マス本体と種別plateを拡大した後に再監査する。"
+      next_allowed_task: T031
+
+  - id: T031
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "owner参考画像のサイズ感へ合わせ、前方6マスを維持したままraised tile本体と種別shape/iconを大きくし、マス自体がゲーム駒として即読できる存在感へ調整する。"
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "docs/reference/v06-current-runtime/**"
+    verify:
+      - "通常local tileの描画幅を約76px、種別plateの直径/幅を約50pxへ拡大する。"
+      - "720x1280と360x640で前方6マスが重ならず、最奥まで画面内に入る。"
+      - "cat、番号、route line、loop、fixed trayの可読性を維持する。"
+      - "six-upとgrayscaleで6種の外形差が拡大後も明確。"
+      - "Godot editor parse、全v06専用suite、legacy suite、asset validator、diff checkがpass。"
+    stop_if:
+      - "前方6マスを減らす、scene geometryを変更する、またはcatを縮小する必要がある。"
+      - "course/session/boss semantics、project、save、legacy boardの変更が必要。"
+      - "360x640で隣接マスが重なる。"
+      - "専用検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "docs/reference/v06-current-runtime/**"
+      commands:
+        - cmd: "Godot 4.7 editor parse/import"
+          status: pass
+        - cmd: "all v06 dedicated suites and legacy tests/run_tests.gd"
+          status: "pass; failures=0; known legacy exit warnings only"
+        - cmd: "python tools/validate_v06_asset_pack.py"
+          status: "pass; 405 passes / 0 failures"
+        - cmd: "GPU six-up large 720x1280, Lanczos 360x640, grayscale"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      captures:
+        - "docs/reference/v06-current-runtime/tile-kinds-six-up-large-720x1280.png"
+        - "docs/reference/v06-current-runtime/tile-kinds-six-up-large-360x640.png"
+        - "docs/reference/v06-current-runtime/tile-kinds-six-up-large-grayscale-720x1280.png"
+      summary: "owner参考画像に合わせ、通常raised tileを約76px、kind plateを約50pxへ拡大。前方6マス、cat scale、番号、route、fixed trayを維持し、360でも隣接マスは重ならない。"
+
+  - id: T032
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "ownerサイズ感feedback後のT031を、large 720/360/grayscale captureと全回帰へ照合し、T029/T031統合結果をaccept/reviseする。"
+    inputs:
+      - "T029 and T031 receipts"
+      - "owner reference image"
+      - "docs/reference/v06-current-runtime/tile-kinds-six-up-large-*.png"
+      - "current runtime and tests"
+    constraints:
+      - "Do not implement."
+      - "前方6マス、cat非縮小、360非重複、色なし判別を優先する。"
+    expected_output:
+      - "accept | revise"
+      - "requirement/evidence mapping"
+      - "one exact next Worker task if not complete"
+    receipt:
+      result: done
+      decision: accept
+      completion_decision: not_complete
+      evidence:
+        - "720x1280で通常マス約76px、種別plate約50pxとなり、owner参考の盤上駒に近い存在感。"
+        - "360x640で前方6マス全て画面内・非重複。CAT_DRAW_SCALE=0.72は不変。"
+        - "6種は外形/中央記号が固有で、grayscaleでもRESTとRISKを即時分離。"
+        - "canonical JSON kindを維持し、全専用/legacy suite failures=0。"
+      next_allowed_task: T033
+
+  - id: T033
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: medium
+    objective: "Android debug実機受入れを行い、launcher起動、縦画面、720/360相当表示、touch、MAP、1マス移動、boss、pause/resumeを証拠化する。"
+    allowed_files:
+      - "export_presets.cfg"
+      - "tools/android/**"
+      - "build/android/**"
+      - "docs/reference/v06-current-runtime/android/**"
+    verify:
+      - "Godot Android debug APK export成功。"
+      - "APK manifestにlauncher activity、portrait、arm64-v8a、想定package、不要なdangerous permissionなし。"
+      - "adb install -r、cold launch、MAP開閉、1マス移動、boss-ready、pause/resume成功。"
+      - "実機screenshotと端末/API/GPU、APK容量、起動結果を保存。"
+      - "全専用suite、legacy suite、asset validator、git diff --checkがpass。"
+    stop_if:
+      - "Android SDK、export template、adb端末がない。"
+      - "runtime codeまたはscene変更が必要。"
+      - "正式package ID、release keystore、Play署名情報が必要。"
+      - "export設定変更で既存desktop/runtime回帰が発生。"
+    receipt:
+      result: blocked
+      decision: "superseded_by_owner_v08_playtest_feedback"
+      summary: "Android debug APKのexport/signature/launcher/portrait/arm64、OPPO A401OP API35 cold launch、実機縦画面までは確認。ownerが実機で移動速度・自動停止・アイコン即読性を優先課題として指定したため、install後のMAP/移動/boss/pause受入れは修正APKまで保留。"
+      evidence:
+        - "build/android/dice-slot-trip-debug.apk"
+        - "docs/reference/v06-current-runtime/android/t033-export-report.md"
+        - "docs/reference/v06-current-runtime/android/t033-launch-1080x2412.png"
+        - "docs/reference/v06-current-runtime/android/t033-v06-play-1080x2412.png"
+        - "adb install -r: Success; cold launch TotalTime 759ms"
+
+  - id: T034
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Kenney Board Game Icons、Board Game Info、Board Game Packの公式配布物・ライセンス・収録記号を調査し、NORMAL/COIN/REST/RISK/ITEM/EVENTごとに直感的な候補2〜3点と採用候補を特定する。"
+    inputs:
+      - "https://kenney.nl/assets/board-game-icons"
+      - "https://kenney.nl/assets/board-game-info"
+      - "https://kenney.nl/assets/board-game-pack"
+      - "current T029 tile visual implementation"
+    constraints:
+      - "調査中は実装ファイルを変更しない。"
+      - "公式ソース、正確なファイル名、CC0条件、候補の意味適合を証拠化する。"
+      - "Kenneyロゴ、preview画像、サンプル画面は製品素材へ含めない。"
+    expected_output:
+      - "各kindの候補2〜3点とprimary recommendation"
+      - "official URLs、archive/license evidence、exact source filenames"
+      - "bounded Worker task with allowed_files, verify, stop_if"
+    receipt:
+      result: done
+      summary: "公式3配布物を検証。Board Game Icons v1.1、Board Game Info v1.0、Board Game PackはいずれもCC0。製品導入は共通silhouetteを持つBoard Game Icons原本へ限定し、Info/Packは候補比較に留める。"
+      evidence:
+        - "official Kenney asset pages and downloaded archive License.txt"
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "docs/reference/v06-current-runtime/tile-kinds-six-up-large-720x1280.png"
+      sources:
+        - "https://kenney.nl/assets/board-game-icons — v1.1, 250 files, CC0, archive SHA256 05f4358381d8b16b303b2f056393b76ce3f6a58228599e88caa2eab11d4c2946"
+        - "https://kenney.nl/assets/board-game-info — v1.0, 280 files, CC0, archive SHA256 9dae04e4031ba8c4b42e119e9007ce9b3ea8d584a48b0c612506334efe7e3c9b"
+        - "https://kenney.nl/assets/boardgame-pack — 490 files, CC0, archive SHA256 3b6a7dd5af658d1ffa0071429d5dde10ff63121e88bd06d4904e721e60b2c398"
+      candidates:
+        - "NORMAL: arrow_right / pawn_up / Board Game Info tiles; owner指定の右進行によりarrow_rightをprimary。"
+        - "COIN: tokens_stack / token / Board Game Pack chipWhite_border; tokens_stackをprimary。"
+        - "REST: campfire / suit_hearts / Board Game Info hourglass; campfireをprimary。"
+        - "RISK: skull / sword / exploding; skullをprimary。"
+        - "ITEM: pouch / hand_cube / cards_collection; pouchをprimary。"
+        - "EVENT: book_open / dice_question / Board Game Info interaction;help誤読を避けbook_openをprimary。"
+      next_allowed_task: T035
+
+  - id: T035
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "owner手描き案を現行v0.7 atlasへ照合し、右進行・固定位置cat hop・時計回り半円carousel・前方6マス・拡大tile・Kenney中央記号を両立する実装契約とWorker分割を決定する。"
+    inputs:
+      - "owner semicircle sketch attachment"
+      - "T034 receipt"
+      - "scripts/game/v06_atlas_view.gd"
+      - "current 720x1280 and 360x640 captures"
+    constraints:
+      - "Do not implement."
+      - "HUD、MAP、fixed tray、course/session/boss semanticsを変更しない。"
+      - "進行方向は右。catは通常画面で定位置に留まりhopする。マス列が時計回りに動く。"
+      - "円環専用overviewと全体MAPの既存契約を壊さない。"
+    expected_output:
+      - "exact 720 geometry and 360 readability constraints"
+      - "motion/state contract and testable invariants"
+      - "one or two bounded Worker tasks with allowed_files, verify, stop_if"
+    receipt:
+      result: done
+      decision: "二つの逐次Workerを採用。通常main/bypassは7 slotのopen-left C字carouselへ置換し、その合格後にKenney中央記号を統合する。slot 0をcat足元へ固定し、各stepでtile kをS_kからS_(k-1)へ時計回りに補間する。loopとMAP overviewは既存全体表示を維持する。"
+      geometry:
+        - "640x605 atlas-local基準S0..S6: (310,430),(430,410),(525,340),(545,240),(475,165),(365,135),(250,155)。"
+        - "forward tile radius 30px、current 34px。raised art diameter約91.5/103.7px、plate diameter 60/68px。"
+        - "360 outputは0.5倍でforward tile>=45px、plate>=30px、全6マス非重複をgateにする。"
+      motion:
+        - "進行方向は右。猫はslot 0固定。完成状態のtile iはstep中slot i+1からslot iへ移動し、旧currentはslot 0から左外へ退場するため、上右下左の時計回りflowになる。"
+        - "1マスごとにv0.7範囲内の0.18秒低刺激hopを使い、course/session semanticsは変更しない。"
+      evidence:
+        - "v0.7 §§3.1–3.3 and acceptance #4"
+        - "current AtlasView/cat/camera implementation and 720/360 captures"
+      next_allowed_task: T036
+
+  - id: T036
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "通常main/bypass atlasを右進行・固定cat・時計回りopen-left半円carouselへ改修し、前方6マスを約92px級へ拡大する。"
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "docs/reference/v06-current-runtime/**"
+      - "design-qa.md"
+    verify:
+      - "通常main/bypassでcat feet anchorがstep前後およびstep中に不変。"
+      - "tile slot motionが上段右向き、右側下向き、下段左向きの時計回り。"
+      - "current+前方6マスが720で表示され、forward tile約91.5px/current約103.7px、360で非重複。"
+      - "loop 8マス、MAP overview、branch styles、fixed tray、HUD、boss semanticsに回帰なし。"
+      - "Godot parse、専用tests、legacy、capture、git diff --checkがpass。"
+    stop_if:
+      - "scene geometry、course/session/boss semantics、project設定の変更が必要。"
+      - "360で前方6マス、cat、trayのいずれかが読めない。"
+      - "loopまたはMAP overviewの既存契約を維持できない。"
+      - "専用検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "docs/reference/v06-current-runtime/semicircle-six-up-720x1280.png"
+        - "design-qa.md"
+      commands:
+        - cmd: "Godot run_v06_visual_asset_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "Godot GPU run_v06_play_screen_tests.gd with 720 capture"
+          status: "pass; failures=0; deterministic 720 capture saved"
+      evidence:
+        - "右進行のcurrent+前方6マスをopen-left C字へ配置し、forward約91.5px/current約103.7pxへ拡大。"
+        - "cat feetはS0固定。0.18秒hop中はcat lift/stripだけ変化し、tileはS_kからS_(k-1)へ時計回りに移動。"
+        - "loopとMAP overview、main/bypass線種、HUD、fixed trayの専用contractがpass。"
+      summary: "通常main/bypassを固定catの時計回り半円carouselへ置換。720実画面で6前方マスが非重複・画面内に収まり、手描き案どおり右側で折り返す構図を確認した。"
+
+  - id: T037
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Kenney候補原本とCC0 provenanceを保存し、T029外形/配色を保ったまま6中央記号を共通光学サイズ・線密度へ正規化してcarouselへ統合し、720/360/grayscale比較を作る。"
+    allowed_files:
+      - "third_party/kenney-board-game-icons/**"
+      - "third_party/kenney-board-game-info/**"
+      - "third_party/kenney-boardgame-pack/**"
+      - "assets/art/v06/tile_kind_icons/**"
+      - "scripts/game/v06_atlas_view.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tools/normalize_kenney_tile_icons.py"
+      - "docs/design/v07/**"
+      - "docs/reference/v06-current-runtime/**"
+      - "design-qa.md"
+    verify:
+      - "公式URL、archive SHA、selected original SHA、CC0、加工規則を記録。"
+      - "NORMAL arrow_right、COIN tokens_stack、REST campfire、RISK skull、ITEM pouch、EVENT book_openをcommon 128px canvasへ正規化。"
+      - "T029 outer shape、color、priorityとstructural iconsは不変。"
+      - "720、360、grayscaleでREST/RISK、ITEM/EVENT、NORMAL/current catを誤読しない。"
+      - "全専用suite、legacy、asset validator、git diff --checkがpass。"
+    stop_if:
+      - "official archive/license/hashが一致しない。"
+      - "360でKenney版が現行procedural版より読みにくい。"
+      - "画像内文字、Kenney logo、preview/sampleを製品へ含める必要がある。"
+      - "course/session/scene/project変更が必要。"
+    receipt:
+      result: done
+      changed_files:
+        - "third_party/kenney-board-game-icons/**"
+        - "third_party/kenney-board-game-info/**"
+        - "third_party/kenney-boardgame-pack/**"
+        - "assets/art/v06/tile_kind_icons/**"
+        - "tools/normalize_kenney_tile_icons.py"
+        - "tools/validate_v06_asset_pack.py"
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "docs/design/v07/kenney-tile-kind-icon-selection.md"
+        - "docs/reference/v06-current-runtime/**"
+        - "design-qa.md"
+      commands:
+        - cmd: "python tools/normalize_kenney_tile_icons.py and deterministic SHA rerun"
+          status: pass
+        - cmd: "Godot GPU capture and all v06 dedicated suites plus legacy suite"
+          status: "pass; failures=0; known exit warnings only"
+        - cmd: "python tools/validate_v06_asset_pack.py"
+          status: "pass; 405 passes / 0 failures"
+        - cmd: "forbidden Preview/logo/sample scan and git diff --check"
+          status: pass
+      captures:
+        - "docs/reference/v06-current-runtime/kenney-tile-kinds-720x1280.png"
+        - "docs/reference/v06-current-runtime/kenney-tile-kinds-360x640.png"
+        - "docs/reference/v06-current-runtime/kenney-tile-kinds-grayscale-720x1280.png"
+        - "docs/reference/v06-current-runtime/kenney-tile-kinds-grayscale-360x640.png"
+        - "docs/reference/v06-current-runtime/tile-kinds-procedural-vs-kenney-720.png"
+        - "docs/reference/v06-current-runtime/tile-kinds-procedural-vs-kenney-360.png"
+        - "docs/reference/v06-current-runtime/tile-kinds-procedural-vs-kenney-grayscale-720.png"
+        - "docs/reference/v06-current-runtime/semicircle-sketch-vs-runtime-720.png"
+      summary: "3パックの公式URL/CC0/archive SHAを保存し、各kind 2〜3候補を比較。採用6原本を128px共通canvas・100〜108px光学box・1px共通alpha膨張で正規化し、T029外形/色/priorityを保った中央記号だけへ統合。360不透明辺16〜22px、色なしでも6種判別、Preview/logo/sampleなし。"
+
+  - id: T038
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "半円carouselとKenney中央記号をowner sketch、T029、720/360/grayscale、全回帰へ照合しaccept/reviseする。"
+    inputs:
+      - "T036 and T037 receipts"
+      - "owner sketch"
+      - "matched comparison captures and design-qa.md"
+    constraints:
+      - "Do not implement."
+      - "右進行、固定cat、時計回りtile motion、低刺激、前方6マスを優先する。"
+    expected_output:
+      - "accept | revise"
+      - "visual and motion evidence mapping"
+      - "next exact Worker if needed"
+    receipt:
+      result: done
+      decision: revise
+      completion_decision: not_complete
+      evidence:
+        - "main-routeの720/360/grayscaleはowner sketch、固定cat、時計回りshift、拡大7-slot、Kenney可読性を満たす。"
+        - "P2: bypassのprominent_positionsは4 local tiles内で終わり、main rejoin以後へ続かないため前方6マス契約を満たさない。"
+        - "P1 process: PMがT037 allowed_files外のtools/validate_v06_asset_pack.pyを修正したため、独立scope recoveryが必要。"
+      next_allowed_task: T039
+
+  - id: T039
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "T037中にPMがscope外で行ったenvironment validatorのtile_kind_icons除外を独立回復taskとして監査・所有し、別pack境界だけを除外して7-file environment pack契約を保つことを証明する。"
+    allowed_files:
+      - "tools/validate_v06_asset_pack.py"
+      - "docs/goals/dice-slot-trip-v06-productization/notes/T039-validator-scope-recovery.md"
+    verify:
+      - "validatorがcharactersとtile_kind_iconsだけを別packとして除外し、atlas/boss/effects内の余分PNGは引き続きfailureになる。"
+      - "python tools/validate_v06_asset_pack.py が405/0。"
+      - "git diff --checkがpass。"
+    stop_if:
+      - "manifest、runtime assets、Godot code/testsの変更が必要。"
+      - "environment packの7-file exact contractが弱くなる。"
+    receipt:
+      result: done
+      changed_files:
+        - "tools/validate_v06_asset_pack.py"
+      commands:
+        - cmd: "python tools/validate_v06_asset_pack.py"
+          status: "pass; 405/0"
+        - cmd: "git diff --check -- tools/validate_v06_asset_pack.py"
+          status: pass
+      summary: "separate pack除外をassets/art/v06直下のcharactersとtile_kind_iconsだけへ限定。同名nested directoryやその他extra PNGは7-file environment contractを回避できない。"
+
+  - id: T040
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "bypass carouselの前方列を4 local tilesで打ち切らずcanonical rejoinからmain 20+へ継続し、通過可能な後続が6以上ある限り前方6 slotを順序どおり表示する。"
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "docs/reference/v06-current-runtime/**"
+      - "design-qa.md"
+    verify:
+      - "bypass indices 0–3のprominent positionsが残りbypass tile後にmain rejoin tile 20以降へ順序どおり続く。"
+      - "6 traversable successorsがある時は前方6 slotを表示し、terminal接近時のtruncation/backfill契約を明示してtestする。"
+      - "720/360 bypass captureで6マス非重複、rust dashedからmain tealへのrejoinが読める。"
+      - "全v06専用suite、legacy、asset validator、git diff --checkがpass。"
+    stop_if:
+      - "course/session semanticsまたはcanonical JSON変更が必要。"
+      - "scene/project/HUD/tray変更が必要。"
+      - "360で6マスを維持できない。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "design-qa.md"
+        - "docs/reference/v06-current-runtime/bypass-rejoin-720x1280.png"
+        - "docs/reference/v06-current-runtime/bypass-rejoin-360x640.png"
+      commands:
+        - cmd: "Godot run_v06_visual_asset_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "Godot GPU run_v06_play_screen_tests.gd with bypass captures"
+          status: "pass; failures=0; native 720 and Lanczos 360 saved"
+        - cmd: "full v06 dedicated suites plus legacy suite"
+          status: "pass; failures=0; known exit warnings only"
+      summary: "bypass indices 0–3の前方列を残りbypassからcanonical main rejoinへ連続化。rust dashedからteal solidへの遷移と前方6マスを720/360で確認し、terminal backfillは文脈表示として明文化した。"
+
+  - id: T041
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T039 scope recoveryとT040 bypass horizon後に半円carousel/Kenney統合を再監査しaccept/reviseする。"
+    inputs:
+      - "T038-T040 receipts"
+      - "main/bypass 720/360/grayscale captures"
+      - "full verification"
+    constraints:
+      - "Do not implement."
+      - "main/bypassの前方6、固定cat、時計回り、T029外形、Kenney provenanceを優先する。"
+    expected_output:
+      - "accept | revise"
+      - "completion_decision"
+      - "next exact task if required"
+    receipt:
+      result: done
+      decision: accept
+      completion_decision: complete_for_semicircle_carousel_and_kenney_icon_tranche
+      evidence:
+        - "mainはowner sketch比較と720/360/grayscaleでopen-left半円と前方6マスが可読。"
+        - "bypass B1–B4は残りbypassからcanonical main:20+へ続き、rust dashedからteal solidへ遷移。720/360で非重複。"
+        - "cat feetはslot 0固定、tileは時計回り、hopは低刺激な0.18秒。"
+        - "T029外形、配色、priority、structural symbolsは不変で、中央記号だけを承認Kenney原本へ置換。"
+        - "3 packの公式URL、archive SHA、selected original、CC0 licenseを保存。"
+        - "visual/play-screen failures=0、asset validator 405/0、diff check pass。T040 receiptで全v06/legacy回帰pass。"
+        - "design-qa.md final result: passed。motion videoはoptional P3でblockerではない。"
+      blocked_tasks: []
+
+  - id: T042
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "owner承認済みTactile Travel Instrument改訂モックをGodot通常プレイ画面へ実装し、トレイ内3D die、本線両端連続、製品級HUD/材質/操作状態を720/360で再現する。"
+    inputs:
+      - "docs/design/v07/tactile-travel-instrument-approved.png"
+      - "owner annotated correction image"
+      - "current V06PlayScreen and AtlasView"
+    allowed_files:
+      - "assets/art/v07/ui/**"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/game/v06_atlas_view.gd"
+      - "scripts/ui/ui_tokens.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "docs/design/v07/**"
+      - "docs/reference/v06-current-runtime/**"
+      - "design-qa.md"
+    verify:
+      - "通常画面が承認モックのHUD、地図、トレイ、戻る操作の階層へ一致する。"
+      - "白い3D dieが固定トレイ内で転がり、3履歴slotとREADY ROLLを同時表示する。"
+      - "main 24と18の両端から同一teal本線が左viewport外へ連続し、C字を閉じない。"
+      - "720x1280と360x640で非重複、48px級touch、低刺激press/motion、MAP/boss/loop/bypassに回帰なし。"
+      - "source mockと実装captureの比較でdesign-qa.md final result: passed。"
+      - "全v06専用suite、legacy、asset validator、git diff --checkがpass。"
+    stop_if:
+      - "course/session/boss semanticsまたはcanonical JSON変更が必要。"
+      - "既存dice presentationを再利用できず、新規3D model制作が必要。"
+      - "360でdie、3 slots、READY ROLLを同時に読めない。"
+      - "専用検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "assets/art/v07/ui/dark-walnut-leather.png"
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "scripts/game/dice_presentation_3d.gd"
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_boss_play_screen_tests.gd"
+        - "docs/design/v07/tactile-travel-instrument-approved.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-720x1280.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-360x640.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-comparison-720.png"
+        - "design-qa.md"
+      commands:
+        - cmd: "Godot GPU run_v06_play_screen_tests.gd with 720/360 capture"
+          status: "pass; failures=0; compact die rolling state and main edge continuity pass"
+        - cmd: "all v06 dedicated suites plus legacy suite"
+          status: "pass; failures=0; known exit warnings only"
+        - cmd: "python tools/validate_v06_asset_pack.py"
+          status: "pass; 405/0"
+        - cmd: "git diff --check"
+          status: pass
+      summary: "承認モックの革/真鍮/羊皮紙階層をGodotへ実装。既存DicePresentation3Dを正方形wellで1個表示しtapでROLLINGへ同期、3 slotsとREADYを同時維持。main 24/18両端は同一teal線で左viewport外へ継続。TIME階層、即時press反応、中央back、720/360比較を整えdesign QA passed。"
+
+  - id: T043
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T042を承認モック、owner補正、720/360、操作状態、全回帰へ照合し、製品UI trancheをaccept/reviseする。"
+    inputs:
+      - "T042 receipt"
+      - "approved source mock and matched implementation captures"
+      - "design-qa.md and full verification"
+    constraints:
+      - "Do not implement."
+      - "die、3 slots、READY、main両端連続、playfield hierarchyを優先する。"
+    expected_output:
+      - "accept | revise"
+      - "completion_decision"
+      - "next exact task if required"
+    receipt:
+      result: revise
+      decision: revise
+      completion_decision: "not_complete"
+      summary: "UI hierarchy, live tray die, open-left main-route endpoints, 720/360 captures, interaction state, and regression evidence are accepted. Recovery is required because the generated leather texture lacks durable prompt/origin/hash/normalization/validator evidence and dice_presentation_3d.gd was outside T042 allowed_files."
+      required_next_task: T044
+
+  - id: T044
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "T042/T043の監査欠落を回収し、dark-walnut-leather生成素材の出典・原文prompt・SHA256・正規化・機械検証を永続化し、compact 3D die変更を明示的な作業範囲で再検証する。"
+    inputs:
+      - "T042 receipt and T043 revise decision"
+      - "assets/art/v07/ui/dark-walnut-leather.png"
+      - "built-in ImageGen source output"
+      - "scripts/game/dice_presentation_3d.gd"
+    allowed_files:
+      - "scripts/game/dice_presentation_3d.gd"
+      - "assets/art/v07/ui/**"
+      - "docs/design/v07/**"
+      - "tools/validate_v07_ui_assets.py"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "docs/reference/v06-current-runtime/**"
+      - "design-qa.md"
+      - "docs/goals/dice-slot-trip-v06-productization/notes/**"
+    verify:
+      - "生成元画像をworkspace内へ保存し、runtime assetとのSHA256一致または正規化差分を正確に記録する。"
+      - "provenanceにbuilt-in ImageGen、生成日、原文prompt、source/runtime path、SHA256、dimensions、mode、用途、正規化内容を保存する。"
+      - "専用validatorがprovenance schema、source/runtime existence、hash、dimensions、normalization contractを検査してpassする。"
+      - "compact single-die square viewport、ROLLING同期、3 slots、READY、main両端連続の専用testがpassする。"
+      - "720x1280、360x640、source comparisonを再生成し、design-qa.md final result: passedを維持する。"
+      - "全v06専用suite、legacy、asset validator、git diff --checkがpassする。"
+    stop_if:
+      - "生成元ファイルまたは原文promptを回収できず、出典を推測する必要がある。"
+      - "runtime leather assetがsourceと不一致で、未記録の再圧縮または加工が判明する。"
+      - "compact die変更の再検証で既存3D dice surfaceに回帰が生じる。"
+    receipt:
+      result: done
+      scope_valid: true
+      changed_files:
+        - "scripts/game/dice_presentation_3d.gd"
+        - "assets/art/v07/ui/dark-walnut-leather.png"
+        - "assets/art/v07/ui/dark-walnut-leather.provenance.json"
+        - "docs/design/v07/art-source/.gdignore"
+        - "docs/design/v07/art-source/dark-walnut-leather-imagegen-source.png"
+        - "tools/validate_v07_ui_assets.py"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-720x1280.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-360x640.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-comparison-720.png"
+        - "design-qa.md"
+      commands:
+        - cmd: "python tools/validate_v07_ui_assets.py"
+          status: "pass; failures=0"
+        - cmd: "Godot 4.7 AMD/OpenGL GPU run_v06_visual_asset_tests.gd with 720 capture"
+          status: "pass; failures=0; capture saved"
+        - cmd: "all v06 dedicated suites plus legacy suite"
+          status: "pass; failures=0; one known resource-in-use exit warning"
+        - cmd: "python tools/validate_v06_asset_pack.py"
+          status: "pass; 405/0"
+        - cmd: "Godot 4.7 headless editor parse/import"
+          status: pass
+        - cmd: "git diff --check"
+          status: "pass; line-ending warnings only"
+      summary: "ImageGen sourceをworkspaceへ保存し、runtimeとの同一SHA256、1254x1254 RGB、原文prompt、生成元、無加工copyをprovenanceと専用validatorへ固定。compact 3D die変更を明示scopeで再検証し、720/360/comparisonをGPU再取得。"
+
+  - id: T045
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T044のprovenance、validator、明示scope、UI capture、全回帰を監査し、Tactile Travel Instrument実装trancheをaccept/reviseする。"
+    inputs:
+      - "T043 revise decision"
+      - "T044 receipt"
+      - "provenance and validator evidence"
+      - "720/360/comparison captures and design-qa.md"
+    constraints:
+      - "Read-only; do not implement."
+      - "出典・hash・normalizationとcompact die scope validityを優先する。"
+    expected_output:
+      - "accept | revise"
+      - "completion_decision"
+      - "next exact task if required"
+    receipt:
+      result: done
+      decision: accept
+      completion_decision: "complete_for_tactile_travel_instrument_ui_tranche_only"
+      evidence:
+        - "T043 blockers resolved: T044 explicitly owns scripts/game/dice_presentation_3d.gd and records scope_valid true."
+        - "Provenance preserves provider/date/verbatim prompt/original path/durable source/runtime path/SHA256/bytes/1254x1254 RGB/usage/exact-byte-copy normalization."
+        - "Original ImageGen output, durable source and runtime PNG share SHA256 b3e725a7407d37378fd485a8094ee98f93e1d2574e98adcb89478138f2ae2add."
+        - "tools/validate_v07_ui_assets.py failures=0; schema, prompt, paths, hashes, decoding, normalization, edge evidence, semantic review and Godot import are enforced."
+        - "Compact 256x256 SubViewport contains one live 3D die; first tap enters ROLLING; three slots and READY ROLL remain present."
+        - "Both main-route endpoints extend left outside the viewport in implementation, dedicated tests and 720/360 captures."
+        - "Approved mock, 720/360 runtime and side-by-side comparison preserve leather/brass/parchment hierarchy, TIME emphasis, local C route, explorer anchor, die + slots + READY tray and centered back action."
+        - "All nine v06 dedicated suites plus legacy failures=0; one documented resource-in-use exit warning only."
+        - "v06 asset validator 405/0 and git diff --check pass with line-ending warnings only."
+      blocked_tasks: []
+
+  - id: T046
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "owner提示画像の余白に合わせ、通常C字表示の上下の開口部へそれぞれ2マスの控えタイルを追加し、前方6マスの意味・猫固定・時計回り・本線連続を維持する。"
+    inputs:
+      - "owner annotated image: .codex-remote-attachments/.../111f8e57-bae5-443b-8f6d-345374351c79/1-Photo-1.jpg"
+      - "scripts/game/v06_atlas_view.gd"
+      - "docs/Dice_Slot_Trip_画面レイアウト_ステージ設計仕様書_v0.7.md"
+      - "current 720x1280 and 360x640 tactile captures"
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "docs/reference/v06-current-runtime/**"
+      - "design-qa.md"
+      - "docs/goals/dice-slot-trip-v06-productization/notes/**"
+    verify:
+      - "上下のopen-left endpointに控えタイルを各2個描画し、控えは前方successor数・移動順・READY操作を増やさない。"
+      - "控えタイルは本線と同じ連続線上にあり、tile 24側とcurrent tile 18側の線が途切れず、Cを閉じない。"
+      - "720x1280と360x640で控えタイル、猫、tile 18–24、凡例、HUD、トレイが非重複かつ読める。"
+      - "既存のmain/bypass/loop/boss/MAP semanticsを変更せず、前方6マスの既存専用テストを維持する。"
+      - "全v06専用suite、legacy、asset validator、git diff --checkがpassする。"
+    stop_if:
+      - "控えタイルをcanonical future successorとして扱う必要が出る。"
+      - "360幅でタイル番号・種別アイコン・猫またはトレイの可読性が落ちる。"
+      - "route/session/course JSONまたはAndroid export設定の変更が必要。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-720x1280.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-360x640.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-comparison-720.png"
+      commands:
+        - cmd: "Godot 4.7 AMD/OpenGL GPU visual asset suite"
+          status: "pass; failures=0; 720 capture saved"
+        - cmd: "Godot play-screen suite"
+          status: "pass; failures=0"
+        - cmd: "360 Lanczos derivative and source comparison regenerated"
+          status: pass
+      summary: "通常C字の上下open-left端へ、canonical future successorとは分離した控えタイルを上下各2個追加。tile 16/17と25/26を同一teal本線上へ配置し、720/360で非重複・可読、前方6マス契約と移動semanticsを維持。"
+
+  - id: T047
+    type: judge
+    assignee: Judge
+    status: blocked
+    reasoning_hint: high
+    objective: "T046の追加控えタイルをowner提示画像、v0.7の前方6マス契約、720/360 capture、全回帰へ照合しaccept/reviseする。"
+    inputs:
+      - "T046 receipt"
+      - "owner annotated image and side-by-side comparison"
+      - "design-qa.md and full verification"
+    constraints:
+      - "Read-only; do not implement."
+      - "前方6マス契約と控えタイルの非移動・非successor性を優先する。"
+    expected_output:
+      - "accept | revise"
+      - "completion_decision"
+      - "next exact task if required"
+    receipt:
+      result: blocked
+      decision: "superseded_by_owner_priority"
+      summary: "Owner feedback reprioritized the next polish tranche to immediate tile-kind semantic readability and current-position emphasis before a standalone context-tile judge pass. T046 evidence remains in its worker receipt and will be included in the next combined audit."
+
+  - id: T048
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "T029マス意味の即読性を磨き、NORMALを中立的な道標記号へ、RISKを明確な危険記号へ寄せ、現在地リング・足元の視認性を少し強める。"
+    inputs:
+      - "owner semantic readability feedback"
+      - "current T029 Kenney normalized icon mapping"
+      - "current 720x1280 and 360x640 captures"
+    allowed_files:
+      - "assets/art/v06/tile_kind_icons/**"
+      - "third_party/kenney-board-game-icons/**"
+      - "docs/design/v07/**"
+      - "tools/normalize_v07_tile_icon.py"
+      - "tools/validate_v07_tile_icon.py"
+      - "scripts/game/v06_atlas_view.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "docs/reference/v06-current-runtime/**"
+      - "design-qa.md"
+      - "docs/goals/dice-slot-trip-v06-productization/notes/**"
+    verify:
+      - "NORMALは矢印以外の中立的な道・足跡・石の意味が360でも反射的に読める。"
+      - "RISKは赤三角の外形ルールを保ち、内部記号が警告/ドクロ寄りに即読できる。"
+      - "渦、バッグ、コイン、焚き火、ブックの意味と現行T029の色・外形・ライセンスを維持する。"
+      - "現在地だけリング/足元の影または発光を一段強め、猫とtile 18が背景に溶けない。"
+      - "720x1280/360x640とグレースケールで意味記号が欠けず、全専用suite、legacy、asset validator、git diff --checkがpassする。"
+    stop_if:
+      - "候補アイコンの出典・ライセンス・正規化を記録できない。"
+      - "T029の外形・配色・canonical kind semanticsまたはcourse JSON変更が必要。"
+      - "360で現地リング強化が猫・種別記号・番号を潰す。"
+    receipt:
+      result: done
+      scope_valid: true
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "assets/art/v06/tile_kind_icons/normal-trail-stones.png"
+        - "assets/art/v06/tile_kind_icons/normal-trail-stones.provenance.json"
+        - "assets/art/v06/tile_kind_icons/normal-trail-stones.png.import"
+        - "tools/validate_v07_tile_icon.py"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-720x1280.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-360x640.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-grayscale-720x1280.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-grayscale-360x640.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-comparison-720.png"
+        - "design-qa.md"
+      commands:
+        - cmd: "Godot 4.7 --headless --path . --editor --quit"
+          status: pass
+        - cmd: "Godot 4.7 AMD/OpenGL GPU visual asset suite with 720 capture"
+          status: "pass; failures=0"
+        - cmd: "all v06 dedicated suites plus legacy suite"
+          status: "pass; failures=0; known resource-in-use warning only"
+        - cmd: "python tools/validate_v07_ui_assets.py"
+          status: "pass; failures=0"
+        - cmd: "python tools/validate_v07_tile_icon.py"
+          status: "pass; failures=0"
+        - cmd: "python tools/validate_v06_asset_pack.py"
+          status: "pass; passes=405 failures=0"
+        - cmd: "git diff --check"
+          status: "pass; line-ending warnings only"
+      summary: "NORMALを中立的な3石道標へ差し替え、RISKのドクロを拡大し、現在地リング/足元影を一段強化。720/360/グレースケールと比較証跡、出典・ハッシュ・正規化validatorを追加し、専用suite・全回帰・資産検証を完了。"
+
+  - id: T049
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T046の控えタイルとT048のマス意味・現在地視認性をowner feedback、720/360/grayscale、全回帰へ照合しaccept/reviseする。"
+    inputs:
+      - "T046 worker receipt"
+      - "T048 worker receipt"
+      - "owner annotated image and semantic-readability feedback"
+      - "design-qa.md and comparison captures"
+    constraints:
+      - "Read-only; do not implement."
+      - "マスの意味即読性と現在地の主役性を最優先し、stage帯/back actionはP3扱い。"
+    expected_output:
+      - "accept | revise"
+      - "completion_decision"
+      - "next exact task if required"
+    receipt:
+      result: done
+      decision: accept
+      completion_decision: "complete_for_T046_T048_semantic_readability_tranche_only"
+      evidence:
+        - "T046 receipt: upper/lower open-left endpoints each have two subdued context tiles on continuous teal lines; forward-six successor contract remains unchanged."
+        - "T048 receipt: NORMAL uses a project-owned normalized trail-stone glyph; RISK retains the red triangle with enlarged skull; current ring and foot shadow are stronger but restrained."
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-720x1280.png and exact Lanczos 360x640 capture show no overlap or clipping."
+        - "grayscale 720x1280 and 360x640 captures retain route, current tile, tile-kind silhouettes, HUD, and tray hierarchy."
+        - "Godot editor parse, all v06 dedicated suites, legacy suite, three asset validators, and git diff --check pass."
+      summary: "Owner semantic-readability feedback is satisfied; stage title compression and back-action prominence remain P3. Proceed to the pre-existing Android受入れ task T033."
+
+  - id: T050
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "v0.8実機feedbackに従い、1マス移動を落ち着いた速度へ調整し、ダイス自動停止を廃止し、NORMALをCOINと混同しない足跡記号へ置換する。"
+    inputs:
+      - "docs/砂時計のカイロ v0.8.md"
+      - "owner Android playtest feedback: movement too fast, die auto-stops, tile icon unclear"
+      - "OPPO A401OP API35 1080x2412 captures"
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "assets/art/v06/tile_kind_icons/**"
+      - "docs/design/v08/**"
+      - "assets/art/v08/cards/**"
+      - "tools/validate_v08_cards.py"
+      - "tools/normalize_v08_tile_icon.py"
+      - "tools/validate_v08_tile_icon.py"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "docs/reference/v06-current-runtime/**"
+      - "design-qa.md"
+      - "docs/goals/dice-slot-trip-v06-productization/notes/**"
+    verify:
+      - "HOP_SECONDSを0.28〜0.34秒へ、camera followを同等の低刺激帯へ調整し、1〜6マス移動の順序・時計回り・固定猫を維持する。"
+      - "ダイスは最初のタップでROLLING、二度目のタップまで自動停止せず、移動中やoverlay中の入力gateを維持する。"
+      - "NORMAL足跡はCOIN積みコイン、RISKドクロ、ITEMバッグ、EVENT本、REST焚き火、WARP渦と360幅/グレースケールで区別できる。"
+      - "新規assetのsource、prompt、hash、alpha、normalization、licenseを保存し専用validatorがpassする。"
+      - "Godot parse、visual/play-screen、全v06専用suite、legacy、asset validator、git diff --checkがpassする。"
+    stop_if:
+      - "v0.8のcanonical course semantics、58マス配置、item/event数値を変更する必要がある。"
+      - "二度目タップ以外の停止fallbackがproduct decisionを必要とする。"
+      - "360幅で足跡または現在地表示が欠ける。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "assets/art/v06/tile_kind_icons/normal-footprints.png"
+        - "assets/art/v06/tile_kind_icons/normal-footprints.provenance.json"
+        - "docs/design/v08/art-source/normal-footprints-imagegen-source.png"
+        - "docs/design/v08/art-source/normal-footprints-alpha.png"
+        - "tools/normalize_v08_tile_icon.py"
+        - "tools/validate_v08_tile_icon.py"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-v08-720x1280.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-v08-360x640.png"
+        - "docs/reference/v06-current-runtime/tactile-travel-instrument-v08-360x640-grayscale.png"
+        - "build/dice-slot-trip-v08-debug.apk"
+      commands:
+        - cmd: "Godot 4.7 play-screen and visual-asset suites"
+          status: "pass; failures=0"
+        - cmd: "all v06 dedicated suites plus legacy suite"
+          status: "pass; failures=0; known resource-in-use warning only"
+        - cmd: "python tools/validate_v08_tile_icon.py"
+          status: "pass; failures=0"
+        - cmd: "Android debug export, incremental install and cold launch on OPPO A401OP API35"
+          status: pass
+      summary: "移動を0.30秒/マス・camera follow 0.28秒へ落ち着かせ、0.38秒のダイス自動停止を撤去。NORMALをCOINと混同しない2歩の足跡へ置換し、720/360/grayscale、provenance、validator、実機APKを完了。"
+
+  - id: T051
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T050をownerの3点feedback、v0.8仕様、720/360/grayscale、実機再exportへ照合しaccept/reviseする。"
+    inputs:
+      - "T050 receipt"
+      - "docs/砂時計のカイロ v0.8.md"
+      - "before/after Android and desktop captures"
+    constraints:
+      - "Read-only; do not implement."
+      - "移動の読みやすさ、二度タップ停止、マス意味の即読性を優先する。"
+    expected_output:
+      - "accept | revise"
+      - "completion_decision"
+      - "next exact task if required"
+    receipt:
+      result: done
+      decision: accept
+      completion_decision: "complete_for_v08_owner_three_feedback_slice"
+      evidence:
+        - "HOP_SECONDS 0.30 and CAMERA_FOLLOW_SECONDS 0.28 preserve clockwise carousel and fixed cat anchor."
+        - "The first tap remains ROLLING after 0.55 seconds; only the second tap invokes stop."
+        - "NORMAL alternating footprints remain distinct from COIN, RISK, ITEM, EVENT, REST and WARP at 360x640 and grayscale."
+        - "All dedicated, legacy and asset validation suites pass; updated APK installs and launches on OPPO A401OP."
+      summary: "Ownerの速度・自動停止・マス意味3点は受入れ可能。次のowner要求で下部操作ドックへ進む。"
+
+  - id: T052
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "固定ダイストレイ直下へITEM / SKILLの大判アイコンボタンを置き、戻る操作を低優先度化した下部ツールドックと内容パネルを実装する。"
+    inputs:
+      - "owner request: tray slightly upward with item and skill icon buttons below"
+      - "C:/Users/hiro/Downloads/cairo_stage_integration_notes.md"
+      - "C:/Users/hiro/Downloads/cairo_stage.yaml inventory capacity 3 and item use windows"
+      - "current V06PlayScreen tactile travel instrument layout"
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "docs/design/v08/**"
+      - "docs/reference/v06-current-runtime/**"
+      - "design-qa.md"
+      - "docs/goals/dice-slot-trip-v06-productization/notes/**"
+    verify:
+      - "ToolDock replaces the 96px back-only row, raises the tray without reducing AtlasFrame below its 520px minimum, and fits at 720x1280 and 360x640."
+      - "ITEM and SKILL each have an ImageGen card raster, readable label/state, at least 96 design-pixel height and one-hand placement."
+      - "Back remains available but visually secondary; no gameplay input leaks through utility overlay."
+      - "ITEM panel communicates 0/3 capacity; SKILL panel communicates readiness without inventing unimplemented stage effects."
+      - "Godot parse, play-screen, boss-screen, visual, all v06 and legacy suites pass."
+      - "python tools/validate_v08_cards.py passes source/runtime hashes, dimensions, prompts and Godot imports."
+    stop_if:
+      - "Implementing actual item effects or character-specific skill behavior is required rather than the requested access UI."
+      - "The tool dock forces the atlas below 520px or overlaps the fixed tray at 360x640."
+    receipt:
+      result: done
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "assets/art/v08/cards/item-card.png"
+        - "assets/art/v08/cards/skill-card.png"
+        - "assets/art/v08/cards/cards.provenance.json"
+        - "docs/design/v08/art-source/item-card-imagegen-source.png"
+        - "docs/design/v08/art-source/skill-card-imagegen-source.png"
+        - "tools/validate_v08_cards.py"
+        - "docs/reference/v06-current-runtime/v08-tool-dock-720x1280.png"
+        - "docs/reference/v06-current-runtime/v08-tool-dock-360x640.png"
+        - "docs/reference/v06-current-runtime/v08-item-card-720x1280.png"
+        - "docs/reference/v06-current-runtime/v08-item-card-360x640.png"
+        - "docs/reference/v06-current-runtime/v08-skill-card-720x1280.png"
+        - "docs/reference/v06-current-runtime/v08-skill-card-360x640.png"
+        - "build/dice-slot-trip-v08-tools-debug.apk"
+      commands:
+        - cmd: "Godot 4.7 GPU play-screen captures for dock, item card and skill card at 720/360"
+          status: "pass; failures=0"
+        - cmd: "Godot play-screen and boss-screen suites"
+          status: "pass; failures=0"
+        - cmd: "all v06 dedicated suites plus legacy suite and all validators"
+          status: "pass; failures=0; known resource-in-use warning only"
+        - cmd: "python tools/validate_v08_cards.py"
+          status: "pass; failures=0"
+        - cmd: "Android debug APK export"
+          status: "pass; install retry awaits device USB-debug authorization"
+        - cmd: "git diff --check scoped files"
+          status: "pass; line-ending warning only"
+      summary: "戻る専用帯をITEM/SKILL/戻るの120px tool dockへ置換しtrayを24px上へ。両カードをImageGen生成・512px正規化・provenance保存し、開閉overlay、入力gate、720/360証跡、全回帰を完了。"
+
+  - id: T053
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T052をowner request、v0.8 inventory contract、720/360 captures and interaction testsへ照合しaccept/reviseする。"
+    inputs:
+      - "T052 receipt"
+      - "current layout captures"
+      - "cairo_stage.yaml inventory and item windows"
+    constraints:
+      - "Read-only; do not implement."
+      - "playfield protection, one-hand reach and non-fake functionalityを優先する。"
+    expected_output:
+      - "accept | revise"
+      - "completion_decision"
+      - "next exact task if required"
+    receipt:
+      result: done
+      decision: accept
+      completion_decision: "complete_for_item_skill_tool_dock_and_generated_card_slice"
+      evidence:
+        - "ToolDock occupies the former back-only area; atlas remains >=520px and the tray rises 24 design pixels."
+        - "ITEM and SKILL are 216x96 controls with real 512x512 ImageGen card art; Back is a quieter 208x96 control."
+        - "Both cards open functional modal surfaces, gate die input, retain Noto Sans JP runtime text and close cleanly at 720 and 360."
+        - "Boss panel was tightened to 748px and no longer intersects HUD or raised tray."
+        - "All dedicated, legacy and asset tests pass; card provenance validator failures=0."
+      summary: "Owner request is satisfied for access UI and card presentation. Actual v0.8 item effects and character-specific skill execution remain a separate gameplay-system task."
+
+  checks:
+  dirty_fingerprint: "pre-existing-user-worktree-with-godot-ui-and-tourism-map-edits"
+  last_verification:
+    result: pass
+    task: T045
+    commands:
+      - "T045 Goal Maker Judge: accept; tactile travel instrument UI tranche complete"
+      - "T044 ImageGen provenance validator failures=0; source/runtime SHA256 exact match"
+      - "T044 AMD/OpenGL GPU 720 capture plus Lanczos 360 and source comparison regenerated"
+      - "T044 all v06 dedicated suites plus legacy failures=0; one known resource-in-use exit warning"
+      - "T044 asset validator 405/0, Godot 4.7 editor parse/import, git diff --check pass"
+      - "T041 Goal Maker Judge: accept; semicircle carousel + Kenney icon tranche complete"
+      - "T040 bypass B1–B4 exact successor arrays and rust-dashed to teal-solid rejoin tests pass"
+      - "Current visual asset and play-screen suites failures=0"
+      - "Current asset validator 405/0 and git diff --check pass"
+      - "T040 full v06 dedicated suites plus legacy failures=0; known exit warnings only"
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_boss_play_screen_tests.gd failures=0; HUD.bottom=144 <= BossPanel.top=144 and BossPanel.bottom=904 <= Tray.top=922"
+      - "tests/run_v06_play_session_tests.gd failures=0"
+      - "tests/run_v06_play_screen_tests.gd failures=0"
+      - "tests/run_v06_boss_battle_tests.gd failures=0"
+      - "tests/run_v06_roll_set_tests.gd failures=0"
+      - "tests/run_v06_course_model_tests.gd failures=0"
+      - "tests/run_tests.gd failures=0; known exit warnings only"
+      - "actual screen one-die boss dispatch and HUD/BossPanel/Tray geometry pass"
+      - "720x1280/360x640 boss, round-result, lap-result and lap10 captures visually pass"
+      - "T021 Goal Maker Judge decision: not_complete; T026 geometry gate restored"
+      - "T027 all seven production environment assets wired; current GPU captures 720x1280 and 360x640"
+      - "T027 forward six visible, boss-only C lighting, validator 405/0 and full regression pass"
+      - "T029 six unique shape/icon pairs, canonical JSON mapping, 720/360/six-up/grayscale/boss captures, full regression pass"
+      - "T031 owner size adjustment: 76px tiles, 50px kind plates, six-up large 720/360/grayscale, full regression pass"
+      - "T018 strict asset validator 405/0 and Godot asset contract test failures=0"
+      - "T018 seven-file ownership and diff checks pass"
+      - "T025 sketch HUD/MAP implementation and regression suite pass; current visual capture blocked by headless frame sync"

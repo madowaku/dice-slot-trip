@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "provider": "OpenAI built-in ImageGen",
+  "generated_on": "2026-07-20",
+  "license": "project-owned AI-generated assets",
+  "assets": [
+    {
+      "asset_id": "item-card",
+      "runtime_path": "assets/art/v08/cards/item-card.png",
+      "source_path": "docs/design/v08/art-source/item-card-imagegen-source.png",
+      "original_output_path": "C:/Users/hiro/.codex/generated_images/019f7302-171d-7e83-b62c-7e7b91d5009a/exec-df410907-f0e5-4fd4-8a91-a127d2bd0f30.png",
+      "source_sha256": "61b7d9d499c0b02c0095eb41faa868fed30aeac510ac00b9445cb94a470fbcf2",
+      "runtime_sha256": "e4037c0a7b8f366f224e09b105465fcf1ebd694adfd6438b30246293703d8fd6",
+      "prompt": "Use case: ui-mockup\nAsset type: square item-card artwork inside a premium portrait mobile board game utility panel\nPrimary request: a polished Cairo travel-inventory card showing a small canvas explorer pouch opened to reveal a brass compass, blue water canteen, linen bandage roll, and one glowing amber hourglass shard; these objects communicate a three-slot travel inventory without text.\nScene/backdrop: warm aged parchment field inside a restrained dark walnut and antique brass card frame.\nSubject: one compact still-life of the pouch and four readable travel tools, large simple silhouettes suitable for a phone screen.\nStyle/medium: refined hand-painted storybook game UI illustration matching a warm parchment Cairo travel journal; premium Google Play paid-game quality, low-stimulation and tactile.\nComposition/framing: centered square card, generous safe padding, single focal cluster, clear at 160px display size.\nLighting/mood: soft warm daylight, subtle depth, no bloom or flashing effects.\nColor palette: parchment cream, walnut brown, antique brass, muted Nile teal, small amber accent.\nMaterials/textures: lightly worn canvas, brushed brass, watercolor parchment, restrained embossing.\nConstraints: no text, letters, numbers, logo, watermark, UI labels, dice, character, skull, coins, or button symbols; do not place tiny decorative clutter; all objects fully inside the card frame.\nAvoid: photorealism, neon, glossy casino styling, excessive gold glow, ornate unreadable filigree, multiple card variants."
+    },
+    {
+      "asset_id": "skill-card",
+      "runtime_path": "assets/art/v08/cards/skill-card.png",
+      "source_path": "docs/design/v08/art-source/skill-card-imagegen-source.png",
+      "reference_path": "assets/art/v06/characters/explorer_cat/explorer-cat-idle-strip.png",
+      "original_output_path": "C:/Users/hiro/.codex/generated_images/019f7302-171d-7e83-b62c-7e7b91d5009a/exec-bae5bab6-88a8-415d-bb88-f6b6d2d61327.png",
+      "source_sha256": "6956cf094f41a79c246d8617b13e8d29e5fe7fa493dcc6d97cc9eabb91a7075d",
+      "runtime_sha256": "d0f8f4ecf38c1ae4ce6c747945b9115403aca4368cc8cbf54ce50f73cd191af1",
+      "prompt": "Use case: ui-mockup\nAsset type: square character-skill card artwork inside a premium portrait mobile board game utility panel\nPrimary request: create a polished skill card for the exact explorer cat shown in the reference strip, communicating a calm ready-to-use travel ability through one confident raised paw, a subtle curved Nile-teal path breeze, and a small brass compass sparkle; no specific gameplay effect is depicted.\nInput images: explorer-cat-idle-strip.png is the identity and costume reference; preserve the same orange tabby face, teal scarf, tan pith helmet with goggles, backpack, proportions, and friendly readable silhouette.\nScene/backdrop: warm aged parchment field inside a restrained dark walnut and antique brass card frame matching the companion item card.\nSubject: one full-body explorer cat, centered, face large and readable at 160px, relaxed confident pose.\nStyle/medium: refined hand-painted storybook game UI illustration, premium Google Play paid-game quality, low-stimulation and tactile.\nComposition/framing: centered square card, generous safe padding, single character only, no cropping of ears, tail, paws, or hat.\nLighting/mood: soft warm daylight, quiet readiness, no dramatic bloom.\nColor palette: parchment cream, walnut brown, antique brass, muted Nile teal, orange tabby fur.\nMaterials/textures: watercolor parchment, cloth scarf, worn leather gear, restrained embossed frame.\nConstraints: preserve character identity and costume; no text, letters, numbers, logo, watermark, dice, item pouch, skull, coins, second character, or button symbols.\nAvoid: photorealism, neon magic, combat pose, excessive particles, casino styling, ornate unreadable filigree, multiple card variants."
+    }
+  ],
+  "normalization": {
+    "method": "Lanczos resize only",
+    "source_dimensions": [1254, 1254],
+    "runtime_dimensions": [512, 512],
+    "runtime_mode": "RGB",
+    "baked_text": false
+  }
+}

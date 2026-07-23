@@ -38,10 +38,17 @@ const DiceAudioControllerScript = preload("res://scripts/game/dice_audio_control
 const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
 const PopupBookTransitionScript = preload("res://scripts/game/popup_book_transition.gd")
+const V06PlayScreenScene: PackedScene = preload("res://scenes/app/V06PlayScreen.tscn")
+const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
+const UiThemeNamesScript = preload("res://scripts/ui/ui_theme_names.gd")
+const ReleasePolicyScript = preload("res://scripts/ui/release_policy.gd")
+const MOBILE_THEME: Theme = preload("res://assets/ui/theme_mobile.tres")
 const CAIRO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/cairo-board.png")
+const TITLE_HERO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/title-hero.png")
 const WORLD_MAP_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/world-travel-map.png")
 const CAIRO_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/cairo-city-card.png")
 const SPHINX_TEXTURE: Texture2D = preload("res://assets/art/bosses/sleepy-sphinx.png")
+const RELAXED_TRAVELER_TEXTURE: Texture2D = preload("res://assets/art/characters/relaxed-traveler.png")
 const UI_CLICK_STREAM: AudioStream = preload("res://assets/audio/ui/click_003.ogg")
 const UI_CONFIRM_STREAM: AudioStream = preload("res://assets/audio/ui/select_001.ogg")
 const APP_FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -51,6 +58,35 @@ const INK := Color("#4c3c2e")
 const TEAL := Color("#287b80")
 const GOLD := Color("#c79c48")
 const MUTED := Color("#8c7862")
+const CHARACTER_OPTIONS: Array[Dictionary] = [
+	{
+		"id": &"relaxed",
+		"name": "のんびり旅人",
+		"tag": "おすすめ",
+		"summary": "穏やかで安定",
+		"text": "一周ごとに旅のお守り。ゆったり世界を巡りたい旅人向け。",
+		"accent": Color("#2f8b8f"),
+		"portrait_modulate": Color(1, 1, 1, 1),
+	},
+	{
+		"id": &"photographer",
+		"name": "フォトグラファー",
+		"tag": "発見上手",
+		"summary": "名所との出会い",
+		"text": "名所と最初の出会いで小さなボーナス。発見を集めたい旅人向け。",
+		"accent": Color("#c17a3a"),
+		"portrait_modulate": Color(1.05, 0.96, 0.88, 1),
+	},
+	{
+		"id": &"gambler",
+		"name": "勝負師",
+		"tag": "役好き",
+		"summary": "PAIRから勝負",
+		"text": "PAIRをきっかけにTRIPLEを夢見る、ひと振りを楽しむ旅人。",
+		"accent": Color("#8b4d6b"),
+		"portrait_modulate": Color(0.96, 0.90, 1.05, 1),
+	},
+]
 
 var rng := RandomNumberGenerator.new()
 var root_stack: VBoxContainer
@@ -80,8 +116,53 @@ var debug_box: VBoxContainer
 var dice_mode: int = 3
 var dice_values: Array[int] = []
 var selected_indices: Array[int] = []
-var moving: bool = false
-var rolling_dice: bool = false
+var phase_before_pause: int = 0
+var roll_sequence_id: int = 0
+var committed_values: Array[int] = []
+var _syncing_phase_flags := false
+enum TurnPhase {
+	READY,
+	ROLLING,
+	SETTLING,
+	RESULT_LOCK,
+	SLOT_TRANSFER,
+	MOVE_PREP,
+	MOVING,
+	RESOLVING_TILE,
+	PAUSED
+}
+
+var turn_phase: TurnPhase = TurnPhase.READY:
+	set(value):
+		turn_phase = value
+		_syncing_phase_flags = true
+		rolling_dice = (turn_phase == TurnPhase.ROLLING)
+		moving = (turn_phase in [TurnPhase.SETTLING, TurnPhase.RESULT_LOCK, TurnPhase.SLOT_TRANSFER, TurnPhase.MOVE_PREP, TurnPhase.MOVING, TurnPhase.RESOLVING_TILE])
+		_syncing_phase_flags = false
+
+var moving: bool = false:
+	set(value):
+		moving = value
+		if _syncing_phase_flags:
+			return
+		if moving:
+			if turn_phase == TurnPhase.READY:
+				turn_phase = TurnPhase.MOVING
+		else:
+			if turn_phase == TurnPhase.MOVING:
+				turn_phase = TurnPhase.READY
+
+var rolling_dice: bool = false:
+	set(value):
+		rolling_dice = value
+		if _syncing_phase_flags:
+			return
+		if rolling_dice:
+			if turn_phase == TurnPhase.READY:
+				turn_phase = TurnPhase.ROLLING
+		else:
+			if turn_phase == TurnPhase.ROLLING:
+				turn_phase = TurnPhase.READY
 var locked_dice_count: int = 0
 var rolling_values: Array[int] = []
 var fixed_targets: Array[int] = []
@@ -96,6 +177,20 @@ var roll_visual_frame: int = 0
 var active_extra_left_stop: Button
 var active_extra_all_stop: Button
 var qa_map_die_visible_stop_ok := false
+var pending_character_id: StringName = &""
+var character_cards: Dictionary = {}
+var character_detail_label: Label
+var character_start_button: Button
+var character_transition_locked := false
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED and turn_phase != TurnPhase.PAUSED and turn_phase != TurnPhase.READY:
+		phase_before_pause = turn_phase
+		turn_phase = TurnPhase.PAUSED
+	elif what == NOTIFICATION_APPLICATION_RESUMED and turn_phase == TurnPhase.PAUSED:
+		turn_phase = phase_before_pause
+	elif what == NOTIFICATION_PREDELETE:
+		_invalidate_roll_sequence()
 
 func _ready() -> void:
 	rng.seed = 20260711
@@ -104,13 +199,14 @@ func _ready() -> void:
 	event_definitions = EventSystemScript.definitions()
 	GameState.ensure_boss_data()
 	_apply_theme()
-	var debug_route := OS.get_environment("DICE_DEBUG_ROUTE").strip_edges()
-	if debug_route in BoardModelScript.VALID_ROUTE_IDS:
-		GameState.set_route_position(debug_route, OS.get_environment("DICE_DEBUG_ROUTE_TILE").to_int())
-	if not OS.get_environment("DICE_DEBUG_FLOW").is_empty():
-		GameState.flow_level = clampi(OS.get_environment("DICE_DEBUG_FLOW").to_int(), 0, 5)
-	if not OS.get_environment("DICE_DEBUG_DICE_COUNT").is_empty():
-		GameState.current_dice_count = clampi(OS.get_environment("DICE_DEBUG_DICE_COUNT").to_int(), 1, 3)
+	if ReleasePolicyScript.debug_tools_enabled(_debug_policy_enabled()):
+		var debug_route := OS.get_environment("DICE_DEBUG_ROUTE").strip_edges()
+		if debug_route in BoardModelScript.VALID_ROUTE_IDS:
+			GameState.set_route_position(debug_route, OS.get_environment("DICE_DEBUG_ROUTE_TILE").to_int())
+		if not OS.get_environment("DICE_DEBUG_FLOW").is_empty():
+			GameState.flow_level = clampi(OS.get_environment("DICE_DEBUG_FLOW").to_int(), 0, 5)
+		if not OS.get_environment("DICE_DEBUG_DICE_COUNT").is_empty():
+			GameState.current_dice_count = clampi(OS.get_environment("DICE_DEBUG_DICE_COUNT").to_int(), 1, 3)
 	ui_audio_player = AudioStreamPlayer.new()
 	ui_audio_player.name = "UIAudioPlayer"
 	ui_audio_player.bus = &"Master"
@@ -118,7 +214,11 @@ func _ready() -> void:
 	match OS.get_environment("DICE_QA_SCREEN"):
 		"stage": show_stage_select()
 		"character": show_character_select()
+		"character_selected":
+			show_character_select()
+			_select_character(&"relaxed")
 		"game": show_game()
+		"v06": show_v06_game()
 		"font": show_font_qa()
 		_: show_title()
 	if OS.get_environment("DICE_QA_EARLY_STOP") == "1":
@@ -151,6 +251,10 @@ func _ready() -> void:
 		call_deferred("_qa_ui_audio")
 	elif OS.get_environment("DICE_QA_ANDROID_UI") == "1":
 		call_deferred("_qa_android_ui")
+	elif OS.get_environment("DICE_QA_CHARACTER_SELECT") == "1":
+		call_deferred("_qa_character_select")
+	elif OS.get_environment("DICE_QA_RELEASE_UI") == "1":
+		call_deferred("_qa_release_ui")
 	elif OS.get_environment("DICE_QA_ROUTE_01") == "1":
 		call_deferred("_qa_route_01")
 	elif OS.get_environment("DICE_QA_ROUTE_02") == "1":
@@ -209,20 +313,32 @@ func _ready() -> void:
 		call_deferred("_qa_capture_viewport", OS.get_environment("DICE_QA_CAPTURE_PATH"))
 
 func _apply_theme() -> void:
-	var app_theme := Theme.new()
-	app_theme.default_font = APP_FONT
-	app_theme.default_font_size = 24
-	for control_type: String in ["Label", "Button", "CheckButton", "LineEdit", "ProgressBar"]:
-		app_theme.set_font("font", control_type, APP_FONT)
-		app_theme.set_constant("outline_size", control_type, 0)
-	for rich_font_name: String in ["normal_font", "bold_font", "italics_font", "bold_italics_font", "mono_font"]:
-		app_theme.set_font(rich_font_name, "RichTextLabel", APP_FONT)
-	app_theme.set_constant("outline_size", "RichTextLabel", 0)
-	app_theme.set_color("font_color", "Label", INK)
-	app_theme.set_color("font_color", "Button", INK)
-	app_theme.set_color("font_hover_color", "Button", TEAL)
-	app_theme.set_font_size("font_size", "Button", 24)
-	theme = app_theme
+	theme = MOBILE_THEME.duplicate(true) as Theme
+
+func _debug_policy_enabled() -> bool:
+	return OS.is_debug_build() and OS.get_environment("DICE_QA_SIMULATE_RELEASE") != "1"
+
+func _apply_content_margins(margin: MarginContainer) -> void:
+	var safe_margins := UiTokensScript.content_margins(UiTokensScript.BASE_VIEWPORT)
+	margin.add_theme_constant_override("margin_left", roundi(safe_margins.x))
+	margin.add_theme_constant_override("margin_top", roundi(safe_margins.y))
+	margin.add_theme_constant_override("margin_right", roundi(safe_margins.z))
+	margin.add_theme_constant_override("margin_bottom", roundi(safe_margins.w))
+
+func _root_layout_fits() -> bool:
+	if not is_instance_valid(root_stack):
+		return false
+	var needed := root_stack.get_combined_minimum_size()
+	return needed.x <= root_stack.size.x + 1.0 and needed.y <= root_stack.size.y + 1.0
+
+func _visible_buttons_meet_touch_min() -> bool:
+	for node: Node in find_children("*", "Button", true, false):
+		var button := node as Button
+		if not button.is_visible_in_tree() or button.text == "DEBUG":
+			continue
+		if button.size.y + 1.0 < UiTokensScript.TOUCH_MIN:
+			return false
+	return true
 
 func _clear() -> void:
 	if is_instance_valid(dice_audio): dice_audio.stop_all()
@@ -232,36 +348,54 @@ func _clear() -> void:
 	root_stack = null
 	dice_audio = null
 
-func _make_page() -> VBoxContainer:
+func _make_page(background_texture: Texture2D = CAIRO_BACKGROUND, art_alpha: float = 0.72, veil_alpha: float = 0.20) -> VBoxContainer:
 	_clear()
 	var background := ColorRect.new()
 	background.color = BG
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
 	var artwork := TextureRect.new()
-	artwork.texture = CAIRO_BACKGROUND
+	artwork.texture = background_texture
 	artwork.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	artwork.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	artwork.modulate = Color(1.0, 1.0, 1.0, 0.72)
+	artwork.modulate = Color(1.0, 1.0, 1.0, art_alpha)
 	artwork.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(artwork)
 	var veil := ColorRect.new()
-	veil.color = Color(0.96, 0.90, 0.78, 0.20)
+	veil.color = Color(0.96, 0.90, 0.78, veil_alpha)
+	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(veil)
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 18)
-	margin.add_theme_constant_override("margin_right", 18)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_bottom", 16)
+	_apply_content_margins(margin)
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(margin)
 	root_stack = VBoxContainer.new()
-	root_stack.add_theme_constant_override("separation", 16)
+	root_stack.add_theme_constant_override("separation", UiTokensScript.GAP_M)
 	root_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root_stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_child(root_stack)
 	return root_stack
+
+func _make_title_page() -> VBoxContainer:
+	# Hero art already carries logo and world mood. Insert soft bottom washes
+	# under the interactive margin so painted CTAs are covered without blocking input.
+	var page := _make_page(TITLE_HERO_BACKGROUND, 1.0, 0.0)
+	var margin_index := get_child_count() - 1
+	for entry: Dictionary in [
+		{"top": 0.48, "color": Color(0.96, 0.89, 0.74, 0.18)},
+		{"top": 0.62, "color": Color(0.94, 0.86, 0.70, 0.42)},
+		{"top": 0.74, "color": Color(0.93, 0.84, 0.66, 0.72)},
+	]:
+		var wash := ColorRect.new()
+		wash.color = entry.color
+		wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		wash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		wash.anchor_top = float(entry.top)
+		add_child(wash)
+		move_child(wash, margin_index)
+		margin_index += 1
+	return page
 
 func _make_world_page() -> VBoxContainer:
 	_clear()
@@ -277,14 +411,11 @@ func _make_world_page() -> VBoxContainer:
 	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(veil)
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 22)
-	margin.add_theme_constant_override("margin_right", 22)
-	margin.add_theme_constant_override("margin_top", 20)
-	margin.add_theme_constant_override("margin_bottom", 18)
+	_apply_content_margins(margin)
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(margin)
 	root_stack = VBoxContainer.new()
-	root_stack.add_theme_constant_override("separation", 8)
+	root_stack.add_theme_constant_override("separation", UiTokensScript.GAP_S)
 	root_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root_stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_child(root_stack)
@@ -292,14 +423,14 @@ func _make_world_page() -> VBoxContainer:
 
 func _postcard_style(active: bool) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color("#f8e8c5") if active else Color(0.22, 0.20, 0.18, 0.88)
-	style.border_color = GOLD if active else Color("#766c61")
+	style.bg_color = Color("#f8e8c5") if active else Color(0.16, 0.13, 0.11, 0.92)
+	style.border_color = GOLD if active else Color("#5a4a38")
 	style.set_border_width_all(3 if active else 2)
 	style.set_corner_radius_all(12)
-	style.content_margin_left = 8
-	style.content_margin_right = 8
-	style.content_margin_top = 7
-	style.content_margin_bottom = 7
+	style.content_margin_left = UiTokensScript.GAP_S
+	style.content_margin_right = UiTokensScript.GAP_S
+	style.content_margin_top = UiTokensScript.GAP_S * 0.5
+	style.content_margin_bottom = UiTokensScript.GAP_S * 0.5
 	style.shadow_color = Color(0.10, 0.06, 0.03, 0.35)
 	style.shadow_size = 8
 	return style
@@ -307,11 +438,11 @@ func _postcard_style(active: bool) -> StyleBoxFlat:
 func _add_city_postcard(parent: Control, city: String, journey: String, position: Vector2, card_size: Vector2, active: bool, action: Callable, card_texture: Texture2D = null) -> Button:
 	var button := Button.new()
 	button.name = "city_%s" % city.to_lower()
-	button.text = "" if card_texture != null else "%s\n%s\n%s" % [city, journey, "● 旅に出る" if active else "◇ 準備中"]
+	button.text = ""
 	button.position = position
 	button.size = card_size
 	button.clip_contents = true
-	button.add_theme_font_size_override("font_size", 18 if active else 15)
+	button.add_theme_font_size_override("font_size", UiTokensScript.FONT_CAPTION)
 	button.add_theme_color_override("font_color", INK if active else Color("#d7c8b5"))
 	button.add_theme_color_override("font_hover_color", TEAL if active else Color("#d7c8b5"))
 	button.add_theme_color_override("font_disabled_color", Color("#d7c8b5"))
@@ -320,35 +451,69 @@ func _add_city_postcard(parent: Control, city: String, journey: String, position
 	button.add_theme_stylebox_override("pressed", _postcard_style(active))
 	button.add_theme_stylebox_override("disabled", _postcard_style(false))
 	button.disabled = not active
-	button.tooltip_text = "%sは%s" % [journey, "選択できます" if active else "今後の旅で解禁予定です"]
+	button.tooltip_text = "%sは%s" % [journey, "選択できます" if active else "次の旅の気配として封印中"]
 	if active and action.is_valid():
 		button.pressed.connect(func() -> void: _play_ui_click(true))
 		button.pressed.connect(action)
 	if card_texture != null:
+		var caption_height := 84.0
 		var art := TextureRect.new()
 		art.texture = card_texture
 		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 		art.position = Vector2(6, 6)
-		art.size = Vector2(card_size.x - 12, card_size.y - 62)
+		art.size = Vector2(card_size.x - 12, card_size.y - caption_height - 12.0)
 		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		button.add_child(art)
 		var caption_bg := ColorRect.new()
 		caption_bg.color = Color(0.97, 0.89, 0.72, 0.96)
-		caption_bg.position = Vector2(6, card_size.y - 60)
-		caption_bg.size = Vector2(card_size.x - 12, 54)
+		caption_bg.position = Vector2(6, card_size.y - caption_height - 6.0)
+		caption_bg.size = Vector2(card_size.x - 12, caption_height)
 		caption_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		button.add_child(caption_bg)
-		var caption := _body("%s　%s\n● 旅に出る" % [city, journey], 15)
+		var caption := _body("%s\n● この旅へ" % city, UiTokensScript.FONT_CAPTION)
 		caption.position = caption_bg.position
 		caption.size = caption_bg.size
 		caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		button.add_child(caption)
+	elif active:
+		var active_label := _body("%s\n%s\n● 旅に出る" % [city, journey], UiTokensScript.FONT_CAPTION)
+		active_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		active_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		active_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(active_label)
+	else:
+		# Sealed destination: silhouette + wax-seal mood instead of a plain "準備中".
+		var seal_fill := ColorRect.new()
+		seal_fill.color = Color(0.12, 0.10, 0.08, 0.55)
+		seal_fill.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		seal_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(seal_fill)
+		var seal_panel := PanelContainer.new()
+		seal_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		seal_panel.custom_minimum_size = Vector2(72, 72)
+		seal_panel.position = Vector2((card_size.x - 72.0) * 0.5, 18.0)
+		var seal_style := _premium_panel(Color(0.55, 0.18, 0.16, 0.94), Color("#e0b35a"), 36)
+		seal_style.shadow_size = 6
+		seal_panel.add_theme_stylebox_override("panel", seal_style)
+		var seal_mark := _body("封", UiTokensScript.FONT_TITLE)
+		seal_mark.add_theme_color_override("font_color", Color("#f6e2a8"))
+		seal_mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		seal_mark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		seal_panel.add_child(seal_mark)
+		button.add_child(seal_panel)
+		var sealed_caption := _body("%s\n%s\n次の旅の気配" % [city, journey], UiTokensScript.FONT_CAPTION)
+		sealed_caption.add_theme_color_override("font_color", Color("#e8d7bc"))
+		sealed_caption.position = Vector2(8, card_size.y - 78.0)
+		sealed_caption.size = Vector2(card_size.x - 16.0, 72.0)
+		sealed_caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		sealed_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(sealed_caption)
 	parent.add_child(button)
 	return button
 
-func _title(text: String, size_px: int = 52) -> Label:
+func _title(text: String, size_px: int = UiTokensScript.FONT_TITLE) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -356,36 +521,23 @@ func _title(text: String, size_px: int = 52) -> Label:
 	label.add_theme_color_override("font_color", INK)
 	return label
 
-func _body(text: String, size_px: int = 22) -> Label:
+func _body(text: String, size_px: int = UiTokensScript.FONT_BODY) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.add_theme_font_size_override("font_size", size_px)
+	label.add_theme_font_size_override("font_size", maxi(size_px, UiTokensScript.FONT_CAPTION))
 	label.add_theme_color_override("font_color", INK)
 	return label
 
 func _button(text: String, action: Callable, primary: bool = false) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.custom_minimum_size = Vector2(0, 68)
-	button.pressed.connect(func() -> void: _play_ui_click(primary))
-	button.pressed.connect(action)
-	if primary:
-		button.add_theme_color_override("font_color", Color.WHITE)
-		button.add_theme_color_override("font_hover_color", Color.WHITE)
-		var style := StyleBoxFlat.new()
-		style.bg_color = TEAL
-		style.corner_radius_top_left = 22
-		style.corner_radius_top_right = 22
-		style.corner_radius_bottom_left = 22
-		style.corner_radius_bottom_right = 22
-		style.border_width_left = 3
-		style.border_width_right = 3
-		style.border_width_top = 3
-		style.border_width_bottom = 3
-		style.border_color = GOLD
-		button.add_theme_stylebox_override("normal", style)
+	button.custom_minimum_size = Vector2(0, UiTokensScript.BUTTON_HEIGHT)
+	button.theme_type_variation = UiThemeNamesScript.PRIMARY_BUTTON if primary else UiThemeNamesScript.SECONDARY_BUTTON
+	if action.is_valid():
+		button.pressed.connect(func() -> void: _play_ui_click(primary))
+		button.pressed.connect(action)
 	return button
 
 func _play_ui_click(primary: bool = false) -> void:
@@ -397,16 +549,27 @@ func _play_ui_click(primary: bool = false) -> void:
 	ui_audio_player.pitch_scale = 1.0
 	ui_audio_player.play()
 
+func _set_role_result(text: String, celebrated: bool) -> void:
+	if not is_instance_valid(role_label):
+		return
+	role_label.text = text
+	if celebrated:
+		role_label.add_theme_color_override("font_color", Color("#ffe08a"))
+		role_label.add_theme_font_size_override("font_size", UiTokensScript.FONT_TITLE)
+	else:
+		role_label.add_theme_color_override("font_color", Color("#78d4d1"))
+		role_label.add_theme_font_size_override("font_size", UiTokensScript.FONT_BODY)
+
 func _premium_panel(bg: Color = Color("#f5e6c6"), border: Color = Color("#9b743d"), radius: int = 18) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = bg
 	style.border_color = border
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(radius)
-	style.content_margin_left = 14
-	style.content_margin_right = 14
-	style.content_margin_top = 10
-	style.content_margin_bottom = 10
+	style.content_margin_left = UiTokensScript.GAP_S
+	style.content_margin_right = UiTokensScript.GAP_S
+	style.content_margin_top = UiTokensScript.GAP_S
+	style.content_margin_bottom = UiTokensScript.GAP_S
 	style.shadow_color = Color(0.16, 0.10, 0.05, 0.22)
 	style.shadow_size = 7
 	return style
@@ -414,7 +577,7 @@ func _premium_panel(bg: Color = Color("#f5e6c6"), border: Color = Color("#9b743d
 func _pill(text: String) -> Dictionary:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.24, 0.18, 0.12, 0.86), GOLD, 20))
-	var label := _body(text, 20)
+	var label := _body(text, UiTokensScript.FONT_CAPTION)
 	label.add_theme_color_override("font_color", Color("#fff0c7"))
 	panel.add_child(label)
 	return {"panel": panel, "label": label}
@@ -426,17 +589,24 @@ func _spacer(height: float) -> Control:
 	return spacer
 
 func show_title() -> void:
-	var page := _make_page()
-	page.add_child(_spacer(120))
-	page.add_child(_title("DICE SLOT TRIP", 58))
-	page.add_child(_body("サイコロをそろえて、世界をめぐる。", 25))
-	var note := _body("遠い風の向こうで、今日の旅が待っている。", 20)
-	note.add_theme_color_override("font_color", MUTED)
-	page.add_child(note)
-	page.add_child(_spacer(250))
-	page.add_child(_button("はじめから", func() -> void:
-		GameState.start_new_game()
-		show_stage_select(), true))
+	var page := _make_title_page()
+	page.add_theme_constant_override("separation", UiTokensScript.GAP_S)
+	# Hero art already presents the wordmark. Keep code-side copy minimal so the
+	# painted logo remains the first impression, and put all actions in the
+	# lower third for thumb reach.
+	page.add_child(_spacer(0))
+	var actions := PanelContainer.new()
+	actions.add_theme_stylebox_override("panel", _premium_panel(Color(0.97, 0.90, 0.74, 0.94), Color("#a57a3a"), 24))
+	var actions_box := VBoxContainer.new()
+	actions_box.add_theme_constant_override("separation", UiTokensScript.GAP_S)
+	actions.add_child(actions_box)
+	var tagline := _body("サイコロをそろえて、世界をめぐる。", UiTokensScript.FONT_BODY)
+	tagline.add_theme_color_override("font_color", INK)
+	actions_box.add_child(tagline)
+	var sub := _body("World Journey Board Game", UiTokensScript.FONT_CAPTION)
+	sub.add_theme_color_override("font_color", MUTED)
+	actions_box.add_child(sub)
+	actions_box.add_child(_button("はじめから", show_stage_select, true))
 	var continue_button := _button("つづきから", func() -> void:
 		SaveManager.load_now()
 		show_game()
@@ -444,34 +614,40 @@ func show_title() -> void:
 		elif GameState.pending_boss_handoff: call_deferred("_resume_pending_boss_handoff")
 		elif not GameState.roll_transaction.is_empty(): call_deferred("_resume_roll_transaction"))
 	continue_button.disabled = not SaveManager.has_save()
-	page.add_child(continue_button)
+	actions_box.add_child(continue_button)
 	var utility := HBoxContainer.new()
-	utility.add_theme_constant_override("separation", 16)
-	var book := _button("図鑑", show_encyclopedia)
-	var settings := _button("設定", _show_settings_modal)
+	utility.add_theme_constant_override("separation", UiTokensScript.GAP_S)
+	var book := _button("📖  図鑑", show_encyclopedia)
+	var settings := _button("⚙  設定", _show_settings_modal)
 	book.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	settings.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	utility.add_child(book)
 	utility.add_child(settings)
-	page.add_child(utility)
-	page.add_child(_body("オートセーブ対応", 18))
+	actions_box.add_child(utility)
+	var autosave := PanelContainer.new()
+	autosave.add_theme_stylebox_override("panel", _premium_panel(Color(0.24, 0.18, 0.12, 0.88), GOLD, 18))
+	var autosave_label := _body("🐾  オートセーブ対応", UiTokensScript.FONT_CAPTION)
+	autosave_label.add_theme_color_override("font_color", Color("#fff0c7"))
+	autosave.add_child(autosave_label)
+	actions_box.add_child(autosave)
+	page.add_child(actions)
 
 func _show_settings_modal() -> void:
 	var modal := _make_modal()
 	var content: VBoxContainer = modal.content
 	content.add_child(_title("音の設定", 34))
-	var master_label := _body("全体音量 %d%%" % roundi(GameState.master_volume * 100.0), 19)
-	var master_slider := HSlider.new(); master_slider.min_value = 0; master_slider.max_value = 100; master_slider.step = 1; master_slider.value = GameState.master_volume * 100.0; master_slider.custom_minimum_size.y = 42
+	var master_label := _body("全体音量 %d%%" % roundi(GameState.master_volume * 100.0), UiTokensScript.FONT_CAPTION)
+	var master_slider := HSlider.new(); master_slider.min_value = 0; master_slider.max_value = 100; master_slider.step = 1; master_slider.value = GameState.master_volume * 100.0; master_slider.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
 	master_slider.value_changed.connect(func(value: float) -> void: GameState.master_volume = value / 100.0; master_label.text = "全体音量 %d%%" % roundi(value); if is_instance_valid(dice_audio): dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted))
 	content.add_child(master_label); content.add_child(master_slider)
-	var se_label := _body("SE音量 %d%%" % roundi(GameState.se_volume * 100.0), 19)
-	var se_slider := HSlider.new(); se_slider.min_value = 0; se_slider.max_value = 100; se_slider.step = 1; se_slider.value = GameState.se_volume * 100.0; se_slider.custom_minimum_size.y = 42
+	var se_label := _body("SE音量 %d%%" % roundi(GameState.se_volume * 100.0), UiTokensScript.FONT_CAPTION)
+	var se_slider := HSlider.new(); se_slider.min_value = 0; se_slider.max_value = 100; se_slider.step = 1; se_slider.value = GameState.se_volume * 100.0; se_slider.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
 	se_slider.value_changed.connect(func(value: float) -> void: GameState.se_volume = value / 100.0; se_label.text = "SE音量 %d%%" % roundi(value); if is_instance_valid(dice_audio): dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted))
 	content.add_child(se_label); content.add_child(se_slider)
-	var dice_mute := CheckButton.new(); dice_mute.text = "ダイスSEをミュート"; dice_mute.button_pressed = GameState.dice_se_muted; dice_mute.custom_minimum_size.y = 52
+	var dice_mute := CheckButton.new(); dice_mute.text = "ダイスSEをミュート"; dice_mute.button_pressed = GameState.dice_se_muted; dice_mute.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
 	dice_mute.toggled.connect(func(value: bool) -> void: GameState.dice_se_muted = value; if is_instance_valid(dice_audio): dice_audio.set_muted(value))
 	content.add_child(dice_mute)
-	content.add_child(_body("音量0でも出目・目押し・移動は変わりません。", 16))
+	content.add_child(_body("音量0でも出目・目押し・移動は変わりません。", UiTokensScript.FONT_CAPTION))
 	var close := _button("保存して閉じる", func() -> void: return, true); close.toggle_mode = true; content.add_child(close)
 	await close.pressed
 	SaveManager.save_now(); _close_modal(modal.layer)
@@ -482,8 +658,8 @@ func show_stage_select() -> void:
 	heading_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.88, 0.70, 0.94), Color("#8d6335"), 18))
 	var heading := VBoxContainer.new()
 	heading.add_theme_constant_override("separation", 0)
-	heading.add_child(_title("旅先を選ぶ", 40))
-	var kicker := _body("WORLD TRAVEL MAP　・　鞄の中の旅程", 16)
+	heading.add_child(_title("旅先を選ぶ", UiTokensScript.FONT_TITLE))
+	var kicker := _body("WORLD TRAVEL MAP　・　鞄の中の旅程", UiTokensScript.FONT_CAPTION)
 	kicker.add_theme_color_override("font_color", MUTED)
 	heading.add_child(kicker)
 	heading_panel.add_child(heading)
@@ -491,56 +667,216 @@ func show_stage_select() -> void:
 
 	var map_area := Control.new()
 	map_area.name = "WorldMapPostcards"
-	map_area.custom_minimum_size.y = 780
+	map_area.custom_minimum_size.y = 540
 	map_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	map_area.clip_contents = true
 	page.add_child(map_area)
-	_add_city_postcard(map_area, "PARIS", "月夜のパリ", Vector2(86, 155), Vector2(170, 112), false, Callable())
-	_add_city_postcard(map_area, "TOKYO", "桜風の東京", Vector2(492, 205), Vector2(165, 112), false, Callable())
-	_add_city_postcard(map_area, "ROME", "遺跡のローマ", Vector2(70, 480), Vector2(170, 112), false, Callable())
-	_add_city_postcard(map_area, "SINGAPORE", "雨粒のシンガポール", Vector2(455, 515), Vector2(200, 112), false, Callable())
-	var cairo := _add_city_postcard(map_area, "CAIRO", "砂時計のカイロ", Vector2(245, 315), Vector2(240, 172), true, show_character_select, CAIRO_CITY_CARD)
+	_add_city_postcard(map_area, "PARIS", "月夜のパリ", Vector2(66, 72), Vector2(190, 136), false, Callable())
+	_add_city_postcard(map_area, "TOKYO", "桜風の東京", Vector2(464, 72), Vector2(190, 136), false, Callable())
+	_add_city_postcard(map_area, "ROME", "遺跡のローマ", Vector2(55, 390), Vector2(195, 136), false, Callable())
+	_add_city_postcard(map_area, "SINGAPORE", "雨粒のシンガポール", Vector2(365, 390), Vector2(290, 136), false, Callable())
+	var cairo := _add_city_postcard(map_area, "CAIRO", "砂時計のカイロ", Vector2(245, 210), Vector2(240, 172), true, show_character_select, CAIRO_CITY_CARD)
 	cairo.add_theme_font_size_override("font_size", 21)
-	var stamp := _body("CAIRO 01　旅のスタンプ %02d" % GameState.total_laps, 15)
-	stamp.position = Vector2(250, 495)
-	stamp.size = Vector2(230, 34)
-	stamp.add_theme_color_override("font_color", Color("#70451f"))
-	map_area.add_child(stamp)
-
 	GameState.ensure_boss_data()
-	var route := _body("選択中：砂時計のカイロ　｜　90マス　｜　%s" % str(GameState.current_boss.get("name", "眠そうなスフィンクス")), 17)
+	var route := _body("選択中：砂時計のカイロ　｜　90マス　｜　%s" % str(GameState.current_boss.get("name", "眠そうなスフィンクス")), UiTokensScript.FONT_CAPTION)
 	route.add_theme_color_override("font_color", Color("#fce7ba"))
 	var route_panel := PanelContainer.new()
 	route_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.19, 0.14, 0.10, 0.88), GOLD, 18))
 	route_panel.add_child(route)
 	page.add_child(route_panel)
 	page.add_child(_button("この旅へ", show_character_select, true))
+	page.add_child(_button("v0.6 新ルール試遊（保存なし）", show_v06_game))
 	var back := _button("もどる", show_title)
-	back.add_theme_stylebox_override("normal", _premium_panel(Color(0.94, 0.84, 0.65, 0.92), Color("#8d6335"), 16))
-	back.add_theme_stylebox_override("hover", _premium_panel(Color(0.98, 0.90, 0.72, 0.98), GOLD, 16))
 	page.add_child(back)
 
 func show_character_select() -> void:
 	var page := _make_page()
-	page.add_child(_title("旅人を選ぶ", 46))
-	page.add_child(_body("能力は小さく、旅の手触りだけを変えます。", 20))
-	var characters: Array[Dictionary] = [
-		{"id": &"relaxed", "name": "のんびり旅人", "tag": "おすすめ", "text": "一周ごとに旅のお守り。穏やかで安定。"},
-		{"id": &"photographer", "name": "フォトグラファー", "tag": "発見上手", "text": "名所と最初の出会いで小さなボーナス。"},
-		{"id": &"gambler", "name": "勝負師", "tag": "役好き", "text": "PAIRをきっかけにTRIPLEを夢見る旅人。"}
-	]
-	for character: Dictionary in characters:
-		var button := _button("%s　%s\n%s" % [character.name, character.tag, character.text], func() -> void:
-			GameState.selected_character_id = character.id
-			show_game())
-		button.custom_minimum_size.y = 115
+	pending_character_id = &""
+	character_cards.clear()
+	character_detail_label = null
+	character_start_button = null
+	character_transition_locked = false
+	var heading := PanelContainer.new()
+	heading.add_theme_stylebox_override("panel", _premium_panel(Color(0.97, 0.90, 0.74, 0.94), Color("#9b743d"), 18))
+	var heading_box := VBoxContainer.new()
+	heading_box.add_theme_constant_override("separation", 4)
+	heading_box.add_child(_title("旅人を選ぶ", UiTokensScript.FONT_TITLE))
+	var heading_note := _body("能力は小さく、旅の手触りだけを変えます。", UiTokensScript.FONT_CAPTION)
+	heading_note.add_theme_color_override("font_color", MUTED)
+	heading_box.add_child(heading_note)
+	heading.add_child(heading_box)
+	page.add_child(heading)
+	var card_group := ButtonGroup.new()
+	card_group.allow_unpress = false
+	for character: Dictionary in CHARACTER_OPTIONS:
+		var character_id := StringName(character.id)
+		var button := _build_character_card_button(character, false)
+		button.name = "character_card_%s" % String(character_id)
+		button.toggle_mode = true
+		button.button_group = card_group
+		button.pressed.connect(func() -> void: _play_ui_click(false))
+		button.pressed.connect(_select_character.bind(character_id))
+		character_cards[character_id] = button
 		page.add_child(button)
-	page.add_child(_button("もどる", show_stage_select))
+	var detail_panel := PanelContainer.new()
+	detail_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.97, 0.91, 0.78, 0.96), Color("#9b743d"), 16))
+	character_detail_label = _body("カードを選ぶと、旅の得意分野を確認できます。", UiTokensScript.FONT_CAPTION)
+	character_detail_label.name = "character_ability"
+	character_detail_label.custom_minimum_size.y = 72
+	character_detail_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	detail_panel.add_child(character_detail_label)
+	page.add_child(detail_panel)
+	page.add_child(_spacer(0))
+	character_start_button = _button("旅人を選んでください", _confirm_character_selection, true)
+	character_start_button.name = "character_confirm"
+	character_start_button.disabled = true
+	page.add_child(character_start_button)
+	var back := _button("もどる", show_stage_select)
+	back.name = "character_back"
+	page.add_child(back)
+
+func _character_definition(character_id: StringName) -> Dictionary:
+	for character: Dictionary in CHARACTER_OPTIONS:
+		if StringName(character.id) == character_id:
+			return character
+	return {}
+
+func _character_card_text(character: Dictionary, selected: bool) -> String:
+	return "%s%s　%s\n%s" % ["✓ " if selected else "", character.name, character.tag, character.summary]
+
+func _build_character_card_button(character: Dictionary, selected: bool) -> Button:
+	var accent: Color = character.get("accent", TEAL)
+	var button := Button.new()
+	button.custom_minimum_size = Vector2(0, 156)
+	button.clip_contents = true
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.text = ""
+	button.theme_type_variation = UiThemeNamesScript.SELECTED_BUTTON if selected else UiThemeNamesScript.SECONDARY_BUTTON
+	var style := _premium_panel(
+		Color(0.99, 0.94, 0.82, 0.98) if selected else Color(0.97, 0.90, 0.76, 0.96),
+		accent if selected else Color("#9b743d"),
+		18
+	)
+	style.set_border_width_all(4 if selected else 2)
+	button.add_theme_stylebox_override("normal", style)
+	button.add_theme_stylebox_override("hover", style)
+	button.add_theme_stylebox_override("pressed", style)
+	button.add_theme_stylebox_override("focus", style)
+	button.add_theme_stylebox_override("disabled", style)
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", UiTokensScript.GAP_S)
+	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	row.offset_left = 14
+	row.offset_top = 12
+	row.offset_right = -14
+	row.offset_bottom = -12
+	button.add_child(row)
+	var portrait_frame := PanelContainer.new()
+	portrait_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait_frame.custom_minimum_size = Vector2(112, 128)
+	var portrait_style := _premium_panel(Color(0.18, 0.14, 0.10, 0.92), accent, 14)
+	portrait_frame.add_theme_stylebox_override("panel", portrait_style)
+	var portrait := TextureRect.new()
+	portrait.texture = RELAXED_TRAVELER_TEXTURE
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.custom_minimum_size = Vector2(100, 116)
+	portrait.modulate = character.get("portrait_modulate", Color.WHITE)
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait_frame.add_child(portrait)
+	row.add_child(portrait_frame)
+	var info := VBoxContainer.new()
+	info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_theme_constant_override("separation", 6)
+	var title_row := HBoxContainer.new()
+	title_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title_row.add_theme_constant_override("separation", 8)
+	var name_label := _body(str(character.name), UiTokensScript.FONT_BODY)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(name_label)
+	var tag_panel := PanelContainer.new()
+	tag_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tag_style := _premium_panel(accent, Color(1, 1, 1, 0.35), 12)
+	tag_style.content_margin_left = 10
+	tag_style.content_margin_right = 10
+	tag_style.content_margin_top = 4
+	tag_style.content_margin_bottom = 4
+	tag_panel.add_theme_stylebox_override("panel", tag_style)
+	var tag_label := _body(str(character.tag), UiTokensScript.FONT_CAPTION)
+	tag_label.add_theme_color_override("font_color", Color("#fff8e8"))
+	tag_panel.add_child(tag_label)
+	title_row.add_child(tag_panel)
+	info.add_child(title_row)
+	var summary := _body(str(character.summary), UiTokensScript.FONT_CAPTION)
+	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	summary.add_theme_color_override("font_color", MUTED)
+	info.add_child(summary)
+	var selected_hint := _body("✓ 選択中" if selected else "タップで選択", UiTokensScript.FONT_CAPTION)
+	selected_hint.name = "selected_hint"
+	selected_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	selected_hint.add_theme_color_override("font_color", accent if selected else MUTED)
+	info.add_child(selected_hint)
+	row.add_child(info)
+	return button
+
+func _refresh_character_card_visual(card: Button, character: Dictionary, selected: bool) -> void:
+	var accent: Color = character.get("accent", TEAL)
+	card.theme_type_variation = UiThemeNamesScript.SELECTED_BUTTON if selected else UiThemeNamesScript.SECONDARY_BUTTON
+	var style := _premium_panel(
+		Color(0.99, 0.94, 0.82, 0.98) if selected else Color(0.97, 0.90, 0.76, 0.96),
+		accent if selected else Color("#9b743d"),
+		18
+	)
+	style.set_border_width_all(4 if selected else 2)
+	card.add_theme_stylebox_override("normal", style)
+	card.add_theme_stylebox_override("hover", style)
+	card.add_theme_stylebox_override("pressed", style)
+	card.add_theme_stylebox_override("focus", style)
+	var hint := card.find_child("selected_hint", true, false) as Label
+	if hint != null:
+		hint.text = "✓ 選択中" if selected else "タップで選択"
+		hint.add_theme_color_override("font_color", accent if selected else MUTED)
+
+func _select_character(character_id: StringName) -> void:
+	if character_transition_locked:
+		return
+	var definition := _character_definition(character_id)
+	if definition.is_empty():
+		return
+	pending_character_id = character_id
+	for id: Variant in character_cards:
+		var card := character_cards[id] as Button
+		var selected := StringName(id) == character_id
+		card.button_pressed = selected
+		_refresh_character_card_visual(card, _character_definition(StringName(id)), selected)
+	character_detail_label.text = "選択中：%s　｜　%s\n%s" % [definition.name, definition.tag, definition.text]
+	character_start_button.text = "この旅人で出発"
+	character_start_button.disabled = false
+
+func _confirm_character_selection(save_selection: bool = true) -> bool:
+	if character_transition_locked or pending_character_id == &"":
+		return false
+	character_transition_locked = true
+	if is_instance_valid(character_start_button):
+		character_start_button.disabled = true
+	for card: Variant in character_cards.values():
+		(card as Button).disabled = true
+	var selected_id := pending_character_id
+	GameState.start_new_game()
+	GameState.selected_stage_id = GameState.DEFAULT_STAGE
+	GameState.selected_character_id = selected_id
+	if save_selection and not SaveManager.save_now():
+		push_warning("The selected traveler could not be autosaved.")
+	show_game()
+	return true
 
 func show_font_qa() -> void:
 	var page := _make_page()
-	page.add_child(_title("実機フォントQA", 40))
-	page.add_child(_body("Noto Sans JP / MSDF OFF / outline 0", 16))
+	page.add_child(_title("実機フォントQA", UiTokensScript.FONT_TITLE))
+	page.add_child(_body("Noto Sans JP / MSDF OFF / outline 0", UiTokensScript.FONT_CAPTION))
 	for sample: String in [
 		"砂時計のカイロ",
 		"眠そうなスフィンクスがいる",
@@ -551,7 +887,7 @@ func show_font_qa() -> void:
 		"1234567890！？・◇●",
 	]:
 		var sample_label := _body(sample, 24)
-		sample_label.custom_minimum_size.y = 56
+		sample_label.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
 		sample_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		page.add_child(sample_label)
 	var rich := RichTextLabel.new()
@@ -562,6 +898,14 @@ func show_font_qa() -> void:
 	page.add_child(rich)
 	page.add_child(_button("文字と記号を確認　！？・◇●", func() -> void: return, true))
 
+func show_v06_game() -> void:
+	_clear()
+	var screen := V06PlayScreenScene.instantiate() as Control
+	screen.name = "V06PlayScreen"
+	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(screen)
+	screen.connect("back_requested", Callable(self, "show_stage_select"))
+
 func show_game() -> void:
 	var page := _make_page()
 	var inside_royal_maze := GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE
@@ -569,43 +913,84 @@ func show_game() -> void:
 	dice_audio.name = "DiceAudioController"
 	add_child(dice_audio)
 	dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted)
-	page.add_theme_constant_override("separation", 6)
+	page.add_theme_constant_override("separation", 10)
+	# Always-visible essentials: coin, place name, compact progress. Dense
+	# lap/clean detail lives in rolls_label so the map can own the screen.
 	var top_row := HBoxContainer.new()
-	top_row.add_theme_constant_override("separation", 8)
-	var lap_pill := _pill(""); lap_label = lap_pill.label; (lap_pill.panel as PanelContainer).size_flags_horizontal = Control.SIZE_EXPAND_FILL; top_row.add_child(lap_pill.panel)
-	var stage_title := _title("王の迷い環" if inside_royal_maze else "砂時計のカイロ", 26); stage_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top_row.add_child(stage_title)
-	var coin_pill := _pill(""); coin_label = coin_pill.label; (coin_pill.panel as PanelContainer).size_flags_horizontal = Control.SIZE_EXPAND_FILL; top_row.add_child(coin_pill.panel)
+	top_row.add_theme_constant_override("separation", UiTokensScript.GAP_S)
+	var coin_pill := _pill(""); coin_label = coin_pill.label
+	(coin_pill.panel as PanelContainer).custom_minimum_size.x = 168
+	top_row.add_child(coin_pill.panel)
+	var stage_title := _title("王の迷い環" if inside_royal_maze else "砂時計のカイロ", UiTokensScript.FONT_TITLE)
+	stage_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_row.add_child(stage_title)
+	var lap_pill := _pill(""); lap_label = lap_pill.label
+	(lap_pill.panel as PanelContainer).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	(lap_pill.panel as PanelContainer).size_flags_stretch_ratio = 1.15
+	top_row.add_child(lap_pill.panel)
 	page.add_child(top_row)
 
-	var overview := HBoxContainer.new(); overview.add_theme_constant_override("separation", 8)
-	var boss_card := PanelContainer.new(); boss_card.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.87, 0.70, 0.94), Color("#a47a3c"), 18)); boss_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL; boss_card.size_flags_stretch_ratio = 1.75
-	var boss_row := HBoxContainer.new(); boss_row.add_theme_constant_override("separation", 8)
+	var overview := HBoxContainer.new()
+	overview.add_theme_constant_override("separation", UiTokensScript.GAP_S)
+	overview.custom_minimum_size.y = 92
+	var boss_card := PanelContainer.new()
+	boss_card.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.87, 0.70, 0.94), Color("#a47a3c"), 16))
+	boss_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	boss_card.size_flags_stretch_ratio = 1.7
+	var boss_row := HBoxContainer.new()
+	boss_row.add_theme_constant_override("separation", 10)
 	var portrait := TextureRect.new()
 	portrait.texture = SPHINX_TEXTURE
-	portrait.custom_minimum_size = Vector2(88, 88)
+	portrait.custom_minimum_size = Vector2(58, 58)
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	boss_row.add_child(portrait)
-	var boss_info := VBoxContainer.new(); boss_info.add_theme_constant_override("separation", 2); boss_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var boss_kicker := _body("現在のボス", 14); boss_kicker.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; boss_kicker.add_theme_color_override("font_color", MUTED); boss_info.add_child(boss_kicker)
-	boss_label = _body("", 20); boss_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; boss_info.add_child(boss_label)
-	boss_gauge = ProgressBar.new(); boss_gauge.min_value = 0; boss_gauge.max_value = 100; boss_gauge.show_percentage = false; boss_gauge.custom_minimum_size.y = 17
+	var boss_info := VBoxContainer.new()
+	boss_info.add_theme_constant_override("separation", 2)
+	boss_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	boss_label = _body("", UiTokensScript.FONT_CAPTION)
+	boss_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	boss_info.add_child(boss_label)
+	boss_gauge = ProgressBar.new()
+	boss_gauge.min_value = 0
+	boss_gauge.max_value = 100
+	boss_gauge.show_percentage = false
+	boss_gauge.custom_minimum_size.y = 14
 	var gauge_bg := StyleBoxFlat.new(); gauge_bg.bg_color = Color("#d3c2a0"); gauge_bg.set_corner_radius_all(8)
 	var gauge_fill := StyleBoxFlat.new(); gauge_fill.bg_color = Color("#2e8c8c"); gauge_fill.set_corner_radius_all(8); gauge_fill.border_color = Color("#e1b956"); gauge_fill.set_border_width_all(1)
-	boss_gauge.add_theme_stylebox_override("background", gauge_bg); boss_gauge.add_theme_stylebox_override("fill", gauge_fill); boss_info.add_child(boss_gauge)
-	boss_presence_label = _body("", 14); boss_presence_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; boss_presence_label.add_theme_color_override("font_color", MUTED); boss_info.add_child(boss_presence_label)
-	stamp_label = _body("", 12); stamp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; stamp_label.add_theme_color_override("font_color", MUTED); boss_info.add_child(stamp_label)
-	boss_row.add_child(boss_info); boss_card.add_child(boss_row); overview.add_child(boss_card)
+	boss_gauge.add_theme_stylebox_override("background", gauge_bg)
+	boss_gauge.add_theme_stylebox_override("fill", gauge_fill)
+	boss_info.add_child(boss_gauge)
+	boss_presence_label = _body("", UiTokensScript.FONT_CAPTION)
+	boss_presence_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	boss_presence_label.add_theme_color_override("font_color", MUTED)
+	boss_info.add_child(boss_presence_label)
+	stamp_label = null
+	boss_row.add_child(boss_info)
+	boss_card.add_child(boss_row)
+	overview.add_child(boss_card)
 
-	var map_card := PanelContainer.new(); map_card.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.89, 0.75, 0.94), Color("#a47a3c"), 18)); map_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var map_box := VBoxContainer.new(); map_box.add_theme_constant_override("separation", 2)
-	landmark_level_label = _body("", 14); landmark_level_label.add_theme_color_override("font_color", MUTED); map_box.add_child(landmark_level_label)
-	minimap_view = BoardViewScript.new(); minimap_view.is_minimap = true; minimap_view.custom_minimum_size = Vector2(180, 82); minimap_view.size_flags_vertical = Control.SIZE_EXPAND_FILL; minimap_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels); map_box.add_child(minimap_view)
-	map_card.add_child(map_box); overview.add_child(map_card); page.add_child(overview)
+	var map_card := PanelContainer.new()
+	map_card.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.89, 0.75, 0.94), Color("#a47a3c"), 16))
+	map_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var map_box := VBoxContainer.new()
+	map_box.add_theme_constant_override("separation", 2)
+	landmark_level_label = _body("", UiTokensScript.FONT_CAPTION)
+	landmark_level_label.add_theme_color_override("font_color", MUTED)
+	map_box.add_child(landmark_level_label)
+	minimap_view = BoardViewScript.new()
+	minimap_view.is_minimap = true
+	minimap_view.custom_minimum_size = Vector2(160, 64)
+	minimap_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	minimap_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels)
+	map_box.add_child(minimap_view)
+	map_card.add_child(map_box)
+	overview.add_child(map_card)
+	page.add_child(overview)
 
 	board_view_mode = _preferred_board_view_mode()
 	board_view = _new_board_view(board_view_mode)
-	board_view.custom_minimum_size = Vector2(0, 390)
+	board_view.custom_minimum_size = Vector2(0, 360)
 	board_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	board_view.configure(tile_types, GameState.current_tile_index, GameState.landmark_levels)
 	_sync_board_route_context()
@@ -613,48 +998,92 @@ func show_game() -> void:
 		(board_view as TourismMapView).set_dice_count(GameState.current_dice_count)
 		(board_view as TourismMapView).set_flow_visual_level(GameState.flow_level)
 	page.add_child(board_view)
-	var memo_panel := PanelContainer.new(); memo_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.97, 0.91, 0.79, 0.92), Color("#b28a52"), 14))
-	memo_label = _body("風が砂の上に細い道を描いている。", 16); memo_label.custom_minimum_size.y = 30; memo_panel.add_child(memo_label); page.add_child(memo_panel)
+	var memo_panel := PanelContainer.new()
+	memo_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.97, 0.91, 0.79, 0.90), Color("#b28a52"), 12))
+	memo_label = _body("風が砂の上に細い道を描いている。", UiTokensScript.FONT_CAPTION)
+	memo_label.custom_minimum_size.y = 34
+	memo_panel.add_child(memo_label)
+	page.add_child(memo_panel)
 
-	var tray_panel := PanelContainer.new(); tray_panel.add_theme_stylebox_override("panel", _premium_panel(Color("#272321") if inside_royal_maze else Color("#765737"), Color("#b98b3f") if inside_royal_maze else Color("#d1a552"), 22))
-	var tray_box := VBoxContainer.new(); tray_box.add_theme_constant_override("separation", 3); tray_panel.add_child(tray_box)
+	var tray_panel := PanelContainer.new()
+	tray_panel.add_theme_stylebox_override("panel", _premium_panel(Color("#272321") if inside_royal_maze else Color("#6d5032"), Color("#b98b3f") if inside_royal_maze else Color("#d1a552"), 22))
+	var tray_box := VBoxContainer.new()
+	tray_box.add_theme_constant_override("separation", 4)
+	tray_panel.add_child(tray_box)
 	var tray_header := HBoxContainer.new()
-	var tray_title := _body("王墓のダイス" if inside_royal_maze else "今回のダイス", 15); tray_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; tray_title.add_theme_color_override("font_color", Color("#f6dfad")); tray_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; tray_header.add_child(tray_title)
-	mode_label = _body("", 15); mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; mode_label.autowrap_mode = TextServer.AUTOWRAP_OFF; mode_label.custom_minimum_size.x = 210; mode_label.add_theme_color_override("font_color", Color("#f1c86a")); tray_header.add_child(mode_label); tray_box.add_child(tray_header)
+	var tray_title := _body("王墓のダイス" if inside_royal_maze else "今回のダイス", UiTokensScript.FONT_CAPTION)
+	tray_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	tray_title.add_theme_color_override("font_color", Color("#f6dfad"))
+	tray_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tray_header.add_child(tray_title)
+	mode_label = _body("", UiTokensScript.FONT_CAPTION)
+	mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	mode_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	mode_label.custom_minimum_size.x = 210
+	mode_label.add_theme_color_override("font_color", Color("#f1c86a"))
+	tray_header.add_child(mode_label)
+	tray_box.add_child(tray_header)
 	dice_presentation = DicePresentation3DScript.new()
 	dice_presentation.name = "DicePresentation3D"
-	tray_box.add_child(dice_presentation); dice_presentation.custom_minimum_size.y = 190
+	dice_presentation.layout_min_height = 128.0
+	tray_box.add_child(dice_presentation)
 	dice_row = HBoxContainer.new()
 	dice_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	dice_row.add_theme_constant_override("separation", 8)
 	tray_box.add_child(dice_row)
-	role_label = _title("READY", 20); role_label.add_theme_color_override("font_color", Color("#78d4d1")); tray_box.add_child(role_label)
+	role_label = _title("READY", UiTokensScript.FONT_BODY)
+	role_label.add_theme_color_override("font_color", Color("#78d4d1"))
+	tray_box.add_child(role_label)
 	var mode_row := HBoxContainer.new()
 	mode_row.add_theme_constant_override("separation", 5)
 	mode_buttons.clear()
 	for mode: int in [1, 2, 3]:
-		var indicator := _body("", 13); indicator.custom_minimum_size.y = 42; indicator.size_flags_horizontal = Control.SIZE_EXPAND_FILL; indicator.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; indicator.name = "base_dice_mode_%d" % mode
-		mode_buttons.append(indicator); mode_row.add_child(indicator)
+		var indicator := _body("", UiTokensScript.FONT_CAPTION)
+		indicator.custom_minimum_size.y = 48
+		indicator.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		indicator.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		indicator.name = "base_dice_mode_%d" % mode
+		mode_buttons.append(indicator)
+		mode_row.add_child(indicator)
+	mode_row.visible = false
 	tray_box.add_child(mode_row)
-	var roll_controls := HBoxContainer.new(); roll_controls.add_theme_constant_override("separation", 10)
-	roll_button = _button("サイコロを振る", _on_roll_pressed, true); roll_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; roll_button.custom_minimum_size.y = 62
-	stop_all_button = _button("残りを一括停止", _stop_all_dice); stop_all_button.custom_minimum_size = Vector2(190, 62); stop_all_button.visible = false
-	roll_controls.add_child(roll_button); roll_controls.add_child(stop_all_button); tray_box.add_child(roll_controls)
+	var roll_controls := HBoxContainer.new()
+	roll_controls.add_theme_constant_override("separation", 10)
+	roll_button = _button("サイコロを振る", _on_roll_pressed, true)
+	roll_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	roll_button.custom_minimum_size.y = UiTokensScript.BUTTON_HEIGHT
+	stop_all_button = _button("残りを一括停止", _stop_all_dice)
+	stop_all_button.custom_minimum_size = Vector2(220, UiTokensScript.BUTTON_HEIGHT)
+	stop_all_button.visible = false
+	roll_controls.add_child(roll_button)
+	roll_controls.add_child(stop_all_button)
+	tray_box.add_child(roll_controls)
 	confirm_five_button = _button("選んだ3個で進む", _confirm_five)
 	confirm_five_button.visible = false
 	tray_box.add_child(confirm_five_button)
 	page.add_child(tray_panel)
-	var status_row := HBoxContainer.new()
-	rolls_label = _body("", 14); rolls_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	rolls_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var debug_toggle := _button("DEBUG", _toggle_debug)
-	debug_toggle.custom_minimum_size = Vector2(104, 38)
-	status_row.add_child(rolls_label)
-	status_row.add_child(debug_toggle)
-	page.add_child(status_row)
-	debug_box = _build_debug_box()
-	debug_box.visible = false
-	page.add_child(debug_box)
+	rolls_label = _body("", UiTokensScript.FONT_CAPTION)
+	rolls_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rolls_label.add_theme_color_override("font_color", MUTED)
+	page.add_child(rolls_label)
+	if ReleasePolicyScript.debug_tools_enabled(_debug_policy_enabled()):
+		var debug_toggle := _button("DEBUG", _toggle_debug)
+		debug_toggle.name = "debug_toggle"
+		debug_toggle.theme_type_variation = UiThemeNamesScript.COMPACT_BUTTON
+		debug_toggle.custom_minimum_size = Vector2(120, 64)
+		debug_toggle.z_index = 50
+		add_child(debug_toggle)
+		debug_toggle.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+		debug_toggle.offset_left = -136
+		debug_toggle.offset_top = -80
+		debug_toggle.offset_right = -16
+		debug_toggle.offset_bottom = -16
+	debug_box = null
+	if ReleasePolicyScript.debug_tools_enabled(_debug_policy_enabled()):
+		debug_box = _build_debug_box()
+		debug_box.name = "debug_box"
+		debug_box.visible = false
+		page.add_child(debug_box)
 	map_dice_overlay = MapDiceOverlayScript.new()
 	map_dice_overlay.name = "MapDiceOverlay"
 	map_dice_overlay.early_stop_requested.connect(func() -> void: _lock_next_die(false))
@@ -688,11 +1117,39 @@ func _refresh_dice_mode_buttons() -> void:
 		indicator.add_theme_color_override("font_color", Color("#fff1cb") if is_current else Color("#8f806c"))
 		indicator.add_theme_stylebox_override("normal", _premium_panel(Color(0.12, 0.42, 0.43, 0.96) if is_current else Color(0.18, 0.14, 0.11, 0.62), GOLD if is_current else Color("#5d5143"), 11))
 
+func _begin_roll_sequence() -> int:
+	roll_sequence_id += 1
+	return roll_sequence_id
+
+func _invalidate_roll_sequence() -> void:
+	roll_sequence_id += 1
+
+func _is_roll_sequence_current(sequence_id: int) -> bool:
+	return sequence_id == roll_sequence_id and is_inside_tree()
+
+func _wait_roll_sequence(duration: float, sequence_id: int) -> bool:
+	if not _is_roll_sequence_current(sequence_id):
+		return false
+	await get_tree().create_timer(duration, false).timeout
+	return _is_roll_sequence_current(sequence_id) and turn_phase != TurnPhase.PAUSED
+
+func can_start_roll() -> bool:
+	return turn_phase == TurnPhase.READY and not modal_open
+
+func can_stop_roll() -> bool:
+	return turn_phase == TurnPhase.ROLLING
+
+func can_open_map() -> bool:
+	return turn_phase in [TurnPhase.READY, TurnPhase.RESOLVING_TILE] and not modal_open
+
+func can_open_item_dock() -> bool:
+	return turn_phase == TurnPhase.READY and not modal_open
+
 func _on_roll_pressed() -> void:
-	if rolling_dice:
+	if turn_phase == TurnPhase.ROLLING:
 		_lock_next_die(false)
 		return
-	if moving or modal_open:
+	if not can_start_roll():
 		return
 	if GameState.rolls_used >= 36:
 		_show_message("今日の旅", "36回のロールを終えました。続きは次の旅へ保存されています。")
@@ -716,9 +1173,13 @@ func _on_roll_pressed() -> void:
 	await _resolve_roll(dice_values)
 
 func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null) -> Array[int]:
-	moving = true
-	rolling_dice = true
+	var sequence_id := _begin_roll_sequence()
+	turn_phase = TurnPhase.ROLLING
 	locked_dice_count = 0
+	committed_values.clear()
+	committed_values.resize(count)
+	for index: int in range(committed_values.size()):
+		committed_values[index] = 0
 	if is_instance_valid(dice_audio): dice_audio.begin_roll(count)
 	rolling_values.clear()
 	for index: int in range(count):
@@ -734,7 +1195,7 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		dice_presentation.visible = false
 		var map_rect := board_view.get_global_rect()
 		await map_dice_overlay.begin_launch(rolling_values, tray_rect, map_rect, TourismMapViewScript.map_dice_landing_rect(map_rect.size, count))
-		if not map_dice_overlay.is_active():
+		if not _is_roll_sequence_current(sequence_id) or not map_dice_overlay.is_active():
 			_abort_map_dice_roll()
 			return []
 	roll_button.text = "タップで左から止める"
@@ -751,8 +1212,6 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		if map_overlay_roll and is_instance_valid(active_extra_all_stop):
 			map_dice_overlay.set_input_exempt_rect(active_extra_all_stop.get_global_rect())
 	role_label.text = "目を追えば、少しだけ狙えるかも"
-	# 0.8-1.3 seconds for an untouched roll across 1/2/3/5 dice. The final
-	# presentation settle continues independently for another 0.18 seconds.
 	for frame: int in range(26):
 		if map_overlay_roll and not map_dice_overlay.is_active():
 			_abort_map_dice_roll()
@@ -769,32 +1228,72 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 		if locked_dice_count >= count:
 			break
 		var delay := 0.043 + float(frame) * 0.0009
-		await get_tree().create_timer(delay).timeout
+		if not await _wait_roll_sequence(delay, sequence_id):
+			_abort_map_dice_roll()
+			return []
 	while locked_dice_count < count:
 		_lock_next_die(true)
-		await get_tree().create_timer(0.13).timeout
-	rolling_dice = false
+		if not await _wait_roll_sequence(0.13, sequence_id):
+			_abort_map_dice_roll()
+			return []
+	
+	# サイコロ停止演出 (SETTLING) 開始
+	turn_phase = TurnPhase.SETTLING
 	_render_dice(rolling_values, false)
 	if is_instance_valid(dice_audio): dice_audio.end_roll()
+	if map_overlay_roll and is_instance_valid(map_dice_overlay):
+		map_dice_overlay.result_hold_duration = 0.0
+	
+	# SETTLING時間 (140ms)
+	if not await _wait_roll_sequence(0.14, sequence_id):
+		_abort_map_dice_roll()
+		return []
+	
+	# RESULT_LOCK (200ms)
+	turn_phase = TurnPhase.RESULT_LOCK
 	if map_overlay_roll:
 		if count == 3:
 			var slot_roles: Dictionary = DiceLogicScript.evaluate_current(rolling_values, count)
 			var slot_labels: Array = slot_roles.get("labels", [])
 			map_dice_overlay.show_slot_result(" + ".join(slot_labels) if not slot_labels.is_empty() else "DICE SLOT", rolling_values, slot_labels)
 			_play_flow_pulse(&"role_resolved")
-		# 2/3 dice preview the summed destination. Five dice are a selection
-		# screen, so no destination highlight appears before the player confirms
-		# the recommended three.
 		if count != 5:
 			var preview_distance := maxi(0, _sum_dice_values(rolling_values) + GameState.next_move_bonus)
 			var destination := posmod(GameState.current_tile_index + preview_distance, BoardModelScript.TILE_COUNT)
 			(board_view as TourismMapView).highlight_destination(destination, preview_distance)
+	if not await _wait_roll_sequence(0.20, sequence_id):
+		_abort_map_dice_roll()
+		return []
+	
+	# SLOT_TRANSFER (140ms)
+	turn_phase = TurnPhase.SLOT_TRANSFER
+	if not await _wait_roll_sequence(0.14, sequence_id):
+		_abort_map_dice_roll()
+		return []
+	
+	# MOVE_PREP (100ms)
+	turn_phase = TurnPhase.MOVE_PREP
+	if is_instance_valid(board_view):
+		board_view.movement_hop_offset_y = 4.5
+		board_view.queue_redraw()
+	if not await _wait_roll_sequence(0.10, sequence_id):
+		_abort_map_dice_roll()
+		return []
+	
+	if is_instance_valid(board_view):
+		board_view.movement_hop_offset_y = 0.0
+		board_view.queue_redraw()
+	
+	turn_phase = TurnPhase.MOVING
+	if map_overlay_roll:
 		await map_dice_overlay.hold_and_return(rolling_values)
+		if not _is_roll_sequence_current(sequence_id):
+			_abort_map_dice_roll()
+			return []
 		if count != 5:
 			(board_view as TourismMapView).clear_destination_highlight()
 		dice_presentation.visible = true
 		_render_dice(rolling_values, false)
-	moving = false
 	roll_button.text = "サイコロを振る"
 	stop_all_button.visible = false
 	if is_instance_valid(active_extra_left_stop): active_extra_left_stop.disabled = true
@@ -802,7 +1301,7 @@ func _animate_dice_roll(count: int, extra_controls_parent: VBoxContainer = null)
 	active_extra_left_stop = null; active_extra_all_stop = null
 	if is_instance_valid(map_dice_overlay):
 		map_dice_overlay.set_input_exempt_rect(Rect2())
-	return rolling_values.duplicate()
+	return committed_values.duplicate()
 
 func _uses_map_dice_overlay(count: int) -> bool:
 	return is_instance_valid(map_dice_overlay) and MapDiceOverlayScript.uses_map_presentation(board_view is TourismMapView, count)
@@ -828,6 +1327,7 @@ func _map_dice_tray_anchor_rect() -> Rect2:
 	return Rect2(Vector2(center_x, center_y) - MapDiceOverlayScript.PRESENTATION_SIZE * 0.5, MapDiceOverlayScript.PRESENTATION_SIZE)
 
 func _abort_map_dice_roll() -> void:
+	_invalidate_roll_sequence()
 	# The gameplay roll has not committed yet. Put any deterministic/debug
 	# targets back so interruption cannot silently consume them.
 	if not fixed_targets.is_empty():
@@ -839,6 +1339,7 @@ func _abort_map_dice_roll() -> void:
 	moving = false
 	locked_dice_count = 0
 	rolling_values.clear()
+	committed_values.clear()
 	if is_instance_valid(dice_audio):
 		dice_audio.stop_all_roll_sounds()
 	if is_instance_valid(map_dice_overlay):
@@ -854,6 +1355,8 @@ func _lock_next_die(automatic: bool) -> void:
 	var index := locked_dice_count
 	if index < fixed_targets.size():
 		rolling_values[index] = clampi(fixed_targets[index], 1, 6)
+	if index < committed_values.size():
+		committed_values[index] = rolling_values[index]
 	locked_dice_count += 1
 	_render_dice(rolling_values, false)
 	if is_instance_valid(dice_audio): dice_audio.play_land(index, 0.76 if not automatic else 0.62)
@@ -879,7 +1382,7 @@ func _render_dice(values: Array[int], selectable: bool) -> void:
 	for index: int in range(values.size()):
 		var die := Button.new()
 		die.text = ""
-		die.custom_minimum_size = Vector2(96, 88)
+		die.custom_minimum_size = Vector2(UiTokensScript.TOUCH_MIN, UiTokensScript.TOUCH_MIN)
 		die.tooltip_text = "出目 %d" % int(values[index])
 		die.add_theme_color_override("font_color", INK)
 		die.add_theme_color_override("font_disabled_color", INK)
@@ -931,7 +1434,7 @@ func _confirm_five() -> void:
 	await _resolve_roll(chosen)
 
 func _resolve_roll(values: Array[int]) -> void:
-	moving = true
+	turn_phase = TurnPhase.RESOLVING_TILE
 	roll_button.disabled = true
 	# A committed transaction can be resumed without re-applying roles, dice
 	# transitions, lap bonuses, or next-move bonuses.
@@ -953,11 +1456,11 @@ func _resolve_roll(values: Array[int]) -> void:
 	GameState.current_lap_bonus += LapSystemScript.role_bonus_for(roles, rolled_dice_count)
 	var labels: Array = roles.get("labels", [])
 	if not labels.is_empty():
-		role_label.text = " + ".join(labels)
+		_set_role_result(" + ".join(labels), true)
 	elif rolled_dice_count < 3:
-		role_label.text = "静かな一投　（3ダイスでスロット解禁）"
+		_set_role_result("静かな一投　（3ダイスでスロット解禁）", false)
 	else:
-		role_label.text = "静かな一投"
+		_set_role_result("静かな一投", false)
 	if roles.get("support", &"") == DiceLogicScript.ALL_EVEN:
 		GameState.coins += 3
 		GameState.even_guard_active = true
@@ -996,11 +1499,9 @@ func _animate_route_step_hop() -> void:
 	if not is_instance_valid(board_view):
 		await get_tree().create_timer(0.035).timeout
 		return
-	# Four short poses read as a deliberate hop while keeping long 3/5-die
-	# moves brisk. Gameplay position remains committed one tile at a time.
-	for progress: float in [0.18, 0.46, 0.74, 1.0]:
+	for progress: float in [0.15, 0.35, 0.55, 0.75, 0.90, 1.0]:
 		board_view.set_movement_hop_progress(progress)
-		await get_tree().create_timer(0.018).timeout
+		await get_tree().create_timer(0.026).timeout
 	board_view.set_movement_hop_progress(0.0)
 
 func _animate_bypass_tile_reveal(tile_index: int) -> void:
@@ -1109,7 +1610,7 @@ func _continue_roll_transaction() -> void:
 	GameState.clear_roll_transaction()
 	SaveManager.save_now()
 	_refresh_hud()
-	moving = false
+	turn_phase = TurnPhase.READY
 	roll_button.disabled = false
 
 func _continue_route_choice_transaction() -> void:
@@ -1787,12 +2288,30 @@ func _show_event_modal(source_roles: Dictionary) -> bool:
 	event_state = &"EVENT_OPENING"
 	GameState.active_event_state = {"phase": String(event_state), "event_id": event.event_id, "arrival": arrival.duplicate(true)}
 	SaveManager.save_now()
-	var modal := _make_modal()
+	var modal := _make_modal(event_district)
 	var content: VBoxContainer = modal.content
-	var district_text := _body("◇ %s" % event_district, 18); district_text.add_theme_color_override("font_color", INK); content.add_child(district_text)
+	var accent: Color = modal.accent
+	var district_chip := PanelContainer.new()
+	var chip_style := _premium_panel(accent, Color(1, 1, 1, 0.25), 12)
+	chip_style.content_margin_left = 12
+	chip_style.content_margin_right = 12
+	chip_style.content_margin_top = 4
+	chip_style.content_margin_bottom = 4
+	district_chip.add_theme_stylebox_override("panel", chip_style)
+	var district_text := _body("◇ %s" % event_district, UiTokensScript.FONT_CAPTION)
+	district_text.add_theme_color_override("font_color", Color("#fff8e8"))
+	district_chip.add_child(district_text)
+	content.add_child(district_chip)
 	content.add_child(_title(str(event.get("display_name", "旅の出来事")), 36))
-	var opening_text := _body(str(event.get("first_text", "風景が少し変わった。")), 23); opening_text.add_theme_color_override("font_color", INK); content.add_child(opening_text)
-	var arrival_text := _body("到着 %s　合計 %d" % [str(arrival.source_dice_values), int(arrival.source_total)], 18); arrival_text.add_theme_color_override("font_color", Color("66503b")); content.add_child(arrival_text)
+	var opening_panel := PanelContainer.new()
+	opening_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.98, 0.93, 0.82, 0.95), accent.lightened(0.25), 14))
+	var opening_text := _body(str(event.get("first_text", "風景が少し変わった。")), 23)
+	opening_text.add_theme_color_override("font_color", INK)
+	opening_panel.add_child(opening_text)
+	content.add_child(opening_panel)
+	var arrival_text := _body("到着 %s　合計 %d" % [str(arrival.source_dice_values), int(arrival.source_total)], 18)
+	arrival_text.add_theme_color_override("font_color", Color("66503b"))
+	content.add_child(arrival_text)
 	var choice_id := ""
 	var choices: Array = event.get("choices", [])
 	var extra_count := int(event.get("additional_dice_count", 0))
@@ -1951,42 +2470,50 @@ func _compact_clean_hud(points: int, is_clean: bool, streak: int) -> String:
 	var current := clampi(streak, 0, LapSystemScript.MAX_CLEAN_STREAK)
 	if not is_clean:
 		var recovery_target := maxi(1, current)
-		return "LAP POINT %d\nCLEAN失敗　STREAK %d\nRECOVER %d（次周）" % [points, current, recovery_target]
+		return "P%d  RECOVER %d" % [points, recovery_target]
 	if current >= LapSystemScript.MAX_CLEAN_STREAK:
-		return "LAP POINT %d\nCLEAN STREAK MAX\nCLEAN維持中" % points
+		return "P%d  CLEAN MAX" % points
 	for target: int in [2, 3, 5]:
 		if current < target:
-			return "LAP POINT %d\nCLEAN STREAK %d\nNEXT %d（あと%d周）" % [points, current, target, target - current]
-	return "LAP POINT %d\nCLEAN STREAK %d\nCLEAN維持中" % [points, current]
+			return "P%d  C%d→%d" % [points, current, target]
+	return "P%d  C%d" % [points, current]
 
 func _refresh_hud() -> void:
 	if lap_label == null:
 		return
 	lap_label.text = _compact_clean_hud(GameState.total_lap_points, GameState.current_lap_clean, GameState.clean_streak)
-	coin_label.text = "旅コイン %d" % GameState.coins
+	coin_label.text = "🪙 %d" % GameState.coins
 	var route_definition := BoardModelScript.route_definition(GameState.current_route_id)
-	var route_status := "現在 %dマス" % (GameState.current_tile_index + 1)
+	var route_status := "%dマス" % (GameState.current_tile_index + 1)
 	if GameState.current_route_id != BoardModelScript.ROUTE_MAIN:
-		route_status = "%s %d / %d" % [str(route_definition.name), GameState.current_tile_index + 1, int(route_definition.tile_count)]
-	rolls_label.text = "LAP %d　ターン %d / 36　%s　次回 %dダイス" % [GameState.lap_count, GameState.rolls_used, route_status, clampi(GameState.current_dice_count, 1, 3)]
+		route_status = "%s %d/%d" % [str(route_definition.name), GameState.current_tile_index + 1, int(route_definition.tile_count)]
+	rolls_label.text = "周回 %d　·　ターン %d/36　·　%s　·　次回 %dダイス" % [GameState.lap_count, GameState.rolls_used, route_status, clampi(GameState.current_dice_count, 1, 3)]
 	if is_instance_valid(landmark_level_label):
 		if GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE:
 			var gate_distance := posmod(int(route_definition.return_gate_tile) - GameState.current_tile_index, int(route_definition.tile_count))
-			landmark_level_label.text = "内部見取り図　帰還扉まで %d" % gate_distance
+			landmark_level_label.text = "帰還まで %d" % gate_distance
 		else:
-			landmark_level_label.text = "全体マップ　名所 Lv.%d・%d・%d" % [int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_02", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_03", 0))]
+			landmark_level_label.text = "名所 Lv.%d·%d·%d" % [int(GameState.landmark_levels.get("CAI_LANDMARK_01", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_02", 0)), int(GameState.landmark_levels.get("CAI_LANDMARK_03", 0))]
 	if is_instance_valid(board_view): board_view.set_landmark_levels(GameState.landmark_levels)
 	if board_view is TourismMapView: (board_view as TourismMapView).set_dice_count(GameState.current_dice_count)
 	if is_instance_valid(minimap_view): minimap_view.set_landmark_levels(GameState.landmark_levels)
 	GameState.ensure_boss_data()
-	var footprints := "・".repeat(5 - GameState.boss_presence) + "●".repeat(GameState.boss_presence)
 	boss_label.text = str(GameState.current_boss.get("name", "眠そうなスフィンクス"))
 	if is_instance_valid(boss_gauge): boss_gauge.value = int(GameState.current_boss.get("gauge", 0))
-	if is_instance_valid(boss_presence_label): boss_presence_label.text = "交流 %d%%　気配 %s" % [int(GameState.current_boss.get("gauge", 0)), footprints]
-	stamp_label.text = "旅のスタンプ　" + ("なし" if GameState.lap_stamps.is_empty() else "  ".join(GameState.lap_stamps))
+	if is_instance_valid(boss_presence_label): boss_presence_label.text = "交流 %d%%　気配 %d/5" % [int(GameState.current_boss.get("gauge", 0)), GameState.boss_presence]
+	if is_instance_valid(stamp_label): stamp_label.text = "スタンプ　" + ("なし" if GameState.lap_stamps.is_empty() else "  ".join(GameState.lap_stamps))
 	_refresh_dice_mode_buttons()
 
-func _make_modal() -> Dictionary:
+func _district_accent(district_id: String) -> Color:
+	match district_id.to_upper():
+		"MARKET": return Color("#c17a3a")
+		"OASIS": return Color("#2f8b8f")
+		"RUINS": return Color("#7a5a3a")
+		"DUNES": return Color("#c9a24a")
+		"PYRAMID", "PYRAMIDS": return Color("#8b6a2f")
+		_: return GOLD
+
+func _make_modal(district_id: String = "") -> Dictionary:
 	modal_open = true
 	var layer := CanvasLayer.new()
 	layer.layer = 10
@@ -1995,26 +2522,34 @@ func _make_modal() -> Dictionary:
 	dim.color = Color(0.16, 0.12, 0.08, 0.72)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	layer.add_child(dim)
+	var safe_margin := MarginContainer.new()
+	safe_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_apply_content_margins(safe_margin)
+	layer.add_child(safe_margin)
 	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	layer.add_child(center)
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	safe_margin.add_child(center)
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(620, 0)
+	var accent := _district_accent(district_id)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("f5ead2")
-	style.border_color = GOLD
+	style.border_color = accent
 	style.set_border_width_all(4)
 	style.set_corner_radius_all(24)
 	style.content_margin_left = 28
 	style.content_margin_right = 28
-	style.content_margin_top = 28
+	style.content_margin_top = 24
 	style.content_margin_bottom = 28
+	style.shadow_color = Color(0.12, 0.08, 0.04, 0.35)
+	style.shadow_size = 12
 	panel.add_theme_stylebox_override("panel", style)
 	center.add_child(panel)
 	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 14)
+	content.add_theme_constant_override("separation", UiTokensScript.GAP_S)
 	panel.add_child(content)
-	return {"layer": layer, "content": content}
+	return {"layer": layer, "content": content, "accent": accent}
 
 func _close_modal(layer: CanvasLayer) -> void:
 	if is_instance_valid(layer):
@@ -2336,16 +2871,17 @@ func _build_debug_box() -> VBoxContainer:
 	return box
 
 func _new_board_view(mode: String) -> BoardView:
-	var normalized := TourismMapViewScript.normalized_view_mode(mode)
+	var normalized := ReleasePolicyScript.preferred_board_view_mode(mode, _debug_policy_enabled())
 	if normalized == TourismMapViewScript.VIEW_MODE_TOURISM:
 		return TourismMapViewScript.new() as BoardView
 	return BoardViewScript.new() as BoardView
 
 func _preferred_board_view_mode() -> String:
-	var debug_override := OS.get_environment("DICE_BOARD_VIEW").strip_edges().to_lower()
-	if debug_override in [TourismMapViewScript.VIEW_MODE_CLASSIC, TourismMapViewScript.VIEW_MODE_TOURISM]:
-		return debug_override
-	return GameState.normalized_board_view_mode(GameState.board_view_mode)
+	return ReleasePolicyScript.preferred_board_view_mode(
+		GameState.board_view_mode,
+		_debug_policy_enabled(),
+		OS.get_environment("DICE_BOARD_VIEW")
+	)
 
 func _can_switch_board_view() -> bool:
 	return is_instance_valid(board_view) and not moving and not rolling_dice and not modal_open and event_state == &"IDLE"
@@ -2354,10 +2890,13 @@ func _set_board_view_mode(mode: String) -> bool:
 	if not _can_switch_board_view():
 		return false
 	var normalized := TourismMapViewScript.normalized_view_mode(mode)
+	if not ReleasePolicyScript.can_request_board_view(normalized, _debug_policy_enabled()):
+		return false
 	var wants_tourism := normalized == TourismMapViewScript.VIEW_MODE_TOURISM
 	if (wants_tourism and board_view is TourismMapView) or (not wants_tourism and not (board_view is TourismMapView)):
 		board_view_mode = normalized
-		GameState.board_view_mode = normalized
+		if _debug_policy_enabled():
+			GameState.board_view_mode = normalized
 		return true
 	var parent := board_view.get_parent()
 	if parent == null:
@@ -2379,7 +2918,8 @@ func _set_board_view_mode(mode: String) -> bool:
 	board_view = replacement
 	_sync_board_route_context()
 	board_view_mode = normalized
-	GameState.board_view_mode = normalized
+	if _debug_policy_enabled():
+		GameState.board_view_mode = normalized
 	return true
 
 func _sync_board_route_context() -> void:
@@ -2749,6 +3289,8 @@ func _debug_reset_encyclopedia() -> void:
 	_refresh_hud()
 
 func _toggle_debug() -> void:
+	if not ReleasePolicyScript.debug_tools_enabled(_debug_policy_enabled()) or not is_instance_valid(debug_box):
+		return
 	debug_box.visible = not debug_box.visible
 
 func _show_message(title_text: String, message: String) -> void:
@@ -3193,6 +3735,9 @@ func _qa_android_ui() -> void:
 		and theme.get_font("normal_font", "RichTextLabel") == APP_FONT \
 		and theme.get_constant("outline_size", "Label") == 0 \
 		and theme.get_constant("outline_size", "Button") == 0
+	var scale_tokens_ok := theme.default_font_size == UiTokensScript.FONT_BODY \
+		and theme.get_font_size("font_size", "Button") == UiTokensScript.FONT_BODY \
+		and UiTokensScript.BUTTON_HEIGHT >= 104 and UiTokensScript.TOUCH_MIN >= 96
 	show_font_qa()
 	await get_tree().process_frame
 	var controls_ok := true
@@ -3201,6 +3746,22 @@ func _qa_android_ui() -> void:
 			controls_ok = controls_ok and (control as Control).get_theme_font("font") == APP_FONT
 		elif control is RichTextLabel:
 			controls_ok = controls_ok and (control as Control).get_theme_font("normal_font", "RichTextLabel") == APP_FONT
+	show_title(); await get_tree().process_frame
+	var title_layout_ok := _root_layout_fits() and _visible_buttons_meet_touch_min()
+	show_stage_select(); await get_tree().process_frame
+	var stage_layout_ok := _root_layout_fits() and _visible_buttons_meet_touch_min()
+	show_character_select(); await get_tree().process_frame
+	var character_layout_ok := _root_layout_fits() and _visible_buttons_meet_touch_min()
+	var character_before := GameState.selected_character_id
+	var character_initial_ok := is_instance_valid(character_start_button) and character_start_button.disabled and pending_character_id == &""
+	_select_character(&"photographer")
+	var selected_card_count := 0
+	for card: Variant in character_cards.values():
+		if (card as Button).theme_type_variation == UiThemeNamesScript.SELECTED_BUTTON:
+			selected_card_count += 1
+	var character_flow_ok := character_initial_ok and GameState.selected_character_id == character_before \
+		and pending_character_id == &"photographer" and not character_start_button.disabled \
+		and selected_card_count == 1 and "フォトグラファー" in character_detail_label.text
 	var legacy := original.duplicate(true)
 	legacy.erase("board_view_mode")
 	GameState.apply_dictionary(legacy)
@@ -3219,12 +3780,60 @@ func _qa_android_ui() -> void:
 	var classic_after_character := GameState.board_view_mode == "classic" and not (board_view is TourismMapView)
 	GameState.board_view_mode = "tourism"
 	show_game()
+	await get_tree().process_frame
 	var tourism_restored := board_view is TourismMapView
-	var passed := coverage_ok and theme_ok and controls_ok and legacy_tourism and classic_loaded and classic_after_new_trip and classic_after_character and tourism_restored
-	print("QA_ANDROID_UI font=%s theme=%s controls=%s legacy_tourism=%s classic_load=%s new_trip=%s character=%s tourism=%s passed=%s" % [coverage_ok, theme_ok, controls_ok, legacy_tourism, classic_loaded, classic_after_new_trip, classic_after_character, tourism_restored, passed])
+	var game_layout_ok := _root_layout_fits() and _visible_buttons_meet_touch_min()
+	var layouts_ok := title_layout_ok and stage_layout_ok and character_layout_ok and game_layout_ok
+	var passed := coverage_ok and theme_ok and scale_tokens_ok and controls_ok and layouts_ok and character_flow_ok and legacy_tourism and classic_loaded and classic_after_new_trip and classic_after_character and tourism_restored
+	print("QA_ANDROID_UI font=%s theme=%s scale=%s controls=%s layouts=%s title=%s stage=%s character=%s character_flow=%s game=%s legacy_tourism=%s classic_load=%s new_trip=%s character_mode=%s tourism=%s passed=%s" % [coverage_ok, theme_ok, scale_tokens_ok, controls_ok, layouts_ok, title_layout_ok, stage_layout_ok, character_layout_ok, character_flow_ok, game_layout_ok, legacy_tourism, classic_loaded, classic_after_new_trip, classic_after_character, tourism_restored, passed])
 	GameState.apply_dictionary(original)
 	SaveManager.save_now()
 	if not passed: push_error("ANDROID-UI-01 QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_character_select() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	show_character_select()
+	await get_tree().process_frame
+	var initial_ok := pending_character_id == &"" and character_start_button.disabled and character_cards.size() == CHARACTER_OPTIONS.size()
+	var state_before := GameState.selected_character_id
+	_select_character(&"gambler")
+	var selected_count := 0
+	for card: Variant in character_cards.values():
+		if (card as Button).theme_type_variation == UiThemeNamesScript.SELECTED_BUTTON:
+			selected_count += 1
+	var selection_ok := GameState.selected_character_id == state_before and pending_character_id == &"gambler" \
+		and selected_count == 1 and not character_start_button.disabled and "勝負師" in character_detail_label.text
+	var first_confirm := _confirm_character_selection(false)
+	var second_confirm := _confirm_character_selection(false)
+	await get_tree().process_frame
+	var confirm_ok := first_confirm and not second_confirm and GameState.selected_character_id == &"gambler" \
+		and GameState.current_tile_index == 0 and character_transition_locked
+	var passed := initial_ok and selection_ok and confirm_ok
+	print("QA_CHARACTER_SELECT initial=%s selection=%s confirm=%s double_guard=%s passed=%s" % [initial_ok, selection_ok, first_confirm, not second_confirm, passed])
+	GameState.apply_dictionary(original)
+	if not passed:
+		push_error("Character selection QA failed.")
+	get_tree().quit(0 if passed else 1)
+
+func _qa_release_ui() -> void:
+	var original := GameState.to_dictionary().duplicate(true)
+	GameState.board_view_mode = "classic"
+	show_game()
+	await get_tree().process_frame
+	var tourism_forced := board_view is TourismMapView and board_view_mode == ReleasePolicyScript.BOARD_VIEW_TOURISM
+	var debug_absent := find_children("debug_toggle", "Button", true, false).is_empty() \
+		and find_children("debug_box", "VBoxContainer", true, false).is_empty() and not is_instance_valid(debug_box)
+	var classic_rejected := not _set_board_view_mode("classic") and board_view is TourismMapView
+	var saved_value_preserved := GameState.board_view_mode == "classic"
+	var defensive_factory := _new_board_view("classic")
+	var factory_forced := defensive_factory is TourismMapView
+	defensive_factory.free()
+	var passed := tourism_forced and debug_absent and classic_rejected and saved_value_preserved and factory_forced
+	print("QA_RELEASE_UI tourism=%s debug_absent=%s classic_rejected=%s save_preserved=%s factory=%s passed=%s" % [tourism_forced, debug_absent, classic_rejected, saved_value_preserved, factory_forced, passed])
+	GameState.apply_dictionary(original)
+	if not passed:
+		push_error("Release UI policy QA failed.")
 	get_tree().quit(0 if passed else 1)
 
 func _qa_progression_capture(kind: String, path: String) -> void:
@@ -3956,12 +4565,37 @@ func _qa_premium_board_capture(path: String) -> void:
 	get_tree().quit(0 if result == OK else 1)
 
 func _qa_capture_viewport(path: String) -> void:
-	await get_tree().process_frame
-	await get_tree().process_frame
-	var image := get_viewport().get_texture().get_image()
+	# SubViewports (the tourism board and 3D dice) need several frames, followed
+	# by the renderer's post-draw signal, before GPU readback is deterministic.
+	for ignored: int in range(8):
+		await get_tree().process_frame
+	var image: Image
+	var retries := 0
+	for attempt: int in range(3):
+		await RenderingServer.frame_post_draw
+		RenderingServer.force_sync()
+		image = get_viewport().get_texture().get_image()
+		if not _has_black_readback_artifact(image):
+			break
+		retries += 1
+		for ignored: int in range(3):
+			await get_tree().process_frame
 	var result := image.save_png(path)
-	print("QA_CAPTURE path=%s result=%s size=%s" % [path, result, image.get_size()])
+	print("QA_CAPTURE path=%s result=%s size=%s readback_retries=%d" % [path, result, image.get_size(), retries])
 	get_tree().quit(0 if result == OK else 1)
+
+func _has_black_readback_artifact(image: Image) -> bool:
+	if image == null or image.is_empty():
+		return true
+	var black_samples := 0
+	var total_samples := 0
+	for y: int in range(0, image.get_height(), 4):
+		for x: int in range(0, image.get_width(), 4):
+			var pixel := image.get_pixel(x, y)
+			total_samples += 1
+			if pixel.a < 0.99 or (pixel.r < 0.03 and pixel.g < 0.03 and pixel.b < 0.03):
+				black_samples += 1
+	return total_samples > 0 and float(black_samples) / float(total_samples) > 0.02
 
 func _save_opaque_capture(path: String) -> Error:
 	var viewport_texture := get_viewport().get_texture()
