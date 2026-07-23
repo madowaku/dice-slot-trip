@@ -112,7 +112,7 @@ var coin_label: Label
 var stamp_label: Label
 var minimap_view: BoardView
 var landmark_level_label: Label
-var debug_box: VBoxContainer
+var debug_box: Control
 var dice_mode: int = 3
 var dice_values: Array[int] = []
 var selected_indices: Array[int] = []
@@ -1078,7 +1078,7 @@ func show_game() -> void:
 		debug_box = _build_debug_box()
 		debug_box.name = "debug_box"
 		debug_box.visible = false
-		page.add_child(debug_box)
+		add_child(debug_box)
 	map_dice_overlay = MapDiceOverlayScript.new()
 	map_dice_overlay.name = "MapDiceOverlay"
 	map_dice_overlay.early_stop_requested.connect(func() -> void: _lock_next_die(false))
@@ -2750,9 +2750,29 @@ func show_encyclopedia() -> void:
 	page.add_child(_spacer(10))
 	page.add_child(_button("もどる", show_title))
 
-func _build_debug_box() -> VBoxContainer:
+func _build_debug_box() -> Control:
+	var overlay := PanelContainer.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.offset_left = UiTokensScript.EDGE
+	overlay.offset_top = 144
+	overlay.offset_right = -UiTokensScript.EDGE
+	overlay.offset_bottom = -UiTokensScript.EDGE
+	overlay.z_index = 100
+	overlay.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.91, 0.80, 0.98), GOLD, 18))
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	overlay.add_child(scroll)
 	var box := VBoxContainer.new()
-	var row := HBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", UiTokensScript.GAP_S)
+	scroll.add_child(box)
+	var close_debug := _button("DEBUGを閉じる", _toggle_debug)
+	close_debug.custom_minimum_size.y = 64
+	box.add_child(close_debug)
+	var row := HFlowContainer.new()
 	for entry: Dictionary in [
 		{"name": "PAIR", "roll": [3, 3, 5]},
 		{"name": "STRAIGHT", "roll": [2, 3, 4]},
@@ -2767,7 +2787,7 @@ func _build_debug_box() -> VBoxContainer:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(button)
 	box.add_child(row)
-	var boss_debug := HBoxContainer.new()
+	var boss_debug := HFlowContainer.new()
 	for entry: Dictionary in [
 		{"name": "次で遭遇", "action": func() -> void: GameState.debug_force_encounter = true},
 		{"name": "気配MAX", "action": func() -> void: GameState.boss_presence = 5},
@@ -2780,7 +2800,7 @@ func _build_debug_box() -> VBoxContainer:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		boss_debug.add_child(button)
 	box.add_child(boss_debug)
-	var gauge_debug := HBoxContainer.new()
+	var gauge_debug := HFlowContainer.new()
 	var gauge_input := LineEdit.new()
 	gauge_input.placeholder_text = "交流ゲージ 0〜100"
 	gauge_input.custom_minimum_size = Vector2(210, 42)
@@ -2791,7 +2811,7 @@ func _build_debug_box() -> VBoxContainer:
 	gauge_debug.add_child(gauge_input)
 	gauge_debug.add_child(gauge_apply)
 	box.add_child(gauge_debug)
-	var event_debug := HBoxContainer.new()
+	var event_debug := HFlowContainer.new()
 	var event_id_input := LineEdit.new()
 	event_id_input.placeholder_text = "CAI-E01"
 	event_id_input.custom_minimum_size = Vector2(150, 42)
@@ -2802,7 +2822,7 @@ func _build_debug_box() -> VBoxContainer:
 	for control: Control in [event_id_input, force_event, force_rare, clear_history]:
 		control.size_flags_horizontal = Control.SIZE_EXPAND_FILL; event_debug.add_child(control)
 	box.add_child(event_debug)
-	var event_debug_2 := HBoxContainer.new()
+	var event_debug_2 := HFlowContainer.new()
 	var extra_input := LineEdit.new(); extra_input.placeholder_text = "追加目 6,6,6"; extra_input.custom_minimum_size = Vector2(180, 42)
 	var extra_apply := _button("追加目固定", func() -> void:
 		GameState.debug_fixed_extra_rolls.clear()
@@ -2811,7 +2831,7 @@ func _build_debug_box() -> VBoxContainer:
 	var boss_toggle := _button("ボス接続ON/OFF", func() -> void: GameState.debug_boss_handoff_enabled = not GameState.debug_boss_handoff_enabled)
 	for control: Control in [extra_input, extra_apply, rare_unlock, boss_toggle]: control.size_flags_horizontal = Control.SIZE_EXPAND_FILL; event_debug_2.add_child(control)
 	box.add_child(event_debug_2)
-	var audio_debug := HBoxContainer.new()
+	var audio_debug := HFlowContainer.new()
 	for entry: Dictionary in [
 		{"name": "Launch SE", "category": "launch"}, {"name": "Roll SE", "category": "roll"},
 		{"name": "Contact SE", "category": "contact"}, {"name": "Land SE", "category": "land"},
@@ -2820,7 +2840,7 @@ func _build_debug_box() -> VBoxContainer:
 		var audio_button := _button(entry.name, func() -> void: _debug_play_dice_audio(entry.category))
 		audio_button.custom_minimum_size.y = 42; audio_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; audio_debug.add_child(audio_button)
 	box.add_child(audio_debug)
-	var fatigue_debug := HBoxContainer.new()
+	var fatigue_debug := HFlowContainer.new()
 	for count: int in [1, 3, 5]:
 		var fatigue_button := _button("%d Dice ×20" % count, func() -> void: _debug_audio_twenty(count))
 		fatigue_button.custom_minimum_size.y = 42; fatigue_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; fatigue_debug.add_child(fatigue_button)
@@ -2830,7 +2850,7 @@ func _build_debug_box() -> VBoxContainer:
 		if is_instance_valid(dice_audio): _show_message("Dice Audio", "Active voices: %d / Pool: %d" % [dice_audio.active_voice_count(), int(dice_audio.receipt().pool_size)]))
 	voices.custom_minimum_size.y = 42; voices.size_flags_horizontal = Control.SIZE_EXPAND_FILL; fatigue_debug.add_child(voices)
 	box.add_child(fatigue_debug)
-	var view_row := HBoxContainer.new()
+	var view_row := HFlowContainer.new()
 	var classic_view := _button("BOARD CLASSIC", func() -> void: _debug_set_board_view_mode("classic"))
 	var tourism_view := _button("BOARD TOURISM", func() -> void: _debug_set_board_view_mode("tourism"))
 	for control: Control in [classic_view, tourism_view]:
@@ -2838,7 +2858,7 @@ func _build_debug_box() -> VBoxContainer:
 		control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		view_row.add_child(control)
 	box.add_child(view_row)
-	var route_row := HBoxContainer.new()
+	var route_row := HFlowContainer.new()
 	for entry: Dictionary in [
 		{"name": "MAIN 90", "route": BoardModelScript.ROUTE_MAIN, "tile": 89},
 		{"name": "BYPASS IN", "route": BoardModelScript.ROUTE_BYPASS_CARAVAN, "tile": 0},
@@ -2848,7 +2868,7 @@ func _build_debug_box() -> VBoxContainer:
 		var route_button := _button(entry.name, func() -> void: _debug_set_route(str(entry.route), int(entry.tile)))
 		route_button.custom_minimum_size.y = 42; route_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; route_row.add_child(route_button)
 	box.add_child(route_row)
-	var secret_row := HBoxContainer.new()
+	var secret_row := HFlowContainer.new()
 	for entry: Dictionary in [
 		{"name": "SECRET NONE", "mode": "none"},
 		{"name": "SECRET HERE", "mode": "current"},
@@ -2857,13 +2877,13 @@ func _build_debug_box() -> VBoxContainer:
 		var secret_button := _button(entry.name, func() -> void: _debug_set_bypass_reveals(str(entry.mode)))
 		secret_button.custom_minimum_size.y = 42; secret_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; secret_row.add_child(secret_button)
 	box.add_child(secret_row)
-	var route_resume_row := HBoxContainer.new()
+	var route_resume_row := HFlowContainer.new()
 	var interrupt_route := _button("ROUTE中断保存", _debug_create_route_interruption)
 	var resume_route := _button("ROUTE復帰実行", func() -> void: call_deferred("_resume_roll_transaction"))
 	for control: Control in [interrupt_route, resume_route]:
 		control.custom_minimum_size.y = 42; control.size_flags_horizontal = Control.SIZE_EXPAND_FILL; route_resume_row.add_child(control)
 	box.add_child(route_resume_row)
-	return box
+	return overlay
 
 func _new_board_view(mode: String) -> BoardView:
 	var normalized := ReleasePolicyScript.preferred_board_view_mode(mode, _debug_policy_enabled())
