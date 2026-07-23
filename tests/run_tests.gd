@@ -170,13 +170,11 @@ func _init() -> void:
 	var tour_rects: Array[Rect2] = TourismMapViewScript.tile_rects(Vector2(360, 250))
 	var tour_rects_large: Array[Rect2] = TourismMapViewScript.tile_rects(Vector2(720, 390))
 	var tour_centers: Array[Vector2] = TourismMapViewScript.route_centers(Vector2(360, 250))
-	var distinct_y: Dictionary = {}
-	for center: Vector2 in tour_centers: distinct_y[roundi(center.y)] = true
 	_expect(tour_offsets.size() == 8 and tour_offsets.front() == -1 and tour_offsets.back() == 6, "tourism map keeps one history tile, current tile, and six forward targets")
 	_expect(tour_wrap == [88, 89, 0, 1, 2, 3, 4, 5], "tourism map wraps the eight-tile neighborhood")
 	_expect(TourismMapViewScript.rects_fit_without_overlap(tour_rects, Rect2(0, 0, 360, 250), 2.0), "tourism tiles fit 360x250 without overlap")
 	_expect(TourismMapViewScript.rects_fit_without_overlap(tour_rects_large, Rect2(0, 0, 720, 390), 2.0) and Rect2(0, 0, 360, 250).encloses(TourismMapViewScript.player_rect(Vector2(360, 250))) and Rect2(0, 0, 720, 390).encloses(TourismMapViewScript.player_rect(Vector2(720, 390))), "tourism tiles and enlarged player fit reference and runtime bounds")
-	_expect(tour_centers[3].x > 360.0 * 0.40 and tour_centers[3].x < 360.0 * 0.60 and tour_centers[3].y > 250.0 * 0.70 and distinct_y.size() >= 10, "tourism route keeps current lower-middle on a continuous non-grid path")
+	_expect(tour_centers[3].x >= 360.0 * 0.18 and tour_centers[3].x <= 360.0 * 0.22 and tour_centers[9].x >= 360.0 * 0.93 and tour_centers[9].x <= 360.0 * 0.97 and absf(tour_centers[3].y - tour_centers[9].y) < 4.0, "tourism route reads left-to-right with the player left-biased and six spaces ahead")
 	var travel_view: TourismMapView = TourismMapViewScript.new()
 	travel_view.set_current_tile(40)
 	var travel_started := travel_view.begin_straight_travel(40, 3)
@@ -195,7 +193,15 @@ func _init() -> void:
 	_expect(third_step and third_layout.player_center.is_equal_approx(TourismMapViewScript.route_center_for_offset(Vector2(360, 250), 3.0)) and int(travel_view.STRAIGHT_TRAVEL_MAX_STEPS) == 6, "straight travel keeps three calm player steps ahead of the camera")
 	_expect(half_follow and half_layout.player_center.is_equal_approx(TourismMapViewScript.route_center_for_offset(Vector2(360, 250), 1.5)) and is_equal_approx(TourismMapViewScript.calm_camera_ease(0.5), 0.5), "straight camera follow catches up monotonically without overshoot")
 	_expect(full_follow and full_layout.player_center.is_equal_approx(TourismMapViewScript.route_center_for_offset(Vector2(360, 250), 0.0)) and int(full_layout.forward_count) == 6, "settled straight camera restores the readable six-space horizon")
-	_expect(travel_finished and travel_view.current_tile == 43 and not bool(final_receipt.active) and int(final_receipt.start_tile) == 43 and int(final_receipt.visual_player_tile) == 43, "straight travel finishes at the canonical tile with no presentation residue")
+	_expect(travel_finished and travel_view.current_tile == 43 and not bool(final_receipt.active) and int(final_receipt.start_tile) == 43 and int(final_receipt.visual_player_tile) == 43 and int(final_receipt.completed_count) == 1, "straight travel finishes at the canonical tile with no presentation residue")
+	var supported_path: Array = [
+		{"route_id": BoardModelScript.ROUTE_MAIN, "tile_index": 41},
+		{"route_id": BoardModelScript.ROUTE_MAIN, "tile_index": 42},
+		{"route_id": BoardModelScript.ROUTE_MAIN, "tile_index": 43},
+	]
+	var unsupported_branch_path: Array = supported_path.duplicate(true)
+	unsupported_branch_path[2] = {"route_id": BoardModelScript.ROUTE_BYPASS_CARAVAN, "tile_index": 0}
+	_expect(TourismMapViewScript.straight_travel_path_is_supported(BoardModelScript.ROUTE_MAIN, 40, supported_path, 90) and not TourismMapViewScript.straight_travel_path_is_supported(BoardModelScript.ROUTE_MAIN, 40, unsupported_branch_path, 90), "straight travel accepts only consecutive non-branching mainline movement")
 	_expect(not travel_view.begin_straight_travel(89, 3), "straight travel leaves circular wrap movement on the legacy presentation")
 	travel_view.set_route_context(BoardModelScript.ROUTE_LOOP_ROYAL_MAZE, 8, [])
 	_expect(not travel_view.begin_straight_travel(0, 3), "straight travel leaves loop movement on the legacy presentation")

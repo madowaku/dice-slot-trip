@@ -1510,6 +1510,14 @@ func _animate_route_step_hop() -> void:
 		await get_tree().create_timer(0.026).timeout
 	board_view.set_movement_hop_progress(0.0)
 
+func _animate_straight_camera_follow(tourism_view: TourismMapView) -> void:
+	await get_tree().create_timer(0.16, false).timeout
+	for progress: float in [0.08, 0.18, 0.31, 0.46, 0.62, 0.77, 0.89, 0.96, 1.0]:
+		if not is_instance_valid(tourism_view):
+			return
+		tourism_view.set_straight_camera_follow_progress(progress)
+		await get_tree().create_timer(0.045, false).timeout
+
 func _animate_bypass_tile_reveal(tile_index: int) -> void:
 	if not is_instance_valid(board_view) or tile_index < 0:
 		return
@@ -1563,12 +1571,28 @@ func _continue_roll_transaction() -> void:
 		var movement_path: Array = transaction.get("movement_path", [])
 		if movement_path.is_empty() and distance > 0:
 			movement_path = BoardModelScript.advance_route(start_route, start_tile, distance).path
+		var straight_view: TourismMapView = board_view as TourismMapView
+		var straight_travel := is_instance_valid(straight_view) \
+			and destination_route == BoardModelScript.ROUTE_MAIN \
+			and crossed_laps == 0 \
+			and TourismMapViewScript.straight_travel_path_is_supported(start_route, start_tile, movement_path, BoardModelScript.route_tile_count(BoardModelScript.ROUTE_MAIN)) \
+			and straight_view.begin_straight_travel(start_tile, movement_path.size())
+		var straight_step := 0
 		for point: Variant in movement_path:
 			if not point is Dictionary:
 				continue
 			GameState.set_route_position(str((point as Dictionary).get("route_id", start_route)), int((point as Dictionary).get("tile_index", start_tile)))
-			_sync_board_route_context()
+			if straight_travel:
+				straight_step += 1
+				straight_view.set_straight_travel_player_step(straight_step)
+				if is_instance_valid(minimap_view):
+					minimap_view.set_current_tile(GameState.current_tile_index)
+			else:
+				_sync_board_route_context()
 			await _animate_route_step_hop()
+		if straight_travel:
+			await _animate_straight_camera_follow(straight_view)
+			straight_view.finish_straight_travel()
 		GameState.set_route_position(destination_route, destination)
 		_sync_board_route_context()
 		GameState.maze_loop_count += crossed_maze_loops
@@ -4347,7 +4371,8 @@ func _qa_roll_transaction() -> void:
 	var result_loaded := SaveManager.load_now()
 	show_game()
 	await _resume_roll_transaction()
-	checks.append(result_loaded and dice_values == [1] and GameState.current_tile_index == coin_tile and GameState.rolls_used == 1 and GameState.coins == 18 and GameState.roll_transaction.is_empty())
+	var result_travel_count := int((board_view as TourismMapView).straight_travel_receipt().get("completed_count", 0)) if board_view is TourismMapView else 0
+	checks.append(result_loaded and dice_values == [1] and GameState.current_tile_index == coin_tile and GameState.rolls_used == 1 and GameState.coins == 18 and GameState.roll_transaction.is_empty() and result_travel_count == 1)
 
 	GameState.reset_run()
 	GameState.current_tile_index = coin_tile

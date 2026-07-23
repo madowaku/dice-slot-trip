@@ -47,6 +47,7 @@ var straight_travel_start_tile := 0
 var straight_travel_distance := 0
 var straight_travel_player_step := 0
 var straight_camera_follow_progress := 0.0
+var straight_travel_completed_count := 0
 
 func _ready() -> void:
 	super._ready()
@@ -99,6 +100,22 @@ func begin_straight_travel(start_tile: int, distance: int) -> bool:
 	queue_redraw()
 	return true
 
+static func straight_travel_path_is_supported(start_route: String, start_tile: int, movement_path: Array, tile_count: int) -> bool:
+	if start_route != BoardModelScript.ROUTE_MAIN or movement_path.is_empty() or movement_path.size() > STRAIGHT_TRAVEL_MAX_STEPS:
+		return false
+	if start_tile < 0 or start_tile + movement_path.size() >= tile_count:
+		return false
+	for step_index: int in range(movement_path.size()):
+		var point: Variant = movement_path[step_index]
+		if not point is Dictionary:
+			return false
+		var route_point := point as Dictionary
+		if str(route_point.get("route_id", "")) != BoardModelScript.ROUTE_MAIN:
+			return false
+		if int(route_point.get("tile_index", -1)) != start_tile + step_index + 1:
+			return false
+	return true
+
 func set_straight_travel_player_step(step: int) -> bool:
 	if not straight_travel_active:
 		return false
@@ -125,6 +142,7 @@ func finish_straight_travel() -> bool:
 	straight_travel_distance = 0
 	straight_travel_player_step = 0
 	straight_camera_follow_progress = 0.0
+	straight_travel_completed_count += 1
 	set_current_tile(destination)
 	return true
 
@@ -149,6 +167,7 @@ func straight_travel_receipt() -> Dictionary:
 		"camera_progress": straight_camera_follow_progress,
 		"camera_offset": float(straight_travel_distance) * calm_camera_ease(straight_camera_follow_progress),
 		"visual_player_tile": _visual_player_tile(),
+		"completed_count": straight_travel_completed_count,
 	}
 
 func straight_travel_layout_receipt(view_size: Vector2) -> Dictionary:
@@ -209,7 +228,7 @@ static func tile_rects(view_size: Vector2) -> Array[Rect2]:
 		var offset := FIRST_OFFSET + slot
 		var center := route_center_for_offset(view_size, float(offset))
 		var diameter := tile_diameter_for_offset(float(offset))
-		var slot_size := Vector2.ONE * diameter * clampf(scale_factor, 0.78, 1.35)
+		var slot_size := Vector2.ONE * diameter * clampf(scale_factor, 0.78, 1.65)
 		result.append(Rect2(center - slot_size * 0.5, slot_size))
 	return result
 
@@ -222,25 +241,31 @@ static func route_center_for_offset(view_size: Vector2, offset: float) -> Vector
 
 static func tile_diameter_for_offset(offset: float) -> float:
 	if offset < 0.0:
-		return 34.0
+		return 38.0
 	if offset <= 1.0:
-		return lerpf(44.0, 42.0, offset)
+		return lerpf(43.0, 41.0, offset)
 	if offset <= 3.0:
-		return lerpf(42.0, 38.0, (offset - 1.0) / 2.0)
+		return lerpf(41.0, 39.0, (offset - 1.0) / 2.0)
 	if offset <= 4.0:
-		return lerpf(38.0, 34.0, offset - 3.0)
-	return lerpf(34.0, 30.0, clampf((offset - 4.0) / 2.0, 0.0, 1.0))
+		return lerpf(39.0, 37.0, offset - 3.0)
+	return lerpf(37.0, 34.0, clampf((offset - 4.0) / 2.0, 0.0, 1.0))
 
 static func route_centers(view_size: Vector2) -> Array[Vector2]:
-	# Three history points feed into a broad, non-grid caravan curve. Fifteen
-	# forward points remain separated at 360 px while filling the scenic field
-	# instead of shrinking into an unreadable vertical stack.
+	# Normal travel reads left-to-right. Index 3 is the canonical player
+	# position, leaving one readable space behind and six large spaces ahead.
+	# The tiny vertical drift keeps the route organic without obscuring travel
+	# direction or turning the path into a semicircle.
 	var normalized: Array[Vector2] = [
-		Vector2(0.125, 0.90), Vector2(0.25, 0.89), Vector2(0.375, 0.88), Vector2(0.50, 0.88),
-		Vector2(0.625, 0.88), Vector2(0.75, 0.88), Vector2(0.875, 0.86), Vector2(0.93, 0.70),
-		Vector2(0.935, 0.56), Vector2(0.93, 0.42), Vector2(0.875, 0.26), Vector2(0.833, 0.16),
-		Vector2(0.708, 0.128), Vector2(0.583, 0.12), Vector2(0.458, 0.128), Vector2(0.472, 0.28),
-		Vector2(0.486, 0.46), Vector2(0.306, 0.58), Vector2(0.153, 0.68),
+		Vector2(-0.17, 0.73),
+		Vector2(-0.045, 0.72),
+		Vector2(0.08, 0.715),
+		Vector2(0.20, 0.71),
+		Vector2(0.325, 0.705),
+		Vector2(0.45, 0.71),
+		Vector2(0.575, 0.715),
+		Vector2(0.70, 0.71),
+		Vector2(0.825, 0.705),
+		Vector2(0.95, 0.71),
 	]
 	var result: Array[Vector2] = []
 	for point: Vector2 in normalized:
@@ -288,7 +313,7 @@ static func player_rect(view_size: Vector2) -> Rect2:
 	return player_rect_for_tile(view_size, rects[-FIRST_OFFSET])
 
 static func player_rect_for_tile(view_size: Vector2, current_rect: Rect2) -> Rect2:
-	var player_size := Vector2(70.0, 94.0) * clampf(minf(view_size.x / 360.0, view_size.y / 250.0), 0.78, 1.15)
+	var player_size := Vector2(104.0, 116.0) * clampf(minf(view_size.x / 360.0, view_size.y / 250.0), 0.78, 1.30)
 	var player_center := current_rect.get_center() + Vector2(0.0, -current_rect.size.y * 0.35)
 	return Rect2(player_center - player_size * Vector2(0.5, 0.78), player_size)
 
@@ -316,7 +341,7 @@ static func aspect_fit_rect(source_size: Vector2, bounds: Rect2) -> Rect2:
 	return Rect2(bounds.get_center() - fitted_size * 0.5, fitted_size)
 
 static func map_dice_reserved_rect(view_size: Vector2) -> Rect2:
-	return Rect2(view_size * Vector2(0.22, 0.43), view_size * Vector2(0.56, 0.28))
+	return Rect2(view_size * Vector2(0.08, 0.12), view_size * Vector2(0.48, 0.42))
 
 static func map_dice_landing_rect(view_size: Vector2, active_dice_count: int = 1) -> Rect2:
 	# Prefer a quiet sand pocket around the route instead of assuming the same
@@ -336,7 +361,7 @@ static func map_dice_landing_rect(view_size: Vector2, active_dice_count: int = 1
 	var requested_size := Vector2(minf(310.0, view_size.x * width_factor), minf(178.0, view_size.y * height_factor))
 	var landing_size := Vector2(maxf(requested_size.x, footprint.size.x + padding.x * 2.0), maxf(requested_size.y, footprint.size.y + padding.y * 2.0))
 	landing_size = Vector2(minf(landing_size.x, view_size.x), minf(landing_size.y, view_size.y))
-	var preferred_center := Vector2(view_size.x * (0.20 if dice_count == 5 else 0.50), view_size.y * (0.26 if dice_count == 5 else 0.30))
+	var preferred_center := Vector2(view_size.x * (0.24 if dice_count == 5 else 0.38), view_size.y * 0.27)
 	var half_size := landing_size * 0.5
 	var best := Rect2()
 	var best_score := INF
@@ -362,10 +387,9 @@ static func map_dice_landing_rect(view_size: Vector2, active_dice_count: int = 1
 
 static func _map_dice_landing_rect_single(view_size: Vector2) -> Rect2:
 	var landing_size := Vector2(minf(128.0, view_size.x * 0.36), minf(96.0, view_size.y * 0.38))
-	# Score a coarse deterministic grid toward the lower-left sand pocket. This
-	# keeps the die away from the landmark illustration while still adapting to
-	# compact map cards and the curved route.
-	var preferred_center := Vector2(view_size.x * 0.18, view_size.y * 0.58)
+	# Keep the active die near the player and the next few spaces. It rolls in a
+	# small upper-left map pocket instead of occupying the narrow slot tray.
+	var preferred_center := Vector2(view_size.x * 0.31, view_size.y * 0.28)
 	var best := Rect2()
 	var best_score := INF
 	for y: int in range(5, maxi(int(view_size.y - landing_size.y), 6), 5):
@@ -423,14 +447,14 @@ static func market_prop_specs(view_size: Vector2, tile_index: int, landmark_leve
 		return []
 	var scale_factor := clampf(minf(view_size.x / 360.0, view_size.y / 250.0), 0.78, 1.25)
 	var specs: Array[Dictionary] = [
-		{"id": "wall_n", "rect": Rect2(Vector2(view_size.x * 0.15, view_size.y * 0.74), Vector2(30.0, 18.0) * scale_factor)},
-		{"id": "wall_s", "rect": Rect2(Vector2(view_size.x * 0.69, view_size.y * 0.72), Vector2(27.0, 18.0) * scale_factor)},
-		{"id": "rocks_n", "rect": Rect2(Vector2(10.0, view_size.y * 0.58), Vector2(28.0, 24.0) * scale_factor)},
-		{"id": "rocks_s", "rect": Rect2(Vector2(view_size.x * 0.79, view_size.y * 0.58), Vector2(30.0, 20.0) * scale_factor)},
+		{"id": "wall_n", "rect": Rect2(Vector2(view_size.x * 0.62, view_size.y * 0.38), Vector2(30.0, 18.0) * scale_factor)},
+		{"id": "wall_s", "rect": Rect2(Vector2(view_size.x * 0.78, view_size.y * 0.45), Vector2(27.0, 18.0) * scale_factor)},
+		{"id": "rocks_n", "rect": Rect2(Vector2(view_size.x * 0.70, view_size.y * 0.26), Vector2(28.0, 24.0) * scale_factor)},
+		{"id": "rocks_s", "rect": Rect2(Vector2(view_size.x * 0.87, view_size.y * 0.34), Vector2(30.0, 20.0) * scale_factor)},
 	]
 	if landmark_level >= 1:
-		specs.append({"id": "tree_n", "rect": Rect2(Vector2(view_size.x * 0.29, view_size.y * 0.30), Vector2(31.0, 30.0) * scale_factor)})
-		specs.append({"id": "tree_s", "rect": Rect2(Vector2(view_size.x * 0.56, view_size.y * 0.28), Vector2(30.0, 32.0) * scale_factor)})
+		specs.append({"id": "tree_n", "rect": Rect2(Vector2(view_size.x * 0.59, view_size.y * 0.20), Vector2(31.0, 30.0) * scale_factor)})
+		specs.append({"id": "tree_s", "rect": Rect2(Vector2(view_size.x * 0.82, view_size.y * 0.18), Vector2(30.0, 32.0) * scale_factor)})
 	return specs
 
 static func prop_specs_are_clear(specs: Array[Dictionary], view_size: Vector2) -> bool:
