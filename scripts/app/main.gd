@@ -1022,6 +1022,12 @@ func show_game() -> void:
 	mode_label.custom_minimum_size.x = 210
 	mode_label.add_theme_color_override("font_color", Color("#f1c86a"))
 	tray_header.add_child(mode_label)
+	if ReleasePolicyScript.debug_tools_enabled(_debug_policy_enabled()):
+		var debug_toggle := _button("DEBUG", _toggle_debug)
+		debug_toggle.name = "debug_toggle"
+		debug_toggle.theme_type_variation = UiThemeNamesScript.COMPACT_BUTTON
+		debug_toggle.custom_minimum_size = Vector2(104, 48)
+		tray_header.add_child(debug_toggle)
 	tray_box.add_child(tray_header)
 	dice_presentation = DicePresentation3DScript.new()
 	dice_presentation.name = "DicePresentation3D"
@@ -1064,20 +1070,9 @@ func show_game() -> void:
 	page.add_child(tray_panel)
 	rolls_label = _body("", UiTokensScript.FONT_CAPTION)
 	rolls_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	rolls_label.add_theme_color_override("font_color", MUTED)
+	rolls_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	rolls_label.custom_minimum_size.y = 56
 	page.add_child(rolls_label)
-	if ReleasePolicyScript.debug_tools_enabled(_debug_policy_enabled()):
-		var debug_toggle := _button("DEBUG", _toggle_debug)
-		debug_toggle.name = "debug_toggle"
-		debug_toggle.theme_type_variation = UiThemeNamesScript.COMPACT_BUTTON
-		debug_toggle.custom_minimum_size = Vector2(120, 64)
-		debug_toggle.z_index = 50
-		add_child(debug_toggle)
-		debug_toggle.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-		debug_toggle.offset_left = -136
-		debug_toggle.offset_top = -80
-		debug_toggle.offset_right = -16
-		debug_toggle.offset_bottom = -16
 	debug_box = null
 	if ReleasePolicyScript.debug_tools_enabled(_debug_policy_enabled()):
 		debug_box = _build_debug_box()
@@ -2487,7 +2482,7 @@ func _refresh_hud() -> void:
 	var route_status := "%dマス" % (GameState.current_tile_index + 1)
 	if GameState.current_route_id != BoardModelScript.ROUTE_MAIN:
 		route_status = "%s %d/%d" % [str(route_definition.name), GameState.current_tile_index + 1, int(route_definition.tile_count)]
-	rolls_label.text = "周回 %d　·　ターン %d/36　·　%s　·　次回 %dダイス" % [GameState.lap_count, GameState.rolls_used, route_status, clampi(GameState.current_dice_count, 1, 3)]
+	rolls_label.text = "周回%d　·　%d/36ターン　·　%s　·　次%dD" % [GameState.lap_count, GameState.rolls_used, route_status, clampi(GameState.current_dice_count, 1, 3)]
 	if is_instance_valid(landmark_level_label):
 		if GameState.current_route_id == BoardModelScript.ROUTE_LOOP_ROYAL_MAZE:
 			var gate_distance := posmod(int(route_definition.return_gate_tile) - GameState.current_tile_index, int(route_definition.tile_count))
