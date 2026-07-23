@@ -133,7 +133,7 @@ static func route_centers(view_size: Vector2) -> Array[Vector2]:
 	var normalized: Array[Vector2] = [
 		Vector2(0.125, 0.90), Vector2(0.25, 0.89), Vector2(0.375, 0.88), Vector2(0.50, 0.88),
 		Vector2(0.625, 0.88), Vector2(0.75, 0.88), Vector2(0.875, 0.86), Vector2(0.93, 0.70),
-		Vector2(0.935, 0.565), Vector2(0.93, 0.42), Vector2(0.875, 0.26), Vector2(0.833, 0.16),
+		Vector2(0.935, 0.56), Vector2(0.93, 0.42), Vector2(0.875, 0.26), Vector2(0.833, 0.16),
 		Vector2(0.708, 0.128), Vector2(0.583, 0.12), Vector2(0.458, 0.128), Vector2(0.472, 0.28),
 		Vector2(0.486, 0.46), Vector2(0.306, 0.58), Vector2(0.153, 0.68),
 	]
@@ -317,7 +317,7 @@ static func market_prop_specs(view_size: Vector2, tile_index: int, landmark_leve
 	var scale_factor := clampf(minf(view_size.x / 360.0, view_size.y / 250.0), 0.78, 1.25)
 	var specs: Array[Dictionary] = [
 		{"id": "wall_n", "rect": Rect2(Vector2(view_size.x * 0.15, view_size.y * 0.74), Vector2(30.0, 18.0) * scale_factor)},
-		{"id": "wall_s", "rect": Rect2(Vector2(view_size.x * 0.69, view_size.y * 0.72), Vector2(27.0, 24.0) * scale_factor)},
+		{"id": "wall_s", "rect": Rect2(Vector2(view_size.x * 0.69, view_size.y * 0.72), Vector2(27.0, 18.0) * scale_factor)},
 		{"id": "rocks_n", "rect": Rect2(Vector2(10.0, view_size.y * 0.58), Vector2(28.0, 24.0) * scale_factor)},
 		{"id": "rocks_s", "rect": Rect2(Vector2(view_size.x * 0.79, view_size.y * 0.58), Vector2(30.0, 20.0) * scale_factor)},
 	]
