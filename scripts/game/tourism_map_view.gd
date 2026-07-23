@@ -10,6 +10,9 @@ const DistrictFlowVisualScript = preload("res://scripts/game/tourism_district_fl
 const FIRST_OFFSET := -1
 const LAST_OFFSET := 6
 const SLOT_COUNT := 8
+const STRAIGHT_TRAVEL_MAX_STEPS := 6
+const CAMERA_FOLLOW_MIN_PROGRESS := 0.0
+const CAMERA_FOLLOW_MAX_PROGRESS := 1.0
 const DISTRICT_IDS: Array[StringName] = [&"MARKET", &"PYRAMID", &"OASIS", &"RUINS", &"DUNES"]
 const REACHABLE_SPECIAL_TYPES: Array[StringName] = [
 	&"EVENT", &"ITEM", &"COIN", &"WARP", &"SHOP", &"REST", &"LANDMARK",
@@ -39,6 +42,11 @@ var offscreen_destination_distance: int = 0
 var flow_visual_level: int = 0
 var flow_phase: float = 0.0
 var district_flow_visual: Control
+var straight_travel_active := false
+var straight_travel_start_tile := 0
+var straight_travel_distance := 0
+var straight_travel_player_step := 0
+var straight_camera_follow_progress := 0.0
 
 func _ready() -> void:
 	super._ready()
@@ -73,6 +81,93 @@ func set_current_tile(value: int) -> void:
 	_refresh_scenic()
 	_sync_district_flow_visual()
 	queue_redraw()
+
+func begin_straight_travel(start_tile: int, distance: int) -> bool:
+	if straight_travel_active or current_route_id != BoardModelScript.ROUTE_MAIN:
+		return false
+	var normalized_start := posmod(start_tile, current_route_tile_count)
+	var safe_distance := clampi(distance, 0, STRAIGHT_TRAVEL_MAX_STEPS)
+	# M1 deliberately excludes wrapping. Circular travel remains on the legacy
+	# presentation until its own milestone.
+	if safe_distance != distance or safe_distance <= 0 or normalized_start + safe_distance >= current_route_tile_count:
+		return false
+	straight_travel_active = true
+	straight_travel_start_tile = normalized_start
+	straight_travel_distance = safe_distance
+	straight_travel_player_step = 0
+	straight_camera_follow_progress = 0.0
+	queue_redraw()
+	return true
+
+func set_straight_travel_player_step(step: int) -> bool:
+	if not straight_travel_active:
+		return false
+	var next_step := clampi(step, 0, straight_travel_distance)
+	if next_step < straight_travel_player_step:
+		return false
+	straight_travel_player_step = next_step
+	queue_redraw()
+	return true
+
+func set_straight_camera_follow_progress(progress: float) -> bool:
+	if not straight_travel_active or straight_travel_player_step != straight_travel_distance:
+		return false
+	straight_camera_follow_progress = clampf(progress, CAMERA_FOLLOW_MIN_PROGRESS, CAMERA_FOLLOW_MAX_PROGRESS)
+	queue_redraw()
+	return true
+
+func finish_straight_travel() -> bool:
+	if not straight_travel_active or straight_travel_player_step != straight_travel_distance or straight_camera_follow_progress < 1.0:
+		return false
+	var destination := straight_travel_start_tile + straight_travel_distance
+	straight_travel_active = false
+	straight_travel_start_tile = destination
+	straight_travel_distance = 0
+	straight_travel_player_step = 0
+	straight_camera_follow_progress = 0.0
+	set_current_tile(destination)
+	return true
+
+func cancel_straight_travel() -> void:
+	straight_travel_active = false
+	straight_travel_start_tile = current_tile
+	straight_travel_distance = 0
+	straight_travel_player_step = 0
+	straight_camera_follow_progress = 0.0
+	queue_redraw()
+
+static func calm_camera_ease(progress: float) -> float:
+	var t := clampf(progress, 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
+
+func straight_travel_receipt() -> Dictionary:
+	return {
+		"active": straight_travel_active,
+		"start_tile": straight_travel_start_tile,
+		"distance": straight_travel_distance,
+		"player_step": straight_travel_player_step,
+		"camera_progress": straight_camera_follow_progress,
+		"camera_offset": float(straight_travel_distance) * calm_camera_ease(straight_camera_follow_progress),
+		"visual_player_tile": _visual_player_tile(),
+	}
+
+func straight_travel_layout_receipt(view_size: Vector2) -> Dictionary:
+	var entries := _presentation_entries(view_size)
+	var player_center := Vector2.ZERO
+	var forward_count := 0
+	for entry: Dictionary in entries:
+		var player_offset := int(entry.player_offset)
+		if player_offset == 0:
+			var entry_rect: Rect2 = entry.rect
+			player_center = entry_rect.get_center()
+		elif player_offset > 0 and player_offset <= LAST_OFFSET:
+			forward_count += 1
+	return {
+		"entry_count": entries.size(),
+		"player_center": player_center,
+		"forward_count": forward_count,
+		"entries": entries,
+	}
 
 func _sync_district_flow_visual() -> void:
 	if not is_instance_valid(district_flow_visual):
@@ -110,21 +205,31 @@ static func neighborhood_indices(tile_index: int) -> Array[int]:
 static func tile_rects(view_size: Vector2) -> Array[Rect2]:
 	var result: Array[Rect2] = []
 	var scale_factor: float = minf(view_size.x / 360.0, view_size.y / 250.0)
-	var centers := route_centers(view_size)
 	for slot: int in range(SLOT_COUNT):
 		var offset := FIRST_OFFSET + slot
-		var center_idx := offset + 3
-		var center := centers[clampi(center_idx, 0, centers.size() - 1)]
-		var diameter := 44.0
-		if offset < 0:
-			diameter = 34.0
-		elif offset <= 3:
-			diameter = lerpf(42.0, 38.0, float(offset - 1) / 2.0)
-		elif offset <= 6:
-			diameter = lerpf(34.0, 30.0, float(offset - 4) / 2.0)
+		var center := route_center_for_offset(view_size, float(offset))
+		var diameter := tile_diameter_for_offset(float(offset))
 		var slot_size := Vector2.ONE * diameter * clampf(scale_factor, 0.78, 1.35)
 		result.append(Rect2(center - slot_size * 0.5, slot_size))
 	return result
+
+static func route_center_for_offset(view_size: Vector2, offset: float) -> Vector2:
+	var centers := route_centers(view_size)
+	var sample := clampf(offset + 3.0, 0.0, float(centers.size() - 1))
+	var lower := floori(sample)
+	var upper := mini(lower + 1, centers.size() - 1)
+	return centers[lower].lerp(centers[upper], sample - float(lower))
+
+static func tile_diameter_for_offset(offset: float) -> float:
+	if offset < 0.0:
+		return 34.0
+	if offset <= 1.0:
+		return lerpf(44.0, 42.0, offset)
+	if offset <= 3.0:
+		return lerpf(42.0, 38.0, (offset - 1.0) / 2.0)
+	if offset <= 4.0:
+		return lerpf(38.0, 34.0, offset - 3.0)
+	return lerpf(34.0, 30.0, clampf((offset - 4.0) / 2.0, 0.0, 1.0))
 
 static func route_centers(view_size: Vector2) -> Array[Vector2]:
 	# Three history points feed into a broad, non-grid caravan curve. Fifteen
@@ -180,7 +285,9 @@ static func _sample_polyline(points: Array[Vector2], count: int) -> Array[Vector
 
 static func player_rect(view_size: Vector2) -> Rect2:
 	var rects := tile_rects(view_size)
-	var current_rect: Rect2 = rects[-FIRST_OFFSET]
+	return player_rect_for_tile(view_size, rects[-FIRST_OFFSET])
+
+static func player_rect_for_tile(view_size: Vector2, current_rect: Rect2) -> Rect2:
 	var player_size := Vector2(70.0, 94.0) * clampf(minf(view_size.x / 360.0, view_size.y / 250.0), 0.78, 1.15)
 	var player_center := current_rect.get_center() + Vector2(0.0, -current_rect.size.y * 0.35)
 	return Rect2(player_center - player_size * Vector2(0.5, 0.78), player_size)
@@ -358,6 +465,42 @@ func clear_destination_highlight() -> void:
 	offscreen_destination_distance = 0
 	queue_redraw()
 
+func _visual_player_tile() -> int:
+	if straight_travel_active:
+		return straight_travel_start_tile + straight_travel_player_step
+	return current_tile
+
+func _presentation_entries(view_size: Vector2) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not straight_travel_active:
+		var rects := tile_rects(view_size)
+		var indices := neighborhood_indices(current_tile)
+		for slot: int in range(SLOT_COUNT):
+			var offset := FIRST_OFFSET + slot
+			result.append({
+				"tile_index": indices[slot],
+				"rect": rects[slot],
+				"player_offset": offset,
+				"route_offset": float(offset),
+			})
+		return result
+	var camera_offset := float(straight_travel_distance) * calm_camera_ease(straight_camera_follow_progress)
+	var scale_factor := clampf(minf(view_size.x / 360.0, view_size.y / 250.0), 0.78, 1.35)
+	for travel_offset: int in range(FIRST_OFFSET, straight_travel_distance + LAST_OFFSET + 1):
+		var route_offset := float(travel_offset) - camera_offset
+		if route_offset < float(FIRST_OFFSET) - 0.55 or route_offset > float(LAST_OFFSET) + 0.55:
+			continue
+		var center := route_center_for_offset(view_size, route_offset)
+		var diameter := tile_diameter_for_offset(route_offset)
+		var slot_size := Vector2.ONE * diameter * scale_factor
+		result.append({
+			"tile_index": straight_travel_start_tile + travel_offset,
+			"rect": Rect2(center - slot_size * 0.5, slot_size),
+			"player_offset": travel_offset - straight_travel_player_step,
+			"route_offset": route_offset,
+		})
+	return result
+
 func _draw() -> void:
 	var route_type := str(BoardModelScript.route_definition(current_route_id).get("type", "main"))
 	if is_minimap or route_type in ["bypass", "loop"]:
@@ -374,9 +517,10 @@ func _draw_tourism_map() -> void:
 		draw_texture_rect(scenic_texture, scenic_rect, false, Color(1.0, 0.97, 0.88, 0.66))
 	_draw_market_props()
 	_draw_flow_map_effects()
+	var visual_player_tile := _visual_player_tile()
 	var district_names := ["市場", "ピラミッド", "オアシス", "遺跡", "砂丘"]
-	draw_string(TOURISM_FONT, Vector2(18, 35), "%s地区　観光ルート" % district_names[clampi(current_tile / 18, 0, 4)], HORIZONTAL_ALIGNMENT_LEFT, -1, UiTokensScript.FONT_MAP_HEADING, INK)
-	draw_string(TOURISM_FONT, Vector2(size.x - 145, 35), "%02d / 90" % (current_tile + 1), HORIZONTAL_ALIGNMENT_RIGHT, 126, UiTokensScript.FONT_MAP_CAPTION, Color("#795d3f"))
+	draw_string(TOURISM_FONT, Vector2(18, 35), "%s地区　観光ルート" % district_names[clampi(visual_player_tile / 18, 0, 4)], HORIZONTAL_ALIGNMENT_LEFT, -1, UiTokensScript.FONT_MAP_HEADING, INK)
+	draw_string(TOURISM_FONT, Vector2(size.x - 145, 35), "%02d / 90" % (visual_player_tile + 1), HORIZONTAL_ALIGNMENT_RIGHT, 126, UiTokensScript.FONT_MAP_CAPTION, Color("#795d3f"))
 	if scenic_level >= 0:
 		draw_string(TOURISM_FONT, Vector2(18, 65), "香辛料市場通り  Lv.%d" % scenic_level, HORIZONTAL_ALIGNMENT_LEFT, 260, UiTokensScript.FONT_MAP_CAPTION, Color("#704828"))
 	if offscreen_destination_distance > 0:
@@ -384,8 +528,12 @@ func _draw_tourism_map() -> void:
 		draw_style_box(_destination_indicator_style(), indicator)
 		draw_string(TOURISM_FONT, indicator.position + Vector2(8.0, 28.0), "着地点 %dマス先  →" % offscreen_destination_distance, HORIZONTAL_ALIGNMENT_CENTER, indicator.size.x - 16.0, UiTokensScript.FONT_MAP_CAPTION, Color("#fff4dc"))
 
-	var rects := tile_rects(size)
-	var indices := neighborhood_indices(current_tile)
+	var entries := _presentation_entries(size)
+	var rects: Array[Rect2] = []
+	var indices: Array[int] = []
+	for entry: Dictionary in entries:
+		rects.append(entry.rect)
+		indices.append(int(entry.tile_index))
 	var smooth_route := smooth_route_points(size)
 	draw_polyline(smooth_route, Color(0.27, 0.17, 0.09, 0.34), 12.0, true)
 	draw_polyline(smooth_route, Color("#d8bb83"), 7.0, true)
@@ -396,18 +544,20 @@ func _draw_tourism_map() -> void:
 		var branch_entry_tile := int(BoardModelScript.route_definition(BoardModelScript.ROUTE_BYPASS_CARAVAN).get("entry_tile", -1))
 		branch_slot = indices.find(branch_entry_tile)
 
-	for direction_offset: int in [1, 5]:
-		var from_slot := direction_offset - 1 - FIRST_OFFSET
-		var to_slot := direction_offset - FIRST_OFFSET
-		if from_slot < rects.size() and to_slot < rects.size():
-			_draw_direction_chevron(rects[from_slot].get_center().lerp(rects[to_slot].get_center(), 0.55), rects[to_slot].get_center() - rects[from_slot].get_center(), Color(0.44, 0.25, 0.12, 0.56), 5.0)
+	if not straight_travel_active:
+		for direction_offset: int in [1, 5]:
+			var from_slot := direction_offset - 1 - FIRST_OFFSET
+			var to_slot := direction_offset - FIRST_OFFSET
+			if from_slot < rects.size() and to_slot < rects.size():
+				_draw_direction_chevron(rects[from_slot].get_center().lerp(rects[to_slot].get_center(), 0.55), rects[to_slot].get_center() - rects[from_slot].get_center(), Color(0.44, 0.25, 0.12, 0.56), 5.0)
 
 	var scale_factor: float = minf(size.x / 360.0, size.y / 250.0)
 
-	for slot: int in range(SLOT_COUNT):
-		var offset: int = FIRST_OFFSET + slot
+	for slot: int in range(entries.size()):
+		var offset := int(entries[slot].player_offset)
 		var tile_index: int = indices[slot]
 		var rect: Rect2 = rects[slot]
+		var is_visual_current := offset == 0
 		
 		# 分岐表示の判定
 		var is_branch_split := branch_slot != -1 and slot > branch_slot
@@ -453,19 +603,19 @@ func _draw_tourism_map() -> void:
 			var t_is_bypass: bool = r_data.is_bypass
 			var t_center := t_rect.get_center()
 			var t_radius := t_rect.size.x * 0.5
-			var reachable := is_offset_reachable(offset, dice_count, t_type)
+			var reachable := not straight_travel_active and is_offset_reachable(offset, dice_count, t_type)
 			
 			var fill := Color(TILE_COLORS.get(t_type, SAND))
 			if t_type == &"NORMAL": fill = Color("#d9bd87")
 			if t_type == &"RISK": fill = Color("#b84f3f")
 			if t_type == &"LANDMARK": fill = Color("#d4a446")
-			if offset == 0 and not t_is_bypass: fill = Color("#2f8588")
+			if is_visual_current and not t_is_bypass: fill = Color("#2f8588")
 			
-			var ring := Color("#f1c86a") if (offset == 0 and not t_is_bypass) else (Color("#287b80") if reachable else Color("#755432"))
+			var ring := Color("#f1c86a") if (is_visual_current and not t_is_bypass) else (Color("#287b80") if reachable else Color("#755432"))
 			
 			# 外形を描画
 			var draw_by_stylebox := true
-			var border_w := 4.0 if (offset == 0 and not t_is_bypass) else (3.0 if reachable else 1.5)
+			var border_w := 4.0 if (is_visual_current and not t_is_bypass) else (3.0 if reachable else 1.5)
 			
 			if t_type in [&"RISK", &"STRONG_RISK"]:
 				draw_by_stylebox = false
@@ -515,9 +665,9 @@ func _draw_tourism_map() -> void:
 						outer_style.set_corner_radius_all(t_radius)
 				draw_style_box(outer_style, Rect2(t_center - Vector2(t_radius, t_radius), t_rect.size))
 			
-			var text_color := Color("#fff4dc") if (offset == 0 and not t_is_bypass) or t_type in [&"RISK", &"STRONG_RISK", &"REST", &"BOSS", &"BOSS_SCENT"] else INK
+			var text_color := Color("#fff4dc") if (is_visual_current and not t_is_bypass) or t_type in [&"RISK", &"STRONG_RISK", &"REST", &"BOSS", &"BOSS_SCENT"] else INK
 			
-			if offset == 0 and not t_is_bypass:
+			if is_visual_current and not t_is_bypass:
 				# 現在地は絶対番号
 				draw_string(TOURISM_FONT, t_rect.position + Vector2(0, t_rect.size.y * 0.65), "%02d" % (t_idx + 1), HORIZONTAL_ALIGNMENT_CENTER, t_rect.size.x, UiTokensScript.FONT_MAP_HEADING, text_color)
 			else:
@@ -538,8 +688,14 @@ func _draw_tourism_map() -> void:
 				draw_arc(t_center, t_radius + 5.0, 0, TAU, 28, Color("#fff0a8"), 5.0, true)
 				draw_string(TOURISM_FONT, t_rect.position + Vector2(-8.0, -7.0), "+%d" % highlighted_destination_value, HORIZONTAL_ALIGNMENT_CENTER, t_rect.size.x + 16.0, UiTokensScript.FONT_MAP_CAPTION, Color("#704828"))
 
-	var current_rect: Rect2 = rects[-FIRST_OFFSET]
-	var token_rect := player_rect(size)
+	var current_rect := Rect2()
+	for entry: Dictionary in entries:
+		if int(entry.player_offset) == 0:
+			current_rect = entry.rect
+			break
+	if not current_rect.has_area():
+		current_rect = tile_rects(size)[-FIRST_OFFSET]
+	var token_rect := player_rect_for_tile(size, current_rect)
 	token_rect.position.y += movement_hop_offset_y
 	var shadow_radius := current_rect.size.x * 0.42
 	if movement_hop_offset_y > 0.0:

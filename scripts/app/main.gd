@@ -301,6 +301,8 @@ func _ready() -> void:
 		call_deferred("_qa_tourmap_capture", OS.get_environment("DICE_QA_CAPTURE_TOURMAP"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE") != "":
 		call_deferred("_qa_tourmap_die_capture", OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_CAPTURE_STRAIGHT_TRAVEL") != "":
+		call_deferred("_qa_straight_travel_capture", OS.get_environment("DICE_QA_CAPTURE_STRAIGHT_TRAVEL"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif not GameState.active_event_state.is_empty():
 		call_deferred("_resume_active_event")
 	elif GameState.pending_boss_handoff:
@@ -309,7 +311,7 @@ func _ready() -> void:
 		call_deferred("_resume_roll_transaction")
 	elif OS.get_environment("DICE_QA_CAPTURE_M3") != "":
 		call_deferred("_qa_m3_capture", OS.get_environment("DICE_QA_CAPTURE_M3"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
-	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CLEAN").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET").is_empty() and OS.get_environment("DICE_QA_CAPTURE_POPUP_BOOK").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
+	if OS.get_environment("DICE_QA_CAPTURE_M3").is_empty() and OS.get_environment("DICE_QA_CAPTURE_M4A").is_empty() and OS.get_environment("DICE_QA_CAPTURE_DICE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PROGRESSION").is_empty() and OS.get_environment("DICE_QA_CAPTURE_PREMIUM_BOARD").is_empty() and OS.get_environment("DICE_QA_CAPTURE_LAP_LANDMARK").is_empty() and OS.get_environment("DICE_QA_CAPTURE_SPICE_SCENIC").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CLEAN").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP").is_empty() and OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE").is_empty() and OS.get_environment("DICE_QA_CAPTURE_STRAIGHT_TRAVEL").is_empty() and OS.get_environment("DICE_QA_CAPTURE_CARAVAN_SECRET").is_empty() and OS.get_environment("DICE_QA_CAPTURE_POPUP_BOOK").is_empty() and not OS.get_environment("DICE_QA_CAPTURE_PATH").is_empty():
 		call_deferred("_qa_capture_viewport", OS.get_environment("DICE_QA_CAPTURE_PATH"))
 
 func _apply_theme() -> void:
@@ -4151,6 +4153,37 @@ func _qa_tourmap_die_capture(kind: String, path: String) -> void:
 		await get_tree().create_timer(0.12).timeout
 	var capture_valid := result == OK and _capture_has_full_ui(path)
 	print("QA_TOURMAP_DIE_CAPTURE kind=%s phase=%s receipt=%s attempts=%d valid=%s path=%s result=%s" % [kind, MapDiceOverlay.Phase.keys()[map_dice_overlay.phase], map_dice_overlay.receipt(), capture_attempts, capture_valid, path, result])
+	get_tree().quit(0 if capture_valid else 1)
+
+func _qa_straight_travel_capture(kind: String, path: String) -> void:
+	GameState.reset_run()
+	GameState.current_dice_count = 1
+	GameState.current_tile_index = 40
+	show_game()
+	_set_board_view_mode("tourism")
+	for ignored: int in range(12):
+		await get_tree().process_frame
+	var tourism_view := board_view as TourismMapView
+	var state_ok := is_instance_valid(tourism_view) and tourism_view.begin_straight_travel(40, 3)
+	if state_ok:
+		match kind:
+			"start":
+				pass
+			"step1":
+				state_ok = tourism_view.set_straight_travel_player_step(1)
+			"step3":
+				state_ok = tourism_view.set_straight_travel_player_step(3)
+			"settled":
+				state_ok = tourism_view.set_straight_travel_player_step(3)
+				state_ok = state_ok and tourism_view.set_straight_camera_follow_progress(1.0)
+				state_ok = state_ok and tourism_view.finish_straight_travel()
+			_:
+				state_ok = false
+	for ignored: int in range(8):
+		await get_tree().process_frame
+	var result := _save_opaque_capture(path) if state_ok else ERR_INVALID_PARAMETER
+	var capture_valid := result == OK and _capture_has_full_ui(path)
+	print("QA_STRAIGHT_TRAVEL_CAPTURE kind=%s state=%s receipt=%s valid=%s path=%s result=%s" % [kind, state_ok, tourism_view.straight_travel_receipt() if is_instance_valid(tourism_view) else {}, capture_valid, path, result])
 	get_tree().quit(0 if capture_valid else 1)
 
 func _capture_has_full_ui(path: String) -> bool:
