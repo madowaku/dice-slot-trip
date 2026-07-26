@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-18T20:05:36.3311353+09:00",
+  "workspace_root": "C:\\Dev\\Projects\\dice-slot-trip",
+  "candidate_count": 1,
+  "generator": {
+    "pathway": "OpenAI built-in image_gen",
+    "mode": "generate",
+    "model": "tool-managed; model identifier not exposed",
+    "generation_call_count": 1,
+    "native_transparency_requested": false,
+    "cli_fallback_used": false,
+    "reference_images_passed_to_model": []
+  },
+  "prompt": {
+    "relative_path": "art_source/v06/explorer_cat_seed/prompt-used.txt",
+    "absolute_path": "C:\\Dev\\Projects\\dice-slot-trip\\art_source\\v06\\explorer_cat_seed\\prompt-used.txt",
+    "sha256": "e2ca6ecbe4639c7f0938027f1a46c8562f90ae34507f23336e24d8662981b27e"
+  },
+  "reference_inputs": [
+    {
+      "relative_path": "docs/design/v06/d-selected-atlas-living-map.png",
+      "absolute_path": "C:\\Dev\\Projects\\dice-slot-trip\\docs\\design\\v06\\d-selected-atlas-living-map.png",
+      "role": "human-inspected style, silhouette, direction and palette reference; not an edit target and not passed to the generator",
+      "sha256": "7ec23ee3a1d2dcd74031b291a1a0faebde65c9c541252fcee1cdb867d0274075"
+    },
+    {
+      "relative_path": "docs/design/v06/selected-direction-implementation.md",
+      "absolute_path": "C:\\Dev\\Projects\\dice-slot-trip\\docs\\design\\v06\\selected-direction-implementation.md",
+      "role": "implementation and asset-separation guardrail; not passed to the generator",
+      "sha256": "09914461c336a58bb729dce96cfac1d65085ac949d38b2fad02628919b7afa12"
+    },
+    {
+      "relative_path": "docs/goals/dice-slot-trip-v06-productization/notes/T014-boss-lap-asset-contract.md",
+      "absolute_path": "C:\\Dev\\Projects\\dice-slot-trip\\docs\\goals\\dice-slot-trip-v06-productization\\notes\\T014-boss-lap-asset-contract.md",
+      "role": "authoritative seed dimensions, anchor, identity and approval contract; not passed to the generator",
+      "sha256": "c924f26f077b7ce53ef3723afbfd61013a718b2e53191d19d05b9445a3a0615a"
+    },
+    {
+      "relative_path": null,
+      "absolute_path": "C:\\tmp\\dice-v06-atlas18-native-720.png",
+      "role": "preview compositing target only; not passed to the generator",
+      "sha256": "be6c9bb3d3d78e59eaaaf9ab39d30d41e805cc82a2fb518332821dece574611f"
+    }
+  ],
+  "artifacts": [
+    {
+      "relative_path": "art_source/v06/explorer_cat_seed/explorer-cat-generated-raw.png",
+      "role": "immutable copied built-in generation output",
+      "sha256": "d6a4d5f6501eba41318c9e9e9c6e81fdc76861f05ac08b51bf2cd1386daf40d4"
+    },
+    {
+      "relative_path": "art_source/v06/explorer_cat_seed/explorer-cat-matte.png",
+      "role": "soft-matte and despilled intermediate",
+      "sha256": "2ee4c85adbf5d4a1bceb24de20e72490dab81c5e501922b573d64999a0664d96"
+    },
+    {
+      "relative_path": "art_source/v06/explorer_cat_seed/explorer-cat-seed-192.png",
+      "role": "single owner-review candidate; not a runtime asset",
+      "sha256": "eccf84a8ca380f2c1ad662868abdce664ad866e6072a0d67b5e00173e63cb1cd"
+    },
+    {
+      "relative_path": "art_source/v06/explorer_cat_seed/explorer-cat-preview-720.png",
+      "role": "single native in-context preview",
+      "sha256": "4f7fb0e00a22e4d135c4510a0487a455e3c090eb2ed6eeb29082a46fd54e450b"
+    },
+    {
+      "relative_path": "art_source/v06/explorer_cat_seed/explorer-cat-preview-360.png",
+      "role": "Lanczos half-scale derivative of the native preview",
+      "sha256": "492e7a63c6e46df985ac036a74b6e8998743560361c51fbea015a6dc333afa0d"
+    }
+  ],
+  "external_generator_output": "C:\\Users\\hiro\\.codex\\generated_images\\019f74da-ff17-7070-9176-341792715516\\exec-2e482e3e-4324-4cda-8d81-da593a76b009.png",
+  "approval_state": "candidate only; explicit owner approval of candidate path and SHA-256 is required before animation-strip generation"
+}

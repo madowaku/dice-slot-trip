@@ -1,0 +1,12 @@
+Use case: stylized-concept
+Asset type: production tileable game texture for a mobile 2D travel map
+Input images: Image 1 is a STYLE AND PALETTE REFERENCE ONLY. Do not copy its composition, map, route, UI, text, objects, cat, die, gate, landmarks, or topology.
+Primary request: create one square warm parchment surface, a subtle low-stimulation travel-journal paper texture suitable as a daylight map base.
+Scene/backdrop: edge-to-edge flat parchment material only.
+Style/medium: soft storybook gouache and printed travel-journal paper, restrained painterly grain, production texture rather than concept art.
+Composition/framing: orthographic, uniform detail density, no focal point, visually edge-safe and seamless/tile-friendly.
+Lighting/mood: diffuse neutral daylight only, no vignette, no directional cast light, no night lighting, no gold glow.
+Color palette: warm sand, oat, muted cream, very subtle desaturated tan fibers.
+Materials/textures: fine paper tooth, faint fibers and age variation, extremely subtle mottling; avoid strong cracks or stains.
+Constraints: opaque square texture; no border; no map ink; no cartography; no route; no nodes; no numbers; no letters; no labels; no UI; no landmarks; no compass; no character; no animal; no die; no gate; no watermark; no signature.
+Avoid: high contrast, dark corners, obvious repeating motif, dramatic lighting, heavy grunge, torn edges, folds.

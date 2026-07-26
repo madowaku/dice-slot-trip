@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "asset_id": "dark-walnut-leather",
+  "runtime_path": "assets/art/v07/ui/dark-walnut-leather.png",
+  "source_path": "docs/design/v07/art-source/dark-walnut-leather-imagegen-source.png",
+  "generation": {
+    "provider": "OpenAI built-in ImageGen",
+    "model": "built-in ImageGen (model identifier not exposed)",
+    "generated_on": "2026-07-19",
+    "original_output_path": "C:/Users/hiro/.codex/generated_images/019f7302-171d-7e83-b62c-7e7b91d5009a/exec-5b964b21-76d2-40f6-80c9-7079594abd40.png",
+    "prompt": "Use case: ui-mockup\nAsset type: seamless material texture for a premium mobile game UI\nPrimary request: Create a square, perfectly tileable dark warm brown explorer satchel leather texture for Dice Slot Trip. Fine natural grain, softly worn but clean, subtle tonal variation, premium handcrafted field-instrument feeling.\nComposition: uniform edge-to-edge material, no objects, no frame, no border, no seams, no stitching, no corners, no directional lighting hotspot.\nColor palette: very dark warm walnut and oxblood brown, low saturation, compatible with parchment, teal enamel and restrained antique brass.\nLighting/mood: diffuse even studio illumination baked into the material, low contrast so UI text remains readable over panels.\nTarget: 1024 x 1024 square texture, visually seamless on all four edges.\nConstraints: texture only, no text, no symbols, no logo, no watermark, no buttons, no metal, no parchment, no cast shadows."
+  },
+  "source": {
+    "sha256": "b3e725a7407d37378fd485a8094ee98f93e1d2574e98adcb89478138f2ae2add",
+    "bytes": 2963195,
+    "width": 1254,
+    "height": 1254,
+    "mode": "RGB"
+  },
+  "runtime": {
+    "sha256": "b3e725a7407d37378fd485a8094ee98f93e1d2574e98adcb89478138f2ae2add",
+    "bytes": 2963195,
+    "width": 1254,
+    "height": 1254,
+    "mode": "RGB"
+  },
+  "normalization": {
+    "method": "exact-byte-copy",
+    "resized": false,
+    "cropped": false,
+    "recompressed": false,
+    "color_converted": false
+  },
+  "usage": {
+    "role": "low-contrast outer-field material behind opaque UI panels",
+    "runtime_sampling": "cover; not repeated as a tile",
+    "license": "project-owned AI-generated asset",
+    "semantic_review": {
+      "no_text": true,
+      "no_logo": true,
+      "no_symbols": true,
+      "no_watermark": true
+    }
+  },
+  "edge_evidence": {
+    "method": "mean absolute RGB difference between opposite one-pixel edges",
+    "left_right_mean_rgb": [8.3668261563, 6.2998405104, 4.6698564593],
+    "top_bottom_mean_rgb": [9.0693779904, 6.3437001595, 4.7663476874],
+    "max_allowed_channel_mean": 12.0,
+    "note": "Low-seam evidence only. Runtime uses cover sampling, so mathematical tiling is not required or claimed."
+  }
+}

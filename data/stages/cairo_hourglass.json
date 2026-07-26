@@ -1,0 +1,25 @@
+{
+  "id": "cairo_hourglass",
+  "name": "砂時計のカイロ",
+  "mood": "遠い風と、砂に埋もれた小さな発見",
+  "tile_count": 90,
+  "boss_name": "眠そうなスフィンクス",
+  "tile_distribution": {
+    "NORMAL": 50,
+    "EVENT": 14,
+    "ITEM": 8,
+    "COIN": 8,
+    "WARP": 3,
+    "SHOP": 2,
+    "REST": 2,
+    "LANDMARK": 3
+  },
+  "role_effects": {
+    "PAIR": "おみやげ抽選 +1",
+    "STRAIGHT": "名所への追い風 +3マス",
+    "TRIPLE": "ボスの気配が最大になる",
+    "ALL ODD": "次の交流が少し深まる",
+    "ALL EVEN": "小さな安定ボーナス +3コイン"
+  }
+}
+

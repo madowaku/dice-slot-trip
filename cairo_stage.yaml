@@ -1,0 +1,1136 @@
+schema_version: 1
+stage_id: cairo_hourglass
+display_name: 砂時計のカイロ
+source_spec_version: v0.8
+engine_target: Godot 4.7
+viewport:
+  width: 720
+  height: 1280
+  orientation: portrait
+estimated_play_time_sec:
+  min: 480
+  max: 600
+mainline_length: 58
+start_node: main_01
+boss_node: main_58
+inventory:
+  capacity: 3
+  duplicate_policy: disallow
+  overflow_policy: prompt_replace_or_convert
+  overflow_coin_value: 2
+timer_policy:
+  pause_during_map_overlay: true
+  pause_during_route_choice: true
+  pause_during_event_choice: true
+  pause_during_item_replace_prompt: true
+  pause_during_boss_intro: true
+movement:
+  dice_min: 1
+  dice_max: 6
+  preview_forward_nodes: 6
+  branch_decision_mode: when_reached_during_move
+  continue_remaining_pips_after_branch_choice: true
+  loop_exit_requires_exact_landing: true
+  loop_overshoot_mode: wrap
+zones:
+- id: market
+  display_name: 市場地区
+  mainline_range:
+  - 1
+  - 14
+  scenic_key: cairo_market_day
+- id: nile
+  display_name: ナイル河岸
+  mainline_range:
+  - 15
+  - 28
+  scenic_key: cairo_nile_day
+- id: desert
+  display_name: 砂漠街道
+  mainline_range:
+  - 29
+  - 44
+  scenic_key: cairo_desert_day
+- id: necropolis
+  display_name: 墓都と黄金門
+  mainline_range:
+  - 45
+  - 58
+  scenic_key: cairo_necropolis_day
+tile_types:
+  NORMAL:
+    visual_key: tile_normal
+    priority: 0
+  COIN:
+    visual_key: tile_coin
+    priority: 3
+  REST:
+    visual_key: tile_rest
+    priority: 4
+  RISK:
+    visual_key: tile_risk
+    priority: 5
+  ITEM:
+    visual_key: tile_item
+    priority: 3
+  EVENT:
+    visual_key: tile_event
+    priority: 2
+  BRANCH:
+    visual_key: tile_branch
+    priority: 4
+  WARP:
+    visual_key: tile_warp
+    priority: 4
+  EXIT:
+    visual_key: tile_exit
+    priority: 5
+  BOSS:
+    visual_key: tile_boss
+    priority: 6
+items:
+  water_canteen:
+    display_name: 水筒
+    kind: consumable_auto
+    effect:
+      trigger: before_risk_hp_damage
+      cancel_hp_damage: 1
+    consume_on_trigger: true
+  compass:
+    display_name: 方位磁針
+    kind: consumable_manual
+    use_window: after_roll_before_move
+    effect:
+      modify_roll_choice:
+      - -1
+      - 1
+      clamp:
+      - 1
+      - 6
+  sand_goggles:
+    display_name: 砂よけゴーグル
+    kind: passive_stage
+    effect:
+      immunity_tags:
+      - sandstorm
+      - sand_inertia
+  scarab_seal:
+    display_name: スカラベ印章
+    kind: consumable_manual
+    use_window: after_slot_resolve
+    effect:
+      carry_one_slot_value_to_next_set: true
+  linen_bandage:
+    display_name: リネン包帯
+    kind: consumable_manual
+    use_window: map_or_preboss
+    effect:
+      heal_hp: 1
+      grant_boss_shield: 1
+  hourglass_shard:
+    display_name: 砂時計の欠片
+    kind: consumable_manual
+    use_window: before_roll
+    effect:
+      roll_speed_multiplier: 0.65
+      inertia_multiplier: 0.65
+      duration_rolls: 1
+  merchant_charm:
+    display_name: 商人の護符
+    kind: consumable_auto
+    effect:
+      trigger: next_item_pickup
+      upgrade_item_effect: 1
+    consume_on_trigger: true
+  brake_token:
+    display_name: ブレーキ札
+    kind: consumable_manual
+    use_window: after_roll_before_move
+    effect:
+      modify_roll_choice:
+      - -1
+      clamp:
+      - 1
+      - 6
+  hourglass_dust:
+    display_name: 砂時計の粉
+    kind: consumable_manual
+    use_window: before_roll
+    effect:
+      roll_speed_multiplier: 0.8
+      duration_rolls: 2
+  golden_scarab:
+    display_name: 黄金スカラベ
+    kind: boss_resource
+    effect:
+      boss_attack_bonus: 1
+      charges: 1
+events:
+  market_hawker:
+    display_name: 市場の呼び込み
+    choices:
+    - id: coins_now
+      label: コインを3枚もらう
+      effects:
+      - add_coins: 3
+    - id: double_next_coin
+      label: 次のCOINマスを2倍
+      effects:
+      - set_flag: next_coin_multiplier_2
+  ferry_offer:
+    display_name: 渡し船の客引き
+    choices:
+    - id: take_ferry
+      label: 2コインで16マスへ
+      requirements:
+      - coins_at_least: 2
+      effects:
+      - add_coins: -2
+      - teleport_to: main_16
+    - id: decline
+      label: 本線を進む
+      effects: []
+  nile_tailwind:
+    display_name: ナイルの追い風
+    choices:
+    - id: take_token
+      label: ブレーキ札を受け取る
+      effects:
+      - give_item: brake_token
+  ruin_whisper:
+    display_name: 遺跡のささやき
+    choices:
+    - id: duplicate_slot
+      label: 現在のスロット1枠を複製
+      requirements:
+      - filled_slot_count_at_least: 1
+      effects:
+      - duplicate_selected_slot: true
+    - id: trade_hp
+      label: HP1で砂時計の欠片
+      requirements:
+      - hp_at_least: 2
+      effects:
+      - add_hp: -1
+      - give_item: hourglass_shard
+  golden_gate_exchange:
+    display_name: 黄金門の両替
+    repeatable_purchases:
+    - id: boss_die
+      label: 追加ボスダイス
+      cost_coins: 10
+      effect:
+        add_boss_bonus_dice: 1
+      max_purchases: 2
+    - id: boss_shield
+      label: ボス盾
+      cost_coins: 5
+      effect:
+        add_boss_shield: 1
+      max_purchases: 1
+      unlock_condition:
+        boss_bonus_dice_purchased_at_least: 1
+    allow_skip: true
+  oasis_water_seller:
+    display_name: オアシスの水売り
+    choices:
+    - id: buy_heal
+      label: 2コインでHP1回復
+      requirements:
+      - coins_at_least: 2
+      effects:
+      - add_coins: -2
+      - add_hp: 1
+    - id: decline
+      label: 買わない
+      effects: []
+  tomb_stele:
+    display_name: 墓廊の石碑
+    choices:
+    - id: coins
+      label: コイン3枚
+      effects:
+      - add_coins: 3
+    - id: shield
+      label: HP1でボス盾
+      requirements:
+      - hp_at_least: 2
+      effects:
+      - add_hp: -1
+      - add_boss_shield: 1
+loops:
+  oasis_loop:
+    display_name: オアシス環
+    entry_from: main_22
+    entry_node: oasis_01
+    return_node: main_23
+    exit_node: oasis_08
+    entry_mode: auto_on_land
+    apply_entry_node_effect: true
+    camera_mode: show_entire_loop
+    reward_depletion: once_per_stage_then_normal
+  tomb_loop:
+    display_name: 墓廊の輪
+    entry_from: main_43
+    entry_node: tomb_01
+    return_node: main_46
+    exit_node: tomb_10
+    entry_mode: auto_on_land
+    apply_entry_node_effect: true
+    camera_mode: show_entire_loop
+    reward_depletion: once_per_stage_then_normal
+boss:
+  boss_id: hourglass_gate_warden
+  display_name: 砂時計門の番人
+  trigger_node: main_58
+  scene_key: boss_cairo_night
+  intro_pauses_timer: true
+  player_hp_carries_in: true
+  coin_exchange_event: golden_gate_exchange
+branches:
+  market_bypass:
+    display_name: バザール裏路地
+    decision_node: main_11
+    options:
+    - id: mainline
+      label: 本線
+      next_node: main_12
+    - id: bypass
+      label: 裏路地
+      next_node: market_bypass_01
+    merge_node: main_19
+    estimated_saved_steps: 3
+  desert_bypass:
+    display_name: 砂嵐の抜け道
+    decision_node: main_34
+    options:
+    - id: mainline
+      label: 本線
+      next_node: main_35
+    - id: bypass
+      label: 抜け道
+      next_node: desert_bypass_01
+    merge_node: main_46
+    estimated_saved_steps: 6
+nodes:
+- id: main_01
+  route: main
+  route_index: 1
+  type: NORMAL
+  zone: market
+  progress_equivalent: 1
+  next:
+  - main_02
+- id: main_02
+  route: main
+  route_index: 2
+  type: COIN
+  zone: market
+  progress_equivalent: 2
+  next:
+  - main_03
+  effect:
+    add_coins: 2
+- id: main_03
+  route: main
+  route_index: 3
+  type: NORMAL
+  zone: market
+  progress_equivalent: 3
+  next:
+  - main_04
+- id: main_04
+  route: main
+  route_index: 4
+  type: EVENT
+  zone: market
+  progress_equivalent: 4
+  next:
+  - main_05
+  event_id: market_hawker
+- id: main_05
+  route: main
+  route_index: 5
+  type: COIN
+  zone: market
+  progress_equivalent: 5
+  next:
+  - main_06
+  effect:
+    add_coins: 2
+- id: main_06
+  route: main
+  route_index: 6
+  type: NORMAL
+  zone: market
+  progress_equivalent: 6
+  next:
+  - main_07
+- id: main_07
+  route: main
+  route_index: 7
+  type: ITEM
+  zone: market
+  progress_equivalent: 7
+  next:
+  - main_08
+  item_id: water_canteen
+- id: main_08
+  route: main
+  route_index: 8
+  type: RISK
+  zone: market
+  progress_equivalent: 8
+  next:
+  - main_09
+  effect:
+    add_coins: -2
+    floor_at_zero: true
+- id: main_09
+  route: main
+  route_index: 9
+  type: REST
+  zone: market
+  progress_equivalent: 9
+  next:
+  - main_10
+  effect:
+    heal_hp: 1
+- id: main_10
+  route: main
+  route_index: 10
+  type: NORMAL
+  zone: market
+  progress_equivalent: 10
+  next:
+  - main_11
+- id: main_11
+  route: main
+  route_index: 11
+  type: BRANCH
+  zone: market
+  progress_equivalent: 11
+  next:
+  - main_12
+  - market_bypass_01
+  branch_id: market_bypass
+- id: main_12
+  route: main
+  route_index: 12
+  type: COIN
+  zone: market
+  progress_equivalent: 12
+  next:
+  - main_13
+  effect:
+    add_coins: 2
+- id: main_13
+  route: main
+  route_index: 13
+  type: EVENT
+  zone: market
+  progress_equivalent: 13
+  next:
+  - main_14
+  event_id: ferry_offer
+- id: main_14
+  route: main
+  route_index: 14
+  type: RISK
+  zone: market
+  progress_equivalent: 14
+  next:
+  - main_15
+  effect:
+    move_relative: -1
+- id: main_15
+  route: main
+  route_index: 15
+  type: NORMAL
+  zone: nile
+  progress_equivalent: 15
+  next:
+  - main_16
+- id: main_16
+  route: main
+  route_index: 16
+  type: NORMAL
+  zone: nile
+  progress_equivalent: 16
+  next:
+  - main_17
+- id: main_17
+  route: main
+  route_index: 17
+  type: ITEM
+  zone: nile
+  progress_equivalent: 17
+  next:
+  - main_18
+  item_id: compass
+- id: main_18
+  route: main
+  route_index: 18
+  type: NORMAL
+  zone: nile
+  progress_equivalent: 18
+  next:
+  - main_19
+- id: main_19
+  route: main
+  route_index: 19
+  type: NORMAL
+  zone: nile
+  progress_equivalent: 19
+  next:
+  - main_20
+- id: main_20
+  route: main
+  route_index: 20
+  type: REST
+  zone: nile
+  progress_equivalent: 20
+  next:
+  - main_21
+  effect:
+    heal_hp: 1
+- id: main_21
+  route: main
+  route_index: 21
+  type: COIN
+  zone: nile
+  progress_equivalent: 21
+  next:
+  - main_22
+  effect:
+    add_coins: 2
+- id: main_22
+  route: main
+  route_index: 22
+  type: WARP
+  zone: nile
+  progress_equivalent: 22
+  next:
+  - main_23
+  loop_id: oasis_loop
+- id: main_23
+  route: main
+  route_index: 23
+  type: NORMAL
+  zone: nile
+  progress_equivalent: 23
+  next:
+  - main_24
+- id: main_24
+  route: main
+  route_index: 24
+  type: EVENT
+  zone: nile
+  progress_equivalent: 24
+  next:
+  - main_25
+  event_id: nile_tailwind
+- id: main_25
+  route: main
+  route_index: 25
+  type: RISK
+  zone: nile
+  progress_equivalent: 25
+  next:
+  - main_26
+  effect:
+    next_roll_speed_multiplier: 1.15
+    duration_rolls: 1
+- id: main_26
+  route: main
+  route_index: 26
+  type: ITEM
+  zone: nile
+  progress_equivalent: 26
+  next:
+  - main_27
+  item_id: sand_goggles
+- id: main_27
+  route: main
+  route_index: 27
+  type: COIN
+  zone: nile
+  progress_equivalent: 27
+  next:
+  - main_28
+  effect:
+    add_coins: 2
+- id: main_28
+  route: main
+  route_index: 28
+  type: NORMAL
+  zone: nile
+  progress_equivalent: 28
+  next:
+  - main_29
+- id: main_29
+  route: main
+  route_index: 29
+  type: REST
+  zone: desert
+  progress_equivalent: 29
+  next:
+  - main_30
+  effect:
+    heal_hp: 1
+- id: main_30
+  route: main
+  route_index: 30
+  type: NORMAL
+  zone: desert
+  progress_equivalent: 30
+  next:
+  - main_31
+- id: main_31
+  route: main
+  route_index: 31
+  type: RISK
+  zone: desert
+  progress_equivalent: 31
+  next:
+  - main_32
+  effect:
+    add_hp: -1
+    tags:
+    - sandstorm
+- id: main_32
+  route: main
+  route_index: 32
+  type: COIN
+  zone: desert
+  progress_equivalent: 32
+  next:
+  - main_33
+  effect:
+    add_coins: 2
+- id: main_33
+  route: main
+  route_index: 33
+  type: NORMAL
+  zone: desert
+  progress_equivalent: 33
+  next:
+  - main_34
+- id: main_34
+  route: main
+  route_index: 34
+  type: BRANCH
+  zone: desert
+  progress_equivalent: 34
+  next:
+  - main_35
+  - desert_bypass_01
+  branch_id: desert_bypass
+- id: main_35
+  route: main
+  route_index: 35
+  type: NORMAL
+  zone: desert
+  progress_equivalent: 35
+  next:
+  - main_36
+- id: main_36
+  route: main
+  route_index: 36
+  type: RISK
+  zone: desert
+  progress_equivalent: 36
+  next:
+  - main_37
+  effect:
+    next_roll_inertia_multiplier: 1.25
+    duration_rolls: 1
+    tags:
+    - sand_inertia
+- id: main_37
+  route: main
+  route_index: 37
+  type: ITEM
+  zone: desert
+  progress_equivalent: 37
+  next:
+  - main_38
+  item_id: scarab_seal
+- id: main_38
+  route: main
+  route_index: 38
+  type: NORMAL
+  zone: desert
+  progress_equivalent: 38
+  next:
+  - main_39
+- id: main_39
+  route: main
+  route_index: 39
+  type: COIN
+  zone: desert
+  progress_equivalent: 39
+  next:
+  - main_40
+  effect:
+    add_coins: 2
+- id: main_40
+  route: main
+  route_index: 40
+  type: REST
+  zone: desert
+  progress_equivalent: 40
+  next:
+  - main_41
+  effect:
+    heal_hp: 1
+- id: main_41
+  route: main
+  route_index: 41
+  type: RISK
+  zone: desert
+  progress_equivalent: 41
+  next:
+  - main_42
+  effect:
+    add_hp: -1
+    tags:
+    - sandstorm
+- id: main_42
+  route: main
+  route_index: 42
+  type: EVENT
+  zone: desert
+  progress_equivalent: 42
+  next:
+  - main_43
+  event_id: ruin_whisper
+- id: main_43
+  route: main
+  route_index: 43
+  type: WARP
+  zone: desert
+  progress_equivalent: 43
+  next:
+  - main_44
+  loop_id: tomb_loop
+- id: main_44
+  route: main
+  route_index: 44
+  type: NORMAL
+  zone: desert
+  progress_equivalent: 44
+  next:
+  - main_45
+- id: main_45
+  route: main
+  route_index: 45
+  type: ITEM
+  zone: necropolis
+  progress_equivalent: 45
+  next:
+  - main_46
+  item_id: linen_bandage
+- id: main_46
+  route: main
+  route_index: 46
+  type: NORMAL
+  zone: necropolis
+  progress_equivalent: 46
+  next:
+  - main_47
+- id: main_47
+  route: main
+  route_index: 47
+  type: COIN
+  zone: necropolis
+  progress_equivalent: 47
+  next:
+  - main_48
+  effect:
+    add_coins: 2
+- id: main_48
+  route: main
+  route_index: 48
+  type: RISK
+  zone: necropolis
+  progress_equivalent: 48
+  next:
+  - main_49
+  effect:
+    remove_boss_shield: 1
+    floor_at_zero: true
+- id: main_49
+  route: main
+  route_index: 49
+  type: NORMAL
+  zone: necropolis
+  progress_equivalent: 49
+  next:
+  - main_50
+- id: main_50
+  route: main
+  route_index: 50
+  type: COIN
+  zone: necropolis
+  progress_equivalent: 50
+  next:
+  - main_51
+  effect:
+    add_coins: 3
+- id: main_51
+  route: main
+  route_index: 51
+  type: REST
+  zone: necropolis
+  progress_equivalent: 51
+  next:
+  - main_52
+  effect:
+    heal_hp: 1
+- id: main_52
+  route: main
+  route_index: 52
+  type: COIN
+  zone: necropolis
+  progress_equivalent: 52
+  next:
+  - main_53
+  effect:
+    add_coins: 2
+- id: main_53
+  route: main
+  route_index: 53
+  type: RISK
+  zone: necropolis
+  progress_equivalent: 53
+  next:
+  - main_54
+  effect:
+    add_coins: -3
+    floor_at_zero: true
+- id: main_54
+  route: main
+  route_index: 54
+  type: ITEM
+  zone: necropolis
+  progress_equivalent: 54
+  next:
+  - main_55
+  item_id: hourglass_shard
+- id: main_55
+  route: main
+  route_index: 55
+  type: NORMAL
+  zone: necropolis
+  progress_equivalent: 55
+  next:
+  - main_56
+- id: main_56
+  route: main
+  route_index: 56
+  type: COIN
+  zone: necropolis
+  progress_equivalent: 56
+  next:
+  - main_57
+  effect:
+    add_coins: 2
+- id: main_57
+  route: main
+  route_index: 57
+  type: EVENT
+  zone: necropolis
+  progress_equivalent: 57
+  next:
+  - main_58
+  event_id: golden_gate_exchange
+- id: main_58
+  route: main
+  route_index: 58
+  type: BOSS
+  zone: necropolis
+  progress_equivalent: 58
+  next: []
+- id: market_bypass_01
+  route: market_bypass
+  route_index: 1
+  type: NORMAL
+  zone: market
+  progress_equivalent: 13
+  next:
+  - market_bypass_02
+- id: market_bypass_02
+  route: market_bypass
+  route_index: 2
+  type: RISK
+  zone: market
+  progress_equivalent: 15
+  next:
+  - market_bypass_03
+  effect:
+    add_coins: -2
+    floor_at_zero: true
+- id: market_bypass_03
+  route: market_bypass
+  route_index: 3
+  type: COIN
+  zone: market
+  progress_equivalent: 17
+  next:
+  - market_bypass_04
+  effect:
+    add_coins: 4
+- id: market_bypass_04
+  route: market_bypass
+  route_index: 4
+  type: ITEM
+  zone: market
+  progress_equivalent: 18
+  next:
+  - main_19
+  item_id: merchant_charm
+- id: desert_bypass_01
+  route: desert_bypass
+  route_index: 1
+  type: RISK
+  zone: desert
+  progress_equivalent: 36
+  next:
+  - desert_bypass_02
+  effect:
+    add_hp: -1
+    tags:
+    - sandstorm
+- id: desert_bypass_02
+  route: desert_bypass
+  route_index: 2
+  type: NORMAL
+  zone: desert
+  progress_equivalent: 38
+  next:
+  - desert_bypass_03
+- id: desert_bypass_03
+  route: desert_bypass
+  route_index: 3
+  type: ITEM
+  zone: desert
+  progress_equivalent: 41
+  next:
+  - desert_bypass_04
+  item_id: hourglass_dust
+- id: desert_bypass_04
+  route: desert_bypass
+  route_index: 4
+  type: RISK
+  zone: desert
+  progress_equivalent: 44
+  next:
+  - desert_bypass_05
+  effect:
+    add_hp: -1
+    tags:
+    - collapsed_path
+- id: desert_bypass_05
+  route: desert_bypass
+  route_index: 5
+  type: NORMAL
+  zone: desert
+  progress_equivalent: 45
+  next:
+  - main_46
+- id: oasis_01
+  route: oasis_loop
+  route_index: 1
+  type: COIN
+  zone: nile
+  progress_equivalent: 22
+  next:
+  - oasis_02
+  effect:
+    add_coins: 2
+- id: oasis_02
+  route: oasis_loop
+  route_index: 2
+  type: REST
+  zone: nile
+  progress_equivalent: 22
+  next:
+  - oasis_03
+  effect:
+    heal_hp: 1
+- id: oasis_03
+  route: oasis_loop
+  route_index: 3
+  type: NORMAL
+  zone: nile
+  progress_equivalent: 22
+  next:
+  - oasis_04
+- id: oasis_04
+  route: oasis_loop
+  route_index: 4
+  type: COIN
+  zone: nile
+  progress_equivalent: 22
+  next:
+  - oasis_05
+  effect:
+    add_coins: 2
+- id: oasis_05
+  route: oasis_loop
+  route_index: 5
+  type: EVENT
+  zone: nile
+  progress_equivalent: 22
+  next:
+  - oasis_06
+  event_id: oasis_water_seller
+- id: oasis_06
+  route: oasis_loop
+  route_index: 6
+  type: RISK
+  zone: nile
+  progress_equivalent: 22
+  next:
+  - oasis_07
+  effect:
+    next_move_modifier: -1
+    duration_moves: 1
+- id: oasis_07
+  route: oasis_loop
+  route_index: 7
+  type: ITEM
+  zone: nile
+  progress_equivalent: 22
+  next:
+  - oasis_08
+  item_id: hourglass_shard
+- id: oasis_08
+  route: oasis_loop
+  route_index: 8
+  type: EXIT
+  zone: nile
+  progress_equivalent: 22
+  next:
+  - oasis_01
+  effect:
+    loop_exit_to: main_23
+- id: tomb_01
+  route: tomb_loop
+  route_index: 1
+  type: RISK
+  zone: necropolis
+  progress_equivalent: 43
+  next:
+  - tomb_02
+  effect:
+    add_hp: -1
+- id: tomb_02
+  route: tomb_loop
+  route_index: 2
+  type: COIN
+  zone: necropolis
+  progress_equivalent: 43
+  next:
+  - tomb_03
+  effect:
+    add_coins: 3
+- id: tomb_03
+  route: tomb_loop
+  route_index: 3
+  type: NORMAL
+  zone: necropolis
+  progress_equivalent: 43
+  next:
+  - tomb_04
+- id: tomb_04
+  route: tomb_loop
+  route_index: 4
+  type: EVENT
+  zone: necropolis
+  progress_equivalent: 43
+  next:
+  - tomb_05
+  event_id: tomb_stele
+- id: tomb_05
+  route: tomb_loop
+  route_index: 5
+  type: ITEM
+  zone: necropolis
+  progress_equivalent: 43
+  next:
+  - tomb_06
+  item_id: golden_scarab
+- id: tomb_06
+  route: tomb_loop
+  route_index: 6
+  type: RISK
+  zone: necropolis
+  progress_equivalent: 43
+  next:
+  - tomb_07
+  effect:
+    clear_random_filled_slot: 1
+- id: tomb_07
+  route: tomb_loop
+  route_index: 7
+  type: COIN
+  zone: necropolis
+  progress_equivalent: 43
+  next:
+  - tomb_08
+  effect:
+    add_coins: 3
+- id: tomb_08
+  route: tomb_loop
+  route_index: 8
+  type: REST
+  zone: necropolis
+  progress_equivalent: 43
+  next:
+  - tomb_09
+  effect:
+    add_boss_shield: 1
+- id: tomb_09
+  route: tomb_loop
+  route_index: 9
+  type: RISK
+  zone: necropolis
+  progress_equivalent: 43
+  next:
+  - tomb_10
+  effect:
+    add_coins: -3
+    floor_at_zero: true
+- id: tomb_10
+  route: tomb_loop
+  route_index: 10
+  type: EXIT
+  zone: necropolis
+  progress_equivalent: 43
+  next:
+  - tomb_01
+  effect:
+    loop_exit_to: main_46
+validation:
+  expected_counts:
+    main_nodes: 58
+    market_bypass_nodes: 4
+    desert_bypass_nodes: 5
+    oasis_loop_nodes: 8
+    tomb_loop_nodes: 10
+    total_nodes: 85
+  required_reachable_nodes:
+  - main_58
+  - market_bypass_01
+  - desert_bypass_01
+  - oasis_08
+  - tomb_10
+  assertions:
+  - all_next_node_ids_exist
+  - all_branch_options_exist
+  - all_loop_entry_exit_return_nodes_exist
+  - boss_node_is_terminal
+  - mainline_indices_are_contiguous_1_to_58
+  - no_unreachable_non_debug_nodes

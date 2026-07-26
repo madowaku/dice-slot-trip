@@ -2,6 +2,7 @@ class_name BoardView
 extends Control
 
 const APP_FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
+const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 
 const TILE_COUNT: int = 90
 const LANDMARK_IDS_BY_TILE: Dictionary = {
@@ -173,10 +174,10 @@ func _draw_bypass_neighborhood() -> void:
 	draw_texture_rect(BYPASS_ROCKS, Rect2(size.x * 0.08, size.y * 0.38, 42, 50), false, Color(0.88, 0.70, 0.52, 0.62))
 	draw_texture_rect(BYPASS_WALL, Rect2(size.x * 0.67, size.y * 0.28, 54, 58), false, Color(0.88, 0.73, 0.55, 0.58))
 	draw_texture_rect(BYPASS_TREE, Rect2(size.x * 0.43, size.y * 0.57, 42, 52), false, Color(0.82, 0.67, 0.48, 0.48))
-	draw_string(APP_FONT, Vector2(18, 30), "砂嵐のキャラバン道", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color("#6b392d"))
-	draw_string(APP_FONT, Vector2(size.x - 132, 29), "危険 7 / 10", HORIZONTAL_ALIGNMENT_RIGHT, 114, 16, Color("#a23f34"))
+	draw_string(APP_FONT, Vector2(18, 36), "砂嵐のキャラバン道", HORIZONTAL_ALIGNMENT_LEFT, -1, UiTokensScript.FONT_MAP_HEADING, Color("#6b392d"))
+	draw_string(APP_FONT, Vector2(size.x - 150, 35), "危険 7 / 10", HORIZONTAL_ALIGNMENT_RIGHT, 132, UiTokensScript.FONT_MAP_CAPTION, Color("#a23f34"))
 	var distance_left := bypass_exit_distance(current_tile, current_route_tile_count)
-	draw_string(APP_FONT, Vector2(18, 54), "現在 %d / %d　出口まで %d  →" % [current_tile + 1, current_route_tile_count, distance_left], HORIZONTAL_ALIGNMENT_LEFT, size.x - 36.0, 15, Color("#7a4a31"))
+	draw_string(APP_FONT, Vector2(18, 67), "現在 %d / %d　出口まで %d  →" % [current_tile + 1, current_route_tile_count, distance_left], HORIZONTAL_ALIGNMENT_LEFT, size.x - 36.0, UiTokensScript.FONT_MAP_CAPTION, Color("#7a4a31"))
 	var count := maxi(1, current_route_tile_count)
 	var points := bypass_route_points(size, count)
 	# A broad sand road, two ruts and a dark lee edge read as terrain rather
@@ -210,16 +211,16 @@ func _draw_bypass_neighborhood() -> void:
 		draw_arc(points[index], radius, 0, TAU, 24, Color("#f1c86a") if index == current_tile else Color("#6a3b2c"), 3.0, true)
 		var mark := _tile_mark(tile_type)
 		if reveal_amount < 1.0:
-			draw_string(APP_FONT, points[index] + Vector2(-radius, -radius - 3), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 10, Color(0.35, 0.20, 0.12, 0.78))
+			draw_string(APP_FONT, points[index] + Vector2(-radius, -radius - 3), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, UiTokensScript.FONT_MAP_DETAIL, Color(0.35, 0.20, 0.12, 0.78))
 			draw_string(APP_FONT, points[index] + Vector2(-radius, 7), "?", HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 21, Color(0.96, 0.87, 0.69, 0.90 * (1.0 - reveal_amount)))
 			var veil_alpha := 0.30 * (1.0 - reveal_amount)
 			draw_circle(points[index] + Vector2(-9.0 - reveal_amount * 12.0, -4), radius * 0.72, Color(0.90, 0.73, 0.49, veil_alpha))
 			draw_circle(points[index] + Vector2(9.0 + reveal_amount * 12.0, 3), radius * 0.62, Color(0.76, 0.56, 0.34, veil_alpha))
 		else:
 			var number_y := -1.0 if not mark.is_empty() else 5.0
-			draw_string(APP_FONT, points[index] + Vector2(-radius, number_y), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 11, Color.WHITE if index == current_tile or tile_type in [&"RISK", &"STRONG_RISK"] else INK)
+			draw_string(APP_FONT, points[index] + Vector2(-radius, number_y), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, UiTokensScript.FONT_MAP_DETAIL, Color.WHITE if index == current_tile or tile_type in [&"RISK", &"STRONG_RISK"] else INK)
 		if not mark.is_empty() and reveal_amount > 0.0:
-			draw_string(APP_FONT, points[index] + Vector2(-radius, 15), mark, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 16, Color(0.42, 0.22, 0.14, reveal_amount))
+			draw_string(APP_FONT, points[index] + Vector2(-radius, 18), mark, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, UiTokensScript.FONT_MAP_CAPTION, Color(0.42, 0.22, 0.14, reveal_amount))
 		if reveal_amount >= 1.0 and index > 0 and index < count - 1:
 			draw_circle(points[index] + Vector2(-5, radius + 6), 2.0, Color(0.35, 0.20, 0.11, 0.34))
 			draw_circle(points[index] + Vector2(4, radius + 9), 1.7, Color(0.35, 0.20, 0.11, 0.28))
@@ -229,8 +230,8 @@ func _draw_bypass_neighborhood() -> void:
 	draw_texture_rect(PLAYER_TEXTURE, Rect2(token - Vector2(30, 85) + Vector2(0, movement_hop_offset_y), Vector2(60, 80)), false)
 	if current_tile < count - 1:
 		_draw_direction_chevron(token.lerp(points[current_tile + 1], 0.55), points[current_tile + 1] - token, Color("#f5d06d"), 10.0)
-	draw_string(APP_FONT, Vector2(12, size.y - 16), "入口　分岐", HORIZONTAL_ALIGNMENT_LEFT, 92, 13, Color("#7c583c"))
-	draw_string(APP_FONT, Vector2(size.x - 112, size.y - 16), "EXIT　本線へ合流", HORIZONTAL_ALIGNMENT_RIGHT, 100, 13, Color("#8d392f"))
+	draw_string(APP_FONT, Vector2(12, size.y - 20), "入口　分岐", HORIZONTAL_ALIGNMENT_LEFT, 120, UiTokensScript.FONT_MAP_CAPTION, Color("#7c583c"))
+	draw_string(APP_FONT, Vector2(size.x - 160, size.y - 20), "EXIT　本線へ合流", HORIZONTAL_ALIGNMENT_RIGHT, 148, UiTokensScript.FONT_MAP_CAPTION, Color("#8d392f"))
 
 static func bypass_exit_distance(tile_index: int, tile_count: int = 10) -> int:
 	return maxi(0, maxi(1, tile_count) - (posmod(tile_index, maxi(1, tile_count)) + 1))
@@ -291,9 +292,9 @@ func _draw_royal_maze() -> void:
 		draw_line(Vector2(12, y), Vector2(size.x - 12, y), Color(0.78, 0.62, 0.39, 0.07), 1.0, true)
 	draw_texture_rect(BYPASS_WALL, Rect2(20, size.y * 0.54, 68, 72), false, Color(0.38, 0.34, 0.30, 0.72))
 	draw_texture_rect(BYPASS_ROCKS, Rect2(size.x - 86, size.y * 0.46, 62, 72), false, Color(0.35, 0.31, 0.28, 0.70))
-	draw_string(APP_FONT, Vector2(18, 30), "王の迷い環", HORIZONTAL_ALIGNMENT_LEFT, -1, 21, Color("#f0d38a"))
+	draw_string(APP_FONT, Vector2(18, 36), "王の迷い環", HORIZONTAL_ALIGNMENT_LEFT, -1, UiTokensScript.FONT_MAP_HEADING, Color("#f0d38a"))
 	var gate_distance := posmod(-current_tile, maxi(1, current_route_tile_count))
-	draw_string(APP_FONT, Vector2(18, 54), "帰還扉まで %d　時計回り →　ぴったり停止" % gate_distance, HORIZONTAL_ALIGNMENT_LEFT, size.x - 36.0, 15, Color("#c9b48b"))
+	draw_string(APP_FONT, Vector2(18, 67), "帰還まで %d　時計回り →" % gate_distance, HORIZONTAL_ALIGNMENT_LEFT, size.x - 36.0, UiTokensScript.FONT_MAP_CAPTION, Color("#c9b48b"))
 	var center := Vector2(size.x * 0.5, size.y * 0.58)
 	var radius := Vector2(size.x * 0.32, size.y * 0.30)
 	var points := PackedVector2Array()
@@ -325,9 +326,9 @@ func _draw_royal_maze() -> void:
 		var fill := Color("#287b80") if index == current_tile else Color(TILE_COLORS.get(tile_type, Color("#77634a")))
 		draw_circle(points[index], tile_radius, fill)
 		draw_arc(points[index], tile_radius, 0, TAU, 24, Color("#f1c86a") if index == current_tile or tile_type == &"RETURN_GATE" else Color("#b28b51"), 3.0, true)
-		draw_string(APP_FONT, points[index] + Vector2(-tile_radius, 5), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, tile_radius * 2.0, 11, Color.WHITE)
+		draw_string(APP_FONT, points[index] + Vector2(-tile_radius, 5), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, tile_radius * 2.0, UiTokensScript.FONT_MAP_DETAIL, Color.WHITE)
 		var mark := _tile_mark(tile_type)
-		if not mark.is_empty(): draw_string(APP_FONT, points[index] + Vector2(-tile_radius, 25), mark, HORIZONTAL_ALIGNMENT_CENTER, tile_radius * 2.0, 12, Color("#e8cb84"))
+		if not mark.is_empty(): draw_string(APP_FONT, points[index] + Vector2(-tile_radius, 28), mark, HORIZONTAL_ALIGNMENT_CENTER, tile_radius * 2.0, UiTokensScript.FONT_MAP_CAPTION, Color("#e8cb84"))
 		if tile_type == &"RETURN_GATE": _draw_return_gate_marker(points[index], tile_radius)
 	if route_flow_level > 0:
 		for flow_index: int in range(route_flow_level + 1):
@@ -349,7 +350,7 @@ func _draw_return_gate_marker(center: Vector2, radius: float) -> void:
 	draw_line(top + Vector2(-10, 10), top + Vector2(-10, -1), stone, 4.0, true)
 	draw_line(top + Vector2(10, 10), top + Vector2(10, -1), stone, 4.0, true)
 	draw_arc(top, 10.0, PI, TAU, 16, light, 3.0, true)
-	draw_string(APP_FONT, center + Vector2(-35, radius + 22), "帰還扉", HORIZONTAL_ALIGNMENT_CENTER, 70, 12, light)
+	draw_string(APP_FONT, center + Vector2(-45, radius + 28), "帰還扉", HORIZONTAL_ALIGNMENT_CENTER, 90, UiTokensScript.FONT_MAP_CAPTION, light)
 
 
 func _draw_zoomed_neighborhood() -> void:
@@ -360,11 +361,11 @@ func _draw_zoomed_neighborhood() -> void:
 		var slot_width := maxf(1.0, size.x - 44.0)
 		var slot_height := minf(slot_width * 0.5, maxf(1.0, size.y * 0.72))
 		draw_texture_rect(scenic_texture, Rect2(22.0, 42.0, slot_width, slot_height), false, Color(1.0, 0.98, 0.91, 0.94))
-	draw_string(APP_FONT, Vector2(22, 34), "現在地周辺  %02d / 90" % (current_tile + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, INK)
+	draw_string(APP_FONT, Vector2(22, 40), "現在地周辺  %02d / 90" % (current_tile + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, UiTokensScript.FONT_MAP_HEADING, INK)
 	var district_names := ["市場", "ピラミッド", "オアシス", "遺跡", "砂丘"]
-	draw_string(APP_FONT, Vector2(size.x - 150, 34), district_names[current_tile / 18], HORIZONTAL_ALIGNMENT_RIGHT, 128, 17, Color("#846c50"))
+	draw_string(APP_FONT, Vector2(size.x - 170, 40), district_names[current_tile / 18], HORIZONTAL_ALIGNMENT_RIGHT, 148, UiTokensScript.FONT_MAP_CAPTION, Color("#846c50"))
 	if scenic_level >= 0:
-		draw_string(APP_FONT, Vector2(size.x * 0.5 - 130.0, 62.0), "香辛料市場通り　Lv.%d" % scenic_level, HORIZONTAL_ALIGNMENT_CENTER, 260.0, 16, Color("#6f5030"))
+		draw_string(APP_FONT, Vector2(size.x * 0.5 - 150.0, 74.0), "香辛料市場通り　Lv.%d" % scenic_level, HORIZONTAL_ALIGNMENT_CENTER, 300.0, UiTokensScript.FONT_MAP_CAPTION, Color("#6f5030"))
 	var shown_each_side := 5
 	var tile_width := maxf(48.0, (size.x - 34.0) / 11.0)
 	var tile_height := minf(106.0, maxf(78.0, size.y * 0.28))
@@ -378,13 +379,13 @@ func _draw_zoomed_neighborhood() -> void:
 		var tile_style := _ribbon_tile_style(tile_type, offset == 0, offset == 1)
 		draw_style_box(tile_style, rect)
 		var number_color := Color.WHITE if offset == 0 or tile_type == &"RISK" else INK
-		draw_string(APP_FONT, rect.position + Vector2(0, 27), "%02d" % (index + 1), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 17, number_color)
+		draw_string(APP_FONT, rect.position + Vector2(0, 30), "%02d" % (index + 1), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, UiTokensScript.FONT_MAP_CAPTION, number_color)
 		var mark := _tile_mark(tile_type)
-		if not mark.is_empty(): draw_string(APP_FONT, rect.position + Vector2(0, 58), mark, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 23, number_color)
+		if not mark.is_empty(): draw_string(APP_FONT, rect.position + Vector2(0, 62), mark, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, UiTokensScript.FONT_MAP_HEADING, number_color)
 		if tile_type == &"LANDMARK":
 			var landmark_level := _landmark_level(index)
-			draw_string(APP_FONT, rect.position + Vector2(0, 78), "Lv.%d" % landmark_level, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 12, number_color)
-		if offset == 1: draw_string(APP_FONT, rect.position + Vector2(0, rect.size.y - 10), "NEXT", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color("#fff4dc") if tile_type == &"RISK" else Color("#356b6d"))
+			draw_string(APP_FONT, rect.position + Vector2(0, 82), "Lv.%d" % landmark_level, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, UiTokensScript.FONT_MAP_DETAIL, number_color)
+		if offset == 1: draw_string(APP_FONT, rect.position + Vector2(0, rect.size.y - 10), "NEXT", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, UiTokensScript.FONT_MAP_DETAIL, Color("#fff4dc") if tile_type == &"RISK" else Color("#356b6d"))
 	# Direction and token stay centered while the ribbon moves beneath them.
 	var center_rect_x := size.x * 0.5 - tile_width * 0.5
 	draw_circle(Vector2(size.x * 0.5, center_y + tile_height * 0.5 + 12), 23, Color("#277c80"))

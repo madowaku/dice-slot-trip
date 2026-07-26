@@ -32,5 +32,9 @@ func delete_save() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
+		# The V06 session owns its separate checkpoint while the released 58-space
+		# screen is active. Keep the legacy manager intact for the 90-space game,
+		# but do not let its lifecycle save overwrite V06's product session.
+		if not get_tree().get_nodes_in_group("v06_session_screen").is_empty():
+			return
 		save_now()
-
