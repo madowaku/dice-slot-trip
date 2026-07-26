@@ -19,6 +19,19 @@ func append_face(face: int) -> bool:
 func faces() -> Array[int]:
 	return _faces.duplicate()
 
+func restore_faces(values: Array) -> bool:
+	if values.size() > SLOT_COUNT:
+		return false
+	_faces.clear()
+	for value: Variant in values:
+		if not (value is int or value is float) or int(value) != value:
+			_faces.clear()
+			return false
+		if not append_face(int(value)):
+			_faces.clear()
+			return false
+	return true
+
 func is_complete() -> bool:
 	return _faces.size() == SLOT_COUNT
 

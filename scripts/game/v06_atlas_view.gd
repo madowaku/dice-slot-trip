@@ -25,6 +25,8 @@ const HOP_SECONDS := 0.30
 const STRAIGHT_TRAVEL_MAX_STEPS := 6
 const STRAIGHT_TARGET_PREVIEW_SECONDS := 0.20
 const STRAIGHT_CAMERA_FOLLOW_SECONDS := 0.42
+const PORTAL_TRANSFER_HALF_SECONDS := 0.34
+const BYPASS_ENTRY_SECONDS := 0.72
 const LANDING_NORMAL_SECONDS := 0.48
 const LANDING_SPECIAL_SECONDS := 0.78
 const LANDING_HOLD_SECONDS := 0.08
@@ -45,6 +47,7 @@ const CAROUSEL_TILE_RADIUS := 30.0
 const CAROUSEL_CURRENT_RADIUS := 34.0
 const CAROUSEL_CONTEXT_RADIUS := 26.0
 const CAROUSEL_CONTEXT_SPACING := 96.0
+const LOOP_ROUTE_RADIUS := 190.0
 const CAROUSEL_SLOT_NORMALIZED := [
 	Vector2(0.484375, 0.710744), Vector2(0.671875, 0.677686),
 	Vector2(0.820313, 0.561983), Vector2(0.851563, 0.396694),
@@ -110,11 +113,22 @@ var _straight_step_from := 0
 var _straight_step_progress := 1.0
 var _straight_camera_follow_progress := 0.0
 var _straight_camera_offset := 0.0
+var _straight_travel_positions: Array[Dictionary] = []
 var _straight_step_tween: Tween
 var _straight_camera_tween: Tween
+var _portal_transfer_tween: Tween
+var _bypass_entry_tween: Tween
 var _landing_tween: Tween
 var _roll_preview_tween: Tween
 var _visual_motion_generation := 0
+var _portal_transfer_active := false
+var _portal_transfer_progress := 0.0
+var _portal_transfer_color := LOOP_TEAL
+var _bypass_entry_active := false
+var _bypass_entry_progress := 0.0
+var _bypass_entry_name := ""
+var _bypass_entry_saved_steps := 0
+var _bypass_entry_play_count := 0
 
 
 func _ready() -> void:
@@ -200,6 +214,78 @@ func animate_transfer_to(route_position: Dictionary) -> void:
 	# Portal and exit transfers cost no die step, but a short, lower lift keeps the
 	# graph transition legible instead of snapping the marker across routes.
 	await animate_hop_to(route_position, HOP_SECONDS)
+
+
+func animate_portal_transfer_to(route_position: Dictionary) -> void:
+	if not _is_known_position(route_position):
+		return
+	if is_instance_valid(_portal_transfer_tween):
+		_portal_transfer_tween.kill()
+	var source_route := str(_current_position.get("route_id", ""))
+	_portal_transfer_color = LOOP_TOMB if source_route == V06CourseModelScript.ROUTE_LOOP_TOMB else LOOP_TEAL
+	_portal_transfer_active = true
+	_portal_transfer_progress = 0.0
+	var generation := _visual_motion_generation
+	_portal_transfer_tween = create_tween()
+	_portal_transfer_tween.tween_method(_set_portal_transfer_progress, 0.0, 1.0, PORTAL_TRANSFER_HALF_SECONDS).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	await _wait_for_visual_tween(_portal_transfer_tween, generation)
+	if generation != _visual_motion_generation:
+		return
+	set_route_position(route_position, true)
+	_portal_transfer_tween = create_tween()
+	_portal_transfer_tween.tween_method(_set_portal_transfer_progress, 1.0, 0.0, PORTAL_TRANSFER_HALF_SECONDS).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	await _wait_for_visual_tween(_portal_transfer_tween, generation)
+	if generation != _visual_motion_generation:
+		return
+	_portal_transfer_active = false
+	_portal_transfer_progress = 0.0
+	queue_redraw()
+
+
+func portal_transfer_active() -> bool:
+	return _portal_transfer_active
+
+
+func _set_portal_transfer_progress(value: float) -> void:
+	_portal_transfer_progress = clampf(value, 0.0, 1.0)
+	queue_redraw()
+
+
+func play_bypass_entry_effect(route_id: String) -> void:
+	var definition := _bypass_definition(route_id)
+	if definition.is_empty():
+		return
+	if is_instance_valid(_bypass_entry_tween):
+		_bypass_entry_tween.kill()
+	_bypass_entry_name = str(definition.get("name_ja", "近道"))
+	_bypass_entry_saved_steps = int(definition.get("saved_steps", 0))
+	_bypass_entry_active = true
+	_bypass_entry_progress = 0.0
+	_bypass_entry_play_count += 1
+	var generation := _visual_motion_generation
+	_bypass_entry_tween = create_tween()
+	_bypass_entry_tween.tween_method(_set_bypass_entry_progress, 0.0, 1.0, BYPASS_ENTRY_SECONDS).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await _wait_for_visual_tween(_bypass_entry_tween, generation)
+	if generation != _visual_motion_generation:
+		return
+	_bypass_entry_active = false
+	_bypass_entry_progress = 1.0
+	queue_redraw()
+
+
+func bypass_entry_receipt() -> Dictionary:
+	return {
+		"active": _bypass_entry_active,
+		"progress": _bypass_entry_progress,
+		"name": _bypass_entry_name,
+		"saved_steps": _bypass_entry_saved_steps,
+		"play_count": _bypass_entry_play_count,
+	}
+
+
+func _set_bypass_entry_progress(value: float) -> void:
+	_bypass_entry_progress = clampf(value, 0.0, 1.0)
+	queue_redraw()
 
 
 func current_route_position() -> Dictionary:
@@ -315,20 +401,53 @@ func can_use_straight_travel(route_position: Dictionary, distance: int) -> bool:
 
 
 func begin_straight_travel(route_position: Dictionary, distance: int) -> bool:
-	if _straight_travel_active or not can_use_straight_travel(route_position, distance):
+	if not can_use_straight_travel(route_position, distance):
 		return false
+	var path: Array[Dictionary] = []
+	var start_tile := int(route_position.get("tile_index", 0))
+	for step: int in range(1, distance + 1):
+		path.append({"route_id": V06CourseModelScript.ROUTE_MAIN, "tile_index": start_tile + step})
+	return begin_step_travel(route_position, path)
+
+
+func begin_step_travel(route_position: Dictionary, path: Array[Dictionary]) -> bool:
+	if _straight_travel_active or path.is_empty() or not _is_known_position(route_position):
+		return false
+	var positions: Array[Dictionary] = [route_position.duplicate(true)]
+	for route_position_in_path: Dictionary in path:
+		if not _is_known_position(route_position_in_path):
+			return false
+		positions.append(route_position_in_path.duplicate(true))
 	_straight_travel_active = true
 	_straight_travel_start_position = route_position.duplicate(true)
-	_straight_travel_distance = distance
+	_straight_travel_distance = path.size()
 	_straight_travel_player_step = 0
 	_straight_step_from = 0
 	_straight_step_progress = 1.0
 	_straight_camera_follow_progress = 0.0
 	_straight_camera_offset = 0.0
+	_straight_travel_positions = _build_step_travel_window(positions)
+	_cat_world = world_position_for(route_position)
 	_cat_lift = 0.0
 	_cat_animation_state = &"idle"
 	_cat_animation_frame = 0
 	_current_position = route_position.duplicate(true)
+	_camera_target_world = _camera_focus_for(_current_position)
+	queue_redraw()
+	return true
+
+
+func append_step_travel_position(route_position: Dictionary) -> bool:
+	if not _straight_travel_active or _straight_travel_player_step != _straight_travel_distance \
+			or _straight_camera_follow_progress > 0.0 or not _is_known_position(route_position):
+		return false
+	var positions: Array[Dictionary] = []
+	var actual_count := mini(_straight_travel_distance + 1, _straight_travel_positions.size())
+	for index: int in range(actual_count):
+		positions.append(_straight_travel_positions[index].duplicate(true))
+	positions.append(route_position.duplicate(true))
+	_straight_travel_distance += 1
+	_straight_travel_positions = _build_step_travel_window(positions)
 	queue_redraw()
 	return true
 
@@ -420,6 +539,7 @@ func finish_straight_travel(route_position: Dictionary) -> bool:
 	_straight_step_progress = 1.0
 	_straight_camera_follow_progress = 0.0
 	_straight_camera_offset = 0.0
+	_straight_travel_positions.clear()
 	_cat_lift = 0.0
 	_cat_animation_state = &"idle"
 	_cat_animation_frame = 0
@@ -433,6 +553,10 @@ func cancel_visual_motion(route_position := {}) -> void:
 		_straight_step_tween.kill()
 	if is_instance_valid(_straight_camera_tween):
 		_straight_camera_tween.kill()
+	if is_instance_valid(_portal_transfer_tween):
+		_portal_transfer_tween.kill()
+	if is_instance_valid(_bypass_entry_tween):
+		_bypass_entry_tween.kill()
 	if is_instance_valid(_landing_tween):
 		_landing_tween.kill()
 	_straight_travel_active = false
@@ -443,12 +567,17 @@ func cancel_visual_motion(route_position := {}) -> void:
 	_straight_step_progress = 1.0
 	_straight_camera_follow_progress = 0.0
 	_straight_camera_offset = 0.0
+	_straight_travel_positions.clear()
 	_cat_lift = 0.0
 	_cat_animation_state = &"idle"
 	_cat_animation_frame = 0
 	_landing_kind = ""
 	_landing_progress = 1.0
 	_landing_result_text = ""
+	_portal_transfer_active = false
+	_portal_transfer_progress = 0.0
+	_bypass_entry_active = false
+	_bypass_entry_progress = 0.0
 	if route_position is Dictionary and not (route_position as Dictionary).is_empty():
 		set_route_position(route_position, true)
 	else:
@@ -481,6 +610,8 @@ func _straight_card_spacing() -> float:
 
 
 func _straight_window_position(travel_offset: int) -> Dictionary:
+	if travel_offset >= 0 and travel_offset < _straight_travel_positions.size():
+		return _straight_travel_positions[travel_offset].duplicate(true)
 	var tile_index := int(_straight_travel_start_position.get("tile_index", 0)) + travel_offset
 	var route_id := V06CourseModelScript.ROUTE_MAIN
 	if _is_known_position({"route_id": route_id, "tile_index": tile_index}):
@@ -488,6 +619,34 @@ func _straight_window_position(travel_offset: int) -> Dictionary:
 	# Keep the seven-card frame stable at the terminal edge instead of letting
 	# the renderer remove cards when the route data runs out.
 	return {"route_id": route_id, "tile_index": maxi(_route_size(route_id) - 1, 0), "terminal_filler": true}
+
+
+func _build_step_travel_window(actual_positions: Array[Dictionary]) -> Array[Dictionary]:
+	var window: Array[Dictionary] = []
+	for route_position: Dictionary in actual_positions:
+		window.append(route_position.duplicate(true))
+	if window.is_empty():
+		return window
+	var destination: Dictionary = window.back().duplicate(true)
+	var saved_position := _current_position.duplicate(true)
+	_current_position = destination
+	var future_positions := prominent_positions()
+	_current_position = saved_position
+	for future_position: Dictionary in future_positions:
+		if _same_route_position(future_position, destination):
+			continue
+		window.append(future_position.duplicate(true))
+	var required_size := (actual_positions.size() - 1) + FORWARD_VISIBLE + 1
+	while window.size() < required_size:
+		var filler := destination.duplicate(true)
+		filler["terminal_filler"] = true
+		window.append(filler)
+	return window
+
+
+func _same_route_position(first: Dictionary, second: Dictionary) -> bool:
+	return str(first.get("route_id", "")) == str(second.get("route_id", "")) \
+			and int(first.get("tile_index", -1)) == int(second.get("tile_index", -2))
 
 
 static func _calm_camera_ease(progress: float) -> float:
@@ -870,12 +1029,12 @@ func _build_route_points() -> void:
 	var oasis_center := Vector2(-180.0, 210.0)
 	for tile_index: int in range(8):
 		var angle := PI * 0.5 + TAU * float(tile_index) / 8.0
-		oasis.append(oasis_center + Vector2(cos(angle), sin(angle)) * 108.0)
+		oasis.append(oasis_center + Vector2(cos(angle), sin(angle)) * LOOP_ROUTE_RADIUS)
 	var tomb: Array[Vector2] = []
 	var tomb_center := Vector2(1180.0, -340.0)
 	for tile_index: int in range(8):
 		var angle := PI * 0.5 + TAU * float(tile_index) / 8.0
-		tomb.append(tomb_center + Vector2(cos(angle), sin(angle)) * 108.0)
+		tomb.append(tomb_center + Vector2(cos(angle), sin(angle)) * LOOP_ROUTE_RADIUS)
 	_route_points = {
 		V06CourseModelScript.ROUTE_MAIN: main,
 		V06CourseModelScript.ROUTE_BYPASS_BAZAAR: bazaar,
@@ -933,6 +1092,47 @@ func _draw() -> void:
 		_draw_map_dice_shadow()
 	_draw_route_legend()
 	_draw_cat_marker()
+	_draw_bypass_entry_effect()
+	_draw_portal_transfer()
+
+
+func _draw_bypass_entry_effect() -> void:
+	if not _bypass_entry_active:
+		return
+	var strength := sin(clampf(_bypass_entry_progress, 0.0, 1.0) * PI)
+	if strength <= 0.0:
+		return
+	var center := Vector2(size.x * 0.50, size.y * 0.20)
+	var branch_start := center + Vector2(-150.0, 52.0)
+	var branch_joint := center + Vector2(-78.0, 52.0)
+	var branch_end := center + Vector2(8.0, 18.0)
+	draw_line(branch_start, branch_joint, Color(MAIN_TEAL, 0.78 * strength), 9.0, true)
+	draw_line(branch_joint, branch_end, Color(BYPASS_RUST, 0.96 * strength), 10.0, true)
+	draw_circle(branch_joint, 8.0 + strength * 3.0, Color("#f4d58a"))
+	var panel_size := Vector2(minf(size.x * 0.56, 390.0), 92.0)
+	var panel_rect := Rect2(center - panel_size * 0.5, panel_size)
+	var panel := _panel_style(Color(BYPASS_RUST, 0.90 * strength), Color("#f4d58a"), 18)
+	draw_style_box(panel, panel_rect)
+	draw_string(APP_FONT, panel_rect.position + Vector2(0.0, 38.0), "近道へ！", HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 30, Color("#fff3d8"))
+	var detail := "%s　%dマス短縮" % [_bypass_entry_name, _bypass_entry_saved_steps]
+	draw_string(APP_FONT, panel_rect.position + Vector2(0.0, 70.0), detail, HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 18, Color("#ffe9ba"))
+
+
+func _draw_portal_transfer() -> void:
+	if not _portal_transfer_active or _portal_transfer_progress <= 0.0:
+		return
+	var progress := _calm_camera_ease(_portal_transfer_progress)
+	var veil := Color(_portal_transfer_color, 0.88 * progress)
+	draw_rect(Rect2(Vector2.ZERO, size), veil)
+	var center := Vector2(size.x * 0.50, size.y * 0.58)
+	var ring_color := Color("#f6d88c")
+	ring_color.a = 0.28 + progress * 0.62
+	for index: int in range(3):
+		var radius := 34.0 + float(index) * 34.0 + (1.0 - progress) * 46.0
+		draw_arc(center, radius, -PI * 0.5, PI * 1.5, 48, ring_color, 5.0 - float(index) * 0.8, true)
+	var core := Color("#fff0b0")
+	core.a = 0.16 + progress * 0.52
+	draw_circle(center, 18.0 + progress * 22.0, core)
 
 
 func _draw_map_dice_shadow() -> void:
@@ -1551,7 +1751,8 @@ func _draw_dashed_segment(from: Vector2, to: Vector2, color: Color, width: float
 
 
 func _to_screen(world: Vector2) -> Vector2:
-	var focus := Vector2(size.x * 0.43, size.y * 0.56)
+	var route_id := str(_current_position.get("route_id", ""))
+	var focus := Vector2(size.x * 0.50, size.y * 0.60) if not _overview_mode and _course.is_loop_route(route_id) else Vector2(size.x * 0.43, size.y * 0.56)
 	return (world - _camera_world) * _world_zoom + focus
 
 

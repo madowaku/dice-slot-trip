@@ -4,6 +4,7 @@ const ScreenScene: PackedScene = preload("res://scenes/app/V06PlayScreen.tscn")
 const ScreenScript = preload("res://scripts/app/v06_play_screen.gd")
 const AtlasScript = preload("res://scripts/game/v06_atlas_view.gd")
 const SessionScript = preload("res://scripts/game/v06_play_session.gd")
+const SaveManagerScript = preload("res://scripts/game/v06_session_save_manager.gd")
 const CourseScript = preload("res://scripts/game/v06_course_model.gd")
 const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 
@@ -27,6 +28,8 @@ func _run() -> void:
 	_test_layout_and_touch(screen)
 	_test_atlas_contract(screen)
 	await _test_straight_travel_contract(screen)
+	await _test_bypass_step_travel_contract(screen)
+	await _test_loop_portal_transfer_contract(screen)
 	_test_map_contract(screen)
 	await _test_straight_roll_sequence(screen)
 	await _test_inline_slot_result_flow(screen)
@@ -128,6 +131,9 @@ func _run() -> void:
 	qa_viewport.queue_free()
 	await process_frame
 	_test_stage_select_source_contract()
+	_test_v06_save_source_contract()
+	await _test_v06_resume_runtime()
+	await _test_v06_resume_failure_preserves_save()
 	print("V06_PLAY_SCREEN_TESTS failures=%d" % failures)
 	quit(1 if failures > 0 else 0)
 
@@ -267,6 +273,37 @@ func _test_straight_travel_contract(screen: Control) -> void:
 	atlas.set_route_position(original_position, true)
 
 
+func _test_bypass_step_travel_contract(screen: Control) -> void:
+	var atlas := screen.get_node("%AtlasView") as V06AtlasView
+	var original_position: Dictionary = atlas.current_route_position()
+	var start_position := {"route_id": "bypass_bazaar_alley", "tile_index": 0}
+	var path: Array[Dictionary] = [
+		{"route_id": "bypass_bazaar_alley", "tile_index": 1},
+		{"route_id": "bypass_bazaar_alley", "tile_index": 2},
+	]
+	_expect(atlas.set_route_position(start_position, true) and atlas.begin_step_travel(start_position, path), "main and bypass routes use the shared step travel window")
+	_expect(int(atlas.straight_travel_receipt().player_step) == 0 and is_zero_approx(float(atlas.straight_travel_receipt().camera_offset)), "bypass step travel starts with the cat at the first card")
+	await atlas.animate_straight_step(1)
+	_expect(int(atlas.straight_travel_receipt().player_step) == 1 and is_zero_approx(float(atlas.straight_travel_receipt().camera_offset)), "bypass movement jumps the cat before camera follow")
+	await atlas.animate_straight_step(2)
+	await atlas.animate_straight_camera_follow()
+	_expect(float(atlas.straight_travel_receipt().camera_offset) > 0.0 and atlas.finish_straight_travel(path[1]), "bypass travel follows the camera only after the final landing")
+	atlas.set_route_position(original_position, true)
+
+
+func _test_loop_portal_transfer_contract(screen: Control) -> void:
+	var typed_screen := screen as V06PlayScreen
+	var atlas := typed_screen.atlas_for_test()
+	var original_position: Dictionary = atlas.current_route_position()
+	var loop_position := {"route_id": "loop_oasis_ring", "tile_index": 0}
+	var return_position := {"route_id": "main", "tile_index": 23}
+	_expect(typed_screen.die_anchor_for_route("loop_oasis_ring").x > 0.80 and typed_screen.die_anchor_for_route("main") == ScreenScript.DICE_ANCHOR_NORMAL, "loop route moves the map die into the right-side clear area")
+	_expect(atlas.set_route_position(loop_position, true), "portal transfer test starts on the oasis ring")
+	await atlas.animate_portal_transfer_to(return_position)
+	_expect(not atlas.portal_transfer_active() and atlas.current_route_position() == return_position, "loop exit completes a covered portal transition before revealing the main route")
+	atlas.set_route_position(original_position, true)
+
+
 func _test_straight_roll_sequence(screen: Control) -> void:
 	var typed_screen := screen as V06PlayScreen
 	var session: RefCounted = typed_screen.session_for_test()
@@ -308,6 +345,17 @@ func _test_inline_slot_result_flow(screen: Control) -> void:
 	await create_timer(3.4).timeout
 	_expect(session.phase() == SessionScript.PHASE_READY and session.faces().is_empty() and session.position() != position_before, "inline result auto-acknowledges after movement and accepts the next roll")
 	_expect(not (typed_screen.get_node("%ResolutionOverlay") as Control).visible and not (typed_screen.get_node("%RoleRewardLabel") as Label).visible, "inline reward clears without presenting a confirmation button")
+	await typed_screen._run_face(3)
+	_expect(session.phase() == SessionScript.PHASE_CHOICE_REQUIRED and session.pending_remaining_steps() == 3 and not bool(typed_screen.get("_movement_active")), "fourth roll from the Bazaar fork opens route choice instead of freezing in MOVING")
+	_expect((typed_screen.get_node("%ChoiceOverlay") as Control).visible, "zero-hop fork transition presents the route choice controls")
+	var bypass_effect_count := int(typed_screen.atlas_for_test().bypass_entry_receipt().play_count)
+	await typed_screen._on_route_chosen(CourseScript.ROUTE_BYPASS_BAZAAR)
+	var bypass_effect: Dictionary = typed_screen.atlas_for_test().bypass_entry_receipt()
+	_expect(int(bypass_effect.play_count) == bypass_effect_count + 1 and str(bypass_effect.name) == "バザール裏路地" and int(bypass_effect.saved_steps) == 4, "entering the Bazaar shortcut presents its named four-space-saving cue once")
+	typed_screen.call("_cancel_motion", session.position())
+	session.restart()
+	typed_screen.atlas_for_test().set_route_position(session.position(), true)
+	typed_screen.call("_refresh_ui")
 
 
 func _test_qa_state(screen: Control) -> void:
@@ -325,6 +373,8 @@ func _test_qa_state(screen: Control) -> void:
 	_expect((screen.get_node("%AtlasView") as Control).displayed_exit_steps() == -1, "normal atlas does not reveal ring EXIT before entering the loop")
 	var atlas := screen.get_node("%AtlasView") as Control
 	_expect(atlas.set_route_position({"route_id":"loop_oasis_ring","tile_index":3}, true) and atlas.prominent_space_count() == 8 and atlas.displayed_exit_steps() == 5, "oasis atlas switches to all eight spaces with its exact EXIT distance")
+	var loop_diameter: float = atlas.world_position_for({"route_id":"loop_oasis_ring","tile_index":0}).distance_to(atlas.world_position_for({"route_id":"loop_oasis_ring","tile_index":4}))
+	_expect(loop_diameter >= 380.0 and atlas.prominent_visible_space_count() == 8 and not atlas.uses_card_route(), "loop route fits all eight roomy spaces in one screen without the scrolling card camera")
 
 
 func _test_map_contract(screen: Control) -> void:
@@ -378,6 +428,7 @@ func _test_compact_die_motion(screen: Control) -> void:
 	var logical_face: int = pending_face if pending_face > 0 else (committed_faces.back() if not committed_faces.is_empty() else 0)
 	_expect(held_preview >= 1 and held_preview <= 6 and logical_face >= 1 and settled_slot == logical_face, "stopping reuses the logical face and transfers it to the slot after a short delay")
 	screen.call("_cancel_motion", screen.session_for_test().position())
+	await create_timer(ScreenScript.TARGET_PREVIEW_SECONDS + 0.02).timeout
 
 
 func _test_third_slot_boss_overlay_order(screen: Control) -> void:
@@ -416,7 +467,76 @@ func _test_stage_select_source_contract() -> void:
 	var source := FileAccess.get_file_as_string("res://scripts/app/main.gd")
 	_expect(source.contains("58マス") and source.contains("周回ボス：眠そうなスフィンクス"), "stage select names the 58-space Cairo route and Sphinx lap boss")
 	_expect(not source.contains("v0.6 新ルール試遊（保存なし）"), "stage select removes the duplicate legacy trial action")
-	_expect(source.contains("_button(\"この旅へ\", show_v06_game, true)") and source.contains("true, show_v06_game, CAIRO_CITY_CARD"), "この旅へ and the Cairo postcard open the latest V06 journey")
+	_expect(source.contains("_button(\"この旅へ\", show_character_select, true)") and source.contains("true, show_character_select, CAIRO_CITY_CARD"), "stage selection routes both entry controls to character selection")
+	_expect(source.contains("show_v06_game(selected_stage_id, selected_id)") and not source.contains("SaveManager.load_now()\n\t\tshow_game()"), "character confirmation starts V06 and never resumes the legacy game")
+	_expect(not source.contains("オートセーブ対応"), "title hides the unimplemented autosave promise")
+
+
+func _test_v06_save_source_contract() -> void:
+	var main_source := FileAccess.get_file_as_string("res://scripts/app/main.gd")
+	var screen_source := FileAccess.get_file_as_string("res://scripts/app/v06_play_screen.gd")
+	var legacy_manager_source := FileAccess.get_file_as_string("res://autoload/save_manager.gd")
+	_expect(main_source.contains("func _continue_v06_game()") and main_source.contains("show_v06_game(stage_id, character_id, data)"), "title continuation loads only the V06 save result")
+	_expect(main_source.contains("screen.configure_resume_data(resume_data)") and main_source.contains("screen.configure_save_manager(_v06_save_manager())"), "V06 screen receives resume data and its separate save manager")
+	_expect(screen_source.contains("add_to_group(\"v06_session_screen\")") and screen_source.contains("func _save_stable_checkpoint()") and screen_source.contains("NOTIFICATION_WM_CLOSE_REQUEST") and screen_source.contains("elif not resume_requested"), "V06 owns stable checkpoints and does not overwrite a failed resume")
+	_expect(main_source.contains("add_to_group(\"v06_session_screen\")") and main_source.contains("remove_from_group(\"v06_session_screen\")") and legacy_manager_source.contains("v06_session_screen") and legacy_manager_source.contains("return"), "legacy lifecycle autosave is skipped through the V06 host transition")
+
+
+func _test_v06_resume_runtime() -> void:
+	var path := "user://v06_screen_resume_test.json"
+	for candidate: String in [path, "%s.bak" % path, "%s.tmp" % path]:
+		if FileAccess.file_exists(candidate):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(candidate))
+	var manager: RefCounted = SaveManagerScript.new(path)
+	var source_session: RefCounted = SessionScript.new(&"cairo_hourglass", &"gambler")
+	var started: Dictionary = source_session.start_roll(2)
+	while source_session.has_pending_hops():
+		source_session.next_hop()
+	source_session.finish_movement()
+	var saved: Dictionary = manager.save_session(source_session)
+	var host := Control.new()
+	host.size = UiTokensScript.BASE_VIEWPORT
+	root.add_child(host)
+	var resumed_screen: V06PlayScreen = ScreenScene.instantiate() as V06PlayScreen
+	resumed_screen.configure_start_context(&"cairo_hourglass", &"gambler")
+	resumed_screen.configure_save_manager(manager)
+	resumed_screen.configure_resume_data(saved.data)
+	host.add_child(resumed_screen)
+	await process_frame
+	await process_frame
+	var resumed: RefCounted = resumed_screen.session_for_test()
+	_expect(started.ok and saved.ok and resumed.stage_id() == &"cairo_hourglass" and resumed.character_id() == &"gambler" and resumed.position().tile_index == source_session.position().tile_index and resumed.phase() == SessionScript.PHASE_READY, "screen resumes the saved V06 stage, character, and stable position")
+	host.queue_free()
+	await process_frame
+	for candidate: String in [path, "%s.bak" % path, "%s.tmp" % path]:
+		if FileAccess.file_exists(candidate):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(candidate))
+
+
+func _test_v06_resume_failure_preserves_save() -> void:
+	var path := "user://v06_screen_resume_failure_test.json"
+	for candidate: String in [path, "%s.bak" % path, "%s.tmp" % path, "%s.bak.swap" % path]:
+		if FileAccess.file_exists(candidate):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(candidate))
+	var manager: RefCounted = SaveManagerScript.new(path)
+	_expect(manager.save_session(SessionScript.new(&"cairo_hourglass", &"gambler")).ok, "resume-failure setup creates the previous checkpoint")
+	var host := Control.new()
+	host.size = UiTokensScript.BASE_VIEWPORT
+	root.add_child(host)
+	var failed_screen: V06PlayScreen = ScreenScene.instantiate() as V06PlayScreen
+	failed_screen.configure_start_context(&"cairo_hourglass", &"relaxed")
+	failed_screen.configure_save_manager(manager)
+	failed_screen.configure_resume_data({"session_state":{"phase":"NOT_A_STABLE_PHASE"}})
+	host.add_child(failed_screen)
+	await process_frame
+	await process_frame
+	var preserved: Dictionary = manager.load_result()
+	_expect(preserved.ok and preserved.status == SaveManagerScript.STATUS_VALID_PRIMARY and preserved.data.character_id == "gambler", "failed V06 resume does not overwrite the previous Continue checkpoint")
+	host.queue_free()
+	await process_frame
+	for candidate: String in [path, "%s.bak" % path, "%s.tmp" % path, "%s.bak.swap" % path]:
+		if FileAccess.file_exists(candidate):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(candidate))
 
 
 func _settle_session_roll(session: RefCounted, face: int, route_choice := "") -> bool:

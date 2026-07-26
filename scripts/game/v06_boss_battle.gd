@@ -86,6 +86,42 @@ func snapshot() -> Dictionary:
 	}
 
 
+func restore_snapshot(data: Dictionary) -> bool:
+	var lap := int(data.get("lap", 0))
+	var round := int(data.get("round", 0))
+	var player_hp := int(data.get("player_hp", -1))
+	var boss_hp := int(data.get("boss_hp", -1))
+	var faces_value: Variant = data.get("faces", [])
+	var pending_ack := bool(data.get("pending_ack", false))
+	var terminal := bool(data.get("terminal", false))
+	if lap < 1 or round < 1 or player_hp < 0 or player_hp > PLAYER_MAX_HP or boss_hp < 0 or boss_hp > BOSS_MAX_HP:
+		return false
+	if not faces_value is Array or faces_value.size() > V06RollSetScript.SLOT_COUNT:
+		return false
+	if not data.get("result", {}) is Dictionary:
+		return false
+	var restored_set: RefCounted = V06RollSetScript.new()
+	if not restored_set.restore_faces(faces_value as Array):
+		return false
+	if pending_ack and not restored_set.is_complete():
+		return false
+	if terminal and not (player_hp == 0 or boss_hp == 0):
+		return false
+	var result_data: Dictionary = data.get("result", {}) as Dictionary
+	var result_terminal := bool(result_data.get("victory", false)) or bool(result_data.get("defeat", false))
+	if (player_hp == 0 or boss_hp == 0) and not result_terminal:
+		return false
+	_lap = lap
+	_round = round
+	_player_hp = player_hp
+	_boss_hp = boss_hp
+	_roll_set = restored_set
+	_pending_ack = pending_ack
+	_terminal = terminal
+	_last_result = result_data.duplicate(true)
+	return true
+
+
 func current_action() -> StringName:
 	match (_round - 1) % 3:
 		0:

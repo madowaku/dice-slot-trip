@@ -7,6 +7,7 @@ var failures := 0
 
 
 func _init() -> void:
+	_test_session_context()
 	_test_movement_precedes_commit()
 	_test_exact_fork_and_resolution_ack()
 	_test_mid_roll_fork_both_routes()
@@ -20,6 +21,14 @@ func _init() -> void:
 	_test_third_slot_boss_resolution_order()
 	print("V06_PLAY_SESSION_TESTS failures=%d" % failures)
 	quit(1 if failures > 0 else 0)
+
+
+func _test_session_context() -> void:
+	var configured: RefCounted = Session.new(&"cairo_hourglass", &"gambler")
+	var snapshot: Dictionary = configured.snapshot()
+	_expect(configured.stage_id() == &"cairo_hourglass" and configured.character_id() == &"gambler" and snapshot.stage_id == "cairo_hourglass" and snapshot.character_id == "gambler", "58-space session keeps the selected stage and traveler IDs")
+	var fallback: RefCounted = Session.new(&"", &"")
+	_expect(fallback.stage_id() == Session.DEFAULT_STAGE_ID and fallback.character_id() == Session.DEFAULT_CHARACTER_ID, "58-space session defaults missing context to Cairo and explorer cat")
 
 
 func _test_movement_precedes_commit() -> void:

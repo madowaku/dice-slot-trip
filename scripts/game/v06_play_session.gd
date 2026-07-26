@@ -5,6 +5,8 @@ const V06RollSetScript = preload("res://scripts/game/v06_roll_set.gd")
 const V06CourseModelScript = preload("res://scripts/game/v06_course_model.gd")
 const V06BossBattleScript = preload("res://scripts/game/v06_boss_battle.gd")
 const COURSE_PATH := "res://data/stages/v06_cairo_course.json"
+const DEFAULT_STAGE_ID: StringName = &"cairo_hourglass"
+const DEFAULT_CHARACTER_ID: StringName = &"relaxed"
 
 const PHASE_READY: StringName = &"READY"
 const PHASE_MOVING: StringName = &"MOVING"
@@ -38,6 +40,10 @@ const SCORE_FINISH := 1000
 const SCORE_FINISH_HP := 200
 const SCORE_FINISH_FULL_HP := 300
 const SKILL_GAUGE_MAX := 3
+const SKILL_STATE_CHARGING: StringName = &"CHARGING"
+const SKILL_STATE_READY: StringName = &"READY"
+const SKILL_STATE_ARMED: StringName = &"ARMED"
+const SAVE_STABLE_PHASES := [PHASE_READY, PHASE_CHOICE_REQUIRED, PHASE_BOSS_ROLL_READY, PHASE_BOSS_ROUND_RESULT, PHASE_LAP_RESULT, PHASE_RUN_OVER]
 
 var _course: RefCounted
 var _travel: RefCounted
@@ -67,6 +73,12 @@ var _roll_count := 0
 var _score := 0
 var _coins := 0
 var _skill_gauge := 0
+var _skill_state: StringName = SKILL_STATE_CHARGING
+var _role_counts: Dictionary = {"MIX":0, "PAIR":0, "STRAIGHT":0, "TRIPLE":0}
+var _last_role: StringName = &""
+var _inventory: Dictionary = {}
+var _item_consumption: Dictionary = {}
+var _stage_flags: Dictionary = {}
 var _best_score := 0
 var _score_event_serial := 0
 var _last_score_award: Dictionary = {}
@@ -84,9 +96,13 @@ var _last_now_ms := -1
 var _best_ms: Variant = null
 var _pb_updated := false
 var _pb_delta_ms: Variant = null
+var _stage_id: StringName = DEFAULT_STAGE_ID
+var _character_id: StringName = DEFAULT_CHARACTER_ID
 
 
-func _init() -> void:
+func _init(stage_id: StringName = DEFAULT_STAGE_ID, character_id: StringName = DEFAULT_CHARACTER_ID) -> void:
+	_stage_id = stage_id if not String(stage_id).is_empty() else DEFAULT_STAGE_ID
+	_character_id = character_id if not String(character_id).is_empty() else DEFAULT_CHARACTER_ID
 	_course = V06CourseModelScript.new()
 	_course_ready = _course.load_file(COURSE_PATH)
 	_reset_run_state(false)
@@ -120,6 +136,7 @@ func start_roll(face: int, now_ms: int = -1) -> Dictionary:
 		if str(boss_event.get("status", "")) == "ROUND_RESOLVED":
 			_phase = PHASE_BOSS_ROUND_RESULT
 			var result: Dictionary = _battle.result()
+			_record_role(StringName(str(result.get("role", ""))))
 			_player_hp = int(result.get("player_hp_after", _player_hp))
 			if bool(result.get("victory", false)) or bool(result.get("defeat", false)):
 				_stop_clock(now_ms)
@@ -156,6 +173,15 @@ func has_pending_hops() -> bool:
 
 func pending_hop_count() -> int:
 	return maxi(_pending_path.size() - _next_hop_index, 0) if _phase == PHASE_MOVING else 0
+
+
+func pending_hop_positions() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if _phase != PHASE_MOVING:
+		return result
+	for index: int in range(_next_hop_index, _pending_path.size()):
+		result.append(_pending_path[index].duplicate(true))
+	return result
 
 
 func next_hop() -> Dictionary:
@@ -305,6 +331,14 @@ func player_hp() -> int: return _player_hp
 func score() -> int: return _score
 func coins() -> int: return _coins
 func skill_gauge() -> int: return _skill_gauge
+func skill_state() -> StringName: return _skill_state
+func role_counts() -> Dictionary: return _role_counts.duplicate(true)
+func last_role() -> StringName: return _last_role
+func inventory() -> Dictionary: return _inventory.duplicate(true)
+func item_consumption() -> Dictionary: return _item_consumption.duplicate(true)
+func stage_flags() -> Dictionary: return _stage_flags.duplicate(true)
+func stage_id() -> StringName: return _stage_id
+func character_id() -> StringName: return _character_id
 func active_warp_gate_id() -> String: return _active_warp_gate_id
 func consumed_warp_gate_ids() -> PackedStringArray: return PackedStringArray(_consumed_warp_gate_ids.keys())
 func consumed_reward_node_keys() -> PackedStringArray: return PackedStringArray(_consumed_reward_node_keys.keys())
@@ -319,6 +353,173 @@ func pb_delta_ms(now_ms: int = -1) -> Variant:
 	return elapsed_ms(now_ms) - int(_best_ms)
 func boss_snapshot() -> Dictionary: return _battle.snapshot() if _battle != null else {}
 func boss_result() -> Dictionary: return _battle.result() if _battle != null else {}
+
+
+func is_stable_for_save() -> bool:
+	if _phase == PHASE_BOSS_ROLL_READY and not faces().is_empty():
+		return false
+	return _phase in SAVE_STABLE_PHASES and _pending_result.is_empty() and _pending_path.is_empty() and _next_hop_index == 0
+
+
+func stable_save_snapshot(now_ms: int = -1) -> Dictionary:
+	if not is_stable_for_save():
+		return {}
+	var route_id := str(_position.get("route_id", "main"))
+	var tile_index := int(_position.get("tile_index", 0))
+	var available_route_ids: Array[String] = []
+	if _phase == PHASE_CHOICE_REQUIRED:
+		available_route_ids.append(V06CourseModelScript.ROUTE_MAIN)
+		var bypass := pending_bypass()
+		if not bypass.is_empty():
+			available_route_ids.append(str(bypass.get("route_id", "")))
+	var loop_id := route_id if _course.is_loop_route(route_id) else ""
+	var loop_definition: Dictionary = _course.loop_definition(route_id) if not loop_id.is_empty() else {}
+	var slot_faces := faces()
+	var boss_data := boss_snapshot()
+	return {
+		"phase": String(_phase),
+		"lap": _lap,
+		"roll_count": _roll_count,
+		"player": {
+			"hp": _player_hp,
+			"max_hp": 3,
+			"coins": _coins,
+			"skill_gauge": _skill_gauge,
+			"skill_state": String(_skill_state),
+			"inventory": _inventory.duplicate(true),
+			"item_consumption": _item_consumption.duplicate(true),
+			"stage_flags": _stage_flags.duplicate(true),
+		},
+		"route": {
+			"current_node_id": _position_key(_position),
+			"route_id": route_id,
+			"tile_index": tile_index,
+			"pending_face": _pending_face if _phase == PHASE_CHOICE_REQUIRED else 0,
+			"pending_remaining_steps": _pending_remaining_steps if _phase == PHASE_CHOICE_REQUIRED else 0,
+			"available_route_ids": available_route_ids,
+			"active_warp_gate_id": _active_warp_gate_id,
+			"consumed_warp_gate_ids": _string_keys(_consumed_warp_gate_ids),
+			"visited_node_keys": _string_keys(_visited_node_keys),
+			"consumed_reward_node_keys": _string_keys(_consumed_reward_node_keys),
+			"awarded_score_event_ids": _string_keys(_awarded_score_event_ids),
+			"loop_id": loop_id,
+			"loop_tile_index": tile_index if not loop_id.is_empty() else -1,
+			"loop_exit_steps": _course.steps_to_exit(_position) if not loop_id.is_empty() else -1,
+			"exit_position": loop_definition.get("exit_position", {}) if not loop_definition.is_empty() else {},
+		},
+		"slot": {
+			"faces": slot_faces,
+			"current_roll_index": slot_faces.size(),
+			"last_role": String(_last_role),
+			"last_role_resolved": not _last_role.is_empty(),
+			"resolution_role": String(_resolution_role),
+			"pending_role": String(_pending_resolution_role),
+			"pending_role_awarded": _pending_role_awarded,
+			"next_set_carry": false,
+		},
+		"score": {
+			"total": _score,
+			"breakdown": _score_breakdown.duplicate(true),
+			"role_counts": _role_counts.duplicate(true),
+			"last_award": _last_score_award.duplicate(true),
+		},
+		"records": {
+			"best_score": _best_score,
+			"best_ms": _best_ms,
+			"pb_delta_ms": pb_delta_ms(now_ms),
+			"pb_updated": _pb_updated,
+		},
+		"clock": {
+			"elapsed_ms": elapsed_ms(now_ms),
+			"armed": _clock_armed,
+			"running": _clock_running,
+			"paused": _clock_paused,
+		},
+		"boss": boss_data,
+		"boss_entered": _battle != null,
+		"pending_transaction": null,
+	}
+
+
+func restore_stable_snapshot(state: Dictionary, now_ms: int = -1) -> bool:
+	if not _course_ready or state.is_empty():
+		return false
+	var phase := StringName(str(state.get("phase", "")))
+	if phase not in SAVE_STABLE_PHASES:
+		return false
+	var player: Dictionary = state.get("player", {})
+	var route: Dictionary = state.get("route", {})
+	var slot: Dictionary = state.get("slot", {})
+	var score_data: Dictionary = state.get("score", {})
+	var records: Dictionary = state.get("records", {})
+	var clock: Dictionary = state.get("clock", {})
+	if not player is Dictionary or not route is Dictionary or not slot is Dictionary or not score_data is Dictionary or not records is Dictionary or not clock is Dictionary:
+		return false
+	var route_id := str(route.get("route_id", ""))
+	var tile_index := int(route.get("tile_index", -1))
+	if not _course_position_exists(route_id, tile_index):
+		return false
+	var face_values: Variant = slot.get("faces", [])
+	if not face_values is Array or face_values.size() > V06RollSetScript.SLOT_COUNT:
+		return false
+	_reset_run_state(false)
+	_stage_id = _stage_id if not String(_stage_id).is_empty() else DEFAULT_STAGE_ID
+	_character_id = _character_id if not String(_character_id).is_empty() else DEFAULT_CHARACTER_ID
+	_lap = maxi(int(state.get("lap", 1)), 1)
+	_roll_count = maxi(int(state.get("roll_count", 0)), 0)
+	_player_hp = clampi(int(player.get("hp", 3)), 0, 3)
+	_coins = maxi(int(player.get("coins", 0)), 0)
+	_skill_gauge = clampi(int(player.get("skill_gauge", 0)), 0, SKILL_GAUGE_MAX)
+	_skill_state = StringName(str(player.get("skill_state", SKILL_STATE_CHARGING)))
+	_inventory = (player.get("inventory", {}) as Dictionary).duplicate(true)
+	_item_consumption = (player.get("item_consumption", {}) as Dictionary).duplicate(true)
+	_stage_flags = (player.get("stage_flags", {}) as Dictionary).duplicate(true)
+	_position = {"route_id":route_id, "tile_index":tile_index}
+	_visual_position = _position.duplicate(true)
+	_active_warp_gate_id = str(route.get("active_warp_gate_id", ""))
+	_restore_string_set(_consumed_warp_gate_ids, route.get("consumed_warp_gate_ids", []))
+	_restore_string_set(_visited_node_keys, route.get("visited_node_keys", []))
+	_restore_string_set(_consumed_reward_node_keys, route.get("consumed_reward_node_keys", []))
+	_restore_string_set(_awarded_score_event_ids, route.get("awarded_score_event_ids", []))
+	_score = maxi(int(score_data.get("total", 0)), 0)
+	_score_breakdown = (score_data.get("breakdown", {}) as Dictionary).duplicate(true)
+	_role_counts = {"MIX":0, "PAIR":0, "STRAIGHT":0, "TRIPLE":0}
+	for role: String in _role_counts.keys():
+		_role_counts[role] = maxi(int((score_data.get("role_counts", {}) as Dictionary).get(role, 0)), 0)
+	_last_score_award = (score_data.get("last_award", {}) as Dictionary).duplicate(true)
+	_score_event_serial = int(_last_score_award.get("serial", 0))
+	_best_score = maxi(int(records.get("best_score", 0)), 0)
+	_best_ms = records.get("best_ms", null)
+	_pb_delta_ms = records.get("pb_delta_ms", null)
+	_pb_updated = bool(records.get("pb_updated", false))
+	_pending_face = int(route.get("pending_face", 0)) if phase == PHASE_CHOICE_REQUIRED else 0
+	_pending_remaining_steps = maxi(int(route.get("pending_remaining_steps", 0)), 0) if phase == PHASE_CHOICE_REQUIRED else 0
+	_last_role = StringName(str(slot.get("last_role", "")))
+	_resolution_role = StringName(str(slot.get("resolution_role", "")))
+	_pending_resolution_role = StringName(str(slot.get("pending_role", "")))
+	_pending_role_awarded = bool(slot.get("pending_role_awarded", false))
+	_pending_result.clear(); _pending_path.clear(); _next_hop_index = 0
+	_boss_transition_pending = false; _last_error = ""
+	var boss_entered := bool(state.get("boss_entered", false))
+	_battle = null
+	if boss_entered:
+		var restored_battle: RefCounted = V06BossBattleScript.new()
+		if not restored_battle.restore_snapshot(state.get("boss", {}) as Dictionary):
+			return false
+		_battle = restored_battle
+		_travel = V06RollSetScript.new()
+	else:
+		_battle = null
+		_travel = V06RollSetScript.new()
+		if not _travel.restore_faces(face_values as Array):
+			return false
+	_phase = phase
+	if phase in [PHASE_BOSS_ROLL_READY, PHASE_BOSS_ROUND_RESULT, PHASE_LAP_RESULT, PHASE_RUN_OVER] and _battle == null:
+		return false
+	if phase in [PHASE_READY, PHASE_CHOICE_REQUIRED] and _battle != null:
+		return false
+	_restore_clock(clock, now_ms)
+	return true
 
 
 func current_tile_kind() -> String:
@@ -349,7 +550,7 @@ func steps_to_loop_exit() -> int: return _course.steps_to_exit(_position) if _co
 
 func snapshot(now_ms: int = -1) -> Dictionary:
 	var elapsed := elapsed_ms(now_ms)
-	return {"position":position(), "visual_position":visual_position(), "phase":_phase, "faces":faces(),
+	return {"stage_id":String(_stage_id), "character_id":String(_character_id), "position":position(), "visual_position":visual_position(), "phase":_phase, "faces":faces(),
 		"pending_face":_pending_face, "pending_remaining_steps":_pending_remaining_steps, "pending_hops":pending_hop_count(),
 		"resolution_role":_resolution_role, "boss_terminal":is_boss_terminal(), "boss_transition_pending":_boss_transition_pending,
 		"can_roll":can_roll(), "tile_kind":current_tile_kind(), "steps_to_exit":steps_to_loop_exit(), "last_error":_last_error,
@@ -372,7 +573,9 @@ func _reset_run_state(keep_pb: bool) -> void:
 
 func _reset_course_and_clock() -> void:
 	_travel = V06RollSetScript.new(); _battle = null
-	_score = 0; _coins = 0; _skill_gauge = 0; _score_event_serial = 0; _last_score_award.clear()
+	_score = 0; _coins = 0; _skill_gauge = 0; _skill_state = SKILL_STATE_CHARGING; _score_event_serial = 0; _last_score_award.clear()
+	_role_counts = {"MIX":0, "PAIR":0, "STRAIGHT":0, "TRIPLE":0}; _last_role = &""
+	_inventory.clear(); _item_consumption.clear(); _stage_flags.clear()
 	_score_breakdown = {"travel":0, "slot":0, "discovery":0, "boss":0, "finish":0}
 	_position = {"route_id":"main", "tile_index":0}; _visual_position = _position.duplicate(true)
 	_active_warp_gate_id = ""; _consumed_warp_gate_ids.clear(); _visited_node_keys.clear()
@@ -514,6 +717,9 @@ func _award_finish_score() -> void:
 
 
 func _award_role_score(role: StringName) -> void:
+	if role == &"":
+		return
+	_record_role(role)
 	match role:
 		V06RollSetScript.ROLE_TRIPLE:
 			_skill_gauge = SKILL_GAUGE_MAX
@@ -527,6 +733,15 @@ func _award_role_score(role: StringName) -> void:
 		_:
 			_coins += 1
 			_add_score(SCORE_MIX, "MIX", "slot")
+	_skill_state = SKILL_STATE_READY if _skill_gauge >= SKILL_GAUGE_MAX else SKILL_STATE_CHARGING
+
+
+func _record_role(role: StringName) -> void:
+	if role == &"":
+		return
+	var role_key := String(role)
+	_role_counts[role_key] = int(_role_counts.get(role_key, 0)) + 1
+	_last_role = role
 
 
 func _prepare_pending_role_reward() -> void:
@@ -567,3 +782,45 @@ func _event(ok: bool, status: String) -> Dictionary:
 
 func _rejected(error: String) -> Dictionary:
 	var event := snapshot(); event["ok"] = false; event["status"] = error; event["error"] = error; return event
+
+
+func _course_position_exists(route_id: String, tile_index: int) -> bool:
+	if route_id.is_empty() or tile_index < 0:
+		return false
+	var routes: Dictionary = _course.definition().get("routes", {})
+	return routes.has(route_id) and routes[route_id] is Array and tile_index < (routes[route_id] as Array).size()
+
+
+func _string_keys(values: Dictionary) -> Array[String]:
+	var keys: Array[String] = []
+	for value: Variant in values.keys():
+		keys.append(str(value))
+	keys.sort()
+	return keys
+
+
+func _restore_string_set(target: Dictionary, values: Variant) -> void:
+	target.clear()
+	if not values is Array:
+		return
+	for value: Variant in values as Array:
+		target[str(value)] = true
+
+
+func _restore_clock(clock: Dictionary, now_ms: int) -> void:
+	var restore_now := now_ms if now_ms >= 0 else 0
+	var saved_elapsed := maxi(int(clock.get("elapsed_ms", 0)), 0)
+	_clock_armed = bool(clock.get("armed", false))
+	_clock_running = bool(clock.get("running", false)) and not _phase in [PHASE_LAP_RESULT, PHASE_RUN_OVER]
+	_clock_paused = false
+	_clock_start_ms = restore_now - saved_elapsed
+	_paused_total_ms = 0
+	_pause_started_ms = 0
+	_clock_stop_ms = restore_now if not _clock_running else 0
+	_last_now_ms = restore_now
+	if _clock_armed:
+		_clock_running = false
+		_clock_start_ms = 0
+		_clock_stop_ms = 0
+	elif not _clock_running:
+		_clock_stop_ms = restore_now

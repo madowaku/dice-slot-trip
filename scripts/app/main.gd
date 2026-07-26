@@ -39,6 +39,7 @@ const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3
 const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
 const PopupBookTransitionScript = preload("res://scripts/game/popup_book_transition.gd")
 const V06PlayScreenScene: PackedScene = preload("res://scenes/app/V06PlayScreen.tscn")
+const V06SessionSaveManagerScript = preload("res://scripts/game/v06_session_save_manager.gd")
 const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 const UiThemeNamesScript = preload("res://scripts/ui/ui_theme_names.gd")
 const ReleasePolicyScript = preload("res://scripts/ui/release_policy.gd")
@@ -99,6 +100,7 @@ var dice_presentation: SubViewportContainer
 var map_dice_overlay: MapDiceOverlay
 var dice_audio: Node
 var ui_audio_player: AudioStreamPlayer
+var v06_save_manager: RefCounted
 var role_label: Label
 var memo_label: Label
 var roll_button: Button
@@ -216,6 +218,7 @@ func _ready() -> void:
 	ui_audio_player.name = "UIAudioPlayer"
 	ui_audio_player.bus = &"Master"
 	add_child(ui_audio_player)
+	v06_save_manager = V06SessionSaveManagerScript.new()
 	match OS.get_environment("DICE_QA_SCREEN"):
 		"stage": show_stage_select()
 		"character": show_character_select()
@@ -348,6 +351,10 @@ func _visible_buttons_meet_touch_min() -> bool:
 	return true
 
 func _clear() -> void:
+	# Remove the host marker centrally when replacing screens. The V06 child
+	# remains in the group until its queued free is processed.
+	if is_in_group("v06_session_screen"):
+		remove_from_group("v06_session_screen")
 	if is_instance_valid(dice_audio): dice_audio.stop_all()
 	for child: Node in get_children():
 		if child == ui_audio_player: continue
@@ -614,13 +621,8 @@ func show_title() -> void:
 	sub.add_theme_color_override("font_color", MUTED)
 	actions_box.add_child(sub)
 	actions_box.add_child(_button("はじめから", show_stage_select, true))
-	var continue_button := _button("つづきから", func() -> void:
-		SaveManager.load_now()
-		show_game()
-		if not GameState.active_event_state.is_empty(): call_deferred("_resume_active_event")
-		elif GameState.pending_boss_handoff: call_deferred("_resume_pending_boss_handoff")
-		elif not GameState.roll_transaction.is_empty(): call_deferred("_resume_roll_transaction"))
-	continue_button.disabled = not SaveManager.has_save()
+	var continue_button := _button("つづきから", _continue_v06_game)
+	continue_button.disabled = not _v06_save_manager().has_valid_save()
 	actions_box.add_child(continue_button)
 	var utility := HBoxContainer.new()
 	utility.add_theme_constant_override("separation", UiTokensScript.GAP_S)
@@ -631,12 +633,6 @@ func show_title() -> void:
 	utility.add_child(book)
 	utility.add_child(settings)
 	actions_box.add_child(utility)
-	var autosave := PanelContainer.new()
-	autosave.add_theme_stylebox_override("panel", _premium_panel(Color(0.24, 0.18, 0.12, 0.88), GOLD, 18))
-	var autosave_label := _body("🐾  オートセーブ対応", UiTokensScript.FONT_CAPTION)
-	autosave_label.add_theme_color_override("font_color", Color("#fff0c7"))
-	autosave.add_child(autosave_label)
-	actions_box.add_child(autosave)
 	page.add_child(actions)
 
 func _show_settings_modal() -> void:
@@ -660,6 +656,9 @@ func _show_settings_modal() -> void:
 	SaveManager.save_now(); _close_modal(modal.layer)
 
 func show_stage_select() -> void:
+	# The only currently released stage is Cairo. Keep the selected stage aligned
+	# with the product card even when an older save was previously loaded by QA.
+	GameState.selected_stage_id = GameState.DEFAULT_STAGE
 	var page := _make_world_page()
 	var heading_panel := PanelContainer.new()
 	heading_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.88, 0.70, 0.94), Color("#8d6335"), 18))
@@ -682,7 +681,7 @@ func show_stage_select() -> void:
 	_add_city_postcard(map_area, "TOKYO", "桜風の東京", Vector2(464, 72), Vector2(190, 136), false, Callable())
 	_add_city_postcard(map_area, "ROME", "遺跡のローマ", Vector2(55, 390), Vector2(195, 136), false, Callable())
 	_add_city_postcard(map_area, "SINGAPORE", "雨粒のシンガポール", Vector2(365, 390), Vector2(290, 136), false, Callable())
-	var cairo := _add_city_postcard(map_area, "CAIRO", "砂時計のカイロ", Vector2(245, 210), Vector2(240, 172), true, show_v06_game, CAIRO_CITY_CARD)
+	var cairo := _add_city_postcard(map_area, "CAIRO", "砂時計のカイロ", Vector2(245, 210), Vector2(240, 172), true, show_character_select, CAIRO_CITY_CARD)
 	cairo.add_theme_font_size_override("font_size", 21)
 	GameState.ensure_boss_data()
 	var route := _body("選択中：砂時計のカイロ　｜　58マス　｜　周回ボス：眠そうなスフィンクス", UiTokensScript.FONT_CAPTION)
@@ -691,7 +690,7 @@ func show_stage_select() -> void:
 	route_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.19, 0.14, 0.10, 0.88), GOLD, 18))
 	route_panel.add_child(route)
 	page.add_child(route_panel)
-	page.add_child(_button("この旅へ", show_v06_game, true))
+	page.add_child(_button("この旅へ", show_character_select, true))
 	var back := _button("もどる", show_title)
 	page.add_child(back)
 
@@ -862,7 +861,7 @@ func _select_character(character_id: StringName) -> void:
 	character_start_button.text = "この旅人で出発"
 	character_start_button.disabled = false
 
-func _confirm_character_selection(save_selection: bool = true) -> bool:
+func _confirm_character_selection(_save_selection: bool = true) -> bool:
 	if character_transition_locked or pending_character_id == &"":
 		return false
 	character_transition_locked = true
@@ -871,12 +870,15 @@ func _confirm_character_selection(save_selection: bool = true) -> bool:
 	for card: Variant in character_cards.values():
 		(card as Button).disabled = true
 	var selected_id := pending_character_id
+	var selected_stage_id: StringName = GameState.selected_stage_id
+	if String(selected_stage_id).is_empty():
+		selected_stage_id = GameState.DEFAULT_STAGE
 	GameState.start_new_game()
-	GameState.selected_stage_id = GameState.DEFAULT_STAGE
+	GameState.selected_stage_id = selected_stage_id
 	GameState.selected_character_id = selected_id
-	if save_selection and not SaveManager.save_now():
-		push_warning("The selected traveler could not be autosaved.")
-	show_game()
+	# The 58-space session has no formal resume format in this slice. Do not
+	# write the legacy save when a new journey is started.
+	show_v06_game(selected_stage_id, selected_id)
 	return true
 
 func show_font_qa() -> void:
@@ -904,13 +906,47 @@ func show_font_qa() -> void:
 	page.add_child(rich)
 	page.add_child(_button("文字と記号を確認　！？・◇●", func() -> void: return, true))
 
-func show_v06_game() -> void:
+func _v06_save_manager() -> RefCounted:
+	if v06_save_manager == null:
+		v06_save_manager = V06SessionSaveManagerScript.new()
+	return v06_save_manager
+
+
+func _continue_v06_game() -> void:
+	var loaded: Dictionary = _v06_save_manager().load_result()
+	if str(loaded.get("status", "")) not in [V06SessionSaveManagerScript.STATUS_VALID_PRIMARY, V06SessionSaveManagerScript.STATUS_RECOVERED_BACKUP]:
+		show_title()
+		return
+	var data: Dictionary = loaded.get("data", {})
+	var stage_id := StringName(str(data.get("stage_id", "")))
+	var character_id := StringName(str(data.get("character_id", "")))
+	show_v06_game(stage_id, character_id, data)
+
+
+func show_v06_game(stage_id: StringName = &"", character_id: StringName = &"", resume_data: Dictionary = {}) -> void:
+	var resolved_stage_id: StringName = stage_id
+	if String(resolved_stage_id).is_empty():
+		resolved_stage_id = GameState.selected_stage_id
+	if String(resolved_stage_id).is_empty():
+		resolved_stage_id = GameState.DEFAULT_STAGE
+	var resolved_character_id: StringName = character_id
+	if String(resolved_character_id).is_empty():
+		resolved_character_id = GameState.selected_character_id
+	if String(resolved_character_id).is_empty():
+		resolved_character_id = GameState.DEFAULT_CHARACTER
+	GameState.selected_stage_id = resolved_stage_id
+	GameState.selected_character_id = resolved_character_id
 	_clear()
-	var screen := V06PlayScreenScene.instantiate() as Control
+	add_to_group("v06_session_screen")
+	var screen := V06PlayScreenScene.instantiate() as V06PlayScreen
 	screen.name = "V06PlayScreen"
 	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	screen.configure_start_context(resolved_stage_id, resolved_character_id)
+	screen.configure_save_manager(_v06_save_manager())
+	screen.configure_resume_data(resume_data)
 	add_child(screen)
 	screen.connect("back_requested", Callable(self, "show_stage_select"))
+	screen.connect("resume_failed", Callable(self, "show_title"))
 
 func show_game() -> void:
 	var page := _make_page()

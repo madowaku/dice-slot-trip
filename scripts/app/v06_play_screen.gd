@@ -2,8 +2,10 @@ class_name V06PlayScreen
 extends Control
 
 signal back_requested
+signal resume_failed
 
 const V06PlaySessionScript = preload("res://scripts/game/v06_play_session.gd")
+const V06SessionSaveManagerScript = preload("res://scripts/game/v06_session_save_manager.gd")
 const V06CourseModelScript = preload("res://scripts/game/v06_course_model.gd")
 const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 const UiThemeNamesScript = preload("res://scripts/ui/ui_theme_names.gd")
@@ -18,6 +20,8 @@ const TARGET_PREVIEW_SECONDS := 0.20
 const SLOT_STOP_DELAY_SECONDS := 0.12
 const ROLLING_SLOT_STEP_SECONDS := 0.06
 const INLINE_SLOT_RESULT_SECONDS := 0.46
+const DICE_ANCHOR_NORMAL := Vector2(0.45, 0.82)
+const DICE_ANCHOR_LOOP := Vector2(0.88, 0.82)
 const SLOT_RESULT_GLOW := Color(1.45, 1.42, 1.30, 1.0)
 const SLOT_RESULT_STRONG_GLOW := Color(1.75, 1.68, 1.42, 1.0)
 
@@ -100,11 +104,39 @@ var _score_target := 0
 var _score_tween: Tween
 var _score_delta_tween: Tween
 var _inline_slot_result_active := false
+var _start_stage_id: StringName = V06PlaySessionScript.DEFAULT_STAGE_ID
+var _start_character_id: StringName = V06PlaySessionScript.DEFAULT_CHARACTER_ID
+var _save_manager: RefCounted
+var _save_enabled := false
+var _resume_data: Dictionary = {}
+
+
+func configure_start_context(stage_id: StringName, character_id: StringName) -> void:
+	_start_stage_id = stage_id if not String(stage_id).is_empty() else V06PlaySessionScript.DEFAULT_STAGE_ID
+	_start_character_id = character_id if not String(character_id).is_empty() else V06PlaySessionScript.DEFAULT_CHARACTER_ID
+
+
+func configure_save_manager(manager: RefCounted) -> void:
+	_save_manager = manager
+	_save_enabled = manager != null and manager.has_method("save_session")
+
+
+func configure_resume_data(data: Dictionary) -> void:
+	_resume_data = data.duplicate(true)
 
 
 func _ready() -> void:
-	_rng.seed = 20260718
-	_session = V06PlaySessionScript.new()
+	_rng.randomize()
+	add_to_group("v06_session_screen")
+	_session = V06PlaySessionScript.new(_start_stage_id, _start_character_id)
+	var resume_requested := not _resume_data.is_empty()
+	var restored := false
+	if not _resume_data.is_empty():
+		var state: Variant = _resume_data.get("session_state", {})
+		if state is Dictionary:
+			restored = _session.restore_stable_snapshot(state as Dictionary, Time.get_ticks_msec())
+		if not restored:
+			call_deferred("_emit_resume_failed")
 	_apply_surface_styles()
 	_wire_controls()
 	_wire_press_feedback()
@@ -119,6 +151,22 @@ func _ready() -> void:
 	if qa_scenario == QA_SCENARIO_BOSS_READY and _session.enter_boss(Time.get_ticks_msec()):
 		_present_session_phase()
 		_refresh_ui()
+	if restored:
+		_present_session_phase()
+	elif not resume_requested:
+		_save_stable_checkpoint()
+
+
+func _emit_resume_failed() -> void:
+	resume_failed.emit()
+
+
+func _save_stable_checkpoint() -> void:
+	if not _save_enabled or _save_manager == null or _session == null:
+		return
+	var result: Dictionary = _save_manager.save_session(_session)
+	if not bool(result.get("ok", false)) and str(result.get("status", "")) != "NOT_STABLE":
+		push_warning("V06 stable checkpoint was not saved: %s" % str(result.get("error", result.get("status", "unknown"))))
 
 
 func _process(delta: float) -> void:
@@ -149,8 +197,11 @@ func _notification(what: int) -> void:
 		return
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		_session.pause_clock(Time.get_ticks_msec())
+		_save_stable_checkpoint()
 	elif what == NOTIFICATION_APPLICATION_RESUMED:
 		_session.resume_clock(Time.get_ticks_msec())
+	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_save_stable_checkpoint()
 	_refresh_ui()
 
 
@@ -299,6 +350,8 @@ func _run_face(face: int) -> void:
 		message_label.text = "ボスへの攻撃ダイス %d" % face
 		_refresh_ui()
 		_present_session_phase()
+		if _session.is_stable_for_save():
+			_save_stable_checkpoint()
 		return
 	message_label.text = "%dマス進む" % face
 	message_label.show()
@@ -321,52 +374,73 @@ func _animate_pending_movement(motion_generation := -1) -> bool:
 	if motion_generation >= 0 and motion_generation != _motion_generation:
 		return false
 	var start_position: Dictionary = _session.position()
-	var straight_mode := atlas_view.can_use_straight_travel(start_position, _session.pending_hop_count())
-	if straight_mode:
-		straight_mode = atlas_view.begin_straight_travel(start_position, _session.pending_hop_count())
+	var visual_path: Array[Dictionary] = _session.pending_hop_positions()
+	var start_route := str(start_position.get("route_id", ""))
+	var loop_mode := start_route in [V06CourseModelScript.ROUTE_LOOP_OASIS, V06CourseModelScript.ROUTE_LOOP_TOMB]
+	var step_travel_mode := false
+	if not visual_path.is_empty() and not loop_mode:
+		step_travel_mode = atlas_view.begin_step_travel(start_position, visual_path)
+	if not visual_path.is_empty() and not loop_mode and not step_travel_mode:
+		atlas_view.cancel_visual_motion(start_position)
+		_movement_active = false
+		message_label.text = "移動アニメーションを開始できませんでした"
+		_refresh_ui()
+		return false
 	var step := 0
+	var previous_route := start_route
 	while _session.has_pending_hops():
 		var hop: Dictionary = _session.next_hop()
+		var hop_route := str(hop.get("route_id", ""))
+		var entered_bypass := previous_route == V06CourseModelScript.ROUTE_MAIN and hop_route in V06CourseModelScript.ROUTE_BYPASSES
 		step += 1
-		if straight_mode:
-			await atlas_view.animate_straight_step(step)
-		else:
+		if loop_mode:
 			await atlas_view.animate_hop_to(hop)
+		else:
+			await atlas_view.animate_straight_step(step)
 		if motion_generation >= 0 and motion_generation != _motion_generation:
 			return false
+		if entered_bypass:
+			await atlas_view.play_bypass_entry_effect(hop_route)
+			if motion_generation >= 0 and motion_generation != _motion_generation:
+				return false
+		previous_route = hop_route
 	var settled: Dictionary = _session.finish_movement()
 	if not bool(settled.get("ok", false)):
 		atlas_view.clear_roll_preview()
-		if straight_mode:
-			atlas_view.cancel_visual_motion(start_position)
+		atlas_view.cancel_visual_motion(start_position)
 		_movement_active = false
 		message_label.text = "移動を完了できませんでした"
 		_refresh_ui()
 		return false
 	var stable_position: Dictionary = _session.position()
-	if straight_mode:
-		if _session.phase() != V06PlaySessionScript.PHASE_CHOICE_REQUIRED:
-			await atlas_view.play_landing_effect(stable_position)
-			if motion_generation >= 0 and motion_generation != _motion_generation:
-				return false
-			atlas_view.clear_roll_preview()
-			await atlas_view.animate_straight_camera_follow()
-			if motion_generation >= 0 and motion_generation != _motion_generation:
-				return false
-			if not atlas_view.finish_straight_travel(stable_position):
-				atlas_view.cancel_visual_motion(stable_position)
-	else:
+	if visual_path.is_empty():
+		atlas_view.clear_roll_preview()
+	elif loop_mode:
 		if atlas_view.current_route_position() != stable_position:
-			await atlas_view.animate_transfer_to(stable_position)
+			await atlas_view.animate_portal_transfer_to(stable_position)
 		else:
 			atlas_view.set_route_position(stable_position)
 		if _session.phase() != V06PlaySessionScript.PHASE_CHOICE_REQUIRED:
 			await atlas_view.play_landing_effect(stable_position)
+		if motion_generation >= 0 and motion_generation != _motion_generation:
+			return false
+	else:
+		if _session.phase() != V06PlaySessionScript.PHASE_CHOICE_REQUIRED:
+			await atlas_view.play_landing_effect(stable_position)
+			if motion_generation >= 0 and motion_generation != _motion_generation:
+				return false
+		atlas_view.clear_roll_preview()
+		await atlas_view.animate_straight_camera_follow()
+		if motion_generation >= 0 and motion_generation != _motion_generation:
+			return false
+		if not atlas_view.finish_straight_travel(stable_position):
+			atlas_view.cancel_visual_motion(stable_position)
 	atlas_view.clear_roll_preview()
 	_movement_active = false
 	_shown_face = 0
 	_refresh_ui()
 	_present_session_phase()
+	_save_stable_checkpoint()
 	return true
 
 
@@ -418,6 +492,7 @@ func _complete_nonmodal_resolution() -> void:
 	pair_link.hide()
 	_refresh_ui()
 	_present_session_phase()
+	_save_stable_checkpoint()
 	if _session.phase() == V06PlaySessionScript.PHASE_READY:
 		message_label.text = "次の3投を始めよう"
 
@@ -434,6 +509,7 @@ func _on_replay_requested() -> void:
 	atlas_view.set_route_position(_session.position(), true)
 	message_label.text = "カイロの旅を始めよう"
 	_refresh_ui()
+	_save_stable_checkpoint()
 
 
 func _on_boss_round_acknowledged() -> void:
@@ -441,6 +517,7 @@ func _on_boss_round_acknowledged() -> void:
 		return
 	_refresh_ui()
 	_present_session_phase()
+	_save_stable_checkpoint()
 
 
 func _on_next_lap_requested() -> void:
@@ -451,6 +528,7 @@ func _on_next_lap_requested() -> void:
 	boss_overlay.hide()
 	atlas_view.set_route_position(_session.position(), true)
 	_refresh_ui()
+	_save_stable_checkpoint()
 
 
 func _request_back() -> void:
@@ -488,6 +566,7 @@ func _open_utility_card(title: String, texture: Texture2D, detail: String) -> vo
 		return
 	_utility_open = true
 	_session.pause_clock(Time.get_ticks_msec())
+	_save_stable_checkpoint()
 	utility_title.text = title
 	utility_card_art.texture = texture
 	utility_detail.text = detail
@@ -512,6 +591,7 @@ func _on_map_pressed() -> void:
 	if _session.phase() not in [V06PlaySessionScript.PHASE_READY]:
 		return
 	_session.pause_clock(Time.get_ticks_msec())
+	_save_stable_checkpoint()
 	_map_open = true
 	overview_atlas_view.set_route_position(_session.position(), true)
 	overview_atlas_view.set_overview_mode(true)
@@ -627,6 +707,7 @@ func _refresh_ui() -> void:
 		die_button.text = "%dマス進む" % _shown_face
 	else:
 		die_button.text = "サイコロを振る"
+	_refresh_die_layout(route_id)
 	_refresh_die_presentation()
 	die_button.disabled = _utility_open or _movement_active or (not _rolling and not _session.can_roll())
 	var utility_disabled := _utility_open or _map_open or _movement_active or _rolling or phase != V06PlaySessionScript.PHASE_READY
@@ -808,6 +889,20 @@ func _refresh_die_presentation() -> void:
 	dice_presentation.pivot_offset = dice_presentation.size * 0.5
 	var target_scale := 1.08 if _rolling else (1.05 if _shown_face > 0 and _movement_active else 1.0)
 	dice_presentation.scale = Vector2.ONE * target_scale
+
+
+func die_anchor_for_route(route_id: String) -> Vector2:
+	return DICE_ANCHOR_LOOP if route_id in [V06CourseModelScript.ROUTE_LOOP_OASIS, V06CourseModelScript.ROUTE_LOOP_TOMB] else DICE_ANCHOR_NORMAL
+
+
+func _refresh_die_layout(route_id: String) -> void:
+	if not is_instance_valid(dice_presentation):
+		return
+	var anchor := die_anchor_for_route(route_id)
+	dice_presentation.anchor_left = anchor.x
+	dice_presentation.anchor_right = anchor.x
+	dice_presentation.anchor_top = anchor.y
+	dice_presentation.anchor_bottom = anchor.y
 
 
 func _qa_resolve_roll(face: int, route_choice := "") -> bool:
