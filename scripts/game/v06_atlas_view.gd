@@ -658,14 +658,14 @@ func _straight_card_display_offset() -> Vector2:
 	return Vector2(-_straight_camera_offset, 0.0) if _straight_travel_active else Vector2.ZERO
 
 
-func play_landing_effect(route_position: Dictionary) -> void:
+func play_landing_effect(route_position: Dictionary, result_text: String = "", kind_override: String = "") -> void:
 	if not _is_known_position(route_position):
 		return
 	var route_id := str(route_position.get("route_id", ""))
 	var tile_index := int(route_position.get("tile_index", 0))
-	_landing_kind = displayed_tile_kind_for(route_id, tile_index)
+	_landing_kind = kind_override if not kind_override.is_empty() else displayed_tile_kind_for(route_id, tile_index)
 	_landing_progress = 0.0
-	_landing_result_text = _landing_result_for_kind(_landing_kind)
+	_landing_result_text = result_text if not result_text.is_empty() else _landing_result_for_kind(_landing_kind)
 	queue_redraw()
 	var duration := LANDING_SPECIAL_SECONDS if _landing_kind in ["COIN", "REST", "RISK", "ITEM", "EVENT", "WARP_OASIS", "WARP_TOMB", "WARP_GOLD", "LOOP_ENTRY", "LOOP_ENTRY_GOLD", "BOSS_GATE"] else LANDING_NORMAL_SECONDS
 	if is_instance_valid(_landing_tween):

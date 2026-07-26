@@ -91,11 +91,13 @@ func _test_stable_slot_sizes_and_states() -> void:
 	boss.start_roll(2, 2)
 	var boss_partial_save: Dictionary = manager.save_session(boss)
 	var boss_partial_loaded: Dictionary = manager.load_result()
-	_expect(not boss_partial_save.ok and boss_partial_save.status == SaveManager.STATUS_NOT_STABLE and boss_partial_loaded.ok and boss_partial_loaded.data.session_state.slot.current_roll_index == 0, "boss roll interruption returns to the turn-start checkpoint")
+	_expect(boss_partial_save.ok and boss_partial_loaded.ok and boss_partial_loaded.data.session_state.slot.current_roll_index == 1 and boss_partial_loaded.data.session_state.boss.pending_ack, "completed boss turn is a stable one-face checkpoint")
 	boss = Session.new()
 	_expect(boss.enter_boss(0), "boss slot test re-enters a fresh battle")
 	for face: int in [2, 3, 4]:
 		boss.start_roll(face, face)
+		if face != 4:
+			boss.acknowledge_boss_round()
 	_expect(boss.phase() == Session.PHASE_BOSS_ROUND_RESULT, "boss round result is a stable three-slot boundary")
 	var boss_result_saved: Dictionary = manager.save_session(boss)
 	_expect(boss_result_saved.ok and boss_result_saved.data.session_state.slot.current_roll_index == 3 and boss_result_saved.data.session_state.slot.last_role == "STRAIGHT" and boss_result_saved.data.session_state.score.role_counts.STRAIGHT == 1, "three filled boss slots, last role, and role count are persisted")
@@ -143,21 +145,15 @@ func _test_boss_restore() -> void:
 	var start: Dictionary = manager.save_session(session)
 	var restored_start: RefCounted = Session.new()
 	_expect(start.ok and restored_start.restore_stable_snapshot(start.data.session_state, 1000) and restored_start.phase() == Session.PHASE_BOSS_ROLL_READY and restored_start.boss_snapshot().round == 1, "boss start restores the current boss turn")
-	for face: int in [2, 3, 4]:
-		session.start_roll(face, face)
+	session.start_roll(4, 1)
 	var round_save: Dictionary = manager.save_session(session)
 	var restored_round: RefCounted = Session.new()
 	_expect(round_save.ok and restored_round.restore_stable_snapshot(round_save.data.session_state, 1000) and restored_round.phase() == Session.PHASE_BOSS_ROUND_RESULT and restored_round.boss_snapshot().pending_ack, "boss round result restores its pending acknowledgement")
 	var victory: RefCounted = Session.new()
 	victory.enter_boss(0)
-	for face: int in [2, 3, 4]:
-		victory.start_roll(face, face)
+	victory.start_roll(6, 1)
 	victory.acknowledge_boss_round()
-	for face: int in [2, 2, 6]:
-		victory.start_roll(face, 10 + face)
-	victory.acknowledge_boss_round()
-	for face: int in [1, 1, 1]:
-		victory.start_roll(face, 20 + face)
+	victory.start_roll(6, 2)
 	var victory_save: Dictionary = manager.save_session(victory)
 	var victory_restored: RefCounted = Session.new()
 	_expect(victory.phase() == Session.PHASE_BOSS_ROUND_RESULT and victory_save.ok and victory_restored.restore_stable_snapshot(victory_save.data.session_state, 1000) and victory_restored.boss_result().victory, "boss victory result restores before its final acknowledgement")
@@ -167,15 +163,13 @@ func _test_boss_restore() -> void:
 	_expect(lap_result_save.ok and lap_result_restored.restore_stable_snapshot(lap_result_save.data.session_state, 1000) and lap_result_restored.phase() == Session.PHASE_LAP_RESULT, "LAP_RESULT restores after terminal boss acknowledgement")
 	var defeat: RefCounted = Session.new()
 	defeat.enter_boss(0)
-	for round_index: int in range(3):
-		for face: int in [1, 2, 3]:
-			defeat.start_roll(face, round_index * 10 + face)
-		if round_index < 2:
-			defeat.acknowledge_boss_round()
-	_expect(defeat.phase() == Session.PHASE_BOSS_ROUND_RESULT and defeat.acknowledge_boss_round(), "boss defeat acknowledgement reaches RUN_OVER")
-	var run_over_save: Dictionary = manager.save_session(defeat)
-	var run_over_restored: RefCounted = Session.new()
-	_expect(run_over_save.ok and run_over_restored.restore_stable_snapshot(run_over_save.data.session_state, 1000) and run_over_restored.phase() == Session.PHASE_RUN_OVER, "RUN_OVER restores after terminal defeat")
+	defeat.start_roll(1, 1)
+	defeat.acknowledge_boss_round()
+	defeat.start_roll(1, 2)
+	_expect(defeat.phase() == Session.PHASE_BOSS_ROUND_RESULT and defeat.acknowledge_boss_round() and defeat.phase() == Session.PHASE_LAP_RESULT, "boss defeat acknowledgement records the loss and completes the stage")
+	var loss_save: Dictionary = manager.save_session(defeat)
+	var loss_restored: RefCounted = Session.new()
+	_expect(loss_save.ok and loss_restored.restore_stable_snapshot(loss_save.data.session_state, 1000) and loss_restored.phase() == Session.PHASE_LAP_RESULT and loss_restored.boss_snapshot().defeat, "losing race LAP_RESULT restores without requesting a retry")
 
 
 func _test_backup_recovery() -> void:

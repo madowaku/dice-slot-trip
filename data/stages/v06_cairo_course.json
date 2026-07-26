@@ -13,35 +13,35 @@
   },
   "routes": {
     "main": [
-      {"index":0,"kind":"START"},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"COIN"},{"index":3,"kind":"NORMAL"},
-      {"index":4,"kind":"EVENT"},{"index":5,"kind":"ITEM"},{"index":6,"kind":"NORMAL"},{"index":7,"kind":"REST"},
-      {"index":8,"kind":"COIN"},{"index":9,"kind":"NORMAL"},{"index":10,"kind":"WARP_OASIS"},{"index":11,"kind":"BYPASS_FORK"},
-      {"index":12,"kind":"ITEM"},{"index":13,"kind":"COIN"},{"index":14,"kind":"ITEM"},{"index":15,"kind":"NORMAL"},
-      {"index":16,"kind":"REST"},{"index":17,"kind":"COIN"},{"index":18,"kind":"ITEM"},{"index":19,"kind":"NORMAL"},
-      {"index":20,"kind":"NORMAL"},{"index":21,"kind":"RISK"},{"index":22,"kind":"WARP_OASIS"},{"index":23,"kind":"NORMAL"},
-      {"index":24,"kind":"COIN"},{"index":25,"kind":"EVENT"},{"index":26,"kind":"ITEM"},{"index":27,"kind":"NORMAL"},
-      {"index":28,"kind":"REST"},{"index":29,"kind":"RISK"},{"index":30,"kind":"NORMAL"},{"index":31,"kind":"NORMAL"},
-      {"index":32,"kind":"COIN"},{"index":33,"kind":"WARP_TOMB"},{"index":34,"kind":"BYPASS_FORK"},{"index":35,"kind":"ITEM"},
-      {"index":36,"kind":"NORMAL"},{"index":37,"kind":"RISK"},{"index":38,"kind":"REST"},{"index":39,"kind":"COIN"},
+      {"index":0,"kind":"START"},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"COIN","effect":{"kind":"coin_gain","amount":2,"consume_once":true}},{"index":3,"kind":"NORMAL"},
+      {"index":4,"kind":"EVENT"},{"index":5,"kind":"ITEM"},{"index":6,"kind":"NORMAL"},{"index":7,"kind":"REST","effect":{"kind":"heal","amount":1,"consume_once":false}},
+      {"index":8,"kind":"COIN","effect":{"kind":"coin_gain","amount":2,"consume_once":true}},{"index":9,"kind":"NORMAL"},{"index":10,"kind":"WARP_OASIS"},{"index":11,"kind":"BYPASS_FORK"},
+      {"index":12,"kind":"ITEM"},{"index":13,"kind":"COIN","effect":{"kind":"coin_gain","amount":2,"consume_once":true}},{"index":14,"kind":"ITEM"},{"index":15,"kind":"NORMAL"},
+      {"index":16,"kind":"REST","effect":{"kind":"heal","amount":1,"consume_once":false}},{"index":17,"kind":"COIN","effect":{"kind":"coin_gain","amount":2,"consume_once":true}},{"index":18,"kind":"ITEM"},{"index":19,"kind":"NORMAL"},
+      {"index":20,"kind":"NORMAL"},{"index":21,"kind":"RISK","effect":{"kind":"hp_damage","amount":1,"consume_once":false}},{"index":22,"kind":"WARP_OASIS"},{"index":23,"kind":"NORMAL"},
+      {"index":24,"kind":"COIN","effect":{"kind":"coin_gain","amount":2,"consume_once":true}},{"index":25,"kind":"EVENT"},{"index":26,"kind":"ITEM"},{"index":27,"kind":"NORMAL"},
+      {"index":28,"kind":"REST","effect":{"kind":"heal","amount":1,"consume_once":false}},{"index":29,"kind":"RISK","effect":{"kind":"hp_damage","amount":1,"consume_once":false}},{"index":30,"kind":"NORMAL"},{"index":31,"kind":"NORMAL"},
+      {"index":32,"kind":"COIN","effect":{"kind":"coin_gain","amount":2,"consume_once":true}},{"index":33,"kind":"WARP_TOMB"},{"index":34,"kind":"BYPASS_FORK"},{"index":35,"kind":"ITEM"},
+      {"index":36,"kind":"NORMAL"},{"index":37,"kind":"RISK","effect":{"kind":"hp_damage","amount":1,"consume_once":false}},{"index":38,"kind":"REST","effect":{"kind":"heal","amount":1,"consume_once":false}},{"index":39,"kind":"COIN","effect":{"kind":"coin_gain","amount":2,"consume_once":true}},
       {"index":40,"kind":"NORMAL"},{"index":41,"kind":"EVENT"},{"index":42,"kind":"ITEM"},{"index":43,"kind":"NORMAL"},
-      {"index":44,"kind":"WARP_TOMB"},{"index":45,"kind":"COIN"},{"index":46,"kind":"NORMAL"},{"index":47,"kind":"REST"},
-      {"index":48,"kind":"EVENT"},{"index":49,"kind":"NORMAL"},{"index":50,"kind":"ITEM"},{"index":51,"kind":"RISK"},
-      {"index":52,"kind":"COIN"},{"index":53,"kind":"NORMAL"},{"index":54,"kind":"WARP_GOLD"},{"index":55,"kind":"RISK"},
+      {"index":44,"kind":"WARP_TOMB"},{"index":45,"kind":"COIN","effect":{"kind":"coin_gain","amount":2,"consume_once":true}},{"index":46,"kind":"NORMAL"},{"index":47,"kind":"REST","effect":{"kind":"heal","amount":1,"consume_once":false}},
+      {"index":48,"kind":"EVENT"},{"index":49,"kind":"NORMAL"},{"index":50,"kind":"ITEM"},{"index":51,"kind":"RISK","effect":{"kind":"hp_damage","amount":1,"consume_once":false}},
+      {"index":52,"kind":"COIN","effect":{"kind":"coin_gain","amount":2,"consume_once":true}},{"index":53,"kind":"NORMAL"},{"index":54,"kind":"WARP_GOLD"},{"index":55,"kind":"RISK","effect":{"kind":"hp_damage","amount":1,"consume_once":false}},
       {"index":56,"kind":"NORMAL"},{"index":57,"kind":"BOSS_GATE"}
     ],
     "bypass_bazaar_alley": [
-      {"index":0,"kind":"RISK"},{"index":1,"kind":"ITEM"},{"index":2,"kind":"NORMAL"}
+      {"index":0,"kind":"RISK","effect":{"kind":"coin_loss","amount":2,"consume_once":false}},{"index":1,"kind":"ITEM"},{"index":2,"kind":"NORMAL"}
     ],
     "bypass_sirocco": [
-      {"index":0,"kind":"RISK"},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"ITEM"},{"index":3,"kind":"RISK"},{"index":4,"kind":"NORMAL"}
+      {"index":0,"kind":"RISK","effect":{"kind":"hp_damage","amount":1,"consume_once":false}},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"ITEM"},{"index":3,"kind":"RISK","effect":{"kind":"next_move","amount":1,"consume_once":false}},{"index":4,"kind":"NORMAL"}
     ],
     "loop_oasis_ring": [
-      {"index":0,"kind":"EXIT_GATE"},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"COIN"},{"index":3,"kind":"LOOP_ENTRY"},
-      {"index":4,"kind":"REST"},{"index":5,"kind":"LOOP_ENTRY"},{"index":6,"kind":"ITEM"},{"index":7,"kind":"NORMAL"}
+      {"index":0,"kind":"EXIT_GATE"},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"COIN","effect":{"kind":"coin_gain","amount":2,"consume_once":true}},{"index":3,"kind":"LOOP_ENTRY"},
+      {"index":4,"kind":"REST","effect":{"kind":"heal","amount":1,"consume_once":false}},{"index":5,"kind":"LOOP_ENTRY"},{"index":6,"kind":"ITEM"},{"index":7,"kind":"NORMAL"}
     ],
     "loop_tomb_ring": [
-      {"index":0,"kind":"EXIT_GATE"},{"index":1,"kind":"RISK"},{"index":2,"kind":"LOOP_ENTRY_GOLD"},{"index":3,"kind":"LOOP_ENTRY"},
-      {"index":4,"kind":"RISK"},{"index":5,"kind":"LOOP_ENTRY"},{"index":6,"kind":"ITEM"},{"index":7,"kind":"COIN"}
+      {"index":0,"kind":"EXIT_GATE"},{"index":1,"kind":"RISK","effect":{"kind":"hp_damage","amount":1,"consume_once":false}},{"index":2,"kind":"LOOP_ENTRY_GOLD"},{"index":3,"kind":"LOOP_ENTRY"},
+      {"index":4,"kind":"RISK","effect":{"kind":"next_move","amount":1,"consume_once":false}},{"index":5,"kind":"LOOP_ENTRY"},{"index":6,"kind":"ITEM"},{"index":7,"kind":"COIN","effect":{"kind":"coin_gain","amount":3,"consume_once":true}}
     ]
   },
   "bypasses": [

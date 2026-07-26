@@ -44,6 +44,13 @@ const SKILL_STATE_CHARGING: StringName = &"CHARGING"
 const SKILL_STATE_READY: StringName = &"READY"
 const SKILL_STATE_ARMED: StringName = &"ARMED"
 const SAVE_STABLE_PHASES := [PHASE_READY, PHASE_CHOICE_REQUIRED, PHASE_BOSS_ROLL_READY, PHASE_BOSS_ROUND_RESULT, PHASE_LAP_RESULT, PHASE_RUN_OVER]
+const MAX_PLAYER_HP := 3
+const DEFAULT_COIN_GAIN := 2
+const DEFAULT_REST_HEAL := 1
+const DEFAULT_RISK_AMOUNT := 1
+const STAGE_FLAG_NEXT_MOVE_PENALTY := "v06_next_basic_move_penalty"
+const STAGE_FLAG_LAST_TILE_EFFECT := "v06_last_tile_effect"
+const STAGE_FLAG_RESOLVED_TILE_EFFECT_IDS := "v06_resolved_tile_effect_ids"
 
 var _course: RefCounted
 var _travel: RefCounted
@@ -53,6 +60,7 @@ var _position: Dictionary = {"route_id":"main", "tile_index":0}
 var _visual_position: Dictionary = {"route_id":"main", "tile_index":0}
 var _phase: StringName = PHASE_READY
 var _pending_face := 0
+var _pending_move_distance := 0
 var _pending_remaining_steps := 0
 var _pending_result: Dictionary = {}
 var _pending_path: Array[Dictionary] = []
@@ -133,16 +141,18 @@ func start_roll(face: int, now_ms: int = -1) -> Dictionary:
 		var boss_event: Dictionary = _battle.roll_face(face)
 		if not bool(boss_event.get("ok", false)):
 			return _rejected(str(boss_event.get("error", "BOSS_ROLL_REJECTED")))
-		if str(boss_event.get("status", "")) == "ROUND_RESOLVED":
+		if str(boss_event.get("status", "")) == "TURN_RESOLVED":
 			_phase = PHASE_BOSS_ROUND_RESULT
 			var result: Dictionary = _battle.result()
-			_record_role(StringName(str(result.get("role", ""))))
+			var boss_role := StringName(str(result.get("role", "")))
+			if boss_role != &"":
+				_award_role_score(boss_role)
 			_player_hp = int(result.get("player_hp_after", _player_hp))
 			if bool(result.get("victory", false)) or bool(result.get("defeat", false)):
 				_stop_clock(now_ms)
 				_add_score_once("boss_complete", SCORE_BOSS_COMPLETE, "BOSS COMPLETE", "boss")
+				_update_pb()
 				if bool(result.get("victory", false)):
-					_update_pb()
 					_add_score_once("boss_victory", SCORE_BOSS_VICTORY, "BOSS WIN", "boss")
 				_award_finish_score()
 				_update_best_score()
@@ -156,11 +166,14 @@ func start_roll(face: int, now_ms: int = -1) -> Dictionary:
 		return _rejected("TIMESTAMP_REGRESSION")
 	_start_clock_if_armed(now_ms)
 	_pending_face = face
-	var result: Dictionary = _course.advance(_position, face, "", _course_context())
+	_pending_move_distance = _basic_move_distance(face)
+	var result: Dictionary = _course.advance(_position, _pending_move_distance, "", _course_context())
 	if not bool(result.get("ok", false)) and str(result.get("error", "")) != "CHOICE_REQUIRED":
 		_pending_face = 0
+		_pending_move_distance = 0
 		_last_error = str(result.get("error", "COURSE_ADVANCE_FAILED"))
 		return _rejected(_last_error)
+	_consume_next_move_penalty()
 	_prepare_movement(result)
 	_prepare_pending_role_reward()
 	_roll_count += 1
@@ -205,12 +218,12 @@ func finish_movement() -> Dictionary:
 		if str(result.get("error", "")) == "CHOICE_REQUIRED":
 			_pending_remaining_steps = int(result.get("remaining_steps", 0)); _phase = PHASE_CHOICE_REQUIRED
 			return _event(true, "CHOICE_REQUIRED")
-		_pending_face = 0; _pending_remaining_steps = 0; _phase = PHASE_READY
+		_pending_face = 0; _pending_move_distance = 0; _pending_remaining_steps = 0; _phase = PHASE_READY
 		return _rejected(str(result.get("error", "COURSE_ADVANCE_FAILED")))
 	if not _travel.append_face(_pending_face):
 		_phase = PHASE_ERROR
 		return _rejected("FACE_COMMIT_FAILED")
-	_pending_face = 0; _pending_remaining_steps = 0
+	_pending_face = 0; _pending_move_distance = 0; _pending_remaining_steps = 0
 	_resolution_role = _travel.evaluate_role()
 	if _pending_resolution_role != &"" and _pending_resolution_role != _resolution_role:
 		_phase = PHASE_ERROR
@@ -224,7 +237,9 @@ func finish_movement() -> Dictionary:
 		_add_score_once("warp:%s" % entered_gate_id, SCORE_WARP, "WARP %s" % entered_gate_id, "discovery")
 	elif not exited_gate_id.is_empty():
 		_mark_position_visited(_position)
-	_award_landing_score()
+	var landing_kind := current_tile_kind()
+	_resolve_landing_effect(landing_kind)
+	_award_landing_score(landing_kind)
 	_award_route_completion_score(result)
 	if not exited_gate_id.is_empty():
 		_active_warp_gate_id = ""
@@ -271,8 +286,7 @@ func acknowledge_boss_round() -> bool:
 	if _phase != PHASE_BOSS_ROUND_RESULT: return false
 	var result: Dictionary = _battle.result()
 	if not _battle.acknowledge_round(): return false
-	if bool(result.get("victory", false)): _phase = PHASE_LAP_RESULT
-	elif bool(result.get("defeat", false)): _phase = PHASE_RUN_OVER
+	if bool(result.get("victory", false)) or bool(result.get("defeat", false)): _phase = PHASE_LAP_RESULT
 	else: _phase = PHASE_BOSS_ROLL_READY
 	return true
 
@@ -322,6 +336,7 @@ func phase() -> StringName: return _phase
 func resolution_role() -> StringName: return _resolution_role
 func pending_resolution_role() -> StringName: return _pending_resolution_role
 func pending_face() -> int: return _pending_face
+func pending_move_distance() -> int: return _pending_move_distance
 func pending_remaining_steps() -> int: return _pending_remaining_steps
 func is_boss_terminal() -> bool: return _phase in [PHASE_LAP_RESULT, PHASE_RUN_OVER]
 func can_roll() -> bool: return _phase in [PHASE_READY, PHASE_BOSS_ROLL_READY]
@@ -337,6 +352,10 @@ func last_role() -> StringName: return _last_role
 func inventory() -> Dictionary: return _inventory.duplicate(true)
 func item_consumption() -> Dictionary: return _item_consumption.duplicate(true)
 func stage_flags() -> Dictionary: return _stage_flags.duplicate(true)
+func next_basic_move_penalty() -> int: return maxi(int(_stage_flags.get(STAGE_FLAG_NEXT_MOVE_PENALTY, 0)), 0)
+func last_tile_effect_result() -> Dictionary:
+	var value: Variant = _stage_flags.get(STAGE_FLAG_LAST_TILE_EFFECT, {})
+	return (value as Dictionary).duplicate(true) if value is Dictionary else {}
 func stage_id() -> StringName: return _stage_id
 func character_id() -> StringName: return _character_id
 func active_warp_gate_id() -> String: return _active_warp_gate_id
@@ -356,8 +375,6 @@ func boss_result() -> Dictionary: return _battle.result() if _battle != null els
 
 
 func is_stable_for_save() -> bool:
-	if _phase == PHASE_BOSS_ROLL_READY and not faces().is_empty():
-		return false
 	return _phase in SAVE_STABLE_PHASES and _pending_result.is_empty() and _pending_path.is_empty() and _next_hop_index == 0
 
 
@@ -382,7 +399,7 @@ func stable_save_snapshot(now_ms: int = -1) -> Dictionary:
 		"roll_count": _roll_count,
 		"player": {
 			"hp": _player_hp,
-			"max_hp": 3,
+			"max_hp": MAX_PLAYER_HP,
 			"coins": _coins,
 			"skill_gauge": _skill_gauge,
 			"skill_state": String(_skill_state),
@@ -467,7 +484,7 @@ func restore_stable_snapshot(state: Dictionary, now_ms: int = -1) -> bool:
 	_character_id = _character_id if not String(_character_id).is_empty() else DEFAULT_CHARACTER_ID
 	_lap = maxi(int(state.get("lap", 1)), 1)
 	_roll_count = maxi(int(state.get("roll_count", 0)), 0)
-	_player_hp = clampi(int(player.get("hp", 3)), 0, 3)
+	_player_hp = clampi(int(player.get("hp", MAX_PLAYER_HP)), 0, MAX_PLAYER_HP)
 	_coins = maxi(int(player.get("coins", 0)), 0)
 	_skill_gauge = clampi(int(player.get("skill_gauge", 0)), 0, SKILL_GAUGE_MAX)
 	_skill_state = StringName(str(player.get("skill_state", SKILL_STATE_CHARGING)))
@@ -551,11 +568,12 @@ func steps_to_loop_exit() -> int: return _course.steps_to_exit(_position) if _co
 func snapshot(now_ms: int = -1) -> Dictionary:
 	var elapsed := elapsed_ms(now_ms)
 	return {"stage_id":String(_stage_id), "character_id":String(_character_id), "position":position(), "visual_position":visual_position(), "phase":_phase, "faces":faces(),
-		"pending_face":_pending_face, "pending_remaining_steps":_pending_remaining_steps, "pending_hops":pending_hop_count(),
+		"pending_face":_pending_face, "pending_move_distance":_pending_move_distance, "pending_remaining_steps":_pending_remaining_steps, "pending_hops":pending_hop_count(),
 		"resolution_role":_resolution_role, "boss_terminal":is_boss_terminal(), "boss_transition_pending":_boss_transition_pending,
 		"can_roll":can_roll(), "tile_kind":current_tile_kind(), "steps_to_exit":steps_to_loop_exit(), "last_error":_last_error,
 		"lap":_lap, "rolls_used":_roll_count, "player_hp":_player_hp, "boss":boss_snapshot(), "boss_result":boss_result(),
 		"score":_score, "coins":_coins, "skill_gauge":_skill_gauge, "pending_resolution_role":_pending_resolution_role,
+		"next_basic_move_penalty":next_basic_move_penalty(), "last_tile_effect":last_tile_effect_result(),
 		"active_warp_gate_id":_active_warp_gate_id, "consumed_warp_gate_ids":consumed_warp_gate_ids(),
 		"consumed_reward_node_keys":consumed_reward_node_keys(), "visited_node_keys":visited_node_keys(),
 		"best_score":_best_score, "score_breakdown":score_breakdown(), "last_score_award":last_score_award(),
@@ -567,7 +585,7 @@ func _reset_run_state(keep_pb: bool) -> void:
 	if not keep_pb:
 		_best_ms = null
 		_best_score = 0
-	_lap = 1; _player_hp = 3; _roll_count = 0
+	_lap = 1; _player_hp = MAX_PLAYER_HP; _roll_count = 0
 	_reset_course_and_clock()
 
 
@@ -581,7 +599,7 @@ func _reset_course_and_clock() -> void:
 	_active_warp_gate_id = ""; _consumed_warp_gate_ids.clear(); _visited_node_keys.clear()
 	_consumed_reward_node_keys.clear(); _awarded_score_event_ids.clear()
 	_mark_position_visited(_position)
-	_phase = PHASE_READY; _pending_face = 0; _pending_remaining_steps = 0; _pending_result.clear(); _pending_path.clear()
+	_phase = PHASE_READY; _pending_face = 0; _pending_move_distance = 0; _pending_remaining_steps = 0; _pending_result.clear(); _pending_path.clear()
 	_next_hop_index = 0; _resolution_role = &""; _pending_resolution_role = &""; _pending_role_awarded = false
 	_boss_transition_pending = false; _last_error = ""
 	_clock_armed = true; _clock_running = false; _clock_paused = false; _clock_start_ms = 0; _paused_total_ms = 0
@@ -591,7 +609,9 @@ func _reset_course_and_clock() -> void:
 
 func _enter_boss_internal() -> void:
 	_battle = V06BossBattleScript.new()
-	if not _battle.configure_lap(_lap, _player_hp):
+	var carried_faces: Array[int] = _travel.faces()
+	var boss_flags := {"boss_ignore_first_sand": bool(_stage_flags.get("boss_ignore_first_sand", true))}
+	if not _battle.configure_lap(_lap, _player_hp, carried_faces, boss_flags):
 		_phase = PHASE_ERROR; _last_error = "BOSS_CONFIG_FAILED"; return
 	_travel = V06RollSetScript.new()
 	_resolution_role = &""; _pending_resolution_role = &""; _pending_role_awarded = false
@@ -667,15 +687,12 @@ func _course_context() -> Dictionary:
 	}
 
 
-func _award_landing_score() -> void:
+func _award_landing_score(kind: String) -> void:
 	var node_key := _position_key(_position)
-	var kind := current_tile_kind()
 	var awarded := false
 	match kind:
 		"COIN":
 			awarded = _add_score_once("stop:%s:coin" % node_key, SCORE_COIN, "COIN", "travel")
-			if awarded:
-				_coins += 1
 		"REST":
 			awarded = _add_score_once("stop:%s:rest" % node_key, SCORE_REST, "REST", "travel")
 		"ITEM":
@@ -686,8 +703,90 @@ func _award_landing_score() -> void:
 			awarded = _add_score_once("stop:%s:treasure" % node_key, 1000, "TREASURE", "discovery")
 		"BOSS_GATE":
 			awarded = _add_score_once("stop:%s:boss_gate" % node_key, SCORE_BOSS_GATE, "BOSS GATE", "boss")
-	if awarded and _course.is_loop_route(str(_position.get("route_id", ""))) and kind in ["COIN", "REST", "ITEM", "EVENT", "TREASURE"]:
+	if awarded and _course.is_loop_route(str(_position.get("route_id", ""))) and kind in ["ITEM", "EVENT", "TREASURE"]:
 		_consumed_reward_node_keys[node_key] = true
+
+
+func _resolve_landing_effect(kind: String) -> Dictionary:
+	if kind not in ["COIN", "REST", "RISK"]:
+		_stage_flags[STAGE_FLAG_LAST_TILE_EFFECT] = {}
+		return {}
+	var node_key := _position_key(_position)
+	var resolution_id := "landing:%d:%s" % [_roll_count, node_key]
+	var resolved_ids := _resolved_tile_effect_ids()
+	if resolved_ids.has(resolution_id):
+		return last_tile_effect_result()
+	var effect: Dictionary = _course.effect_for_position(_position)
+	var effect_kind := str(effect.get("kind", _default_effect_kind(kind)))
+	var amount := maxi(int(effect.get("amount", _default_effect_amount(kind))), 0)
+	var result := {
+		"resolution_id": resolution_id,
+		"node_key": node_key,
+		"tile_kind": kind,
+		"effect_kind": effect_kind,
+		"amount": amount,
+		"applied": false,
+		"text": "",
+	}
+	if kind == "COIN":
+		if not _consumed_reward_node_keys.has(node_key):
+			_coins += amount
+			_consumed_reward_node_keys[node_key] = true
+			result.applied = true
+			result.text = "COIN +%d" % amount
+	elif kind == "REST":
+		var before := _player_hp
+		_player_hp = mini(_player_hp + amount, MAX_PLAYER_HP)
+		result.applied = _player_hp != before
+		result.text = "HP +%d" % (_player_hp - before) if result.applied else "HP FULL"
+	elif kind == "RISK":
+		match effect_kind:
+			"coin_loss":
+				var before := _coins
+				_coins = maxi(_coins - amount, 0)
+				result.applied = _coins != before
+				result.text = "COIN -%d" % (before - _coins)
+			"next_move":
+				_stage_flags[STAGE_FLAG_NEXT_MOVE_PENALTY] = maxi(amount, 1)
+				result.applied = true
+				result.text = "NEXT MOVE -%d" % maxi(amount, 1)
+			_:
+				var before := _player_hp
+				_player_hp = maxi(_player_hp - amount, 0)
+				result.applied = _player_hp != before
+				result.text = "DAMAGE -%d" % (before - _player_hp)
+	resolved_ids[resolution_id] = true
+	_stage_flags[STAGE_FLAG_RESOLVED_TILE_EFFECT_IDS] = resolved_ids
+	_stage_flags[STAGE_FLAG_LAST_TILE_EFFECT] = result.duplicate(true)
+	return result
+
+
+func _resolved_tile_effect_ids() -> Dictionary:
+	var value: Variant = _stage_flags.get(STAGE_FLAG_RESOLVED_TILE_EFFECT_IDS, {})
+	return (value as Dictionary).duplicate(true) if value is Dictionary else {}
+
+
+func _default_effect_kind(tile_kind: String) -> String:
+	match tile_kind:
+		"COIN": return "coin_gain"
+		"REST": return "heal"
+		_: return "hp_damage"
+
+
+func _default_effect_amount(tile_kind: String) -> int:
+	match tile_kind:
+		"COIN": return DEFAULT_COIN_GAIN
+		"REST": return DEFAULT_REST_HEAL
+		_: return DEFAULT_RISK_AMOUNT
+
+
+func _basic_move_distance(face: int) -> int:
+	return maxi(face - next_basic_move_penalty(), 1)
+
+
+func _consume_next_move_penalty() -> void:
+	if next_basic_move_penalty() > 0:
+		_stage_flags[STAGE_FLAG_NEXT_MOVE_PENALTY] = 0
 
 
 func _award_route_completion_score(result: Dictionary) -> void:

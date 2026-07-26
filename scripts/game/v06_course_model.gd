@@ -191,6 +191,19 @@ func is_loop_route(route_id: String) -> bool:
 	return route_id in [ROUTE_LOOP_OASIS, ROUTE_LOOP_TOMB]
 
 
+func effect_for_position(position: Dictionary) -> Dictionary:
+	var route_id := str(position.get("route_id", ""))
+	var tile_index := int(position.get("tile_index", -1))
+	var routes: Dictionary = _definition.get("routes", {})
+	if not routes.has(route_id) or not routes[route_id] is Array:
+		return {}
+	var route := routes[route_id] as Array
+	if tile_index < 0 or tile_index >= route.size() or not route[tile_index] is Dictionary:
+		return {}
+	var effect: Variant = (route[tile_index] as Dictionary).get("effect", {})
+	return (effect as Dictionary).duplicate(true) if effect is Dictionary else {}
+
+
 func is_bypass_route(route_id: String) -> bool:
 	return route_id in ROUTE_BYPASSES
 
@@ -308,9 +321,25 @@ func _route_matches(value: Variant, kinds: Array[String]) -> bool:
 		return false
 	for index: int in range(kinds.size()):
 		var tile: Variant = value[index]
-		if not tile is Dictionary or tile.keys().size() != 2 or not _integral_equals(tile.get("index"), index) or tile.get("kind") != kinds[index]:
+		if not tile is Dictionary or tile.keys().size() not in [2, 3] or not _integral_equals(tile.get("index"), index) or tile.get("kind") != kinds[index]:
+			return false
+		if tile.has("effect") and not _effect_matches(tile.get("effect"), str(tile.get("kind", ""))):
 			return false
 	return true
+
+
+func _effect_matches(value: Variant, tile_kind: String) -> bool:
+	if tile_kind not in ["COIN", "REST", "RISK"] or not value is Dictionary:
+		return false
+	var effect := value as Dictionary
+	if effect.keys().size() != 3 or not effect.get("kind") is String or not _integral_number(effect.get("amount")) or int(effect.get("amount")) < 0 or not effect.get("consume_once") is bool:
+		return false
+	var effect_kind := str(effect.get("kind", ""))
+	if tile_kind == "COIN":
+		return effect_kind == "coin_gain" and bool(effect.get("consume_once"))
+	if tile_kind == "REST":
+		return effect_kind == "heal" and not bool(effect.get("consume_once"))
+	return effect_kind in ["hp_damage", "coin_loss", "next_move"] and not bool(effect.get("consume_once"))
 
 
 func _route_exists(route_id: String) -> bool:

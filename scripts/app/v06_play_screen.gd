@@ -74,6 +74,7 @@ const SLOT_RESULT_STRONG_GLOW := Color(1.75, 1.68, 1.42, 1.0)
 @onready var boss_overlay: Control = %BossOverlay
 @onready var boss_title: Label = %BossTitle
 @onready var boss_hp_label: Label = %BossHPLabel
+@onready var boss_race_track_label: Label = %BossRaceTrackLabel
 @onready var boss_action_label: Label = %BossActionLabel
 @onready var boss_result_label: Label = %BossResultLabel
 @onready var boss_round_ack_button: Button = %BossRoundAckButton
@@ -347,13 +348,15 @@ func _run_face(face: int) -> void:
 		return
 	if pre_roll_phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
 		_shown_face = 0
-		message_label.text = "ボスへの攻撃ダイス %d" % face
+		var race_result: Dictionary = _session.boss_result()
+		message_label.text = "PLAYER %d / SPHINX %d" % [face, int(race_result.get("boss_roll", 7 - face))]
 		_refresh_ui()
 		_present_session_phase()
 		if _session.is_stable_for_save():
 			_save_stable_checkpoint()
 		return
-	message_label.text = "%dマス進む" % face
+	var move_distance: int = _session.pending_move_distance()
+	message_label.text = "%dマス進む" % move_distance if move_distance == face else "出目%d・移動%d（低下中）" % [face, move_distance]
 	message_label.show()
 	atlas_view.set_roll_preview(face)
 	_refresh_ui()
@@ -413,6 +416,11 @@ func _animate_pending_movement(motion_generation := -1) -> bool:
 		_refresh_ui()
 		return false
 	var stable_position: Dictionary = _session.position()
+	var tile_effect: Dictionary = _session.last_tile_effect_result()
+	_refresh_ui()
+	if not tile_effect.is_empty() and not str(tile_effect.get("text", "")).is_empty():
+		message_label.text = str(tile_effect.text)
+		message_label.show()
 	if visual_path.is_empty():
 		atlas_view.clear_roll_preview()
 	elif loop_mode:
@@ -421,12 +429,12 @@ func _animate_pending_movement(motion_generation := -1) -> bool:
 		else:
 			atlas_view.set_route_position(stable_position)
 		if _session.phase() != V06PlaySessionScript.PHASE_CHOICE_REQUIRED:
-			await atlas_view.play_landing_effect(stable_position)
+			await atlas_view.play_landing_effect(stable_position, str(tile_effect.get("text", "")), str(tile_effect.get("tile_kind", "")))
 		if motion_generation >= 0 and motion_generation != _motion_generation:
 			return false
 	else:
 		if _session.phase() != V06PlaySessionScript.PHASE_CHOICE_REQUIRED:
-			await atlas_view.play_landing_effect(stable_position)
+			await atlas_view.play_landing_effect(stable_position, str(tile_effect.get("text", "")), str(tile_effect.get("tile_kind", "")))
 			if motion_generation >= 0 and motion_generation != _motion_generation:
 				return false
 		atlas_view.clear_roll_preview()
@@ -687,9 +695,9 @@ func _refresh_ui() -> void:
 			tray_status_label.text = String(_session.resolution_role())
 			tray_hint_label.text = "次の3投を準備中"
 		V06PlaySessionScript.PHASE_BOSS_GATE:
-			tray_status_label.text = "BOSS ROUND"
-			tray_hint_label.text = "3投で攻撃。次の行動とDEFを確認"
-			message_label.text = "この周回のボスステージ"
+			tray_status_label.text = "MIRROR RACE"
+			tray_hint_label.text = "自分の出目 x / スフィンクス 7-x"
+			message_label.text = "スフィンクスとの鏡面レース"
 		V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT:
 			tray_status_label.text = "ROUND RESULT"
 			tray_hint_label.text = "結果確認が必要です"
@@ -702,7 +710,7 @@ func _refresh_ui() -> void:
 	if _rolling:
 		die_button.text = "止める"
 	elif phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
-		die_button.text = "ボスに挑む"
+		die_button.text = "レースダイスを振る"
 	elif _shown_face > 0:
 		die_button.text = "%dマス進む" % _shown_face
 	else:
@@ -720,11 +728,6 @@ func _refresh_slot_guidance(values: Array[int], phase: StringName) -> void:
 	if _inline_slot_result_active:
 		return
 	role_label.add_theme_color_override("font_color", Color(0.73, 0.59, 0.37, 1))
-	if phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
-		role_label.text = "ボス攻撃を準備"
-		next_need_label.text = ""
-		action_hint_label.text = ""
-		return
 	if phase in [V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT, V06PlaySessionScript.PHASE_LAP_RESULT, V06PlaySessionScript.PHASE_RUN_OVER]:
 		role_label.text = "結果を確認"
 		next_need_label.text = ""
@@ -743,7 +746,7 @@ func _refresh_slot_guidance(values: Array[int], phase: StringName) -> void:
 		_:
 			role_label.text = _display_role(String(_session.resolution_role()))
 	next_need_label.text = ""
-	action_hint_label.text = ""
+	action_hint_label.text = "次の基本移動 -%d" % _session.next_basic_move_penalty() if _session.next_basic_move_penalty() > 0 else ""
 
 
 func _refresh_slot_display(values: Array[int]) -> void:
@@ -1076,33 +1079,67 @@ func _refresh_boss_panel() -> void:
 	var phase: StringName = _session.phase()
 	if boss.is_empty():
 		return
-	boss_hp_label.text = "PLAYER HP %d/3    BOSS HP %d/3" % [int(boss.player_hp), int(boss.boss_hp)]
-	boss_action_label.text = "%s  ·  DEF %d" % [String(boss.action).replace("_", " "), int(boss.defense)]
+	var player_position := int(boss.get("player_position", 0))
+	var boss_position := int(boss.get("boss_position", 0))
+	var goal := int(boss.get("course_length", 13))
+	boss_hp_label.text = "PLAYER %d/%d    SPHINX %d/%d" % [player_position, goal, boss_position, goal]
+	boss_race_track_label.text = "YOU     %s %d/%d\nSPHINX  %s %d/%d" % [
+		_race_progress(player_position, goal), player_position, goal,
+		_race_progress(boss_position, goal), boss_position, goal,
+	]
+	boss_action_label.text = "裏目ルール  PLAYER x / SPHINX 7-x"
 	var terminal_result := phase in [V06PlaySessionScript.PHASE_LAP_RESULT, V06PlaySessionScript.PHASE_RUN_OVER]
 	boss_hp_label.visible = not terminal_result
+	boss_race_track_label.visible = not terminal_result
 	boss_action_label.visible = not terminal_result
 	boss_round_ack_button.visible = phase == V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT
 	next_lap_button.visible = phase == V06PlaySessionScript.PHASE_LAP_RESULT
 	retry_button.visible = phase == V06PlaySessionScript.PHASE_RUN_OVER
 	if phase == V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT:
 		var result: Dictionary = _session.boss_result()
-		boss_result_label.text = "%d vs DEF %d · %s\nPLAYER -%d / BOSS -%d" % [int(result.sum), int(result.defense), String(result.role), int(result.applied_player_damage), int(result.applied_boss_damage)]
+		var role_text := "" if String(result.get("role", "")).is_empty() else " · %s" % String(result.role)
+		var effect_text := _boss_effect_text(str(result.get("player_effect", "")), str(result.get("boss_effect", "")))
+		boss_result_label.text = "PLAYER %d → %dマス　SPHINX %d → %dマス%s\n%s" % [
+			int(result.get("player_roll", 0)), int(result.get("player_move", 0)),
+			int(result.get("boss_roll", 0)), int(result.get("boss_move", 0)),
+			role_text, effect_text,
+		]
+		boss_round_ack_button.text = "結果を見る" if bool(result.get("victory", false)) or bool(result.get("defeat", false)) else "次の一投へ"
 	elif phase == V06PlaySessionScript.PHASE_LAP_RESULT:
-		boss_title.text = "周回クリア"
-		boss_result_label.text = _score_result_text(true)
+		var victory := bool(boss.get("victory", false))
+		boss_title.text = "スフィンクスに勝利！" if victory else "スフィンクスに惜敗"
+		boss_result_label.text = _score_result_text(victory)
 	elif phase == V06PlaySessionScript.PHASE_RUN_OVER:
 		boss_title.text = "旅の記録"
 		boss_result_label.text = _score_result_text(false)
 	else:
-		boss_title.text = "SLEEPY SPHINX"
-		boss_result_label.text = "3回振って攻撃しよう"
+		boss_title.text = "黄金門の鏡面レース"
+		boss_result_label.text = "高い目で進むほど、スフィンクスは遅くなる"
+
+
+func _race_progress(position: int, goal: int) -> String:
+	var width := 10
+	var marker := clampi(roundi(float(position) / float(maxi(goal, 1)) * width), 0, width)
+	var result := ""
+	for index: int in range(width + 1):
+		result += "●" if index == marker else "━"
+	return result
+
+
+func _boss_effect_text(player_effect: String, sphinx_effect: String) -> String:
+	var parts: Array[String] = []
+	if not player_effect.is_empty():
+		parts.append("PLAYER %s" % player_effect.replace("_", " "))
+	if not sphinx_effect.is_empty():
+		parts.append("SPHINX %s" % sphinx_effect.replace("_", " "))
+	return " / ".join(parts) if not parts.is_empty() else "停止効果なし"
 
 
 func _score_result_text(victory: bool) -> String:
 	var score: int = int(_session.score())
 	var best: int = int(_session.best_score())
 	var breakdown: Dictionary = _session.score_breakdown()
-	var lead := "スフィンクスを突破！" if victory else "旅はここまで。"
+	var lead := "スフィンクスに勝利！" if victory else "スフィンクスには惜敗。"
 	var gap: int = best - score
 	var chase := "自己ベスト更新！" if gap <= 0 else "あと%sで自己ベスト" % _format_score(gap)
 	return "%s\nSCORE %s　BEST %s\n%s\n旅 %s / スロット %s / 発見 %s / ボス %s / 完走 %s" % [

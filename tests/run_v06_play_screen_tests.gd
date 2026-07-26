@@ -315,7 +315,7 @@ func _test_straight_roll_sequence(screen: Control) -> void:
 	_expect(not atlas.straight_travel_active() and atlas.current_route_position() == session.position() and not bool(typed_screen.get("_movement_active")), "next roll remains locked until camera follow has finished")
 	_expect((typed_screen.get_node("%Slot0") as Label).text == "2" and not (typed_screen.get_node("%DieButton") as Button).disabled, "stopped face transfers to the slot before the next roll")
 	await create_timer(0.50).timeout
-	_expect(session.score() == 70 and session.coins() == 1 and (typed_screen.get_node("%ScoreLabel") as Label).text == "70", "one two-step COIN landing grows score separately from spendable coin")
+	_expect(session.score() == 70 and session.coins() == 2 and (typed_screen.get_node("%ScoreLabel") as Label).text == "70", "one two-step COIN landing grows score separately from spendable coin")
 
 
 func _test_inline_slot_result_flow(screen: Control) -> void:
@@ -364,7 +364,7 @@ func _test_qa_state(screen: Control) -> void:
 	_expect(snapshot.phase == &"READY" and snapshot.pending_face == 0 and snapshot.pending_remaining_steps == 0, "QA state is stable and ready with no debug movement residue")
 	_expect(not (screen.get_node("%LapLabel") as Label).visible and not (screen.get_node("%PBLabel") as Label).visible, "QA normal-travel HUD keeps LAP and PB hidden")
 	_expect((screen.get_node("%HPLabel") as Label).text == "♥♥♡", "QA HUD shows two of three HP")
-	_expect(snapshot.score == 590 and snapshot.coins == 2, "QA route accrues deterministic travel, stop, role, and coin rewards")
+	_expect(snapshot.score == 590 and snapshot.coins == 4, "QA route accrues deterministic travel, stop, role, and coin rewards")
 	_expect((screen.get_node("%ProgressLabel") as Label).text == "18/58", "QA HUD shows data-driven 18/58")
 	_expect((screen.get_node("%Slot0") as Label).text == "6" and (screen.get_node("%Slot1") as Label).text == "6" and (screen.get_node("%Slot2") as Label).text == "—", "QA tray shows [6][6][_]")
 	_expect((screen.get_node("%DieButton") as Button).text == "サイコロを振る" and not (screen.get_node("%DieButton") as Button).disabled, "QA tray has exactly one ready roll action")

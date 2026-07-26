@@ -17,6 +17,9 @@ const VALID_PHASES := [
 const VALID_SKILL_STATES := ["CHARGING", "READY", "ARMED"]
 const VALID_ROLES := ["", "MIX", "PAIR", "STRAIGHT", "TRIPLE"]
 const VALID_ROUTE_IDS := ["main", "bypass_bazaar_alley", "bypass_sirocco", "loop_oasis_ring", "loop_tomb_ring"]
+const STAGE_FLAG_NEXT_MOVE_PENALTY := "v06_next_basic_move_penalty"
+const STAGE_FLAG_LAST_TILE_EFFECT := "v06_last_tile_effect"
+const STAGE_FLAG_RESOLVED_TILE_EFFECT_IDS := "v06_resolved_tile_effect_ids"
 
 
 static func from_session(session: RefCounted) -> Dictionary:
@@ -99,22 +102,40 @@ static func _validate_state(state: Dictionary) -> Dictionary:
 	var boss_entered := bool(state.get("boss_entered"))
 	var boss: Dictionary = state.get("boss") as Dictionary
 	if boss_entered:
-		for key: String in ["lap", "round", "faces", "player_hp", "boss_hp", "pending_ack", "terminal", "result"]:
+		for key: String in ["schema_version", "boss_id", "lap", "round", "turn", "faces", "player_hp", "boss_hp", "course_length", "player_position", "boss_position", "player_next_modifier", "boss_next_modifier", "player_first_sand_available", "player_roll_history", "boss_roll_history", "pending_ack", "terminal", "winner", "result"]:
 			if not boss.has(key):
 				return _invalid(STATUS_CORRUPT, "boss.%s is missing" % key)
+		if str(boss.get("schema_version")) != "dice-slot-trip.boss-race/1" or str(boss.get("boss_id")) != "sphinx":
+			return _invalid(STATUS_CORRUPT, "boss schema or identity is invalid")
 		if not _integer(boss.get("lap")) or int(boss.get("lap")) < 1 or not _integer(boss.get("round")) or int(boss.get("round")) < 1:
 			return _invalid(STATUS_CORRUPT, "boss turn is invalid")
 		if not boss.get("faces") is Array or (boss.get("faces") as Array).size() > 3 or not _integer(boss.get("player_hp")) or not _integer(boss.get("boss_hp")) or int(boss.get("player_hp")) < 0 or int(boss.get("player_hp")) > 3 or int(boss.get("boss_hp")) < 0 or int(boss.get("boss_hp")) > 3:
 			return _invalid(STATUS_CORRUPT, "boss state is invalid")
-		if not boss.get("pending_ack") is bool or not boss.get("terminal") is bool or not boss.get("result") is Dictionary:
+		if not _integer(boss.get("course_length")) or int(boss.get("course_length")) != 13 or not _integer(boss.get("player_position")) or not _integer(boss.get("boss_position")):
+			return _invalid(STATUS_CORRUPT, "boss race position is invalid")
+		if int(boss.get("player_position")) < 0 or int(boss.get("player_position")) > 13 or int(boss.get("boss_position")) < 0 or int(boss.get("boss_position")) > 13:
+			return _invalid(STATUS_CORRUPT, "boss race position is outside the course")
+		if not _integer(boss.get("player_next_modifier")) or int(boss.get("player_next_modifier")) not in [-1, 0, 1] or not _integer(boss.get("boss_next_modifier")) or int(boss.get("boss_next_modifier")) not in [-1, 0, 1]:
+			return _invalid(STATUS_CORRUPT, "boss race movement modifier is invalid")
+		if not boss.get("player_first_sand_available") is bool or not boss.get("player_roll_history") is Array or not boss.get("boss_roll_history") is Array:
+			return _invalid(STATUS_CORRUPT, "boss race history is invalid")
+		var player_history := boss.get("player_roll_history") as Array
+		var boss_history := boss.get("boss_roll_history") as Array
+		if player_history.size() != boss_history.size() or player_history.size() > 12:
+			return _invalid(STATUS_CORRUPT, "boss race history length is invalid")
+		for index: int in range(player_history.size()):
+			if not _integer(player_history[index]) or not _integer(boss_history[index]) or int(player_history[index]) < 1 or int(player_history[index]) > 6 or int(boss_history[index]) != 7 - int(player_history[index]):
+				return _invalid(STATUS_CORRUPT, "boss mirror roll history is invalid")
+		if not boss.get("pending_ack") is bool or not boss.get("terminal") is bool or not boss.get("winner") is String or not boss.get("result") is Dictionary:
 			return _invalid(STATUS_CORRUPT, "boss flags or result are invalid")
 		for face: Variant in boss.get("faces") as Array:
 			if not _integer(face) or int(face) < 1 or int(face) > 6:
 				return _invalid(STATUS_CORRUPT, "boss face is invalid")
-		if bool(boss.get("pending_ack")) and (boss.get("faces") as Array).size() != 3:
-			return _invalid(STATUS_CORRUPT, "boss acknowledgement has no complete slot")
-		if bool(boss.get("terminal")) and not (int(boss.get("player_hp")) == 0 or int(boss.get("boss_hp")) == 0):
-			return _invalid(STATUS_CORRUPT, "terminal boss has no winner")
+		if bool(boss.get("pending_ack")) and (boss.get("result") as Dictionary).is_empty():
+			return _invalid(STATUS_CORRUPT, "boss acknowledgement has no turn result")
+		var winner := str(boss.get("winner"))
+		if bool(boss.get("terminal")) != (winner in ["player", "boss"]):
+			return _invalid(STATUS_CORRUPT, "terminal boss winner is invalid")
 	if phase in ["BOSS_ROLL_READY", "BOSS_ROUND_RESULT", "LAP_RESULT", "RUN_OVER"] and not boss_entered:
 		return _invalid(STATUS_CORRUPT, "boss phase has no boss state")
 	if phase in ["READY", "CHOICE_REQUIRED"] and boss_entered:
@@ -122,10 +143,10 @@ static func _validate_state(state: Dictionary) -> Dictionary:
 	var slot_faces: Array = state.get("slot", {}).get("faces", [])
 	if phase in ["READY", "CHOICE_REQUIRED"] and slot_faces.size() > 2:
 		return _invalid(STATUS_CORRUPT, "travel stable phase has too many committed faces")
-	if phase == "BOSS_ROLL_READY" and not slot_faces.is_empty():
-		return _invalid(STATUS_CORRUPT, "boss turn-start phase has partial slot state")
-	if phase == "BOSS_ROUND_RESULT" and slot_faces.size() != 3:
-		return _invalid(STATUS_CORRUPT, "boss result has an incomplete slot")
+	if phase == "BOSS_ROLL_READY" and slot_faces.size() > 2:
+		return _invalid(STATUS_CORRUPT, "boss turn-start phase has a completed slot")
+	if phase == "BOSS_ROUND_RESULT" and (slot_faces.is_empty() or slot_faces.size() > 3):
+		return _invalid(STATUS_CORRUPT, "boss result has no committed face")
 	if phase == "CHOICE_REQUIRED" and (int(state.get("route", {}).get("pending_face", 0)) < 1 or int(state.get("route", {}).get("pending_remaining_steps", 0)) < 1):
 		return _invalid(STATUS_CORRUPT, "choice state has no held movement")
 	if phase != "CHOICE_REQUIRED" and (int(state.get("route", {}).get("pending_face", 0)) != 0 or int(state.get("route", {}).get("pending_remaining_steps", 0)) != 0):
@@ -154,7 +175,37 @@ static func _validate_player(value: Variant) -> Dictionary:
 		return _invalid(STATUS_CORRUPT, "inventory, item_consumption, or stage_flags is invalid")
 	if not _validate_nonnegative_dictionary(player.get("inventory") as Dictionary) or not _validate_item_consumption(player.get("item_consumption") as Dictionary):
 		return _invalid(STATUS_CORRUPT, "inventory quantities are invalid")
+	if not _validate_v06_stage_flags(player.get("stage_flags") as Dictionary):
+		return _invalid(STATUS_CORRUPT, "known V06 stage flags are invalid")
 	return {"ok": true, "status": STATUS_VALID}
+
+
+static func _validate_v06_stage_flags(flags: Dictionary) -> bool:
+	if flags.has(STAGE_FLAG_NEXT_MOVE_PENALTY):
+		var penalty: Variant = flags.get(STAGE_FLAG_NEXT_MOVE_PENALTY)
+		if not _integer(penalty) or int(penalty) < 0 or int(penalty) > 1:
+			return false
+	if flags.has(STAGE_FLAG_LAST_TILE_EFFECT):
+		var last_effect: Variant = flags.get(STAGE_FLAG_LAST_TILE_EFFECT)
+		if not last_effect is Dictionary:
+			return false
+		var result := last_effect as Dictionary
+		if not result.is_empty():
+			for key: String in ["resolution_id", "node_key", "tile_kind", "effect_kind", "amount", "applied", "text"]:
+				if not result.has(key):
+					return false
+			if not result.get("resolution_id") is String or not result.get("node_key") is String or not result.get("tile_kind") is String or not result.get("effect_kind") is String or not result.get("text") is String:
+				return false
+			if not _integer(result.get("amount")) or int(result.get("amount")) < 0 or not result.get("applied") is bool:
+				return false
+	if flags.has(STAGE_FLAG_RESOLVED_TILE_EFFECT_IDS):
+		var resolved: Variant = flags.get(STAGE_FLAG_RESOLVED_TILE_EFFECT_IDS)
+		if not resolved is Dictionary:
+			return false
+		for key: Variant in (resolved as Dictionary).keys():
+			if not key is String or not (resolved as Dictionary).get(key) is bool:
+				return false
+	return true
 
 
 static func _validate_route(value: Variant) -> Dictionary:

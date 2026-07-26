@@ -793,12 +793,12 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.67, 0.45, 0.14, 1)
 theme_override_font_sizes/font_size = 42
-text = "SLEEPY SPHINX"
+text = "黄金門の鏡面レース"
 horizontal_alignment = 1
 
 [node name="BossImage" type="TextureRect" parent="BossOverlay/Center/BossPanel/Content"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 230)
+custom_minimum_size = Vector2(0, 130)
 layout_mode = 2
 texture = ExtResource("4_sphinx")
 expand_mode = 1
@@ -808,20 +808,29 @@ stretch_mode = 5
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
-text = "PLAYER HP 3/3    BOSS HP 3/3"
+text = "PLAYER 0/13    SPHINX 0/13"
 horizontal_alignment = 1
+
+[node name="BossRaceTrackLabel" type="Label" parent="BossOverlay/Center/BossPanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 92)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "YOU     ●━━━━━━━━━━ 0/13\nSPHINX  ●━━━━━━━━━━ 0/13"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="BossActionLabel" type="Label" parent="BossOverlay/Center/BossPanel/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.67, 0.45, 0.14, 1)
 theme_override_font_sizes/font_size = 26
-text = "SAND GAZE  ·  DEF 9"
+text = "裏目ルール  PLAYER x / SPHINX 7-x"
 horizontal_alignment = 1
 
 [node name="BossResultLabel" type="Label" parent="BossOverlay/Center/BossPanel/Content"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 150)
+custom_minimum_size = Vector2(0, 110)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "3回振って攻撃しよう"
@@ -834,7 +843,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 96)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
-text = "ラウンド結果を確認"
+text = "次の一投へ"
 
 [node name="NextLapButton" type="Button" parent="BossOverlay/Center/BossPanel/Content"]
 unique_name_in_owner = true

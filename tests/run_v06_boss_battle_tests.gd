@@ -2,90 +2,97 @@ extends SceneTree
 
 const V06BossBattleScript = preload("res://scripts/game/v06_boss_battle.gd")
 
-var failures: int = 0
+var failures := 0
 
 
 func _init() -> void:
-	_test_victory_sequence()
-	_test_defeat_sequence()
-	_test_lap_defenses()
-	_test_rejections_and_snapshots()
+	_test_mirror_rolls_and_lane_effects()
+	_test_player_victory_and_boss_victory()
+	_test_slot_carry_and_role_resolution()
+	_test_exact_arrival_tie()
+	_test_snapshot_restore_and_rejections()
 	print("V06_BOSS_BATTLE_TESTS failures=%d" % failures)
 	quit(1 if failures > 0 else 0)
 
 
-func _test_victory_sequence() -> void:
-	var battle: RefCounted = V06BossBattleScript.new()
-	var first := _roll_round(battle, [2, 3, 4])
-	_expect(first.sum == 9 and first.defense == 9 and first.boss_hp_before == 3 and first.boss_hp_after == 2, "round 1 tie damages boss")
-	_expect(first.action == V06BossBattleScript.ACTION_SAND_GAZE and first.applied_boss_damage == 1, "round 1 action and damage")
-	_expect(battle.acknowledge_round(), "round 1 acknowledgment")
-	_expect(battle.faces().is_empty() and battle.snapshot().round == 2, "ack starts fresh blank round")
-	var second := _roll_round(battle, [2, 2, 6])
-	_expect(second.sum == 10 and second.defense == 11 and second.role == &"PAIR" and second.guard, "round 2 PAIR guards failed comparison")
-	_expect(second.attempted_player_damage == 1 and second.applied_player_damage == 0, "PAIR reports guarded attempted damage")
-	_expect(second.player_hp_after == 3 and second.boss_hp_after == 2, "PAIR guard causes no HP damage")
-	_expect(battle.acknowledge_round(), "round 2 acknowledgment")
-	var third := _roll_round(battle, [1, 1, 1])
-	_expect(third.role == &"TRIPLE" and third.attempted_boss_damage == 2 and third.applied_boss_damage == 2, "TRIPLE ignores defense for two damage")
-	_expect(third.boss_hp_before == 2 and third.boss_hp_after == 0 and third.victory, "TRIPLE reaches victory with clamp")
-	_expect(battle.snapshot().pending_ack and not battle.snapshot().terminal and not battle.snapshot().victory, "victory candidate waits for acknowledgment")
-	_expect(not battle.roll_face(6).ok, "fourth roll rejected while victory acknowledgment waits")
-	_expect(battle.acknowledge_round() and battle.faces().is_empty(), "victory acknowledgment clears slots")
-	_expect(battle.snapshot().terminal and battle.snapshot().victory, "victory becomes terminal on acknowledgment")
-	_expect(not battle.acknowledge_round() and not battle.roll_face(6).ok, "post-victory acknowledgment and roll rejected")
-
-
-func _test_defeat_sequence() -> void:
-	var battle: RefCounted = V06BossBattleScript.new()
-	var last_result: Dictionary = {}
-	for expected_hp: int in [2, 1, 0]:
-		last_result = _roll_round(battle, [1, 2, 3])
-		_expect(last_result.player_hp_after == expected_hp and last_result.boss_hp_after == 3, "failed round damages only player to %d" % expected_hp)
-		if expected_hp > 0:
-			_expect(battle.acknowledge_round(), "failed nonterminal round acknowledgment")
-	_expect(last_result.defeat and battle.snapshot().pending_ack and not battle.snapshot().defeat and not battle.snapshot().terminal, "defeat candidate waits for acknowledgment")
-	_expect(not battle.roll_face(4).ok, "fourth roll rejected while defeat acknowledgment waits")
-	_expect(battle.acknowledge_round() and battle.faces().is_empty(), "defeat acknowledgment clears slots")
-	_expect(battle.snapshot().defeat and battle.snapshot().terminal, "defeat becomes terminal on acknowledgment")
-	_expect(not battle.acknowledge_round() and not battle.roll_face(4).ok, "post-defeat mutation rejected")
-
-
-func _test_lap_defenses() -> void:
-	for case: Array in [[9, 9], [10, 11], [20, 11], [11, 9]]:
+func _test_mirror_rolls_and_lane_effects() -> void:
+	for face: int in range(1, 7):
 		var battle: RefCounted = V06BossBattleScript.new()
-		_expect(battle.configure_lap(case[0]), "lap %d config accepted" % case[0])
-		_expect(battle.current_defense() == case[1], "lap %d has defense %d" % case)
-		_expect(battle.snapshot().boss_hp == 3 and battle.snapshot().player_hp == 3, "lap enhancement leaves HP unchanged")
-	var carried: RefCounted = V06BossBattleScript.new()
-	_expect(carried.configure_lap(2, 2), "next lap accepts carried player HP")
-	_expect(carried.snapshot().lap == 2 and carried.snapshot().player_hp == 2 and carried.snapshot().boss_hp == 3, "next lap carries player HP and resets boss HP")
-	var invalid_before: Dictionary = carried.snapshot()
-	_expect(not carried.configure_lap(3, 0) and carried.snapshot() == invalid_before, "zero player HP config rejected without mutation")
-	_expect(not carried.configure_lap(3, 4) and carried.snapshot() == invalid_before, "excess player HP config rejected without mutation")
+		var event: Dictionary = battle.roll_face(face)
+		var result: Dictionary = event.get("result", {})
+		_expect(event.status == "TURN_RESOLVED" and int(result.player_roll) == face and int(result.boss_roll) == 7 - face, "face %d produces public mirror face %d" % [face, 7 - face])
+		_expect(int(result.player_roll) + int(result.boss_roll) == 7, "mirror pair sums to seven")
+	var player_sand: RefCounted = V06BossBattleScript.new()
+	var sand_result: Dictionary = player_sand.roll_face(3).result
+	_expect(sand_result.player_effect == "SAND_IGNORED" and player_sand.snapshot().player_next_modifier == 0, "first player SAND is ignored by the Cairo flag")
+	var boss_sand: RefCounted = V06BossBattleScript.new()
+	var boss_sand_result: Dictionary = boss_sand.roll_face(4).result
+	_expect(boss_sand_result.boss_effect == "SAND" and boss_sand.snapshot().boss_next_modifier == -1, "Sphinx SAND queues minus one for its next base move")
+	_expect(boss_sand.acknowledge_round(), "SAND turn acknowledges")
+	var modified: Dictionary = boss_sand.roll_face(6).result
+	_expect(modified.boss_roll == 1 and modified.boss_move == 1 and modified.boss_modifier_used == -1, "minimum movement prevents SAND deadlock")
+	var wind: RefCounted = V06BossBattleScript.new()
+	var wind_first: Dictionary = wind.roll_face(5).result
+	_expect(wind_first.player_effect == "WIND" and wind.snapshot().player_next_modifier == 1, "WIND queues plus one")
+	_expect(wind.acknowledge_round(), "WIND turn acknowledges")
+	var wind_second: Dictionary = wind.roll_face(1).result
+	_expect(wind_second.player_move == 2 and wind_second.player_modifier_used == 1, "queued WIND applies to the next base move")
 
 
-func _test_rejections_and_snapshots() -> void:
+func _test_player_victory_and_boss_victory() -> void:
+	var player: RefCounted = V06BossBattleScript.new()
+	var first: Dictionary = player.roll_face(6).result
+	_expect(first.player_position_after == 8 and first.player_effect == "BOOST" and first.boss_position_after == 1, "player BOOST adds two without chaining")
+	_expect(player.acknowledge_round(), "first winning-path turn acknowledges")
+	var player_finish: Dictionary = player.roll_face(6).result
+	_expect(player_finish.victory and player_finish.winner == "player" and player.snapshot().terminal, "two high rolls win the 13-space race")
+	_expect(player_finish.turn_count == 2 and player_finish.player_roll_history == [6, 6] and player_finish.boss_roll_history == [1, 1] and player_finish.boss_stamp == "cairo_sphinx_win", "terminal result exposes the Sphinx record fields")
+	_expect(not player.roll_face(6).ok and player.acknowledge_round(), "terminal race blocks rolls and accepts one result acknowledgment")
+	_expect(player.snapshot().terminal and not player.snapshot().pending_ack, "terminal result remains stable after acknowledgment")
+	var sphinx: RefCounted = V06BossBattleScript.new()
+	var low_first: Dictionary = sphinx.roll_face(1).result
+	_expect(low_first.boss_position_after == 8 and low_first.boss_effect == "BOOST", "Sphinx receives the same BOOST layout")
+	_expect(sphinx.acknowledge_round(), "first losing-path turn acknowledges")
+	var sphinx_finish: Dictionary = sphinx.roll_face(1).result
+	_expect(sphinx_finish.defeat and sphinx_finish.winner == "boss" and sphinx.snapshot().terminal, "two low rolls record a Sphinx victory without retry")
+
+
+func _test_slot_carry_and_role_resolution() -> void:
 	var battle: RefCounted = V06BossBattleScript.new()
-	_expect(not battle.configure_lap(0), "invalid lap rejected")
-	_expect(not battle.roll_face(0).ok and not battle.roll_face(7).ok and battle.faces().is_empty(), "invalid faces rejected without mutation")
-	var completed := _roll_round(battle, [2, 3, 4])
-	var before: Dictionary = battle.snapshot()
-	_expect(not battle.roll_face(6).ok and battle.snapshot() == before, "fourth roll rejected without mutation")
-	var copy: Dictionary = completed.duplicate(true)
-	copy.faces[0] = 6
-	_expect(battle.result().faces == [2, 3, 4], "result faces are immutable-style copies")
-	_expect(battle.acknowledge_round() and not battle.acknowledge_round(), "double acknowledgment rejected")
-	_expect(battle.faces().is_empty(), "ack leaves three blank slots")
-	_expect(not battle.configure_lap(2), "lap mutation after play rejected")
+	_expect(battle.configure_lap(2, 2, [4, 4]), "boss race accepts HP and two carried slot faces")
+	_expect(battle.faces() == [4, 4] and battle.snapshot().boss_id == "sphinx", "carried slot and current Sphinx identity are visible")
+	var triple: Dictionary = battle.roll_face(4).result
+	_expect(triple.role == &"TRIPLE" and battle.faces() == [4, 4, 4], "first boss-race roll can complete a carried TRIPLE")
+	_expect(battle.acknowledge_round() and battle.faces().is_empty(), "completed slot resets only after turn acknowledgment")
+	var partial: Dictionary = battle.roll_face(2).result
+	_expect(partial.role == &"" and battle.faces() == [2], "next race roll starts the next shared 3ROLL SLOT set")
 
 
-func _roll_round(battle: RefCounted, values: Array[int]) -> Dictionary:
-	var event: Dictionary = {}
-	for face: int in values:
-		event = battle.roll_face(face)
-		_expect(bool(event.get("ok", false)), "face %d accepted" % face)
-	return event.get("result", {})
+func _test_exact_arrival_tie() -> void:
+	var source: RefCounted = V06BossBattleScript.new()
+	var state: Dictionary = source.snapshot()
+	state.player_position = 12
+	state.boss_position = 12
+	var tied: RefCounted = V06BossBattleScript.new()
+	_expect(tied.restore_snapshot(state), "pre-goal tied race snapshot restores")
+	var result: Dictionary = tied.roll_face(1).result
+	_expect(result.victory and result.winner == "player" and result.win_reason == "BASE_MOVE_GOAL", "exact same arrival step favors the player")
+
+
+func _test_snapshot_restore_and_rejections() -> void:
+	var battle: RefCounted = V06BossBattleScript.new()
+	_expect(not battle.configure_lap(0) and not battle.roll_face(0).ok and not battle.roll_face(7).ok, "invalid lap and faces are rejected")
+	var result: Dictionary = battle.roll_face(4).result
+	var pending_snapshot: Dictionary = battle.snapshot()
+	var restored_pending: RefCounted = V06BossBattleScript.new()
+	_expect(restored_pending.restore_snapshot(pending_snapshot) and restored_pending.result() == result, "turn-result checkpoint restores without replay")
+	_expect(not restored_pending.roll_face(2).ok and restored_pending.acknowledge_round(), "restored result requires acknowledgment before another roll")
+	var ready_snapshot: Dictionary = restored_pending.snapshot()
+	var restored_ready: RefCounted = V06BossBattleScript.new()
+	_expect(restored_ready.restore_snapshot(ready_snapshot) and restored_ready.faces() == [4], "between-turn checkpoint preserves partial SLOT and positions")
+	var corrupt: Dictionary = ready_snapshot.duplicate(true)
+	corrupt.boss_roll_history[0] = 4
+	_expect(not V06BossBattleScript.new().restore_snapshot(corrupt), "non-mirror history is rejected")
 
 
 func _expect(condition: bool, label: String) -> void:

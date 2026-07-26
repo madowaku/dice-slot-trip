@@ -21,68 +21,58 @@ func _run() -> void:
 func _test_boss_victory_and_clock() -> void:
 	var session: RefCounted = Session.new()
 	_expect(session.enter_boss(1000), "direct boss entry starts an armed deterministic clock")
-	_expect(session.faces().is_empty() and session.phase() == Session.PHASE_BOSS_ROLL_READY, "boss starts with three blank slots")
-	for face: int in [2, 3, 4]: session.start_roll(face, 1100 + session.faces().size() * 100)
+	_expect(session.faces().is_empty() and session.phase() == Session.PHASE_BOSS_ROLL_READY, "boss starts with a shared empty slot")
+	session.start_roll(6, 1100)
 	var first: Dictionary = session.boss_result()
-	_expect(session.phase() == Session.PHASE_BOSS_ROUND_RESULT and first.sum == 9 and first.defense == 9 and first.boss_hp_after == 2, "9 vs DEF 9 damages boss")
-	_expect(not session.start_roll(6, 1500).ok and session.acknowledge_boss_round() and not session.acknowledge_boss_round(), "fourth roll and double ack are rejected")
-	for face: int in [2, 2, 6]: session.start_roll(face, 1600 + session.faces().size() * 100)
-	var second: Dictionary = session.boss_result()
-	_expect(second.role == &"PAIR" and second.guard and second.player_hp_after == 3 and second.boss_hp_after == 2, "PAIR guards failed comparison")
-	session.acknowledge_boss_round()
-	_expect(session.pause_clock(2000), "pause accepts monotonic caller time")
+	_expect(session.phase() == Session.PHASE_BOSS_ROUND_RESULT and first.player_roll == 6 and first.boss_roll == 1 and first.player_position_after == 8, "first mirror turn reveals the reverse face and BOOST")
+	_expect(not session.start_roll(6, 1150).ok and session.acknowledge_boss_round() and not session.acknowledge_boss_round(), "roll while result waits and double ack are rejected")
+	_expect(session.pause_clock(1200), "pause accepts monotonic caller time")
 	var paused_faces: Array[int] = session.faces()
-	_expect(not session.start_roll(6, 2200).ok and session.faces() == paused_faces, "roll while paused is rejected without mutation")
-	_expect(session.resume_clock(2500), "resume accepts monotonic caller time")
-	for face: int in [1, 1, 1]: session.start_roll(face, 2600 + session.faces().size() * 100)
-	var third: Dictionary = session.boss_result()
-	_expect(third.triple and third.applied_boss_damage == 2 and session.elapsed_ms(9999) == 1300, "TRIPLE wins and clock stops at damage with pause excluded")
-	_expect(session.best_ms() == 1300 and session.pb_delta_ms() == null and session.acknowledge_boss_round() and session.phase() == Session.PHASE_LAP_RESULT, "first victory records PB with no prior comparison before result ack")
-	_expect(not session.start_roll(1, 3000).ok and not session.resume_clock(3000), "lap result rejects rolls and invalid clock resume")
+	_expect(not session.start_roll(6, 1500).ok and session.faces() == paused_faces, "roll while paused is rejected without mutation")
+	_expect(session.resume_clock(1700), "resume accepts monotonic caller time")
+	session.start_roll(6, 2000)
+	var second: Dictionary = session.boss_result()
+	_expect(second.victory and second.player_position_after == 13 and session.elapsed_ms(9999) == 500, "second high roll wins and paused time is excluded")
+	_expect(session.best_ms() == 500 and session.pb_delta_ms() == null and session.acknowledge_boss_round() and session.phase() == Session.PHASE_LAP_RESULT, "first race victory records PB before result ack")
+	_expect(not session.start_roll(1, 2100).ok and not session.resume_clock(2100), "lap result rejects rolls and invalid clock resume")
 	_expect(session.next_lap() and session.lap() == 2 and session.player_hp() == 3 and session.position().tile_index == 0, "next lap resets travel while carrying HP")
 	_expect(session.faces().is_empty() and session.snapshot().clock_armed and session.boss_snapshot().is_empty(), "next lap is blank, armed, and creates no boss early")
 	_expect(not session.enter_boss(900) and session.phase() == Session.PHASE_READY, "timestamp regression rejects without phase mutation")
 	_expect(session.enter_boss(4000), "later monotonic timestamp can enter next boss")
-	var cursor := _win_with_triples(session, 4000, 2000)
-	_expect(session.best_ms() == 1300 and int(session.pb_delta_ms()) > 0, "slower victory retains PB and positive delta")
+	var cursor := _win_mirror_race(session, 4000, 1000)
+	_expect(session.best_ms() == 500 and int(session.pb_delta_ms()) > 0, "slower victory retains PB and positive delta")
 	session.next_lap(); session.enter_boss(cursor + 100)
-	cursor = _win_with_triples(session, cursor + 100, 900)
-	_expect(session.best_ms() == 900 and int(session.pb_delta_ms()) < 0, "strictly faster victory replaces PB and retains negative improvement")
+	cursor = _win_mirror_race(session, cursor + 100, 400)
+	_expect(session.best_ms() == 400 and int(session.pb_delta_ms()) < 0, "strictly faster victory replaces PB and retains negative improvement")
 	session.next_lap(); session.enter_boss(cursor + 100)
-	cursor = _win_with_triples(session, cursor + 100, 900)
-	_expect(session.best_ms() == 900 and session.pb_delta_ms() == 0 and not session.snapshot().pb_updated, "tie retains PB with a zero delta")
-	while session.lap() < 9:
-		session.next_lap(); session.enter_boss(cursor + 100)
-		cursor = _win_with_triples(session, cursor + 100, 1000)
-	session.next_lap(); session.enter_boss(cursor + 100)
-	_expect(session.lap() == 10 and session.boss_snapshot().defense == 11, "lap 10 creates an enhanced fresh boss with DEF +2")
-	_expect(session.retry_run() and session.best_ms() == 900 and session.lap() == 1 and session.player_hp() == 3 and session.faces().is_empty(), "retry resets run state but preserves existing PB")
+	cursor = _win_mirror_race(session, cursor + 100, 400)
+	_expect(session.best_ms() == 400 and session.pb_delta_ms() == 0 and not session.snapshot().pb_updated, "tie retains PB with a zero delta")
+	_expect(session.retry_run() and session.best_ms() == 400 and session.lap() == 1 and session.player_hp() == 3 and session.faces().is_empty(), "retry resets run state but preserves existing PB")
 
 
 func _test_defeat_and_retry() -> void:
 	var session: RefCounted = Session.new()
 	_expect(not session.pause_clock(100) and session.enter_boss(50), "pause before start is non-mutating and does not poison monotonic time")
-	var now := 100
-	for round_index: int in range(3):
-		for face: int in [1, 2, 3]:
-			session.start_roll(face, now); now += 100
-		_expect(session.phase() == Session.PHASE_BOSS_ROUND_RESULT, "defeat round shows result before outcome")
-		session.acknowledge_boss_round()
-	_expect(session.phase() == Session.PHASE_RUN_OVER and session.player_hp() == 0, "three failed rounds enter RUN OVER after ack")
+	session.start_roll(1, 100)
+	_expect(session.phase() == Session.PHASE_BOSS_ROUND_RESULT and not session.boss_result().defeat, "first losing race turn shows its result")
+	session.acknowledge_boss_round()
+	session.start_roll(1, 200)
+	_expect(session.boss_result().defeat and session.acknowledge_boss_round() and session.phase() == Session.PHASE_LAP_RESULT, "race loss completes the stage without RUN OVER")
 	_expect(session.retry_run() and session.lap() == 1 and session.player_hp() == 3 and session.position().tile_index == 0, "retry starts a clean run")
 
 
 func _test_damaged_hp_carry() -> void:
-	var session: RefCounted = Session.new(); session.enter_boss(0)
-	var now := 100
-	for face: int in [1, 2, 3]: session.start_roll(face, now); now += 100
+	var source: RefCounted = Session.new()
+	var state: Dictionary = source.stable_save_snapshot(0)
+	state.player.hp = 2
+	var session: RefCounted = Session.new()
+	_expect(session.restore_stable_snapshot(state, 0) and session.enter_boss(1), "damaged travel state enters the mirror race")
+	session.start_roll(6, 100)
 	session.acknowledge_boss_round()
-	_expect(session.player_hp() == 2, "failed round actually lowers player HP to 2")
-	for round_index: int in range(2):
-		for face: int in [1, 1, 1]: session.start_roll(face, now); now += 100
-		session.acknowledge_boss_round()
-	_expect(session.phase() == Session.PHASE_LAP_RESULT and session.player_hp() == 2, "damaged player can win without healing")
-	session.next_lap(); session.enter_boss(now + 100)
+	session.start_roll(6, 200)
+	session.acknowledge_boss_round()
+	_expect(session.phase() == Session.PHASE_LAP_RESULT and session.player_hp() == 2, "mirror race carries HP without changing it")
+	session.next_lap(); session.enter_boss(300)
 	_expect(session.lap() == 2 and session.boss_snapshot().player_hp == 2 and session.boss_snapshot().boss_hp == 3, "fresh next-lap battle carries HP2 and resets boss HP3")
 
 
@@ -90,7 +80,7 @@ func _test_screen_contract() -> void:
 	var host := Control.new(); host.size = Vector2(720, 1280); root.add_child(host)
 	var screen: Control = ScreenScene.instantiate(); host.add_child(screen)
 	await process_frame; await process_frame
-	for name: String in ["TimeLabel", "BossOverlay", "NightVignette", "BossLanternLeft", "BossLanternRight", "BossImage", "BossHPLabel", "BossActionLabel", "BossResultLabel", "BossRoundAckButton", "NextLapButton", "RetryButton", "BossBackButton"]:
+	for name: String in ["TimeLabel", "BossOverlay", "NightVignette", "BossLanternLeft", "BossLanternRight", "BossImage", "BossHPLabel", "BossRaceTrackLabel", "BossActionLabel", "BossResultLabel", "BossRoundAckButton", "NextLapButton", "RetryButton", "BossBackButton"]:
 		_expect(screen.get_node_or_null("%%%s" % name) != null, "named boss UI node %s exists" % name)
 	var boss_image := screen.get_node("%BossImage") as TextureRect
 	var vignette := screen.get_node("%NightVignette") as TextureRect
@@ -125,12 +115,11 @@ func _test_screen_contract() -> void:
 	_expect(not session.snapshot().clock_paused and session.snapshot().clock_running, "application resume notification resumes session clock")
 	var travel_position: Dictionary = session.position()
 	screen.call("_run_face", 2); await process_frame
-	_expect(session.faces() == [2] and session.position() == travel_position and session.phase() == Session.PHASE_BOSS_ROLL_READY, "actual screen roll path commits one boss face without travel movement")
+	_expect(session.faces() == [2] and session.position() == travel_position and session.phase() == Session.PHASE_BOSS_ROUND_RESULT, "actual screen roll resolves one mirror-race turn without travel movement")
 	_expect(not (screen.get_node("%MessageLabel") as Label).text.contains("完了できません"), "boss screen roll avoids movement-finish errors")
-	screen.call("_run_face", 3); screen.call("_run_face", 4); await process_frame
-	_expect(session.phase() == Session.PHASE_BOSS_ROUND_RESULT and overlay.visible and (screen.get_node("%BossRoundAckButton") as Button).visible, "third actual boss screen roll shows round result")
 	(screen.get_node("%BossRoundAckButton") as Button).emit_signal("pressed"); await process_frame
-	_expect(session.phase() == Session.PHASE_BOSS_ROLL_READY, "screen result acknowledgment reaches next boss round")
+	_expect(session.phase() == Session.PHASE_BOSS_ROLL_READY, "screen turn acknowledgment reaches the next mirror-race roll")
+	_expect((screen.get_node("%BossHPLabel") as Label).text.contains("SPHINX") and (screen.get_node("%BossActionLabel") as Label).text.contains("7-x"), "race HUD identifies the Sphinx and explains the mirror rule")
 	_expect((screen as Object).call("_format_pb_delta", -2400) == "-2.4s" and (screen as Object).call("_format_pb_delta", 1300) == "+1.3s" and (screen as Object).call("_format_pb_delta", 0) == "±0.0s", "screen formats signed PB deltas")
 	var touch_ok := true
 	for button: Button in screen.find_children("*", "Button", true, false): touch_ok = touch_ok and button.custom_minimum_size.y >= 96
@@ -164,14 +153,13 @@ func _capture_boss_runtime(path: String) -> void:
 	await process_frame
 
 
-func _win_with_triples(session: RefCounted, start_ms: int, duration_ms: int) -> int:
-	var step := duration_ms / 6
-	var now := start_ms
-	for round_index: int in range(2):
-		for face_index: int in range(3):
-			now = start_ms + step * (round_index * 3 + face_index + 1)
-			session.start_roll(1, now)
-		session.acknowledge_boss_round()
+func _win_mirror_race(session: RefCounted, start_ms: int, duration_ms: int) -> int:
+	var now := start_ms + duration_ms / 2
+	session.start_roll(6, now)
+	session.acknowledge_boss_round()
+	now = start_ms + duration_ms
+	session.start_roll(6, now)
+	session.acknowledge_boss_round()
 	return now
 
 
