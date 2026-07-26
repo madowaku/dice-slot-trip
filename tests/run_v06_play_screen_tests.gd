@@ -26,7 +26,10 @@ func _run() -> void:
 	_test_named_structure(screen)
 	_test_layout_and_touch(screen)
 	_test_atlas_contract(screen)
+	await _test_straight_travel_contract(screen)
 	_test_map_contract(screen)
+	await _test_straight_roll_sequence(screen)
+	await _test_inline_slot_result_flow(screen)
 	await _test_compact_die_motion(screen)
 	host.queue_free()
 	await process_frame
@@ -42,6 +45,7 @@ func _run() -> void:
 	qa_host.add_child(qa_screen)
 	await process_frame
 	await process_frame
+	_test_qa_state(qa_screen)
 	var capture_path := OS.get_environment("DICE_QA_V06_CAPTURE_PATH")
 	if not capture_path.is_empty():
 		if OS.get_environment("DICE_QA_V06_BYPASS_CAPTURE") == "1":
@@ -51,6 +55,54 @@ func _run() -> void:
 		match OS.get_environment("DICE_QA_V06_UTILITY_CAPTURE"):
 			"item": qa_screen.call("_on_item_tool_pressed")
 			"skill": qa_screen.call("_on_skill_tool_pressed")
+		if OS.get_environment("DICE_QA_V06_MAP_CAPTURE") == "1":
+			qa_screen.call("_on_map_pressed")
+			var map_route := OS.get_environment("DICE_QA_V06_MAP_ROUTE")
+			if not map_route.is_empty():
+				var map_tile := OS.get_environment("DICE_QA_V06_MAP_TILE").to_int()
+				(qa_screen.get_node("%OverviewAtlasView") as Control).set_route_position({"route_id":map_route, "tile_index":map_tile}, true)
+		var die_capture_state := OS.get_environment("DICE_QA_DIE_QUATERNION_CAPTURE")
+		var qa_die := qa_screen.get_node("%DicePresentation")
+		var qa_die_values: Array[int] = [1]
+		if die_capture_state == "ROLLING":
+			qa_die.present(qa_die_values, true, 0)
+			qa_die._process(0.31)
+		elif die_capture_state == "LOCKED":
+			qa_die_values[0] = 6
+			qa_die.present(qa_die_values, false, 1)
+			qa_die._process(0.0)
+		var result_lock_face := OS.get_environment("DICE_QA_V06_RESULT_LOCK_FACE").to_int()
+		if result_lock_face in range(1, 7):
+			(qa_screen.get_node("%AtlasView") as Control).set_roll_preview(result_lock_face)
+			await create_timer(AtlasScript.STRAIGHT_TARGET_PREVIEW_SECONDS + 0.02).timeout
+		var inline_role_capture := OS.get_environment("DICE_QA_V06_INLINE_ROLE_CAPTURE")
+		if not inline_role_capture.is_empty():
+			var inline_session: RefCounted = qa_screen.session_for_test()
+			inline_session.restart()
+			match inline_role_capture:
+				"PAIR", "TRIPLE":
+					qa_screen.call("_qa_resolve_roll", 6)
+					qa_screen.call("_qa_resolve_roll", 6)
+				"STRAIGHT":
+					qa_screen.call("_qa_resolve_roll", 1)
+					qa_screen.call("_qa_resolve_roll", 2)
+				_:
+					qa_screen.call("_qa_resolve_roll", 4)
+					qa_screen.call("_qa_resolve_roll", 1)
+			(qa_screen.get_node("%AtlasView") as Control).set_route_position(inline_session.position(), true)
+			qa_screen.call("_refresh_ui")
+			var final_face := 6
+			if inline_role_capture == "PAIR":
+				final_face = 4
+			elif inline_role_capture == "STRAIGHT":
+				final_face = 3
+			qa_screen.call("_run_face", final_face)
+			var inline_capture_delay := OS.get_environment("DICE_QA_V06_INLINE_CAPTURE_DELAY").to_float()
+			if inline_capture_delay <= 0.0:
+				inline_capture_delay = 0.38
+			await create_timer(inline_capture_delay).timeout
+		else:
+			await create_timer(1.02).timeout
 		for ignored: int in range(8):
 			await process_frame
 		await RenderingServer.frame_post_draw
@@ -66,20 +118,26 @@ func _run() -> void:
 		print("V06_PLAY_SCREEN_CAPTURE path=%s size=%s result=%s" % [capture_path, capture.get_size(), capture_result])
 		if not OS.get_environment("DICE_QA_V06_UTILITY_CAPTURE").is_empty():
 			qa_screen.call("_on_utility_closed")
-	_test_qa_state(qa_screen)
+		if not inline_role_capture.is_empty():
+			qa_screen.call("_cancel_motion", qa_screen.session_for_test().position())
+			qa_screen.session_for_test().restart()
+			(qa_screen.get_node("%AtlasView") as Control).set_route_position(qa_screen.session_for_test().position(), true)
+			qa_screen.call("_refresh_ui")
 	_test_third_slot_boss_overlay_order(qa_screen)
 	OS.set_environment("DICE_QA_V06_SCENARIO", "")
 	qa_viewport.queue_free()
 	await process_frame
+	_test_stage_select_source_contract()
 	print("V06_PLAY_SCREEN_TESTS failures=%d" % failures)
 	quit(1 if failures > 0 else 0)
 
 
 func _test_named_structure(screen: Control) -> void:
 	for node_name: String in [
-		"LapLabel", "HPLabel", "PBLabel", "TimeLabel", "ProgressLabel", "StageLabel",
+		"LapLabel", "HPLabel", "PBLabel", "TimeLabel", "ScoreLabel", "ScoreDeltaLabel", "CoinLabel", "ProgressLabel", "StageLabel",
 		"RouteLabel", "TileKindLabel", "AtlasView", "TrayPanel", "MapButton", "MapOverlay", "OverviewAtlasView", "MapCloseButton", "Slot0",
-		"Slot1", "Slot2", "DieWell", "DicePresentation", "DieButton", "ChoiceOverlay", "ResolutionOverlay",
+		"Slot1", "Slot2", "DicePresentation", "DieButton", "ChoiceOverlay", "ResolutionOverlay",
+		"RollCountLabel", "RoleLabel", "RoleRewardLabel", "PairLink", "NextNeedLabel", "ActionHintLabel",
 		"BossOverlay", "ToolDock", "ItemToolButton", "SkillToolButton", "UtilityOverlay", "UtilityCardArt", "UtilityCloseButton", "BackButton",
 	]:
 		_expect(screen.get_node_or_null("%%%s" % node_name) != null, "named node %s exists" % node_name)
@@ -91,12 +149,12 @@ func _test_named_structure(screen: Control) -> void:
 	var die_buttons := screen.find_children("*Die*", "Button", true, false)
 	_expect(grouped_dice.size() == 1 and die_buttons.size() == 1 and grouped_dice[0].name == "DieButton", "screen exposes exactly one roll action")
 	var dice_receipt: Dictionary = screen.get_node("%DicePresentation").pool_receipt()
-	_expect(dice_receipt.active_count == 1 and dice_receipt.viewport_size.x >= 96 and dice_receipt.viewport_size.x == dice_receipt.viewport_size.y, "fixed tray renders exactly one compact square 3D die")
-	_expect((screen.get_node("%LapLabel") as Label).text == "LAP 1" and (screen.get_node("%HPLabel") as Label).text == "HP 3/3", "initial HUD is LAP 1 and HP 3/3")
-	_expect((screen.get_node("%PBLabel") as Label).text == "PB --" and (screen.get_node("%ProgressLabel") as Label).text == "1/58", "initial PB and data-driven Cairo progress are readable")
+	_expect(dice_receipt.active_count == 1 and dice_receipt.viewport_size.x >= 96 and dice_receipt.viewport_size.x == dice_receipt.viewport_size.y, "map renders exactly one compact square 3D die")
+	_expect((screen.get_node("%ScoreLabel") as Label).text == "0" and (screen.get_node("%CoinLabel") as Label).text == "0" and (screen.get_node("%HPLabel") as Label).text == "♥♥♥", "normal travel HUD starts from growing score, coin, and HP")
+	_expect(not (screen.get_node("%LapLabel") as Label).visible and not (screen.get_node("%PBLabel") as Label).visible and not (screen.get_node("%TimeLabel") as Label).is_visible_in_tree() and (screen.get_node("%ProgressLabel") as Label).text == "1/58", "normal travel hides LAP, PB, and TIME while keeping 58-space progress")
 	_expect((screen.get_node("%Slot0") as Label).text == "—" and (screen.get_node("%Slot2") as Label).text == "—", "initial slots are blank")
-	_expect((screen.get_node("%DieButton") as Button).text == "READY\nROLL", "the one die starts READY")
-	_expect((screen.get_node("%ItemToolButton") as Button).text.contains("0 / 3") and (screen.get_node("%SkillToolButton") as Button).text.contains("READY"), "bottom tool dock exposes item capacity and skill readiness")
+	_expect((screen.get_node("%DieButton") as Button).text == "サイコロを振る", "the right-side roll action starts ready")
+	_expect((screen.get_node("%ItemToolButton") as Button).text.contains("0 / 3") and (screen.get_node("%SkillToolButton") as Button).text.contains("ピンポイント"), "bottom tool dock exposes item capacity and the named skill")
 
 
 func _test_layout_and_touch(screen: Control) -> void:
@@ -110,17 +168,26 @@ func _test_layout_and_touch(screen: Control) -> void:
 		var button := node as Button
 		touch_ok = touch_ok and button.custom_minimum_size.y >= UiTokensScript.TOUCH_MIN
 	_expect(touch_ok, "every screen and overlay button meets the touch minimum")
+	var atlas := screen.get_node("%AtlasView") as Control
+	var first_slot := screen.get_node("%SlotPanel0") as Control
 	var last_slot := screen.get_node("%SlotPanel2") as Control
 	var die := screen.get_node("%DieButton") as Control
-	var die_well := screen.get_node("%DieWell") as Control
+	var map_die := screen.get_node("%DicePresentation") as Control
 	var tray := screen.get_node("%TrayPanel") as Control
-	var gap := die.get_global_rect().position.x - last_slot.get_global_rect().end.x
-	_expect(gap >= 0.0 and gap <= 20.0, "third slot and the one die share one close sightline")
-	_expect(tray.get_global_rect().encloses(die_well.get_global_rect()) and die_well.get_global_rect().end.x <= (screen.get_node("%SlotPanel0") as Control).get_global_rect().position.x, "3D die well stays inside the fixed tray to the left of all three history slots")
+	var atlas_rect := atlas.get_global_rect()
+	var die_rect := map_die.get_global_rect()
+	var safe_rect := Rect2(atlas_rect.position + Vector2(atlas_rect.size.x * 0.32, atlas_rect.size.y * 0.62), Vector2(atlas_rect.size.x * 0.36, atlas_rect.size.y * 0.36))
+	map_die.scale = Vector2.ONE * 1.08
+	var rolling_die_rect := map_die.get_global_rect()
+	map_die.scale = Vector2.ONE
+	_expect(map_die.get_parent() == atlas and atlas_rect.encloses(die_rect) and safe_rect.encloses(die_rect) and atlas_rect.encloses(rolling_die_rect), "the 3D die stays inside the lower map safety zone while rolling")
+	_expect(first_slot.get_global_rect().end.x <= die.get_global_rect().position.x and last_slot.get_global_rect().end.x <= die.get_global_rect().position.x, "slots stay left of the right-side roll action")
 	_expect(ScreenScript.SLOT_BREATH_ALPHA_AMPLITUDE <= 0.06 and ScreenScript.SLOT_BREATH_PERIOD_SECONDS >= 1.6, "unconfirmed slot glow is a slow low-amplitude breath")
 	_expect((screen.get_node("%MapButton") as Button).custom_minimum_size.x >= 72 and (screen.get_node("%MapButton") as Button).custom_minimum_size.y >= 96, "top-right MAP control is a large one-hand target")
+	_expect((screen.get_node("%NextNeedLabel") as Label).visible == false and (screen.get_node("%ActionHintLabel") as Label).visible == false and (screen.get_node("%TrayHintLabel") as Label).visible == false, "small slot explanations stay out of the primary tray")
+	_expect((screen.get_node("%SlotPanel0") as Control).custom_minimum_size.y >= 120 and (screen.get_node("%Slot0") as Label).get_theme_font_size("font_size") >= 50 and (screen.get_node("%BackButton") as Button).text.contains("ステージ選択へ"), "slots are tall, numbers are large, and back returns to stage selection")
 	var tool_dock := screen.get_node("%ToolDock") as Control
-	_expect(tool_dock.get_global_rect().position.y >= tray.get_global_rect().end.y and (screen.get_node("%AtlasView") as Control).size.y >= 520.0, "item and skill dock sits below the raised tray without shrinking the playfield below contract")
+	_expect(tool_dock.get_global_rect().position.y >= tray.get_global_rect().end.y and (screen.get_node("%AtlasView") as Control).size.y >= 450.0, "item and skill dock sits below the raised tray without shrinking the playfield below contract")
 	_expect((screen.get_node("%ItemToolButton") as Button).icon.resource_path == "res://assets/art/v08/cards/item-card.png" and (screen.get_node("%SkillToolButton") as Button).icon.resource_path == "res://assets/art/v08/cards/skill-card.png", "tool buttons use the two production ImageGen card rasters")
 	_test_utility_cards(screen)
 
@@ -132,7 +199,7 @@ func _test_utility_cards(screen: Control) -> void:
 	_expect(overlay.visible and (screen.get_node("%DieButton") as Button).disabled and (screen.get_node("%UtilityTitle") as Label).text == "アイテム" and (screen.get_node("%UtilityDetail") as Label).text.contains("0 / 3"), "ITEM button opens its functional capacity card and gates gameplay input")
 	screen.call("_on_utility_closed")
 	screen.call("_on_skill_tool_pressed")
-	_expect(overlay.visible and (screen.get_node("%DieButton") as Button).disabled and (screen.get_node("%UtilityTitle") as Label).text.contains("READY") and (screen.get_node("%UtilityCardArt") as TextureRect).texture.resource_path == "res://assets/art/v08/cards/skill-card.png", "SKILL button opens the generated character card without inventing an effect")
+	_expect(overlay.visible and (screen.get_node("%DieButton") as Button).disabled and (screen.get_node("%UtilityTitle") as Label).text.contains("ピンポイント") and (screen.get_node("%UtilityCardArt") as TextureRect).texture.resource_path == "res://assets/art/v08/cards/skill-card.png", "SKILL button opens the generated character card without inventing an effect")
 	screen.call("_on_utility_closed")
 	_expect(not overlay.visible and not session.snapshot().clock_paused and not (screen.get_node("%DieButton") as Button).disabled, "closing a utility card restores gameplay input and the run clock")
 
@@ -151,7 +218,7 @@ func _test_atlas_contract(screen: Control) -> void:
 	atlas.set_route_position(original_position, true)
 	_expect(atlas.uses_production_tile_kind_icons(), "play screen uses six preloaded normalized Kenney tile-kind glyphs")
 	var prominent_count: int = atlas.prominent_space_count()
-	_expect(prominent_count >= 5 and prominent_count <= 7, "atlas emphasizes the forward 5-7 spaces only")
+	_expect(prominent_count == 6, "atlas keeps exactly six forward spaces")
 	var style_ids: PackedStringArray = atlas.route_style_ids()
 	var unique_styles := {}
 	for style_id: String in style_ids:
@@ -160,23 +227,104 @@ func _test_atlas_contract(screen: Control) -> void:
 	_expect(style_ids[0] == String(AtlasScript.ROUTE_STYLE_MAIN) and style_ids[1] == String(AtlasScript.ROUTE_STYLE_BYPASS) and style_ids[2] == String(AtlasScript.ROUTE_STYLE_LOOP), "route style IDs identify teal solid, rust dashed, and loop/gold exit")
 	_expect(AtlasScript.CAMERA_FOLLOW_SECONDS >= 0.26 and AtlasScript.CAMERA_FOLLOW_SECONDS <= 0.34 and AtlasScript.HOP_SECONDS >= 0.28 and AtlasScript.HOP_SECONDS <= 0.34, "cat hop and camera follow use the low-stimulation motion interval")
 	_expect(AtlasScript.CAT_TILE_SCALE >= 1.30 and AtlasScript.CAT_TILE_SCALE <= 1.50, "cat remains 1.3-1.5x the local tile focal scale")
+	atlas.clear_roll_preview()
+	_expect(not bool(atlas.roll_preview_receipt().active), "ROLLING state has no board highlight")
+	atlas.set_roll_preview(4)
+	await create_timer(AtlasScript.STRAIGHT_TARGET_PREVIEW_SECONDS + 0.02).timeout
+	var locked_preview: Dictionary = atlas.roll_preview_receipt()
+	_expect(bool(locked_preview.active) and int(locked_preview.distance) == 4 and str(locked_preview.target_key) == "main:4" and float(locked_preview.alpha) > 0.9, "RESULT_LOCK quietly highlights forward card four only")
+	atlas.release_roll_preview()
+	await create_timer(0.04).timeout
+	var releasing_preview: Dictionary = atlas.roll_preview_receipt()
+	_expect(bool(releasing_preview.active) and str(releasing_preview.target_key) == "main:4" and float(releasing_preview.alpha) < float(locked_preview.alpha), "highlight stays on the same card while fading at movement start")
+	await create_timer(0.12).timeout
+	_expect(not bool(atlas.roll_preview_receipt().active), "result-lock highlight clears after movement begins")
+
+
+func _test_straight_travel_contract(screen: Control) -> void:
+	var atlas := screen.get_node("%AtlasView") as V06AtlasView
+	var original_position: Dictionary = atlas.current_route_position()
+	var start_position := {"route_id": "main", "tile_index": 18}
+	var target_position := {"route_id": "main", "tile_index": 20}
+	_expect(atlas.can_use_straight_travel(start_position, 2) and not atlas.can_use_straight_travel({"route_id": "loop_oasis_ring", "tile_index": 0}, 2), "straight travel is limited to the main route")
+	_expect(atlas.set_route_position(start_position, true) and atlas.begin_straight_travel(start_position, 2), "straight travel keeps a separate display window before stepping")
+	var started_receipt: Dictionary = atlas.straight_travel_receipt()
+	_expect(bool(started_receipt.active) and int(started_receipt.player_step) == 0 and is_zero_approx(float(started_receipt.camera_offset)), "straight travel starts with zero camera offset")
+	_expect(int(atlas.card_route_receipt().card_count) == 7, "straight travel starts with seven visible cards")
+	await atlas.animate_straight_step(1)
+	var step_receipt: Dictionary = atlas.straight_travel_receipt()
+	_expect(int(step_receipt.player_step) == 1 and is_zero_approx(float(step_receipt.camera_offset)), "cat step advances without camera follow")
+	_expect(int(atlas.card_route_receipt().card_count) == 7 and atlas.cat_animation_state() == &"land", "each straight hop keeps seven cards and lands as a discrete jump")
+	await atlas.animate_straight_step(2)
+	await atlas.play_landing_effect(target_position)
+	_expect(is_zero_approx(float(atlas.straight_travel_receipt().camera_follow_progress)), "landing effect completes before camera follow")
+	await atlas.animate_straight_camera_follow()
+	var followed_receipt: Dictionary = atlas.straight_travel_receipt()
+	_expect(is_equal_approx(float(followed_receipt.camera_follow_progress), 1.0) and float(followed_receipt.camera_offset) > 0.0, "camera follows only after the landing effect")
+	_expect(int(atlas.card_route_receipt().card_count) == 7, "camera follow keeps seven visible cards")
+	_expect(atlas.finish_straight_travel(target_position) and not atlas.straight_travel_active() and atlas.current_route_position() == target_position, "straight travel returns the cat to the base slot without a snap")
+	_expect(int(atlas.card_route_receipt().card_count) == 7, "settled straight travel keeps seven visible cards")
+	atlas.set_route_position(original_position, true)
+
+
+func _test_straight_roll_sequence(screen: Control) -> void:
+	var typed_screen := screen as V06PlayScreen
+	var session: RefCounted = typed_screen.session_for_test()
+	session.restart()
+	typed_screen.call("_refresh_ui")
+	await typed_screen._run_face(2)
+	var atlas := typed_screen.atlas_for_test()
+	_expect(session.position() == {"route_id": "main", "tile_index": 2} and session.phase() == SessionScript.PHASE_READY, "one straight roll commits the logical destination after visual travel")
+	_expect(not atlas.straight_travel_active() and atlas.current_route_position() == session.position() and not bool(typed_screen.get("_movement_active")), "next roll remains locked until camera follow has finished")
+	_expect((typed_screen.get_node("%Slot0") as Label).text == "2" and not (typed_screen.get_node("%DieButton") as Button).disabled, "stopped face transfers to the slot before the next roll")
+	await create_timer(0.50).timeout
+	_expect(session.score() == 70 and session.coins() == 1 and (typed_screen.get_node("%ScoreLabel") as Label).text == "70", "one two-step COIN landing grows score separately from spendable coin")
+
+
+func _test_inline_slot_result_flow(screen: Control) -> void:
+	var typed_screen := screen as V06PlayScreen
+	var session: RefCounted = typed_screen.session_for_test()
+	session.restart()
+	typed_screen.call("_refresh_ui")
+	await typed_screen._run_face(4)
+	await typed_screen._run_face(1)
+	var position_before: Dictionary = session.position()
+	typed_screen._run_face(6)
+	await create_timer(0.20).timeout
+	_expect(session.phase() == SessionScript.PHASE_MOVING and session.pending_resolution_role() == &"MIX", "third stopped face resolves MIX before cat movement")
+	_expect(session.position() == position_before and session.visual_position() == position_before, "cat and logical route remain still during inline slot result")
+	_expect((typed_screen.get_node("%RoleLabel") as Label).text == "MIX" and (typed_screen.get_node("%RoleRewardLabel") as Label).visible and (typed_screen.get_node("%RoleRewardLabel") as Label).text.contains("+50"), "slot panel presents role and reward without a modal")
+	_expect((typed_screen.get_node("%TrayStatusLabel") as Label).text.contains("3 / 3"), "inline result keeps the slot header instead of presenting a MOVING status")
+	_expect(not (typed_screen.get_node("%ResolutionOverlay") as Control).visible and session.score() == 370 and session.coins() == 1, "MIX score and coin are awarded while the resolution modal stays hidden")
+	var mix_spec: Dictionary = typed_screen.inline_slot_result_spec("MIX", [4, 1, 6])
+	var pair_spec: Dictionary = typed_screen.inline_slot_result_spec("PAIR", [4, 1, 4])
+	var straight_spec: Dictionary = typed_screen.inline_slot_result_spec("STRAIGHT", [2, 3, 4])
+	var triple_spec: Dictionary = typed_screen.inline_slot_result_spec("TRIPLE", [6, 6, 6])
+	_expect(mix_spec.effect == "soft_flash" and mix_spec.reward.contains("コイン+1"), "MIX uses the quiet all-slot flash and coin reward")
+	_expect(pair_spec.effect == "pair_link" and pair_spec.indices == [0, 2] and pair_spec.reward.contains("ゲージ+1"), "PAIR connects only the matching slots")
+	_expect(straight_spec.effect == "left_to_right" and straight_spec.reward.contains("ゲージ+2"), "STRAIGHT flows from left to right")
+	_expect(triple_spec.effect == "strong_flash" and triple_spec.reward.contains("READY"), "TRIPLE strengthens the flash without extending its duration")
+	_expect(is_equal_approx(float(mix_spec.duration), float(pair_spec.duration)) and is_equal_approx(float(pair_spec.duration), float(straight_spec.duration)) and is_equal_approx(float(straight_spec.duration), float(triple_spec.duration)), "all four roles keep the same short result duration")
+	await create_timer(3.4).timeout
+	_expect(session.phase() == SessionScript.PHASE_READY and session.faces().is_empty() and session.position() != position_before, "inline result auto-acknowledges after movement and accepts the next roll")
+	_expect(not (typed_screen.get_node("%ResolutionOverlay") as Control).visible and not (typed_screen.get_node("%RoleRewardLabel") as Label).visible, "inline reward clears without presenting a confirmation button")
 
 
 func _test_qa_state(screen: Control) -> void:
 	var snapshot: Dictionary = screen.session_snapshot()
 	_expect(snapshot.position == {"route_id":"main","tile_index":17} and snapshot.faces == [6, 6], "atlas_18 reaches main 17 through the session model with [6,6]")
 	_expect(snapshot.phase == &"READY" and snapshot.pending_face == 0 and snapshot.pending_remaining_steps == 0, "QA state is stable and ready with no debug movement residue")
-	_expect((screen.get_node("%LapLabel") as Label).text == "LAP 4", "QA HUD shows LAP 4")
-	_expect((screen.get_node("%HPLabel") as Label).text == "HP 2/3", "QA HUD shows HP 2/3")
-	_expect((screen.get_node("%PBLabel") as Label).text == "PB -2.4s", "QA HUD shows PB -2.4s")
+	_expect(not (screen.get_node("%LapLabel") as Label).visible and not (screen.get_node("%PBLabel") as Label).visible, "QA normal-travel HUD keeps LAP and PB hidden")
+	_expect((screen.get_node("%HPLabel") as Label).text == "♥♥♡", "QA HUD shows two of three HP")
+	_expect(snapshot.score == 590 and snapshot.coins == 2, "QA route accrues deterministic travel, stop, role, and coin rewards")
 	_expect((screen.get_node("%ProgressLabel") as Label).text == "18/58", "QA HUD shows data-driven 18/58")
 	_expect((screen.get_node("%Slot0") as Label).text == "6" and (screen.get_node("%Slot1") as Label).text == "6" and (screen.get_node("%Slot2") as Label).text == "—", "QA tray shows [6][6][_]")
-	_expect((screen.get_node("%DieButton") as Button).text == "READY\nROLL" and not (screen.get_node("%DieButton") as Button).disabled, "QA tray has exactly one READY die")
-	_expect((screen.get_node("%AtlasView") as Control).prominent_space_count() >= 5 and (screen.get_node("%AtlasView") as Control).prominent_space_count() <= 7, "QA position keeps a forward 5-7-space frame")
+	_expect((screen.get_node("%DieButton") as Button).text == "サイコロを振る" and not (screen.get_node("%DieButton") as Button).disabled, "QA tray has exactly one ready roll action")
+	_expect((screen.get_node("%AtlasView") as Control).prominent_space_count() == 6, "QA position keeps an exact six-space forward frame")
 	_expect((screen.get_node("%AtlasView") as Control).prominent_visible_space_count() >= 6, "QA camera keeps six forward spaces inside the visible atlas")
 	_expect((screen.get_node("%AtlasView") as Control).displayed_exit_steps() == -1, "normal atlas does not reveal ring EXIT before entering the loop")
 	var atlas := screen.get_node("%AtlasView") as Control
-	_expect(atlas.set_route_position({"route_id":"loop_souk_ring","tile_index":0}, true) and atlas.prominent_space_count() == 8 and atlas.displayed_exit_steps() == 4, "loop atlas switches to all eight spaces with EXIT 4")
+	_expect(atlas.set_route_position({"route_id":"loop_oasis_ring","tile_index":3}, true) and atlas.prominent_space_count() == 8 and atlas.displayed_exit_steps() == 5, "oasis atlas switches to all eight spaces with its exact EXIT distance")
 
 
 func _test_map_contract(screen: Control) -> void:
@@ -191,6 +339,15 @@ func _test_map_contract(screen: Control) -> void:
 	_expect(started.ok and session.finish_movement().ok and session.phase() == SessionScript.PHASE_READY, "map contract starts from a stable travel state")
 	screen.call("_on_map_pressed")
 	_expect(map_button.visible and map_overlay.visible and overview.is_overview_mode() and session.snapshot().clock_paused, "MAP opens the overview and pauses the run clock")
+	var topology: Dictionary = overview.overview_topology_receipt()
+	_expect(topology.detached_loop_routes == PackedStringArray(["loop_oasis_ring", "loop_tomb_ring"]) and int(topology.warp_gate_count) == 5 and int(topology.permanent_loop_connectors) == 0, "overview keeps two rings as detached islands behind five warp gates")
+	_expect(topology.bypass_routes == PackedStringArray(["bypass_bazaar_alley", "bypass_sirocco"]) and topology.bypass_sides == PackedStringArray(["right", "left"]) and topology.bypass_saved_steps == PackedInt32Array([4, 6]), "overview separates the two connected shortcuts to opposite sides")
+	var bazaar_visual: Dictionary = overview.bypass_visual_receipt("bypass_bazaar_alley")
+	_expect(not bazaar_visual.active and float(bazaar_visual.line_alpha) < 0.5 and bazaar_visual.has_entry_marker and bazaar_visual.has_merge_marker, "unselected shortcut stays faint but keeps split and merge markers")
+	overview.set_route_position({"route_id":"bypass_sirocco", "tile_index":2}, true)
+	var sirocco_visual: Dictionary = overview.bypass_visual_receipt("bypass_sirocco")
+	_expect(sirocco_visual.active and float(sirocco_visual.line_alpha) > 0.9 and int(sirocco_visual.saved_steps) == 6, "selected shortcut brightens without changing its six-space saving")
+	overview.set_route_position(session.position(), true)
 	screen.call("_on_map_closed")
 	_expect(not map_overlay.visible and not overview.is_overview_mode() and not session.snapshot().clock_paused, "closing MAP restores local view and resumes the clock")
 
@@ -199,43 +356,67 @@ func _test_compact_die_motion(screen: Control) -> void:
 	var presentation := screen.get_node("%DicePresentation")
 	screen.call("_start_roll")
 	await process_frame
-	_expect(presentation.state_name(0) == "ROLLING" and (screen.get_node("%DieButton") as Button).text == "TAP\nSTOP", "tray die enters visible rolling state on the first tap")
+	_expect(presentation.state_name(0) == "ROLLING" and (screen.get_node("%DieButton") as Button).text == "止める", "right-side die action enters visible rolling state on the first tap")
+	_expect(not bool((screen.get_node("%AtlasView") as Control).roll_preview_receipt().active), "rolling never lights a destination card")
 	await create_timer(0.55).timeout
-	_expect(bool(screen.get("_rolling")) and presentation.state_name(0) == "ROLLING" and (screen.get_node("%DieButton") as Button).text == "TAP\nSTOP", "tray die keeps rolling until the player taps again")
+	_expect(bool(screen.get("_rolling")) and presentation.state_name(0) == "ROLLING" and (screen.get_node("%DieButton") as Button).text == "止める", "right-side die action keeps rolling until the player taps again")
+	var rolling_top_faces := {}
+	for sample: int in range(16):
+		var orientation: Quaternion = presentation.rolling_orientation(float(sample) * 0.05)
+		rolling_top_faces[presentation.top_face_for_orientation(orientation)] = true
+	_expect(rolling_top_faces.size() >= 3, "compact die roll uses X/Z-inclusive quaternion motion that exposes multiple top faces")
+	var rolling_slot_index: int = screen.session_for_test().faces().size()
+	var rolling_slot_path := "%%%s" % ("Slot%d" % rolling_slot_index)
+	var rolling_slot_face := int((screen.get_node(rolling_slot_path) as Label).text)
+	_expect(rolling_slot_face >= 1 and rolling_slot_face <= 6, "rolling slot cycles only the next empty slot through faces one to six")
+	screen.call("_stop_roll")
+	var held_preview := int((screen.get_node(rolling_slot_path) as Label).text)
+	await create_timer(ScreenScript.SLOT_STOP_DELAY_SECONDS + 0.04).timeout
+	var settled_slot := int((screen.get_node(rolling_slot_path) as Label).text)
+	var pending_face := int(screen.session_for_test().pending_face())
+	var committed_faces: Array[int] = screen.session_for_test().faces()
+	var logical_face: int = pending_face if pending_face > 0 else (committed_faces.back() if not committed_faces.is_empty() else 0)
+	_expect(held_preview >= 1 and held_preview <= 6 and logical_face >= 1 and settled_slot == logical_face, "stopping reuses the logical face and transfers it to the slot after a short delay")
+	screen.call("_cancel_motion", screen.session_for_test().position())
 
 
 func _test_third_slot_boss_overlay_order(screen: Control) -> void:
 	var session: RefCounted = screen.session_for_test()
 	session.restart()
 	_settle_session_roll(session, 6)
-	_settle_session_roll(session, 4)
-	_settle_session_roll(session, 4, CourseScript.ROUTE_MAIN)
-	session.acknowledge_resolution()
-	_settle_session_roll(session, 6)
+	_settle_session_roll(session, 3)
 	_settle_session_roll(session, 1)
-	_settle_session_roll(session, 2)
+	session.acknowledge_resolution()
+	_settle_session_roll(session, 1)
+	_settle_session_roll(session, 1)
+	_settle_session_roll(session, 3)
 	session.acknowledge_resolution()
 	_expect(session.position() == {"route_id":"main","tile_index":23} and session.faces().is_empty(), "screen boss setup reaches canonical main 23")
 	_settle_session_roll(session, 3)
 	_settle_session_roll(session, 3)
 	_settle_session_roll(session, 2)
 	session.acknowledge_resolution()
-	_settle_session_roll(session, 6)
+	_settle_session_roll(session, 6, CourseScript.ROUTE_MAIN)
 	_settle_session_roll(session, 6)
 	_settle_session_roll(session, 6)
 	session.acknowledge_resolution()
 	_settle_session_roll(session, 3)
 	_settle_session_roll(session, 3)
 	_settle_session_roll(session, 2)
+	_expect(session.phase() == SessionScript.PHASE_RESOLUTION_REQUIRED and session.resolution_role() == &"PAIR", "screen session queues PAIR before boss terminal")
 	screen.call("_refresh_ui")
 	screen.call("_present_session_phase")
 	var resolution := screen.get_node("%ResolutionOverlay") as Control
 	var boss := screen.get_node("%BossOverlay") as Control
-	_expect(session.phase() == SessionScript.PHASE_RESOLUTION_REQUIRED and session.resolution_role() == &"PAIR", "screen session queues PAIR before boss terminal")
-	_expect(resolution.visible and not boss.visible and (screen.get_node("%ResolutionTitle") as Label).text == "PAIR", "resolution overlay is visible while boss overlay stays hidden")
-	(screen.get_node("%ResolutionAckButton") as Button).emit_signal("pressed")
-	_expect(session.phase() == SessionScript.PHASE_BOSS_GATE and session.faces().is_empty(), "screen acknowledgement advances session to boss terminal")
-	_expect(not resolution.visible and boss.visible and not (screen.get_node("%DieButton") as Button).disabled and session.faces().is_empty(), "screen hides travel result, shows boss, and enables a fresh blank boss round")
+	_expect(not resolution.visible and session.phase() == SessionScript.PHASE_BOSS_GATE and session.faces().is_empty(), "travel role auto-acknowledges without a resolution modal")
+	_expect(boss.visible and not (screen.get_node("%DieButton") as Button).disabled and session.faces().is_empty(), "boss result remains modal-capable after the nonmodal travel role")
+
+
+func _test_stage_select_source_contract() -> void:
+	var source := FileAccess.get_file_as_string("res://scripts/app/main.gd")
+	_expect(source.contains("58マス") and source.contains("周回ボス：眠そうなスフィンクス"), "stage select names the 58-space Cairo route and Sphinx lap boss")
+	_expect(not source.contains("v0.6 新ルール試遊（保存なし）"), "stage select removes the duplicate legacy trial action")
+	_expect(source.contains("_button(\"この旅へ\", show_v06_game, true)") and source.contains("true, show_v06_game, CAIRO_CITY_CARD"), "この旅へ and the Cairo postcard open the latest V06 journey")
 
 
 func _settle_session_roll(session: RefCounted, face: int, route_choice := "") -> bool:

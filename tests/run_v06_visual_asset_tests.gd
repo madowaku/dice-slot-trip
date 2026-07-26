@@ -129,18 +129,24 @@ func _run() -> void:
 
 
 func _test_bypass_successors(atlas: Control) -> void:
-	var expected := [
-		[{"route_id":CourseScript.ROUTE_BYPASS,"tile_index":1}, {"route_id":CourseScript.ROUTE_BYPASS,"tile_index":2}, {"route_id":CourseScript.ROUTE_BYPASS,"tile_index":3}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":20}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":21}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":22}],
-		[{"route_id":CourseScript.ROUTE_BYPASS,"tile_index":2}, {"route_id":CourseScript.ROUTE_BYPASS,"tile_index":3}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":20}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":21}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":22}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":23}],
-		[{"route_id":CourseScript.ROUTE_BYPASS,"tile_index":3}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":20}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":21}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":22}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":23}, {"route_id":CourseScript.ROUTE_MAIN,"tile_index":24}],
-		[{"route_id":"main","tile_index":20}, {"route_id":"main","tile_index":21}, {"route_id":"main","tile_index":22}, {"route_id":"main","tile_index":23}, {"route_id":"main","tile_index":24}, {"route_id":"main","tile_index":25}],
-	]
-	for bypass_index: int in range(4):
-		_expect(atlas.set_route_position({"route_id":CourseScript.ROUTE_BYPASS,"tile_index":bypass_index}, true), "bypass %d is a known canonical position" % bypass_index)
-		_expect(atlas.prominent_positions() == expected[bypass_index], "bypass %d exposes exact traversable successor order" % bypass_index)
-		_expect(atlas.future_successor_count() == 6 and atlas.prominent_space_count() == 6, "bypass %d fills all six future carousel slots" % bypass_index)
-	var styles: PackedStringArray = atlas.carousel_segment_style_ids()
-	_expect(styles == PackedStringArray([String(AtlasScript.ROUTE_STYLE_BYPASS), String(AtlasScript.ROUTE_STYLE_MAIN), String(AtlasScript.ROUTE_STYLE_MAIN), String(AtlasScript.ROUTE_STYLE_MAIN), String(AtlasScript.ROUTE_STYLE_MAIN), String(AtlasScript.ROUTE_STYLE_MAIN)]), "bypass terminal segment transitions from rust dashed to teal solid after rejoin")
+	for contract: Array in [
+		[CourseScript.ROUTE_BYPASS_BAZAAR, 3, 19],
+		[CourseScript.ROUTE_BYPASS_SIROCCO, 5, 46],
+	]:
+		var route_id := str(contract[0])
+		var route_size := int(contract[1])
+		var rejoin := int(contract[2])
+		for bypass_index: int in range(route_size):
+			var expected: Array[Dictionary] = []
+			for route_index: int in range(bypass_index + 1, route_size):
+				expected.append({"route_id":route_id, "tile_index":route_index})
+			for main_index: int in range(rejoin, rejoin + 6 - expected.size()):
+				expected.append({"route_id":CourseScript.ROUTE_MAIN, "tile_index":main_index})
+			_expect(atlas.set_route_position({"route_id":route_id,"tile_index":bypass_index}, true), "%s %d is a known canonical position" % [route_id, bypass_index])
+			_expect(atlas.prominent_positions() == expected, "%s %d exposes exact traversable successor order" % [route_id, bypass_index])
+			_expect(atlas.future_successor_count() == 6 and atlas.prominent_space_count() == 6, "%s %d fills all six future carousel slots" % [route_id, bypass_index])
+		var styles: PackedStringArray = atlas.carousel_segment_style_ids()
+		_expect(styles[0] == String(AtlasScript.ROUTE_STYLE_BYPASS) and styles.count(String(AtlasScript.ROUTE_STYLE_MAIN)) == 5, "%s terminal segment transitions from rust dashed to teal solid after rejoin" % route_id)
 	_expect(atlas.set_route_position({"route_id":CourseScript.ROUTE_MAIN,"tile_index":0}, true), "visual tests restore the canonical start")
 
 

@@ -90,6 +90,17 @@ func _init() -> void:
 	_expect(face_orientations[0] == Vector3.ZERO and is_equal_approx(face_orientations[5].x, PI), "faces 1 and 6 are opposite")
 	_expect(is_equal_approx(face_orientations[1].x, -PI * 0.5) and is_equal_approx(face_orientations[4].x, PI * 0.5), "faces 2 and 5 are opposite")
 	_expect(is_equal_approx(face_orientations[2].z, PI * 0.5) and is_equal_approx(face_orientations[3].z, -PI * 0.5), "faces 3 and 4 are opposite")
+	var settled_faces_match := true
+	for face: int in range(1, 7):
+		var orientation := DicePresentation3DScript.orientation_quaternion_for_face(face)
+		settled_faces_match = settled_faces_match and DicePresentation3DScript.top_face_for_orientation(orientation) == face
+		settled_faces_match = settled_faces_match and (orientation * DicePresentation3DScript.face_normal(face)).is_equal_approx(Vector3.UP)
+	_expect(settled_faces_match, "logical faces one to six deterministically equal the actual top pip face")
+	var rolling_top_faces := {}
+	for sample: int in range(25):
+		var rolling_orientation: Quaternion = DicePresentation3DScript.rolling_orientation(float(sample) * 0.04)
+		rolling_top_faces[DicePresentation3DScript.top_face_for_orientation(rolling_orientation)] = true
+	_expect(rolling_top_faces.size() >= 4, "quaternion rolling deterministically visits multiple top faces")
 	var five_layout: Array[Vector3] = DicePresentation3DScript.layout_for_count(5)
 	_expect(five_layout.size() == 5 and five_layout.slice(0, 3).all(func(position: Vector3) -> bool: return position.z < 0) and five_layout.slice(3, 5).all(func(position: Vector3) -> bool: return position.z > 0), "five dice layout is three plus two")
 	var throw_start: Vector3 = DicePresentation3DScript.throw_offset(0.0, 0); var throw_peak: Vector3 = DicePresentation3DScript.throw_offset(0.5, 0); var throw_end: Vector3 = DicePresentation3DScript.throw_offset(1.0, 0)

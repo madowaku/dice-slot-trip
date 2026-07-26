@@ -1,41 +1,80 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "course_id": "cairo_v06",
   "stage": {
     "name": "CAIRO GRAND ROUTE",
     "name_ja": "砂時計のカイロ",
     "expected_minutes": "8〜10分",
     "difficulty": "STANDARD",
-    "branch_count": 1,
-    "loop_count": 1,
+    "branch_count": 2,
+    "loop_count": 2,
+    "warp_gate_count": 5,
     "main_tile_count": 58
   },
   "routes": {
     "main": [
       {"index":0,"kind":"START"},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"COIN"},{"index":3,"kind":"NORMAL"},
       {"index":4,"kind":"EVENT"},{"index":5,"kind":"ITEM"},{"index":6,"kind":"NORMAL"},{"index":7,"kind":"REST"},
-      {"index":8,"kind":"COIN"},{"index":9,"kind":"NORMAL"},{"index":10,"kind":"EVENT"},{"index":11,"kind":"ITEM"},
-      {"index":12,"kind":"BYPASS_FORK"},{"index":13,"kind":"COIN"},{"index":14,"kind":"ITEM"},{"index":15,"kind":"NORMAL"},
+      {"index":8,"kind":"COIN"},{"index":9,"kind":"NORMAL"},{"index":10,"kind":"WARP_OASIS"},{"index":11,"kind":"BYPASS_FORK"},
+      {"index":12,"kind":"ITEM"},{"index":13,"kind":"COIN"},{"index":14,"kind":"ITEM"},{"index":15,"kind":"NORMAL"},
       {"index":16,"kind":"REST"},{"index":17,"kind":"COIN"},{"index":18,"kind":"ITEM"},{"index":19,"kind":"NORMAL"},
-      {"index":20,"kind":"NORMAL"},{"index":21,"kind":"RISK"},{"index":22,"kind":"LOOP_PORTAL"},{"index":23,"kind":"NORMAL"},
+      {"index":20,"kind":"NORMAL"},{"index":21,"kind":"RISK"},{"index":22,"kind":"WARP_OASIS"},{"index":23,"kind":"NORMAL"},
       {"index":24,"kind":"COIN"},{"index":25,"kind":"EVENT"},{"index":26,"kind":"ITEM"},{"index":27,"kind":"NORMAL"},
       {"index":28,"kind":"REST"},{"index":29,"kind":"RISK"},{"index":30,"kind":"NORMAL"},{"index":31,"kind":"NORMAL"},
-      {"index":32,"kind":"COIN"},{"index":33,"kind":"NORMAL"},{"index":34,"kind":"EVENT"},{"index":35,"kind":"ITEM"},
+      {"index":32,"kind":"COIN"},{"index":33,"kind":"WARP_TOMB"},{"index":34,"kind":"BYPASS_FORK"},{"index":35,"kind":"ITEM"},
       {"index":36,"kind":"NORMAL"},{"index":37,"kind":"RISK"},{"index":38,"kind":"REST"},{"index":39,"kind":"COIN"},
       {"index":40,"kind":"NORMAL"},{"index":41,"kind":"EVENT"},{"index":42,"kind":"ITEM"},{"index":43,"kind":"NORMAL"},
-      {"index":44,"kind":"RISK"},{"index":45,"kind":"COIN"},{"index":46,"kind":"NORMAL"},{"index":47,"kind":"REST"},
+      {"index":44,"kind":"WARP_TOMB"},{"index":45,"kind":"COIN"},{"index":46,"kind":"NORMAL"},{"index":47,"kind":"REST"},
       {"index":48,"kind":"EVENT"},{"index":49,"kind":"NORMAL"},{"index":50,"kind":"ITEM"},{"index":51,"kind":"RISK"},
-      {"index":52,"kind":"COIN"},{"index":53,"kind":"NORMAL"},{"index":54,"kind":"REST"},{"index":55,"kind":"RISK"},
+      {"index":52,"kind":"COIN"},{"index":53,"kind":"NORMAL"},{"index":54,"kind":"WARP_GOLD"},{"index":55,"kind":"RISK"},
       {"index":56,"kind":"NORMAL"},{"index":57,"kind":"BOSS_GATE"}
     ],
-    "bypass_sirocco": [
-      {"index":0,"kind":"RISK"},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"RISK"},{"index":3,"kind":"NORMAL"}
+    "bypass_bazaar_alley": [
+      {"index":0,"kind":"RISK"},{"index":1,"kind":"ITEM"},{"index":2,"kind":"NORMAL"}
     ],
-    "loop_souk_ring": [
-      {"index":0,"kind":"LOOP_ENTRY"},{"index":1,"kind":"COIN"},{"index":2,"kind":"RISK"},{"index":3,"kind":"ITEM"},
-      {"index":4,"kind":"EXIT_GATE"},{"index":5,"kind":"COIN"},{"index":6,"kind":"RISK"},{"index":7,"kind":"ITEM"}
+    "bypass_sirocco": [
+      {"index":0,"kind":"RISK"},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"ITEM"},{"index":3,"kind":"RISK"},{"index":4,"kind":"NORMAL"}
+    ],
+    "loop_oasis_ring": [
+      {"index":0,"kind":"EXIT_GATE"},{"index":1,"kind":"NORMAL"},{"index":2,"kind":"COIN"},{"index":3,"kind":"LOOP_ENTRY"},
+      {"index":4,"kind":"REST"},{"index":5,"kind":"LOOP_ENTRY"},{"index":6,"kind":"ITEM"},{"index":7,"kind":"NORMAL"}
+    ],
+    "loop_tomb_ring": [
+      {"index":0,"kind":"EXIT_GATE"},{"index":1,"kind":"RISK"},{"index":2,"kind":"LOOP_ENTRY_GOLD"},{"index":3,"kind":"LOOP_ENTRY"},
+      {"index":4,"kind":"RISK"},{"index":5,"kind":"LOOP_ENTRY"},{"index":6,"kind":"ITEM"},{"index":7,"kind":"COIN"}
     ]
   },
-  "bypass": {"route_id":"bypass_sirocco","choice":{"route_id":"main","tile_index":12},"rejoin":{"route_id":"main","tile_index":20},"standard_distance":8,"bypass_distance":5,"saved_steps":3},
-  "loop": {"route_id":"loop_souk_ring","portal":{"route_id":"main","tile_index":22},"entry_index":0,"exit_index":4,"return":{"route_id":"main","tile_index":23}}
+  "bypasses": [
+    {
+      "route_id":"bypass_bazaar_alley",
+      "name_ja":"バザール裏路地",
+      "choice":{"route_id":"main","tile_index":11},
+      "rejoin":{"route_id":"main","tile_index":19},
+      "standard_distance":8,
+      "bypass_distance":4,
+      "saved_steps":4,
+      "side":"right"
+    },
+    {
+      "route_id":"bypass_sirocco",
+      "name_ja":"砂嵐の抜け道",
+      "choice":{"route_id":"main","tile_index":34},
+      "rejoin":{"route_id":"main","tile_index":46},
+      "standard_distance":12,
+      "bypass_distance":6,
+      "saved_steps":6,
+      "side":"left"
+    }
+  ],
+  "loops": {
+    "loop_oasis_ring":{"name_ja":"オアシス環","exit_index":0,"exit_score":400},
+    "loop_tomb_ring":{"name_ja":"墓廊の輪","exit_index":0,"exit_score":600}
+  },
+  "warp_gates": [
+    {"id":"W1","main_index":10,"style":"oasis","route_id":"loop_oasis_ring","entry_index":3,"return_index":23},
+    {"id":"W2","main_index":22,"style":"oasis","route_id":"loop_oasis_ring","entry_index":5,"return_index":34},
+    {"id":"W3","main_index":33,"style":"tomb","route_id":"loop_tomb_ring","entry_index":3,"return_index":45},
+    {"id":"W4","main_index":44,"style":"tomb","route_id":"loop_tomb_ring","entry_index":5,"return_index":55},
+    {"id":"W5","main_index":54,"style":"gold","route_id":"loop_tomb_ring","entry_index":2,"return_index":56}
+  ]
 }

@@ -22,13 +22,19 @@ const ROUTE_STYLE_BYPASS: StringName = &"bypass_rust_dashed"
 const ROUTE_STYLE_LOOP: StringName = &"loop_teal_ring_gold_exit"
 const CAMERA_FOLLOW_SECONDS := 0.28
 const HOP_SECONDS := 0.30
+const STRAIGHT_TRAVEL_MAX_STEPS := 6
+const STRAIGHT_TARGET_PREVIEW_SECONDS := 0.20
+const STRAIGHT_CAMERA_FOLLOW_SECONDS := 0.42
+const LANDING_NORMAL_SECONDS := 0.48
+const LANDING_SPECIAL_SECONDS := 0.78
+const LANDING_HOLD_SECONDS := 0.08
 const FORWARD_VISIBLE := 6
-const PROMINENT_MIN := 5
-const PROMINENT_MAX := 7
+const PROMINENT_MIN := 6
+const PROMINENT_MAX := 6
 const CAT_TILE_SCALE := 1.42
 const CAT_FRAME_SIZE := Vector2(192.0, 192.0)
 const CAT_FEET_ANCHOR := Vector2(96.0, 179.0)
-const CAT_DRAW_SCALE := 0.72
+const CAT_DRAW_SCALE := 0.65
 const ROUTE_TILE_CELL_SIZE := Vector2(128.0, 128.0)
 const ROUTE_TILE_ANCHOR := Vector2(64.0, 118.0)
 const BOSS_GATE_CELL_SIZE := Vector2(256.0, 256.0)
@@ -53,6 +59,7 @@ const MUTED_INK := Color("#796b59")
 const MAIN_TEAL := Color("#277c80")
 const BYPASS_RUST := Color("#ad5f45")
 const LOOP_TEAL := Color("#368d8b")
+const LOOP_TOMB := Color("#73558f")
 const EXIT_GOLD := Color("#c89a43")
 const TILE_FACE := Color("#f1e2c2")
 const TILE_EDGE := Color("#8f7755")
@@ -83,10 +90,31 @@ var _elapsed := 0.0
 var _exit_steps := -1
 var _overview_mode := false
 var _kind_preview_overrides: Dictionary = {}
+var _consumed_warp_gate_ids := {}
+var _consumed_reward_node_keys := {}
 var _carousel_progress := 1.0
 var _carousel_previous_position: Dictionary = {}
 var _carousel_tile_is_current := false
 var _carousel_tile_is_context := false
+var _card_roll_preview := -1
+var _card_roll_preview_key := ""
+var _card_roll_preview_alpha := 0.0
+var _landing_kind := ""
+var _landing_progress := 1.0
+var _landing_result_text := ""
+var _straight_travel_active := false
+var _straight_travel_start_position: Dictionary = {}
+var _straight_travel_distance := 0
+var _straight_travel_player_step := 0
+var _straight_step_from := 0
+var _straight_step_progress := 1.0
+var _straight_camera_follow_progress := 0.0
+var _straight_camera_offset := 0.0
+var _straight_step_tween: Tween
+var _straight_camera_tween: Tween
+var _landing_tween: Tween
+var _roll_preview_tween: Tween
+var _visual_motion_generation := 0
 
 
 func _ready() -> void:
@@ -118,7 +146,7 @@ func set_route_position(route_position: Dictionary, immediate := false) -> bool:
 	_camera_target_world = _camera_focus_for(_current_position)
 	if immediate or _camera_world == Vector2.ZERO:
 		_camera_world = _camera_target_world
-	if str(_current_position.route_id) == V06CourseModelScript.ROUTE_LOOP:
+	if _course.is_loop_route(str(_current_position.route_id)):
 		_exit_steps = _course.steps_to_exit(_current_position)
 	else:
 		_exit_steps = -1
@@ -161,7 +189,7 @@ func animate_hop_to(route_position: Dictionary, duration := HOP_SECONDS) -> void
 	_cat_animation_frame = 0
 	_carousel_progress = 1.0
 	_carousel_previous_position.clear()
-	if str(_current_position.route_id) == V06CourseModelScript.ROUTE_LOOP:
+	if _course.is_loop_route(str(_current_position.route_id)):
 		_exit_steps = _course.steps_to_exit(_current_position)
 	else:
 		_exit_steps = -1
@@ -207,7 +235,315 @@ func carousel_moves_clockwise() -> bool:
 
 
 func uses_semicircle_carousel() -> bool:
-	return not _overview_mode and str(_current_position.get("route_id", "")) in [V06CourseModelScript.ROUTE_MAIN, V06CourseModelScript.ROUTE_BYPASS]
+	var route_id := str(_current_position.get("route_id", ""))
+	return not _overview_mode and (route_id == V06CourseModelScript.ROUTE_MAIN or _course.is_bypass_route(route_id))
+
+
+func uses_card_route() -> bool:
+	return uses_semicircle_carousel()
+
+
+func set_roll_preview(distance: int) -> void:
+	_card_roll_preview = maxi(distance, 0)
+	_card_roll_preview_key = ""
+	var forward := prominent_positions()
+	if _card_roll_preview > 0 and _card_roll_preview <= forward.size():
+		var target: Dictionary = forward[_card_roll_preview - 1]
+		_card_roll_preview_key = _position_key(str(target.get("route_id", "")), int(target.get("tile_index", -1)))
+	if is_instance_valid(_roll_preview_tween):
+		_roll_preview_tween.kill()
+	_card_roll_preview_alpha = 0.0
+	_roll_preview_tween = create_tween()
+	_roll_preview_tween.tween_method(_set_roll_preview_alpha, 0.0, 1.0, STRAIGHT_TARGET_PREVIEW_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	queue_redraw()
+
+
+func release_roll_preview() -> void:
+	if _card_roll_preview <= 0:
+		return
+	if is_instance_valid(_roll_preview_tween):
+		_roll_preview_tween.kill()
+	_roll_preview_tween = create_tween()
+	_roll_preview_tween.tween_method(_set_roll_preview_alpha, _card_roll_preview_alpha, 0.0, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_roll_preview_tween.tween_callback(_finish_roll_preview_release)
+
+
+func clear_roll_preview() -> void:
+	if is_instance_valid(_roll_preview_tween):
+		_roll_preview_tween.kill()
+	_card_roll_preview = -1
+	_card_roll_preview_key = ""
+	_card_roll_preview_alpha = 0.0
+	queue_redraw()
+
+
+func roll_preview_receipt() -> Dictionary:
+	return {
+		"active": _card_roll_preview > 0,
+		"distance": _card_roll_preview,
+		"target_key": _card_roll_preview_key,
+		"alpha": _card_roll_preview_alpha,
+	}
+
+
+func _set_roll_preview_alpha(value: float) -> void:
+	_card_roll_preview_alpha = clampf(value, 0.0, 1.0)
+	queue_redraw()
+
+
+func _finish_roll_preview_release() -> void:
+	_card_roll_preview = -1
+	_card_roll_preview_key = ""
+	_card_roll_preview_alpha = 0.0
+	queue_redraw()
+
+
+func can_use_straight_travel(route_position: Dictionary, distance: int) -> bool:
+	if str(route_position.get("route_id", "")) != V06CourseModelScript.ROUTE_MAIN:
+		return false
+	if distance <= 0 or distance > STRAIGHT_TRAVEL_MAX_STEPS:
+		return false
+	var start_tile := int(route_position.get("tile_index", -1))
+	for step: int in range(1, distance + 1):
+		var tile_index := start_tile + step
+		if not _is_known_position({"route_id": V06CourseModelScript.ROUTE_MAIN, "tile_index": tile_index}):
+			return false
+		var kind := displayed_tile_kind_for(V06CourseModelScript.ROUTE_MAIN, tile_index)
+		if kind in ["BYPASS_FORK", "WARP_OASIS", "WARP_TOMB", "WARP_GOLD", "LOOP_ENTRY", "LOOP_ENTRY_GOLD", "BOSS_GATE"]:
+			return false
+	return true
+
+
+func begin_straight_travel(route_position: Dictionary, distance: int) -> bool:
+	if _straight_travel_active or not can_use_straight_travel(route_position, distance):
+		return false
+	_straight_travel_active = true
+	_straight_travel_start_position = route_position.duplicate(true)
+	_straight_travel_distance = distance
+	_straight_travel_player_step = 0
+	_straight_step_from = 0
+	_straight_step_progress = 1.0
+	_straight_camera_follow_progress = 0.0
+	_straight_camera_offset = 0.0
+	_cat_lift = 0.0
+	_cat_animation_state = &"idle"
+	_cat_animation_frame = 0
+	_current_position = route_position.duplicate(true)
+	queue_redraw()
+	return true
+
+
+func straight_travel_active() -> bool:
+	return _straight_travel_active
+
+
+func straight_travel_receipt() -> Dictionary:
+	return {
+		"active": _straight_travel_active,
+		"start_position": _straight_travel_start_position.duplicate(true),
+		"distance": _straight_travel_distance,
+		"player_step": _straight_travel_player_step,
+		"step_progress": _straight_step_progress,
+		"camera_follow_progress": _straight_camera_follow_progress,
+		"camera_offset": _straight_camera_offset,
+		"logical_position": _current_position.duplicate(true),
+	}
+
+
+func card_route_receipt() -> Dictionary:
+	var relative_steps: Array[float] = []
+	if _straight_travel_active:
+		var spacing := _straight_card_spacing()
+		var camera_slots := _straight_camera_offset / spacing if spacing > 0.0 else 0.0
+		for travel_offset: int in range(0, _straight_travel_distance + FORWARD_VISIBLE + 1):
+			var route_offset := float(travel_offset) - camera_slots
+			if route_offset < -0.55 or route_offset > float(FORWARD_VISIBLE) + 0.55:
+				continue
+			relative_steps.append(float(travel_offset - _straight_travel_player_step))
+	else:
+		for index: int in range(mini(1 + prominent_positions().size(), CAROUSEL_SLOT_NORMALIZED.size())):
+			relative_steps.append(float(index))
+	return {"card_count": relative_steps.size(), "relative_steps": relative_steps}
+
+
+func animate_straight_step(step: int, duration := HOP_SECONDS) -> void:
+	if not _straight_travel_active:
+		return
+	var requested_step := clampi(step, 0, _straight_travel_distance)
+	var next_step := mini(requested_step, _straight_travel_player_step + 1)
+	if next_step <= _straight_travel_player_step:
+		return
+	if is_instance_valid(_straight_step_tween):
+		_straight_step_tween.kill()
+	_straight_step_from = _straight_travel_player_step
+	_straight_travel_player_step = next_step
+	_straight_step_progress = 0.0
+	var generation := _visual_motion_generation
+	_straight_step_tween = create_tween()
+	_straight_step_tween.tween_method(_set_straight_step_progress, 0.0, 1.0, maxf(duration, 0.01)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	await _wait_for_visual_tween(_straight_step_tween, generation)
+	if generation != _visual_motion_generation:
+		return
+	_straight_step_progress = 1.0
+	_cat_lift = 0.0
+	_cat_animation_state = &"land"
+	_cat_animation_frame = 2
+	queue_redraw()
+
+
+func animate_straight_camera_follow() -> void:
+	if not _straight_travel_active or _straight_travel_player_step != _straight_travel_distance:
+		return
+	if is_instance_valid(_straight_camera_tween):
+		_straight_camera_tween.kill()
+	_straight_camera_follow_progress = 0.0
+	_straight_camera_offset = 0.0
+	var generation := _visual_motion_generation
+	_straight_camera_tween = create_tween()
+	_straight_camera_tween.tween_method(_set_straight_camera_follow_progress, 0.0, 1.0, STRAIGHT_CAMERA_FOLLOW_SECONDS).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await _wait_for_visual_tween(_straight_camera_tween, generation)
+	if generation != _visual_motion_generation:
+		return
+	_straight_camera_follow_progress = 1.0
+	_straight_camera_offset = _straight_card_spacing() * float(_straight_travel_distance)
+	queue_redraw()
+
+
+func finish_straight_travel(route_position: Dictionary) -> bool:
+	if not _straight_travel_active or _straight_travel_player_step != _straight_travel_distance or _straight_camera_follow_progress < 1.0:
+		return false
+	_straight_travel_active = false
+	_straight_travel_start_position.clear()
+	_straight_travel_distance = 0
+	_straight_travel_player_step = 0
+	_straight_step_from = 0
+	_straight_step_progress = 1.0
+	_straight_camera_follow_progress = 0.0
+	_straight_camera_offset = 0.0
+	_cat_lift = 0.0
+	_cat_animation_state = &"idle"
+	_cat_animation_frame = 0
+	set_route_position(route_position, true)
+	return true
+
+
+func cancel_visual_motion(route_position := {}) -> void:
+	_visual_motion_generation += 1
+	if is_instance_valid(_straight_step_tween):
+		_straight_step_tween.kill()
+	if is_instance_valid(_straight_camera_tween):
+		_straight_camera_tween.kill()
+	if is_instance_valid(_landing_tween):
+		_landing_tween.kill()
+	_straight_travel_active = false
+	_straight_travel_start_position.clear()
+	_straight_travel_distance = 0
+	_straight_travel_player_step = 0
+	_straight_step_from = 0
+	_straight_step_progress = 1.0
+	_straight_camera_follow_progress = 0.0
+	_straight_camera_offset = 0.0
+	_cat_lift = 0.0
+	_cat_animation_state = &"idle"
+	_cat_animation_frame = 0
+	_landing_kind = ""
+	_landing_progress = 1.0
+	_landing_result_text = ""
+	if route_position is Dictionary and not (route_position as Dictionary).is_empty():
+		set_route_position(route_position, true)
+	else:
+		queue_redraw()
+
+
+func _wait_for_visual_tween(tween: Tween, generation: int) -> bool:
+	while is_instance_valid(tween) and tween.is_running():
+		await get_tree().process_frame
+	return generation == _visual_motion_generation
+
+
+func _set_straight_step_progress(value: float) -> void:
+	_straight_step_progress = clampf(value, 0.0, 1.0)
+	_cat_lift = sin(_straight_step_progress * PI) * 28.0
+	var cell := animation_cell_for_hop_progress(_straight_step_progress)
+	_cat_animation_state = cell.strip
+	_cat_animation_frame = int(cell.frame)
+	queue_redraw()
+
+
+func _set_straight_camera_follow_progress(value: float) -> void:
+	_straight_camera_follow_progress = clampf(value, 0.0, 1.0)
+	_straight_camera_offset = _straight_card_spacing() * float(_straight_travel_distance) * _calm_camera_ease(_straight_camera_follow_progress)
+	queue_redraw()
+
+
+func _straight_card_spacing() -> float:
+	return absf(_card_route_slot_position(1).x - _card_route_slot_position(0).x) if _card_route_card_size().x > 0.0 else 0.0
+
+
+func _straight_window_position(travel_offset: int) -> Dictionary:
+	var tile_index := int(_straight_travel_start_position.get("tile_index", 0)) + travel_offset
+	var route_id := V06CourseModelScript.ROUTE_MAIN
+	if _is_known_position({"route_id": route_id, "tile_index": tile_index}):
+		return {"route_id": route_id, "tile_index": tile_index}
+	# Keep the seven-card frame stable at the terminal edge instead of letting
+	# the renderer remove cards when the route data runs out.
+	return {"route_id": route_id, "tile_index": maxi(_route_size(route_id) - 1, 0), "terminal_filler": true}
+
+
+static func _calm_camera_ease(progress: float) -> float:
+	var t := clampf(progress, 0.0, 1.0)
+	return t * t * (3.0 - t * 2.0)
+
+
+func _straight_card_display_offset() -> Vector2:
+	return Vector2(-_straight_camera_offset, 0.0) if _straight_travel_active else Vector2.ZERO
+
+
+func play_landing_effect(route_position: Dictionary) -> void:
+	if not _is_known_position(route_position):
+		return
+	var route_id := str(route_position.get("route_id", ""))
+	var tile_index := int(route_position.get("tile_index", 0))
+	_landing_kind = displayed_tile_kind_for(route_id, tile_index)
+	_landing_progress = 0.0
+	_landing_result_text = _landing_result_for_kind(_landing_kind)
+	queue_redraw()
+	var duration := LANDING_SPECIAL_SECONDS if _landing_kind in ["COIN", "REST", "RISK", "ITEM", "EVENT", "WARP_OASIS", "WARP_TOMB", "WARP_GOLD", "LOOP_ENTRY", "LOOP_ENTRY_GOLD", "BOSS_GATE"] else LANDING_NORMAL_SECONDS
+	if is_instance_valid(_landing_tween):
+		_landing_tween.kill()
+	var generation := _visual_motion_generation
+	_landing_tween = create_tween()
+	_landing_tween.tween_method(_set_landing_progress, 0.0, 1.0, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	if not await _wait_for_visual_tween(_landing_tween, generation):
+		return
+	await get_tree().create_timer(LANDING_HOLD_SECONDS).timeout
+	if generation != _visual_motion_generation:
+		return
+	_landing_kind = ""
+	_landing_progress = 1.0
+	_landing_result_text = ""
+	queue_redraw()
+
+
+func landing_effect_active() -> bool:
+	return not _landing_kind.is_empty()
+
+
+func _set_landing_progress(value: float) -> void:
+	_landing_progress = clampf(value, 0.0, 1.0)
+	queue_redraw()
+
+
+func _landing_result_for_kind(kind: String) -> String:
+	match kind:
+		"COIN": return "+2"
+		"REST": return "+HP"
+		"RISK": return "-1"
+		"ITEM": return "GET"
+		"EVENT": return "?"
+		"WARP_OASIS", "WARP_TOMB", "WARP_GOLD", "LOOP_ENTRY", "LOOP_ENTRY_GOLD": return "WARP"
+		"BOSS_GATE": return "BOSS"
+		_: return ""
 
 
 func uses_production_cat_strips() -> bool:
@@ -221,9 +557,9 @@ func uses_production_environment_pack() -> bool:
 func route_tile_cell_for(route_id: String, is_current: bool) -> int:
 	if is_current:
 		return 3
-	if route_id == V06CourseModelScript.ROUTE_BYPASS:
+	if _course.is_bypass_route(route_id):
 		return 1
-	if route_id == V06CourseModelScript.ROUTE_LOOP:
+	if _course.is_loop_route(route_id):
 		return 2
 	return 0
 
@@ -245,7 +581,58 @@ func tile_kind_for(route_id: String, tile_index: int) -> String:
 
 
 func displayed_tile_kind_for(route_id: String, tile_index: int) -> String:
-	return str(_kind_preview_overrides.get(_position_key(route_id, tile_index), tile_kind_for(route_id, tile_index)))
+	var key := _position_key(route_id, tile_index)
+	if _consumed_reward_node_keys.has(key):
+		return "NORMAL"
+	if route_id == V06CourseModelScript.ROUTE_MAIN:
+		var gate: Dictionary = _course.warp_gate_for_main_index(tile_index)
+		if not gate.is_empty() and _consumed_warp_gate_ids.has(str(gate.id)):
+			return "NORMAL"
+	return str(_kind_preview_overrides.get(key, tile_kind_for(route_id, tile_index)))
+
+
+func set_consumed_route_state(warp_gate_ids: PackedStringArray, reward_node_keys: PackedStringArray) -> void:
+	_consumed_warp_gate_ids.clear()
+	_consumed_reward_node_keys.clear()
+	for gate_id: String in warp_gate_ids:
+		_consumed_warp_gate_ids[gate_id] = true
+	for node_key: String in reward_node_keys:
+		_consumed_reward_node_keys[node_key] = true
+	queue_redraw()
+
+
+func overview_topology_receipt() -> Dictionary:
+	return {
+		"main_route": V06CourseModelScript.ROUTE_MAIN,
+		"detached_loop_routes": PackedStringArray([
+			V06CourseModelScript.ROUTE_LOOP_OASIS,
+			V06CourseModelScript.ROUTE_LOOP_TOMB,
+		]),
+		"bypass_routes": PackedStringArray([
+			V06CourseModelScript.ROUTE_BYPASS_BAZAAR,
+			V06CourseModelScript.ROUTE_BYPASS_SIROCCO,
+		]),
+		"bypass_sides": PackedStringArray(["right", "left"]),
+		"bypass_saved_steps": PackedInt32Array([4, 6]),
+		"warp_gate_count": _course.warp_gates().size(),
+		"permanent_loop_connectors": 0,
+	}
+
+
+func bypass_visual_receipt(route_id: String) -> Dictionary:
+	var definition := _bypass_definition(route_id)
+	if definition.is_empty():
+		return {}
+	var active := str(_current_position.get("route_id", "")) == route_id
+	return {
+		"active": active,
+		"line_alpha": 0.94 if active else 0.34,
+		"line_width": 10.0 if active else 8.0,
+		"saved_steps": int(definition.get("saved_steps", 0)),
+		"side": str(definition.get("side", "")),
+		"has_entry_marker": true,
+		"has_merge_marker": true,
+	}
 
 
 func set_kind_preview_override(kinds: PackedStringArray) -> void:
@@ -267,7 +654,12 @@ func tile_visual_spec(kind: String) -> Dictionary:
 		"RISK": return {"shape_id": &"triangle", "icon_id": &"kenney_skull", "base_color": KIND_RISK, "priority": 1}
 		"ITEM": return {"shape_id": &"box", "icon_id": &"kenney_pouch", "base_color": KIND_ITEM, "priority": 5}
 		"EVENT": return {"shape_id": &"hex", "icon_id": &"kenney_book_open", "base_color": KIND_EVENT, "priority": 5}
-		"LOOP_PORTAL", "LOOP_ENTRY": return {"shape_id": &"ring", "icon_id": &"swirl", "base_color": KIND_WARP, "priority": 4}
+		"WARP_OASIS": return {"shape_id": &"ring", "icon_id": &"swirl", "base_color": Color("#68b9cf"), "priority": 4}
+		"WARP_TOMB": return {"shape_id": &"gate", "icon_id": &"swirl", "base_color": Color("#76539a"), "priority": 4}
+		"WARP_GOLD": return {"shape_id": &"ring", "icon_id": &"swirl", "base_color": Color("#d4a83f"), "priority": 4}
+		"LOOP_PORTAL": return {"shape_id": &"ring", "icon_id": &"swirl", "base_color": KIND_WARP, "priority": 4}
+		"LOOP_ENTRY": return {"shape_id": &"ring", "icon_id": &"swirl", "base_color": KIND_WARP, "priority": 4}
+		"LOOP_ENTRY_GOLD": return {"shape_id": &"ring", "icon_id": &"swirl", "base_color": Color("#d4a83f"), "priority": 4}
 		"EXIT_GATE": return {"shape_id": &"gate", "icon_id": &"exit", "base_color": KIND_COIN, "priority": 3}
 		"BOSS_GATE": return {"shape_id": &"gate", "icon_id": &"crown", "base_color": KIND_BOSS, "priority": 0}
 		"BYPASS_FORK": return {"shape_id": &"diamond", "icon_id": &"fork", "base_color": BYPASS_RUST, "priority": 4}
@@ -336,7 +728,7 @@ func prominent_positions() -> Array[Dictionary]:
 			behind += 1
 		while result.size() > PROMINENT_MAX:
 			result.pop_back()
-	elif route_id == V06CourseModelScript.ROUTE_BYPASS:
+	elif _course.is_bypass_route(route_id):
 		result = _forward_successors(route_id, index)
 		# Near a terminal, older tiles only preserve the five-space visual frame;
 		# they are context and never promises of future traversal.
@@ -360,7 +752,7 @@ func carousel_segment_style_ids() -> PackedStringArray:
 	var styles := PackedStringArray()
 	for index: int in range(mini(positions.size() - 1, CAROUSEL_SLOT_NORMALIZED.size() - 1)):
 		var source_route := str(positions[index].get("route_id", ""))
-		styles.append(String(ROUTE_STYLE_BYPASS if source_route == V06CourseModelScript.ROUTE_BYPASS else ROUTE_STYLE_MAIN))
+		styles.append(String(ROUTE_STYLE_BYPASS if _course.is_bypass_route(source_route) else ROUTE_STYLE_MAIN))
 	return styles
 
 
@@ -409,12 +801,12 @@ func _forward_successors(route_id: String, index: int) -> Array[Dictionary]:
 	if route_id == V06CourseModelScript.ROUTE_MAIN:
 		for tile_index: int in range(index + 1, mini(_route_size(route_id), index + FORWARD_VISIBLE + 1)):
 			result.append({"route_id": route_id, "tile_index": tile_index})
-	elif route_id == V06CourseModelScript.ROUTE_BYPASS:
+	elif _course.is_bypass_route(route_id):
 		for tile_index: int in range(index + 1, _route_size(route_id)):
 			if result.size() >= FORWARD_VISIBLE:
 				break
 			result.append({"route_id": route_id, "tile_index": tile_index})
-		for tile_index: int in range(_rejoin_index(), _route_size(V06CourseModelScript.ROUTE_MAIN)):
+		for tile_index: int in range(_rejoin_index(route_id), _route_size(V06CourseModelScript.ROUTE_MAIN)):
 			if result.size() >= FORWARD_VISIBLE:
 				break
 			result.append({"route_id": V06CourseModelScript.ROUTE_MAIN, "tile_index": tile_index})
@@ -441,7 +833,7 @@ func route_style_ids() -> PackedStringArray:
 
 
 func displayed_exit_steps() -> int:
-	if str(_current_position.get("route_id", "")) == V06CourseModelScript.ROUTE_LOOP:
+	if _course.is_loop_route(str(_current_position.get("route_id", ""))):
 		return _exit_steps
 	return -1
 
@@ -462,21 +854,34 @@ func _build_route_points() -> void:
 		var column := tile_index % 8
 		var visual_column := column if row % 2 == 0 else 7 - column
 		main.append(Vector2(100.0 + visual_column * 120.0, 1040.0 - row * 280.0))
-	var bypass: Array[Vector2] = [
-		Vector2(520.0, 690.0),
-		Vector2(650.0, 640.0),
-		Vector2(650.0, 550.0),
-		Vector2(610.0, 505.0),
+	var bazaar: Array[Vector2] = [
+		Vector2(760.0, 700.0),
+		Vector2(860.0, 620.0),
+		Vector2(750.0, 530.0),
 	]
-	var loop: Array[Vector2] = []
-	var loop_center := Vector2(820.0, 340.0)
+	var sirocco: Array[Vector2] = [
+		Vector2(40.0, -105.0),
+		Vector2(-90.0, -155.0),
+		Vector2(-145.0, -235.0),
+		Vector2(-80.0, -315.0),
+		Vector2(65.0, -345.0),
+	]
+	var oasis: Array[Vector2] = []
+	var oasis_center := Vector2(-180.0, 210.0)
 	for tile_index: int in range(8):
 		var angle := PI * 0.5 + TAU * float(tile_index) / 8.0
-		loop.append(loop_center + Vector2(cos(angle), sin(angle)) * 108.0)
+		oasis.append(oasis_center + Vector2(cos(angle), sin(angle)) * 108.0)
+	var tomb: Array[Vector2] = []
+	var tomb_center := Vector2(1180.0, -340.0)
+	for tile_index: int in range(8):
+		var angle := PI * 0.5 + TAU * float(tile_index) / 8.0
+		tomb.append(tomb_center + Vector2(cos(angle), sin(angle)) * 108.0)
 	_route_points = {
 		V06CourseModelScript.ROUTE_MAIN: main,
-		V06CourseModelScript.ROUTE_BYPASS: bypass,
-		V06CourseModelScript.ROUTE_LOOP: loop,
+		V06CourseModelScript.ROUTE_BYPASS_BAZAAR: bazaar,
+		V06CourseModelScript.ROUTE_BYPASS_SIROCCO: sirocco,
+		V06CourseModelScript.ROUTE_LOOP_OASIS: oasis,
+		V06CourseModelScript.ROUTE_LOOP_TOMB: tomb,
 	}
 
 
@@ -491,10 +896,12 @@ func _is_known_position(route_position: Dictionary) -> bool:
 func _camera_focus_for(route_position: Dictionary) -> Vector2:
 	var current := world_position_for(route_position)
 	var route_id := str(route_position.get("route_id", ""))
-	if route_id == V06CourseModelScript.ROUTE_LOOP:
-		# The ring is the one intentional framing change: keep all eight spaces
-		# centered while the fixed tray/HUD remain untouched.
-		return Vector2(820.0, 340.0)
+	if _course.is_loop_route(route_id):
+		var points: Array = _route_points.get(route_id, [])
+		var center := Vector2.ZERO
+		for point: Vector2 in points:
+			center += point
+		return center / float(points.size()) if not points.is_empty() else current
 	# Look a few spaces forward so the promised six-space horizon is actually
 	# visible. The cat remains inside a stable central band and the camera still
 	# eases softly instead of snapping at serpentine turns.
@@ -518,12 +925,205 @@ func _set_hop_progress(value: float, start: Vector2, target: Vector2) -> void:
 
 func _draw() -> void:
 	_draw_flat_atlas_texture()
-	if uses_semicircle_carousel():
-		_draw_semicircle_carousel()
+	if uses_card_route():
+		_draw_card_route()
 	else:
 		_draw_route_graph()
+	if uses_card_route():
+		_draw_map_dice_shadow()
 	_draw_route_legend()
 	_draw_cat_marker()
+
+
+func _draw_map_dice_shadow() -> void:
+	var shadow_center := Vector2(size.x * 0.45, size.y * 0.80)
+	draw_set_transform(shadow_center, 0.0, Vector2(1.75, 0.46))
+	draw_circle(Vector2.ZERO, 32.0, Color(0.20, 0.13, 0.08, 0.18))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_card_route() -> void:
+	var positions: Array[Dictionary] = []
+	var centers: Array[Vector2] = []
+	var relative_steps: Array[float] = []
+	if _straight_travel_active:
+		# Keep the whole visual travel window alive. The window contains the
+		# starting card through destination + six cards, then the camera offset
+		# reveals exactly seven cards at every point of the follow.
+		var spacing := _straight_card_spacing()
+		var camera_slots := _straight_camera_offset / spacing if spacing > 0.0 else 0.0
+		for travel_offset: int in range(0, _straight_travel_distance + FORWARD_VISIBLE + 1):
+			var route_position := _straight_window_position(travel_offset)
+			var route_offset := float(travel_offset) - camera_slots
+			if route_offset < -0.55 or route_offset > float(FORWARD_VISIBLE) + 0.55:
+				continue
+			positions.append(route_position)
+			centers.append(_card_route_slot_position(route_offset))
+			relative_steps.append(float(travel_offset - _straight_travel_player_step))
+	else:
+		positions = [_current_position.duplicate(true)]
+		positions.append_array(prominent_positions())
+		for index: int in range(mini(positions.size(), CAROUSEL_SLOT_NORMALIZED.size())):
+			centers.append(_card_route_slot_position(float(index)))
+			relative_steps.append(float(index))
+	if positions.is_empty():
+		return
+	if centers.size() >= 2:
+		var path_y := centers[0].y + _card_route_card_size().y * 0.60
+		draw_line(Vector2(centers[0].x - 36.0, path_y), Vector2(centers[-1].x + 36.0, path_y), Color(0.26, 0.16, 0.08, 0.28), 12.0, true)
+		draw_line(Vector2(centers[0].x - 36.0, path_y), Vector2(centers[-1].x + 36.0, path_y), Color("#d5af70"), 6.0, true)
+	for index: int in range(mini(positions.size(), centers.size())):
+		var route_position: Dictionary = positions[index]
+		var is_current := false
+		if _straight_travel_active:
+			is_current = is_zero_approx(relative_steps[index])
+		else:
+			is_current = index == 0
+		_draw_card_tile(route_position, centers[index], is_current, index, relative_steps[index])
+		if index > 0:
+			var chevron_center := centers[index - 1].lerp(centers[index], 0.52)
+			_draw_direction_chevron(chevron_center, Vector2.RIGHT, Color(0.30, 0.48, 0.42, 0.62), 3.0)
+	var preview_index := -1
+	if _card_roll_preview > 0:
+		for index: int in range(relative_steps.size()):
+			var position_key := _position_key(str(positions[index].get("route_id", "")), int(positions[index].get("tile_index", -1)))
+			if (not _card_roll_preview_key.is_empty() and position_key == _card_roll_preview_key) \
+					or (_card_roll_preview_key.is_empty() and is_equal_approx(relative_steps[index], float(_card_roll_preview))):
+				preview_index = index
+				break
+	if preview_index >= 0 and preview_index < centers.size():
+		var landing := centers[preview_index]
+		var landing_size := _card_route_card_size()
+		var landing_rect := Rect2(landing - landing_size * 0.5, landing_size)
+		var preview_fill := Color(1.0, 0.86, 0.45, 0.08 + _card_roll_preview_alpha * 0.10)
+		var preview_ring := Color("#fff0a8")
+		preview_ring.a = 0.20 + _card_roll_preview_alpha * 0.72
+		draw_style_box(_card_style(preview_fill, preview_ring, 3.0), landing_rect.grow(6.0))
+		draw_arc(landing, landing_size.x * 0.62, -PI * 0.5, PI * 1.5, 30, preview_ring, 2.0 + _card_roll_preview_alpha, true)
+	if not _landing_kind.is_empty():
+		var landing_index := 0
+		if _straight_travel_active:
+			for index: int in range(relative_steps.size()):
+				if is_zero_approx(relative_steps[index]):
+					landing_index = index
+					break
+		if landing_index >= 0 and landing_index < centers.size():
+			_draw_landing_effect(centers[landing_index], _card_route_card_size(), _landing_kind)
+
+
+func _card_route_card_size() -> Vector2:
+	var width := clampf((size.x - 72.0) / 8.0, 42.0, 82.0)
+	var height := clampf(size.y * 0.42, 168.0, 208.0)
+	return Vector2(width, height)
+
+
+func _card_route_slot_position(slot_index: float) -> Vector2:
+	var card_size := _card_route_card_size()
+	var margin := clampf(size.x * 0.05, 18.0, 34.0)
+	var gap := (size.x - margin * 2.0 - card_size.x * 7.0) / 6.0
+	return Vector2(margin + card_size.x * 0.5 + slot_index * (card_size.x + gap), size.y * 0.48)
+
+
+func _draw_card_tile(route_position: Dictionary, center: Vector2, is_current: bool, slot_index: int, relative_step := -999.0) -> void:
+	var route_id := str(route_position.get("route_id", ""))
+	var tile_index := int(route_position.get("tile_index", 0))
+	var kind := displayed_tile_kind_for(route_id, tile_index)
+	var spec := tile_visual_spec(kind)
+	var fill: Color = spec.base_color
+	if kind == "NORMAL":
+		fill = Color("#f0dfbb")
+	elif kind == "RISK":
+		fill = Color("#f2c4aa")
+	elif kind == "BOSS_GATE":
+		fill = Color("#f4d788")
+	if is_current:
+		fill = Color("#3b8e8e")
+	var card_size := _card_route_card_size()
+	var sink := sin(_landing_progress * PI) * 5.0 if is_current and not _landing_kind.is_empty() else 0.0
+	var card_rect := Rect2(center - card_size * 0.5 + Vector2(0.0, sink), card_size)
+	var border := Color("#f5d37e") if is_current else Color("#9c7742")
+	draw_style_box(_card_style(fill, border, 4.0 if is_current else 2.0), card_rect)
+	var number_color := Color("#fff4dc") if is_current else Color("#56422e")
+	var display_step := float(slot_index) if is_zero_approx(relative_step + 999.0) else relative_step
+	var step_label := "·" if display_step < 0.0 else str(int(round(display_step)))
+	draw_string(APP_FONT, card_rect.position + Vector2(0.0, 34.0), step_label, HORIZONTAL_ALIGNMENT_CENTER, card_rect.size.x, 30 if is_current else 28, number_color)
+	var badge_center := Vector2(card_rect.get_center().x, card_rect.position.y + card_rect.size.y * (0.42 if is_current else 0.49))
+	var badge_radius := minf(card_rect.size.x * 0.34, 29.0)
+	_draw_kind_shape(badge_center, badge_radius, StringName(spec.shape_id), fill.darkened(0.16) if is_current else fill.darkened(0.06), Color("#fff0ca") if is_current else Color("#5c4933"))
+	_draw_kind_icon(badge_center, badge_radius * (0.72 if kind == "RISK" else 0.62), StringName(spec.icon_id), Color("#fff0ca") if is_current else Color("#51402e"))
+	var absolute_label := "#%02d" % (tile_index + 1)
+	draw_string(APP_FONT, card_rect.position + Vector2(0.0, card_rect.size.y - 10.0), absolute_label, HORIZONTAL_ALIGNMENT_CENTER, card_rect.size.x, 12, Color("#fff4dc") if is_current else Color("#765e42"))
+
+
+func _card_kind_hint(kind: String) -> String:
+	return ""
+
+
+func _draw_landing_effect(center: Vector2, card_size: Vector2, kind: String) -> void:
+	var progress := clampf(_landing_progress, 0.0, 1.0)
+	var pulse := sin(progress * PI)
+	var effect_center := center + Vector2(0.0, sin(progress * PI) * 5.0)
+	var ring_color := Color("#f5d37e")
+	match kind:
+		"COIN": ring_color = Color("#e4b83e")
+		"REST": ring_color = Color("#4aa6a0")
+		"RISK": ring_color = Color("#d85845")
+		"ITEM": ring_color = Color("#8c65b0")
+		"EVENT": ring_color = Color("#c36a4a")
+		"WARP_OASIS", "LOOP_ENTRY": ring_color = Color("#68b9cf")
+		"WARP_TOMB": ring_color = Color("#76539a")
+		"WARP_GOLD", "LOOP_ENTRY_GOLD": ring_color = Color("#d4a83f")
+		"BOSS_GATE": ring_color = Color("#d6a33a")
+	var ring := ring_color
+	ring.a = 0.30 + pulse * 0.55
+	draw_arc(effect_center, maxf(card_size.x * 0.50, 28.0) + pulse * 10.0, 0.0, TAU, 40, ring, 4.0 + pulse * 2.0, true)
+	match kind:
+		"NORMAL":
+			for index: int in range(5):
+				var angle := TAU * float(index) / 5.0
+				var puff_position := effect_center + Vector2(cos(angle), sin(angle)) * (18.0 + progress * 22.0)
+				draw_circle(puff_position, 3.0 + (1.0 - progress) * 3.0, Color(0.63, 0.47, 0.28, 0.35 * (1.0 - progress)))
+		"COIN":
+			for index: int in range(3):
+				var coin_position := effect_center + Vector2(float(index - 1) * 17.0, -card_size.y * 0.22 - progress * (32.0 + float(index) * 10.0))
+				draw_circle(coin_position, 6.0 + pulse * 2.0, Color("#d8a63a"))
+				draw_circle(coin_position, 3.0 + pulse, Color("#fff0a8"))
+			_draw_landing_result(effect_center, card_size, Color("#8a6422"))
+		"REST":
+			_draw_kind_icon(effect_center + Vector2(0.0, -card_size.y * 0.22 - pulse * 18.0), 20.0 + pulse * 7.0, &"heart", Color("#d9f0c9"))
+			_draw_landing_result(effect_center, card_size, Color("#2f7f78"))
+		"RISK":
+			var warning_center := effect_center + Vector2(0.0, -card_size.y * 0.22 - pulse * 18.0)
+			_draw_kind_shape(warning_center, 18.0 + pulse * 5.0, &"triangle", Color("#d85845"), Color("#ffe6bd"))
+			_draw_kind_icon(warning_center, 12.0 + pulse * 3.0, &"warning", Color("#fff0ca"))
+			_draw_landing_result(effect_center, card_size, Color("#a13b2e"))
+		"ITEM":
+			var item_center := effect_center + Vector2(0.0, -card_size.y * 0.22 - pulse * 18.0)
+			_draw_kind_shape(item_center, 19.0 + pulse * 5.0, &"box", Color("#76529b"), Color("#f0d8ff"))
+			_draw_kind_icon(item_center, 14.0 + pulse * 3.0, &"kenney_pouch", Color("#fff0ca"))
+			_draw_landing_result(effect_center, card_size, Color("#67478e"))
+		"EVENT", "WARP_OASIS", "WARP_TOMB", "WARP_GOLD", "LOOP_ENTRY", "LOOP_ENTRY_GOLD", "BOSS_GATE":
+			var spec := tile_visual_spec(kind)
+			_draw_kind_icon(effect_center + Vector2(0.0, -card_size.y * 0.22 - pulse * 18.0), 20.0 + pulse * 6.0, StringName(spec.icon_id), Color("#fff0ca"))
+			_draw_landing_result(effect_center, card_size, ring_color.darkened(0.24))
+
+
+func _draw_landing_result(center: Vector2, card_size: Vector2, color: Color) -> void:
+	if _landing_result_text.is_empty():
+		return
+	draw_string(APP_FONT, center + Vector2(-50.0, -card_size.y * 0.52 - 18.0), _landing_result_text, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 25, color)
+
+
+func _card_style(background: Color, border: Color, border_width: float) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = background
+	style.border_color = border
+	style.set_border_width_all(int(border_width))
+	style.set_corner_radius_all(18)
+	style.shadow_color = Color(0.18, 0.10, 0.04, 0.30)
+	style.shadow_size = 7
+	style.shadow_offset = Vector2(2.0, 4.0)
+	return style
 
 
 func _draw_semicircle_carousel() -> void:
@@ -541,7 +1141,7 @@ func _draw_semicircle_carousel() -> void:
 			_draw_dashed_segment(path[index], path[index + 1], Color(BYPASS_RUST, 0.9), 7.0, 10.0)
 		else:
 			draw_line(path[index], path[index + 1], Color(MAIN_TEAL, 0.55), 8.0, true)
-	if route_id != V06CourseModelScript.ROUTE_BYPASS and not _branch_preview_keys().is_empty():
+	if not _course.is_bypass_route(route_id) and not _branch_preview_keys().is_empty():
 		# Keep the approaching bypass choice visible without returning the local
 		# main-route view to world/camera coordinates.
 		var fork_from := path[2] + Vector2(0.0, -12.0)
@@ -588,7 +1188,10 @@ func _draw_flat_atlas_texture() -> void:
 	# only the current route vicinity rises into the miniature layer.
 	var atlas_rect := Rect2(Vector2.ZERO, size)
 	draw_texture_rect(PARCHMENT_BASE, atlas_rect, false, Color(1.0, 1.0, 1.0, 0.96))
+	var parallax_offset := _straight_camera_offset * 0.12 if _straight_travel_active else 0.0
+	draw_set_transform(Vector2(-parallax_offset, 0.0), 0.0, Vector2.ONE)
 	draw_texture_rect(CAIRO_CARTOGRAPHY_INK, atlas_rect, false, Color(1.0, 1.0, 1.0, 0.24))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_rect(atlas_rect, Color(PARCHMENT, 0.08))
 
 
@@ -599,48 +1202,93 @@ func _draw_route_graph() -> void:
 		main_screen.append(_to_screen(point))
 	draw_polyline(main_screen, Color(MAIN_TEAL, 0.36), 8.0, true)
 
-	var bypass: Array = _route_points[V06CourseModelScript.ROUTE_BYPASS]
-	var bypass_graph: Array[Vector2] = [main[_fork_index()]]
-	for point: Vector2 in bypass:
-		bypass_graph.append(point)
-	bypass_graph.append(main[_rejoin_index()])
-	for index: int in range(bypass_graph.size() - 1):
-		_draw_dashed_segment(_to_screen(bypass_graph[index]), _to_screen(bypass_graph[index + 1]), Color(BYPASS_RUST, 0.72), 7.0, 15.0)
+	for bypass_definition: Dictionary in _bypass_definitions():
+		var bypass_route := str(bypass_definition.route_id)
+		var bypass: Array = _route_points[bypass_route]
+		var bypass_graph: Array[Vector2] = [main[_fork_index(bypass_route)]]
+		for point: Vector2 in bypass:
+			bypass_graph.append(point)
+		bypass_graph.append(main[_rejoin_index(bypass_route)])
+		var active := str(_current_position.get("route_id", "")) == bypass_route
+		var line_color := Color(BYPASS_RUST, 0.94 if active else 0.34)
+		for index: int in range(bypass_graph.size() - 1):
+			_draw_dashed_segment(_to_screen(bypass_graph[index]), _to_screen(bypass_graph[index + 1]), line_color, 10.0 if active else 8.0, 15.0)
+		_draw_bypass_annotation(bypass_definition, bypass_graph, active, false)
 
-	var loop: Array = _route_points[V06CourseModelScript.ROUTE_LOOP]
-	var loop_screen := PackedVector2Array()
-	for point: Vector2 in loop:
-		loop_screen.append(_to_screen(point))
-	loop_screen.append(_to_screen(loop[0]))
-	draw_polyline(loop_screen, Color(LOOP_TEAL, 0.68), 7.0, true)
-	draw_line(_to_screen(main[_portal_index()]), _to_screen(loop[0]), Color(EXIT_GOLD, 0.56), 5.0, true)
-	draw_line(_to_screen(loop[4]), _to_screen(main[_loop_return_index()]), Color(EXIT_GOLD, 0.70), 5.0, true)
+	for loop_route: String in [V06CourseModelScript.ROUTE_LOOP_OASIS, V06CourseModelScript.ROUTE_LOOP_TOMB]:
+		var loop: Array = _route_points[loop_route]
+		var loop_screen := PackedVector2Array()
+		for point: Vector2 in loop:
+			loop_screen.append(_to_screen(point))
+		loop_screen.append(_to_screen(loop[0]))
+		var loop_color := LOOP_TEAL if loop_route == V06CourseModelScript.ROUTE_LOOP_OASIS else LOOP_TOMB
+		draw_polyline(loop_screen, Color(loop_color, 0.72), 7.0, true)
 
 	var prominent_keys := _prominent_keys()
 	var branch_keys := _branch_preview_keys()
-	for route_id: String in [V06CourseModelScript.ROUTE_MAIN, V06CourseModelScript.ROUTE_BYPASS, V06CourseModelScript.ROUTE_LOOP]:
+	for route_id: String in [V06CourseModelScript.ROUTE_MAIN, V06CourseModelScript.ROUTE_BYPASS_BAZAAR, V06CourseModelScript.ROUTE_BYPASS_SIROCCO, V06CourseModelScript.ROUTE_LOOP_OASIS, V06CourseModelScript.ROUTE_LOOP_TOMB]:
 		var points: Array = _route_points[route_id]
 		for tile_index: int in range(points.size()):
 			var is_local := _overview_mode or prominent_keys.has(_position_key(route_id, tile_index)) or branch_keys.has(_position_key(route_id, tile_index))
 			_draw_route_tile(route_id, tile_index, _to_screen(points[tile_index]), is_local)
+	if _overview_mode:
+		for bypass_definition: Dictionary in _bypass_definitions():
+			var route_id := str(bypass_definition.route_id)
+			var graph: Array[Vector2] = [main[_fork_index(route_id)]]
+			graph.append_array(_route_points[route_id])
+			graph.append(main[_rejoin_index(route_id)])
+			_draw_bypass_annotation(bypass_definition, graph, str(_current_position.get("route_id", "")) == route_id, true)
 	_draw_boss_gate(_to_screen(main[_boss_index()]))
 	var shown_exit_steps := displayed_exit_steps()
 	if shown_exit_steps > 0:
-		_draw_exit_badge(_to_screen(Vector2(820.0, 340.0)), shown_exit_steps)
+		var route_points: Array = _route_points.get(str(_current_position.route_id), [])
+		var center := Vector2.ZERO
+		for point: Vector2 in route_points:
+			center += point
+		if not route_points.is_empty():
+			_draw_exit_badge(_to_screen(center / float(route_points.size())), shown_exit_steps)
+
+
+func _draw_bypass_annotation(definition: Dictionary, graph: Array[Vector2], active: bool, label_only: bool) -> void:
+	if graph.size() < 3:
+		return
+	var entrance := _to_screen(graph.front())
+	var exit := _to_screen(graph.back())
+	var marker_color := Color(BYPASS_RUST, 1.0 if active else 0.62)
+	if not label_only:
+		# Entrance: a small split chevron. Exit: two strokes visibly converge.
+		draw_line(entrance + Vector2(-8.0, -7.0), entrance, marker_color, 3.0, true)
+		draw_line(entrance + Vector2(-8.0, 7.0), entrance, marker_color, 3.0, true)
+		draw_line(exit + Vector2(-9.0, -7.0), exit, marker_color, 3.0, true)
+		draw_line(exit + Vector2(-9.0, 7.0), exit, marker_color, 3.0, true)
+		draw_circle(exit, 4.5, marker_color)
+	if not _overview_mode or not label_only:
+		return
+	var middle_world := graph[graph.size() / 2]
+	var side := str(definition.get("side", "right"))
+	var label_center := _to_screen(middle_world) + (Vector2(150.0, -65.0) if side == "right" else Vector2(0.0, 55.0))
+	var short_name := "裏路地" if side == "right" else "砂嵐"
+	var text_color := Color(INK, 0.96 if active else 0.70)
+	if side == "right":
+		var label := "%s　%dマス短縮" % [short_name, int(definition.get("saved_steps", 0))]
+		draw_string(APP_FONT, label_center + Vector2(-92.0, 0.0), label, HORIZONTAL_ALIGNMENT_CENTER, 184.0, 15, text_color)
+	else:
+		draw_string(APP_FONT, label_center + Vector2(-65.0, 0.0), short_name, HORIZONTAL_ALIGNMENT_CENTER, 130.0, 15, text_color)
+		draw_string(APP_FONT, label_center + Vector2(-65.0, 17.0), "%dマス短縮" % int(definition.get("saved_steps", 0)), HORIZONTAL_ALIGNMENT_CENTER, 130.0, 13, text_color)
 
 
 func _draw_route_tile(route_id: String, tile_index: int, screen_position: Vector2, prominent: bool) -> void:
 	if screen_position.x < -80.0 or screen_position.x > size.x + 80.0 or screen_position.y < -80.0 or screen_position.y > size.y + 80.0:
 		return
 	var is_current := route_id == str(_current_position.route_id) and tile_index == int(_current_position.tile_index)
-	var loop_preview_tile := route_id == V06CourseModelScript.ROUTE_LOOP and _loop_preview_active()
+	var loop_preview_tile: bool = _course.is_loop_route(route_id) and _loop_preview_active()
 	if not prominent and not loop_preview_tile and not is_current:
 		return
 	var radius := (CAROUSEL_CONTEXT_RADIUS if _carousel_tile_is_context else carousel_tile_radius(_carousel_tile_is_current)) if uses_semicircle_carousel() else (16.0 if _overview_mode and is_current else (11.0 if _overview_mode else (31.0 if is_current else (15.0 if loop_preview_tile and not prominent else 25.0))))
 	# Only the current vicinity rises above the printed atlas. Canonical labels
 	# stay runtime-drawn, so the art never owns topology or UI text.
 	draw_circle(screen_position + Vector2(0.0, 8.0), radius + (5.0 if is_current else 2.0), Color(0.20, 0.13, 0.07, 0.26 if is_current else 0.18))
-	var accent := MAIN_TEAL if route_id == V06CourseModelScript.ROUTE_MAIN else (BYPASS_RUST if route_id == V06CourseModelScript.ROUTE_BYPASS else LOOP_TEAL)
+	var accent := MAIN_TEAL if route_id == V06CourseModelScript.ROUTE_MAIN else (BYPASS_RUST if _course.is_bypass_route(route_id) else (LOOP_TEAL if route_id == V06CourseModelScript.ROUTE_LOOP_OASIS else LOOP_TOMB))
 	var tile_scale := tile_draw_diameter_for_radius(radius) / ROUTE_TILE_CELL_SIZE.x
 	var tile_size := ROUTE_TILE_CELL_SIZE * tile_scale
 	var tile_anchor := ROUTE_TILE_ANCHOR * tile_scale
@@ -747,6 +1395,16 @@ func _draw_kind_icon(center: Vector2, radius: float, icon_id: StringName, color:
 			_draw_filled_outline(_regular_polygon(center, radius * 0.62, 4, 0.0), color, color)
 
 
+func _draw_direction_chevron(center: Vector2, direction: Vector2, color: Color, width: float) -> void:
+	var axis := direction.normalized()
+	var side := Vector2(-axis.y, axis.x)
+	var tip := center + axis * 8.0
+	var left := center - axis * 4.0 + side * 6.0
+	var right := center - axis * 4.0 - side * 6.0
+	draw_line(left, tip, color, width, true)
+	draw_line(right, tip, color, width, true)
+
+
 func tile_kind_icon_texture(icon_id: StringName) -> Texture2D:
 	match icon_id:
 		&"imagegen_footprints": return KIND_ICON_NORMAL
@@ -811,8 +1469,9 @@ func _draw_cat_marker() -> void:
 		draw_circle(overview_cat + Vector2(-5, -1), 2.0, Color("#263b36"))
 		draw_circle(overview_cat + Vector2(5, -1), 2.0, Color("#263b36"))
 		return
-	var grounded_feet := carousel_cat_feet_anchor() if uses_semicircle_carousel() else _to_screen(_cat_world)
-	var feet := grounded_feet - Vector2(0.0, _cat_lift)
+	var grounded_feet := _card_route_cat_feet_anchor() if uses_card_route() else (carousel_cat_feet_anchor() if uses_semicircle_carousel() else _to_screen(_cat_world))
+	var landing_lift := sin(_landing_progress * PI) * 18.0 if not _landing_kind.is_empty() else 0.0
+	var feet := grounded_feet - Vector2(0.0, _cat_lift + landing_lift)
 	if feet.x < -100.0 or feet.x > size.x + 100.0 or feet.y < -120.0 or feet.y > size.y + 100.0:
 		return
 	# Keep the shadow tied to the route tile while the sprite follows the hop arc.
@@ -824,6 +1483,18 @@ func _draw_cat_marker() -> void:
 	var destination := Rect2(feet - CAT_FEET_ANCHOR * CAT_DRAW_SCALE, draw_size)
 	var source := Rect2(Vector2(float(frame_index) * CAT_FRAME_SIZE.x, 0.0), CAT_FRAME_SIZE)
 	draw_texture_rect_region(texture, destination, source)
+
+
+func _card_route_cat_feet_anchor() -> Vector2:
+	if _straight_travel_active:
+		var display_offset := _straight_card_display_offset()
+		var from_center := _card_route_slot_position(_straight_step_from) + display_offset
+		var to_center := _card_route_slot_position(_straight_travel_player_step) + display_offset
+		return from_center.lerp(to_center, _straight_step_progress) + Vector2(0.0, _card_route_card_size().y * 0.52)
+	var target := _card_route_slot_position(0) + Vector2(0.0, _card_route_card_size().y * 0.52)
+	if _carousel_progress < 1.0 and not _carousel_previous_position.is_empty():
+		return _card_route_slot_position(0).lerp(target, _carousel_progress) + Vector2(0.0, _card_route_card_size().y * 0.52)
+	return target
 
 
 func _cat_texture_for_state(state: StringName) -> Texture2D:
@@ -847,7 +1518,8 @@ func _draw_route_legend() -> void:
 	draw_string(APP_FONT, Vector2(80, 39), "本線", HORIZONTAL_ALIGNMENT_LEFT, 54, 18, INK)
 	_draw_dashed_segment(Vector2(142, 31), Vector2(184, 31), BYPASS_RUST, 6.0, 9.0)
 	draw_string(APP_FONT, Vector2(191, 39), "近道", HORIZONTAL_ALIGNMENT_LEFT, 54, 18, INK)
-	draw_arc(Vector2(266, 31), 12.0, 0.0, TAU, 20, LOOP_TEAL, 5.0, true)
+	draw_arc(Vector2(260, 31), 10.0, 0.0, TAU, 20, LOOP_TEAL, 4.0, true)
+	draw_arc(Vector2(282, 31), 10.0, 0.0, TAU, 20, LOOP_TOMB, 4.0, true)
 
 
 func _draw_exit_badge(center: Vector2, steps: int) -> void:
@@ -894,10 +1566,14 @@ func _branch_preview_keys() -> Dictionary:
 	var keys := {}
 	var route_id := str(_current_position.get("route_id", ""))
 	var tile_index := int(_current_position.get("tile_index", -1))
-	if route_id != V06CourseModelScript.ROUTE_MAIN or tile_index < _fork_index() - 2 or tile_index > _fork_index():
+	if route_id != V06CourseModelScript.ROUTE_MAIN:
 		return keys
-	for branch_index: int in range(_route_size(V06CourseModelScript.ROUTE_BYPASS)):
-		keys[_position_key(V06CourseModelScript.ROUTE_BYPASS, branch_index)] = true
+	var nearby := _bypass_near_main_index(tile_index)
+	if nearby.is_empty():
+		return keys
+	var bypass_route := str(nearby.route_id)
+	for branch_index: int in range(_route_size(bypass_route)):
+		keys[_position_key(bypass_route, branch_index)] = true
 	return keys
 
 
@@ -908,28 +1584,40 @@ func _route_size(route_id: String) -> int:
 	return routes[route_id].size() if routes.has(route_id) and routes[route_id] is Array else 0
 
 
-func _fork_index() -> int:
-	var bypass: Dictionary = _definition.get("bypass", {})
+func _bypass_definitions() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for value: Variant in _definition.get("bypasses", []):
+		if value is Dictionary:
+			result.append(value as Dictionary)
+	return result
+
+
+func _bypass_definition(route_id: String) -> Dictionary:
+	for bypass: Dictionary in _bypass_definitions():
+		if str(bypass.get("route_id", "")) == route_id:
+			return bypass
+	return {}
+
+
+func _bypass_near_main_index(tile_index: int) -> Dictionary:
+	for bypass: Dictionary in _bypass_definitions():
+		var choice: Dictionary = bypass.get("choice", {})
+		var fork_index := int(choice.get("tile_index", -99))
+		if tile_index >= fork_index - 2 and tile_index <= fork_index:
+			return bypass
+	return {}
+
+
+func _fork_index(route_id: String) -> int:
+	var bypass := _bypass_definition(route_id)
 	var choice: Dictionary = bypass.get("choice", {}) if bypass.get("choice", {}) is Dictionary else {}
-	return int(choice.get("tile_index", 12))
+	return int(choice.get("tile_index", -1))
 
 
-func _rejoin_index() -> int:
-	var bypass: Dictionary = _definition.get("bypass", {})
+func _rejoin_index(route_id: String) -> int:
+	var bypass := _bypass_definition(route_id)
 	var rejoin: Dictionary = bypass.get("rejoin", {}) if bypass.get("rejoin", {}) is Dictionary else {}
-	return int(rejoin.get("tile_index", 20))
-
-
-func _portal_index() -> int:
-	var loop: Dictionary = _definition.get("loop", {})
-	var portal: Dictionary = loop.get("portal", {}) if loop.get("portal", {}) is Dictionary else {}
-	return int(portal.get("tile_index", 22))
-
-
-func _loop_return_index() -> int:
-	var loop: Dictionary = _definition.get("loop", {})
-	var returned: Dictionary = loop.get("return", {}) if loop.get("return", {}) is Dictionary else {}
-	return int(returned.get("tile_index", 23))
+	return int(rejoin.get("tile_index", -1))
 
 
 func _boss_index() -> int:
@@ -947,7 +1635,7 @@ func _loop_preview_active() -> bool:
 func _tile_label(route_id: String, tile_index: int) -> String:
 	if route_id == V06CourseModelScript.ROUTE_MAIN:
 		return str(tile_index + 1)
-	if route_id == V06CourseModelScript.ROUTE_BYPASS:
+	if _course.is_bypass_route(route_id):
 		return "B%d" % (tile_index + 1)
 	return str(tile_index + 1)
 

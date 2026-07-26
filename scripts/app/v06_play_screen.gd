@@ -14,11 +14,21 @@ const QA_SCENARIO_ATLAS_18 := "atlas_18"
 const QA_SCENARIO_BOSS_READY := "boss_ready"
 const SLOT_BREATH_PERIOD_SECONDS := 2.0
 const SLOT_BREATH_ALPHA_AMPLITUDE := 0.025
+const TARGET_PREVIEW_SECONDS := 0.20
+const SLOT_STOP_DELAY_SECONDS := 0.12
+const ROLLING_SLOT_STEP_SECONDS := 0.06
+const INLINE_SLOT_RESULT_SECONDS := 0.46
+const SLOT_RESULT_GLOW := Color(1.45, 1.42, 1.30, 1.0)
+const SLOT_RESULT_STRONG_GLOW := Color(1.75, 1.68, 1.42, 1.0)
 
 @onready var lap_label: Label = %LapLabel
+@onready var roll_count_label: Label = %RollCountLabel
 @onready var hp_label: Label = %HPLabel
 @onready var pb_label: Label = %PBLabel
 @onready var time_label: Label = %TimeLabel
+@onready var score_label: Label = %ScoreLabel
+@onready var score_delta_label: Label = %ScoreDeltaLabel
+@onready var coin_label: Label = %CoinLabel
 @onready var progress_label: Label = %ProgressLabel
 @onready var stage_label: Label = %StageLabel
 @onready var route_label: Label = %RouteLabel
@@ -26,8 +36,14 @@ const SLOT_BREATH_ALPHA_AMPLITUDE := 0.025
 @onready var atlas_view: V06AtlasView = %AtlasView
 @onready var message_label: Label = %MessageLabel
 @onready var tray_status_label: Label = %TrayStatusLabel
+@onready var role_label: Label = %RoleLabel
+@onready var role_reward_label: Label = %RoleRewardLabel
+@onready var next_need_label: Label = %NextNeedLabel
+@onready var action_hint_label: Label = %ActionHintLabel
+@onready var slot_column: VBoxContainer = %SlotColumn
 @onready var slot_panels: Array[PanelContainer] = [%SlotPanel0, %SlotPanel1, %SlotPanel2]
 @onready var slot_labels: Array[Label] = [%Slot0, %Slot1, %Slot2]
+@onready var pair_link: Line2D = %PairLink
 @onready var dice_presentation: DicePresentation3D = %DicePresentation
 @onready var die_button: Button = %DieButton
 @onready var tray_hint_label: Label = %TrayHintLabel
@@ -46,6 +62,7 @@ const SLOT_BREATH_ALPHA_AMPLITUDE := 0.025
 @onready var choice_overlay: Control = %ChoiceOverlay
 @onready var choice_main_button: Button = %ChoiceMainButton
 @onready var choice_bypass_button: Button = %ChoiceBypassButton
+@onready var choice_detail_label: Label = $ChoiceOverlay/Center/ChoicePanel/Content/Detail
 @onready var resolution_overlay: Control = %ResolutionOverlay
 @onready var resolution_title: Label = %ResolutionTitle
 @onready var resolution_detail: Label = %ResolutionDetail
@@ -63,6 +80,9 @@ const SLOT_BREATH_ALPHA_AMPLITUDE := 0.025
 var _session: RefCounted
 var _rng := RandomNumberGenerator.new()
 var _rolling := false
+var _slot_settling := false
+var _rolling_slot_elapsed := 0.0
+var _rolling_slot_face := 1
 var _movement_active := false
 var _shown_face := 0
 var _lap_number := 1
@@ -74,6 +94,12 @@ var _clock_refresh_elapsed := 0.0
 var _qa_hud_override := false
 var _map_open := false
 var _utility_open := false
+var _motion_generation := 0
+var _score_display_value := 0.0
+var _score_target := 0
+var _score_tween: Tween
+var _score_delta_tween: Tween
+var _inline_slot_result_active := false
 
 
 func _ready() -> void:
@@ -97,12 +123,16 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_breath_elapsed = fmod(_breath_elapsed + delta, SLOT_BREATH_PERIOD_SECONDS)
+	if _rolling:
+		_rolling_slot_elapsed += delta
+		_refresh_rolling_slot_preview()
 	_clock_refresh_elapsed += delta
 	if _clock_refresh_elapsed >= 0.1:
 		_clock_refresh_elapsed = 0.0
 		_refresh_clock()
-	for panel: PanelContainer in slot_panels:
-		panel.self_modulate = Color.WHITE
+	if not _inline_slot_result_active:
+		for panel: PanelContainer in slot_panels:
+			panel.self_modulate = Color.WHITE
 	if _session == null or _session.phase() != V06PlaySessionScript.PHASE_READY:
 		return
 	var next_slot: int = _session.faces().size()
@@ -122,6 +152,23 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_APPLICATION_RESUMED:
 		_session.resume_clock(Time.get_ticks_msec())
 	_refresh_ui()
+
+
+func _exit_tree() -> void:
+	_motion_generation += 1
+	if is_instance_valid(atlas_view):
+		atlas_view.cancel_visual_motion()
+
+
+func _cancel_motion(route_position := {}) -> void:
+	_motion_generation += 1
+	_rolling = false
+	_slot_settling = false
+	_movement_active = false
+	_reset_inline_slot_result()
+	if is_instance_valid(atlas_view):
+		atlas_view.cancel_visual_motion(route_position)
+		atlas_view.clear_roll_preview()
 
 
 func session_snapshot() -> Dictionary:
@@ -177,7 +224,6 @@ func _wire_controls() -> void:
 	map_close_button.pressed.connect(_on_map_closed)
 	choice_main_button.pressed.connect(_on_route_chosen.bind(V06CourseModelScript.ROUTE_MAIN))
 	choice_bypass_button.pressed.connect(_on_route_chosen.bind(V06CourseModelScript.ROUTE_BYPASS))
-	resolution_ack_button.pressed.connect(_on_resolution_acknowledged)
 	boss_round_ack_button.pressed.connect(_on_boss_round_acknowledged)
 	next_lap_button.pressed.connect(_on_next_lap_requested)
 	retry_button.pressed.connect(_on_replay_requested)
@@ -208,26 +254,43 @@ func _on_die_pressed() -> void:
 
 
 func _start_roll() -> void:
+	atlas_view.clear_roll_preview()
 	_rolling = true
+	_slot_settling = false
+	_rolling_slot_elapsed = 0.0
+	_rolling_slot_face = 1
 	message_label.text = "回転中…もう一度タップで止める"
+	message_label.show()
 	_refresh_ui()
+	_refresh_rolling_slot_preview()
 
 
 func _stop_roll() -> void:
 	if not _rolling:
 		return
 	_rolling = false
+	_slot_settling = true
+	_movement_active = _session.can_roll()
 	var face := _rng.randi_range(1, 6)
 	_shown_face = face
+	_refresh_ui()
 	_run_face(face)
 
 
 func _run_face(face: int) -> void:
 	var pre_roll_phase: StringName = _session.phase()
+	var pre_roll_position: Dictionary = _session.position()
+	var motion_generation := _motion_generation
 	_movement_active = pre_roll_phase == V06PlaySessionScript.PHASE_READY
+	if _slot_settling:
+		await get_tree().create_timer(SLOT_STOP_DELAY_SECONDS).timeout
+		if motion_generation != _motion_generation:
+			return
+		_slot_settling = false
 	var started: Dictionary = _session.start_roll(face, Time.get_ticks_msec())
 	if not bool(started.get("ok", false)):
 		_movement_active = false
+		_slot_settling = false
 		message_label.text = "今はダイスを振れません"
 		_refresh_ui()
 		return
@@ -238,29 +301,73 @@ func _run_face(face: int) -> void:
 		_present_session_phase()
 		return
 	message_label.text = "%dマス進む" % face
+	message_label.show()
+	atlas_view.set_roll_preview(face)
 	_refresh_ui()
-	await _animate_pending_movement()
+	var pending_role := String(_session.pending_resolution_role())
+	if pending_role != "":
+		await _play_inline_slot_result(pending_role, face, motion_generation)
+		if not _movement_active or motion_generation != _motion_generation:
+			return
+	elif atlas_view.can_use_straight_travel(pre_roll_position, _session.pending_hop_count()):
+		await get_tree().create_timer(TARGET_PREVIEW_SECONDS).timeout
+		if not _movement_active or motion_generation != _motion_generation:
+			return
+	atlas_view.release_roll_preview()
+	await _animate_pending_movement(motion_generation)
 
 
-func _animate_pending_movement() -> void:
+func _animate_pending_movement(motion_generation := -1) -> bool:
+	if motion_generation >= 0 and motion_generation != _motion_generation:
+		return false
+	var start_position: Dictionary = _session.position()
+	var straight_mode := atlas_view.can_use_straight_travel(start_position, _session.pending_hop_count())
+	if straight_mode:
+		straight_mode = atlas_view.begin_straight_travel(start_position, _session.pending_hop_count())
+	var step := 0
 	while _session.has_pending_hops():
 		var hop: Dictionary = _session.next_hop()
-		await atlas_view.animate_hop_to(hop)
+		step += 1
+		if straight_mode:
+			await atlas_view.animate_straight_step(step)
+		else:
+			await atlas_view.animate_hop_to(hop)
+		if motion_generation >= 0 and motion_generation != _motion_generation:
+			return false
 	var settled: Dictionary = _session.finish_movement()
 	if not bool(settled.get("ok", false)):
+		atlas_view.clear_roll_preview()
+		if straight_mode:
+			atlas_view.cancel_visual_motion(start_position)
 		_movement_active = false
 		message_label.text = "移動を完了できませんでした"
 		_refresh_ui()
-		return
+		return false
 	var stable_position: Dictionary = _session.position()
-	if atlas_view.current_route_position() != stable_position:
-		await atlas_view.animate_transfer_to(stable_position)
+	if straight_mode:
+		if _session.phase() != V06PlaySessionScript.PHASE_CHOICE_REQUIRED:
+			await atlas_view.play_landing_effect(stable_position)
+			if motion_generation >= 0 and motion_generation != _motion_generation:
+				return false
+			atlas_view.clear_roll_preview()
+			await atlas_view.animate_straight_camera_follow()
+			if motion_generation >= 0 and motion_generation != _motion_generation:
+				return false
+			if not atlas_view.finish_straight_travel(stable_position):
+				atlas_view.cancel_visual_motion(stable_position)
 	else:
-		atlas_view.set_route_position(stable_position)
+		if atlas_view.current_route_position() != stable_position:
+			await atlas_view.animate_transfer_to(stable_position)
+		else:
+			atlas_view.set_route_position(stable_position)
+		if _session.phase() != V06PlaySessionScript.PHASE_CHOICE_REQUIRED:
+			await atlas_view.play_landing_effect(stable_position)
+	atlas_view.clear_roll_preview()
 	_movement_active = false
 	_shown_face = 0
 	_refresh_ui()
 	_present_session_phase()
+	return true
 
 
 func _present_session_phase() -> void:
@@ -268,12 +375,14 @@ func _present_session_phase() -> void:
 		V06PlaySessionScript.PHASE_CHOICE_REQUIRED:
 			resolution_overlay.hide()
 			boss_overlay.hide()
+			_configure_route_choice()
 			choice_overlay.show()
 			choice_main_button.grab_focus()
 		V06PlaySessionScript.PHASE_RESOLUTION_REQUIRED:
 			choice_overlay.hide()
 			boss_overlay.hide()
-			_show_resolution()
+			resolution_overlay.hide()
+			_complete_nonmodal_resolution()
 		V06PlaySessionScript.PHASE_BOSS_GATE:
 			choice_overlay.hide()
 			resolution_overlay.hide()
@@ -290,36 +399,27 @@ func _present_session_phase() -> void:
 func _on_route_chosen(route_id: String) -> void:
 	if _movement_active:
 		return
+	var bypass: Dictionary = _session.pending_bypass()
 	var resumed: Dictionary = _session.choose_route(route_id)
 	if not bool(resumed.get("ok", false)):
 		return
 	choice_overlay.hide()
 	_movement_active = true
-	message_label.text = "本線を進む" if route_id == V06CourseModelScript.ROUTE_MAIN else "シロッコの近道を進む"
+	message_label.text = "本線を進む" if route_id == V06CourseModelScript.ROUTE_MAIN else "%sを進む" % str(bypass.get("name_ja", "近道"))
 	_refresh_ui()
 	await _animate_pending_movement()
 
 
-func _show_resolution() -> void:
-	var role := String(_session.resolution_role())
-	resolution_title.text = role
-	match role:
-		"TRIPLE": resolution_detail.text = "3つの出目がそろった！\n次の区間へ気持ちよく進もう。"
-		"PAIR": resolution_detail.text = "2つの出目がそろった。\n結果を確認して次の3投へ。"
-		_: resolution_detail.text = "3投の移動が完了。\n結果を確認して次の3投へ。"
-	resolution_overlay.show()
-	resolution_ack_button.grab_focus()
-
-
-func _on_resolution_acknowledged() -> void:
+func _complete_nonmodal_resolution() -> void:
 	if not _session.acknowledge_resolution():
 		return
 	resolution_overlay.hide()
+	role_reward_label.hide()
+	pair_link.hide()
 	_refresh_ui()
 	_present_session_phase()
 	if _session.phase() == V06PlaySessionScript.PHASE_READY:
 		message_label.text = "次の3投を始めよう"
-		die_button.grab_focus()
 
 
 func _on_replay_requested() -> void:
@@ -327,8 +427,7 @@ func _on_replay_requested() -> void:
 		return
 	_qa_hud_override = false
 	_shown_face = 0
-	_rolling = false
-	_movement_active = false
+	_cancel_motion(_session.position())
 	boss_overlay.hide()
 	choice_overlay.hide()
 	resolution_overlay.hide()
@@ -348,6 +447,7 @@ func _on_next_lap_requested() -> void:
 	if not _session.next_lap():
 		return
 	_shown_face = 0
+	_cancel_motion(_session.position())
 	boss_overlay.hide()
 	atlas_view.set_route_position(_session.position(), true)
 	_refresh_ui()
@@ -375,7 +475,7 @@ func _on_item_tool_pressed() -> void:
 
 func _on_skill_tool_pressed() -> void:
 	_open_utility_card(
-		"キャラクタースキル  ·  READY",
+		"キャラクタースキル  ·  ピンポイント",
 		SKILL_CARD,
 		"選択中の旅人が持つ能力を、\nここから確認して発動します。\n\n発動できる時だけボタンが有効になります。"
 	)
@@ -440,8 +540,14 @@ func _refresh_ui() -> void:
 		if _session.phase() == V06PlaySessionScript.PHASE_LAP_RESULT and _session.snapshot().pb_updated and _session.pb_delta_ms() == null:
 			_pb_text = "NEW"
 	lap_label.text = "LAP %d" % _lap_number
-	hp_label.text = "HP %d/%d" % [_hp_current, _hp_max]
+	roll_count_label.text = "ROLLS %d" % _session.roll_count()
+	hp_label.text = _heart_text(_hp_current, _hp_max)
 	pb_label.text = "PB %s" % _pb_text
+	if is_instance_valid(atlas_view):
+		atlas_view.set_consumed_route_state(_session.consumed_warp_gate_ids(), _session.consumed_reward_node_keys())
+	if is_instance_valid(overview_atlas_view):
+		overview_atlas_view.set_consumed_route_state(_session.consumed_warp_gate_ids(), _session.consumed_reward_node_keys())
+	_refresh_score_hud()
 	_refresh_clock()
 	var route_position: Dictionary = _session.position()
 	var route_id := str(route_position.get("route_id", "main"))
@@ -454,37 +560,56 @@ func _refresh_ui() -> void:
 		V06CourseModelScript.ROUTE_MAIN:
 			progress_label.text = "%d/%d" % [tile_index + 1, main_total]
 			route_label.text = "本線"
-		V06CourseModelScript.ROUTE_BYPASS:
-			progress_label.text = "BYPASS %d/%d" % [tile_index + 1, 4]
-			route_label.text = "近道"
+		V06CourseModelScript.ROUTE_BYPASS_BAZAAR:
+			progress_label.text = "ALLEY %d/3" % [tile_index + 1]
+			route_label.text = "バザール裏路地"
+		V06CourseModelScript.ROUTE_BYPASS_SIROCCO:
+			progress_label.text = "BYPASS %d/5" % [tile_index + 1]
+			route_label.text = "砂嵐の抜け道"
+		V06CourseModelScript.ROUTE_LOOP_OASIS:
+			progress_label.text = "OASIS %d/%d" % [tile_index + 1, 8]
+			route_label.text = "オアシス環"
 		_:
 			progress_label.text = "LOOP %d/%d" % [tile_index + 1, 8]
-			route_label.text = "スーク円環"
+			route_label.text = "墓廊の輪"
 	stage_label.text = str(stage_info.get("name_ja", "砂時計のカイロ"))
 	tile_kind_label.text = _tile_kind_display(_session.current_tile_kind())
 	var values: Array[int] = _session.faces()
 	for index: int in range(slot_labels.size()):
 		slot_labels[index].text = str(values[index]) if index < values.size() else "—"
+	_refresh_slot_display(values)
 	var phase: StringName = _session.phase()
+	_refresh_slot_guidance(values, phase)
+	if phase != V06PlaySessionScript.PHASE_READY:
+		message_label.show()
 	match phase:
 		V06PlaySessionScript.PHASE_READY:
 			tray_status_label.text = "3 ROLL SLOT　　%d / 3" % values.size()
-			tray_hint_label.text = "ダイスをタップ。もう一度で停止。"
+			tray_hint_label.text = "左で役を考え、右で振る。もう一度で停止。"
 			if not _rolling and not _movement_active:
-				message_label.text = "ダイス1個で、1マスずつ進む"
+				if _session.roll_count() < 3:
+					message_label.text = "ダイス1個で、1マスずつ進む"
+					message_label.show()
+				else:
+					message_label.hide()
 		V06PlaySessionScript.PHASE_MOVING:
-			tray_status_label.text = "MOVING"
+			if _session.pending_resolution_role() != &"":
+				tray_status_label.text = "3 ROLL SLOT　　3 / 3"
+				tray_hint_label.text = "役を確認中"
+			else:
+				tray_status_label.text = "MOVING"
+				tray_hint_label.text = "着地点へ移動中…"
 		V06PlaySessionScript.PHASE_CHOICE_REQUIRED:
 			tray_status_label.text = "ROUTE CHOICE"
 			tray_hint_label.text = "残り%dマス・出目%dを保持中" % [_session.pending_remaining_steps(), _session.pending_face()]
 			message_label.text = "進むルートを選ぶ"
 		V06PlaySessionScript.PHASE_RESOLUTION_REQUIRED:
 			tray_status_label.text = String(_session.resolution_role())
-			tray_hint_label.text = "結果を確認すると次の3投へ進めます"
+			tray_hint_label.text = "次の3投を準備中"
 		V06PlaySessionScript.PHASE_BOSS_GATE:
 			tray_status_label.text = "BOSS ROUND"
 			tray_hint_label.text = "3投で攻撃。次の行動とDEFを確認"
-			message_label.text = "眠れるスフィンクスに挑む"
+			message_label.text = "この周回のボスステージ"
 		V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT:
 			tray_status_label.text = "ROUND RESULT"
 			tray_hint_label.text = "結果確認が必要です"
@@ -493,14 +618,15 @@ func _refresh_ui() -> void:
 		V06PlaySessionScript.PHASE_RUN_OVER:
 			tray_status_label.text = "RUN OVER"
 	_refresh_boss_panel()
+	skill_tool_button.text = "スキル\nピンポイント READY" if _session.skill_gauge() >= V06PlaySessionScript.SKILL_GAUGE_MAX else "スキル\nピンポイント %d/%d" % [_session.skill_gauge(), V06PlaySessionScript.SKILL_GAUGE_MAX]
 	if _rolling:
-		die_button.text = "TAP\nSTOP"
+		die_button.text = "止める"
 	elif phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
-		die_button.text = "BOSS\nROLL"
+		die_button.text = "ボスに挑む"
 	elif _shown_face > 0:
-		die_button.text = "%d\nMOVE" % _shown_face
+		die_button.text = "%dマス進む" % _shown_face
 	else:
-		die_button.text = "READY\nROLL"
+		die_button.text = "サイコロを振る"
 	_refresh_die_presentation()
 	die_button.disabled = _utility_open or _movement_active or (not _rolling and not _session.can_roll())
 	var utility_disabled := _utility_open or _map_open or _movement_active or _rolling or phase != V06PlaySessionScript.PHASE_READY
@@ -509,11 +635,179 @@ func _refresh_ui() -> void:
 	back_button.disabled = _movement_active
 
 
+func _refresh_slot_guidance(values: Array[int], phase: StringName) -> void:
+	if _inline_slot_result_active:
+		return
+	role_label.add_theme_color_override("font_color", Color(0.73, 0.59, 0.37, 1))
+	if phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
+		role_label.text = "ボス攻撃を準備"
+		next_need_label.text = ""
+		action_hint_label.text = ""
+		return
+	if phase in [V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT, V06PlaySessionScript.PHASE_LAP_RESULT, V06PlaySessionScript.PHASE_RUN_OVER]:
+		role_label.text = "結果を確認"
+		next_need_label.text = ""
+		action_hint_label.text = ""
+		return
+	match values.size():
+		0:
+			role_label.text = "役をつくろう"
+		1:
+			role_label.text = "同じ数字を狙う"
+		2:
+			if values[0] == values[1]:
+				role_label.text = "%dでTRIPLE" % values[0]
+			else:
+				role_label.text = "どちらかでPAIR"
+		_:
+			role_label.text = _display_role(String(_session.resolution_role()))
+	next_need_label.text = ""
+	action_hint_label.text = ""
+
+
+func _refresh_slot_display(values: Array[int]) -> void:
+	var next_slot: int = values.size()
+	if next_slot < 0 or next_slot >= slot_labels.size():
+		return
+	if _session != null and _session.phase() in [V06PlaySessionScript.PHASE_MOVING, V06PlaySessionScript.PHASE_CHOICE_REQUIRED] and _session.pending_face() > 0:
+		# The session owns the stopped face. Showing pending_face here transfers
+		# the same value into the next slot before the first hop begins and keeps
+		# it visible while a fork choice preserves the unspent movement.
+		slot_labels[next_slot].text = str(_session.pending_face())
+	elif _rolling or _slot_settling:
+		slot_labels[next_slot].text = str(_rolling_slot_face)
+
+
+func _refresh_rolling_slot_preview() -> void:
+	if not _rolling or _session == null:
+		return
+	var next_slot: int = _session.faces().size()
+	if next_slot < 0 or next_slot >= slot_labels.size():
+		return
+	_rolling_slot_face = 1 + (int(_rolling_slot_elapsed / ROLLING_SLOT_STEP_SECONDS) % 6)
+	slot_labels[next_slot].text = str(_rolling_slot_face)
+
+
+func _play_inline_slot_result(role: String, face: int, motion_generation: int) -> void:
+	_inline_slot_result_active = true
+	var values: Array[int] = _session.faces()
+	values.append(face)
+	var spec := inline_slot_result_spec(role, values)
+	role_label.text = _display_role(role)
+	role_label.add_theme_color_override("font_color", Color("#167f82"))
+	role_reward_label.text = str(spec.reward)
+	role_reward_label.show()
+	tray_status_label.text = "3 ROLL SLOT　　3 / 3"
+	pair_link.hide()
+	for panel: PanelContainer in slot_panels:
+		panel.pivot_offset = panel.size * 0.5
+		panel.scale = Vector2.ONE
+		panel.self_modulate = Color.WHITE
+	match str(spec.effect):
+		"pair_link":
+			var pair_indices: Array = spec.indices
+			if pair_indices.size() == 2:
+				_position_pair_link(pair_indices[0], pair_indices[1])
+				pair_link.show()
+				pair_link.modulate.a = 0.0
+				var link_tween := create_tween()
+				link_tween.tween_property(pair_link, "modulate:a", 0.92, 0.12)
+				link_tween.tween_interval(0.16)
+				link_tween.tween_property(pair_link, "modulate:a", 0.0, 0.14)
+				_flash_slot_panels(pair_indices, SLOT_RESULT_GLOW, 1.035)
+		"left_to_right":
+			for index: int in range(slot_panels.size()):
+				var flow_tween := create_tween()
+				flow_tween.tween_interval(index * 0.07)
+				flow_tween.tween_property(slot_panels[index], "self_modulate", SLOT_RESULT_GLOW, 0.10)
+				flow_tween.parallel().tween_property(slot_panels[index], "scale", Vector2.ONE * 1.025, 0.10)
+				flow_tween.tween_property(slot_panels[index], "self_modulate", Color.WHITE, 0.16)
+				flow_tween.parallel().tween_property(slot_panels[index], "scale", Vector2.ONE, 0.16)
+		"strong_flash":
+			_flash_slot_panels([0, 1, 2], SLOT_RESULT_STRONG_GLOW, 1.055)
+		_:
+			_flash_slot_panels([0, 1, 2], SLOT_RESULT_GLOW, 1.02)
+	await get_tree().create_timer(INLINE_SLOT_RESULT_SECONDS).timeout
+	if motion_generation != _motion_generation:
+		return
+	_reset_inline_slot_result()
+
+
+func _flash_slot_panels(indices: Array, glow: Color, peak_scale: float) -> void:
+	for value: Variant in indices:
+		var index := int(value)
+		if index < 0 or index >= slot_panels.size():
+			continue
+		var tween := create_tween()
+		tween.tween_property(slot_panels[index], "self_modulate", glow, 0.12)
+		tween.parallel().tween_property(slot_panels[index], "scale", Vector2.ONE * peak_scale, 0.12)
+		tween.tween_interval(0.08)
+		tween.tween_property(slot_panels[index], "self_modulate", Color.WHITE, 0.18)
+		tween.parallel().tween_property(slot_panels[index], "scale", Vector2.ONE, 0.18)
+
+
+func _matching_pair_indices(values: Array[int]) -> Array[int]:
+	for first: int in range(values.size()):
+		for second: int in range(first + 1, values.size()):
+			if values[first] == values[second]:
+				return [first, second]
+	return []
+
+
+func _position_pair_link(first: int, second: int) -> void:
+	var first_rect := slot_panels[first].get_global_rect()
+	var second_rect := slot_panels[second].get_global_rect()
+	var origin := slot_column.global_position
+	var y := minf(first_rect.end.y, second_rect.end.y) - origin.y - 12.0
+	pair_link.points = PackedVector2Array([
+		Vector2(first_rect.get_center().x - origin.x, y),
+		Vector2(second_rect.get_center().x - origin.x, y),
+	])
+
+
+func _inline_role_reward(role: String) -> String:
+	match role:
+		"PAIR":
+			return "+150　ゲージ+1"
+		"STRAIGHT":
+			return "+350　ゲージ+2"
+		"TRIPLE":
+			return "+800　READY"
+		_:
+			return "+50　コイン+1"
+
+
+func inline_slot_result_spec(role: String, values: Array[int]) -> Dictionary:
+	match role:
+		"PAIR":
+			return {"effect":"pair_link", "indices":_matching_pair_indices(values), "reward":_inline_role_reward(role), "duration":INLINE_SLOT_RESULT_SECONDS}
+		"STRAIGHT":
+			return {"effect":"left_to_right", "indices":[0, 1, 2], "reward":_inline_role_reward(role), "duration":INLINE_SLOT_RESULT_SECONDS}
+		"TRIPLE":
+			return {"effect":"strong_flash", "indices":[0, 1, 2], "reward":_inline_role_reward(role), "duration":INLINE_SLOT_RESULT_SECONDS}
+		_:
+			return {"effect":"soft_flash", "indices":[0, 1, 2], "reward":_inline_role_reward(role), "duration":INLINE_SLOT_RESULT_SECONDS}
+
+
+func _reset_inline_slot_result() -> void:
+	_inline_slot_result_active = false
+	if is_instance_valid(role_reward_label):
+		role_reward_label.hide()
+	if is_instance_valid(pair_link):
+		pair_link.hide()
+	for panel: PanelContainer in slot_panels:
+		panel.scale = Vector2.ONE
+		panel.self_modulate = Color.WHITE
+
+
 func _refresh_die_presentation() -> void:
 	if not is_instance_valid(dice_presentation):
 		return
 	var display_face := _shown_face if _shown_face > 0 else 6
 	dice_presentation.present([display_face], _rolling, 0 if _rolling else 1)
+	dice_presentation.pivot_offset = dice_presentation.size * 0.5
+	var target_scale := 1.08 if _rolling else (1.05 if _shown_face > 0 and _movement_active else 1.0)
+	dice_presentation.scale = Vector2.ONE * target_scale
 
 
 func _qa_resolve_roll(face: int, route_choice := "") -> bool:
@@ -546,21 +840,51 @@ func _tile_kind_display(kind: String) -> String:
 		"REST": return "REST"
 		"RISK": return "RISK"
 		"BYPASS_FORK": return "ROUTE FORK"
-		"LOOP_ENTRY": return "LOOP ENTRY"
+		"WARP_OASIS": return "OASIS WARP"
+		"WARP_TOMB": return "TOMB WARP"
+		"WARP_GOLD": return "GOLD WARP"
+		"LOOP_ENTRY", "LOOP_ENTRY_GOLD": return "LOOP ENTRY"
 		"EXIT_GATE": return "EXIT GATE"
 		"BOSS_GATE": return "BOSS GATE"
 		_: return "TRAVEL"
+
+
+func _configure_route_choice() -> void:
+	var bypass: Dictionary = _session.pending_bypass()
+	if bypass.is_empty():
+		return
+	var saved_steps := int(bypass.get("saved_steps", 0))
+	var route_id := str(bypass.get("route_id", ""))
+	var risk_count := 0
+	var item_count := 0
+	if route_id == V06CourseModelScript.ROUTE_BYPASS_BAZAAR:
+		risk_count = 1
+		item_count = 1
+	elif route_id == V06CourseModelScript.ROUTE_BYPASS_SIROCCO:
+		risk_count = 2
+		item_count = 1
+	choice_detail_label.text = "%s　・　%dマス短縮" % [str(bypass.get("name_ja", "近道")), saved_steps]
+	choice_main_button.text = "本線　・　見えている道を進む"
+	choice_bypass_button.text = "近道　・　RISK×%d / ITEM×%d" % [risk_count, item_count]
+	for connection: Dictionary in choice_bypass_button.pressed.get_connections():
+		choice_bypass_button.pressed.disconnect(connection.callable)
+	choice_bypass_button.pressed.connect(_on_route_chosen.bind(route_id))
 
 
 func _apply_surface_styles() -> void:
 	%HudPanel.add_theme_stylebox_override("panel", _panel_style(Color("#172625"), Color("#b88a46"), 22, 4))
 	%StageBand.add_theme_stylebox_override("panel", _panel_style(Color("#ead9b7"), Color("#8d683b"), 8, 2))
 	%AtlasFrame.add_theme_stylebox_override("panel", _panel_style(Color("#e8d7b5"), Color("#9c7742"), 12, 4))
-	%TrayPanel.add_theme_stylebox_override("panel", _panel_style(Color("#3a2118"), Color("#b88a46"), 24, 5))
-	%ToolDock.add_theme_stylebox_override("panel", _panel_style(Color("#241813"), Color("#8d683b"), 18, 3))
-	%DieWell.add_theme_stylebox_override("panel", _panel_style(Color("#22150f"), Color("#8d683b"), 14, 4))
+	%TrayPanel.add_theme_stylebox_override("panel", _panel_style(Color("#ead9b7"), Color("#b88a46"), 24, 5))
+	var tool_dock_style := _panel_style(Color("#241813"), Color("#8d683b"), 18, 3)
+	tool_dock_style.content_margin_top = 8
+	tool_dock_style.content_margin_bottom = 8
+	%ToolDock.add_theme_stylebox_override("panel", tool_dock_style)
 	for slot_panel: PanelContainer in [%SlotPanel0, %SlotPanel1, %SlotPanel2]:
 		slot_panel.add_theme_stylebox_override("panel", _panel_style(Color("#efe0bf"), Color("#9c7742"), 14, 3))
+	tray_status_label.add_theme_color_override("font_color", Color("#277c80"))
+	tray_hint_label.add_theme_color_override("font_color", Color("#604b36"))
+	action_hint_label.add_theme_color_override("font_color", Color("#604b36"))
 	for modal_panel: PanelContainer in [%ChoicePanel, %ResolutionPanel, %BossPanel, %UtilityPanel]:
 		modal_panel.add_theme_stylebox_override("panel", _panel_style(Color("#f1e2c2"), Color("#9b743d"), 22, 4))
 	die_button.theme_type_variation = UiThemeNamesScript.PRIMARY_BUTTON
@@ -583,6 +907,57 @@ func _refresh_clock() -> void:
 	if not is_instance_valid(time_label) or _session == null:
 		return
 	time_label.text = _format_time(_session.elapsed_ms(Time.get_ticks_msec()))
+
+
+func _refresh_score_hud() -> void:
+	if not is_instance_valid(score_label) or _session == null:
+		return
+	coin_label.text = str(_session.coins())
+	var target: int = int(_session.score())
+	if target == _score_target:
+		score_label.text = _format_score(roundi(_score_display_value))
+		return
+	var delta: int = target - _score_target
+	_score_target = target
+	if is_instance_valid(_score_tween):
+		_score_tween.kill()
+	var count_seconds := 0.32 if _session.pending_resolution_role() != &"" else 0.46
+	_score_tween = create_tween()
+	_score_tween.tween_method(_set_score_display, _score_display_value, float(target), count_seconds).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	if delta > 0:
+		var award: Dictionary = _session.last_score_award()
+		score_delta_label.text = "+%d  %s" % [delta, str(award.get("label", "TRAVEL"))]
+		score_delta_label.modulate = Color.WHITE
+		if is_instance_valid(_score_delta_tween):
+			_score_delta_tween.kill()
+		_score_delta_tween = create_tween()
+		_score_delta_tween.tween_interval(0.72)
+		_score_delta_tween.tween_property(score_delta_label, "modulate:a", 0.0, 0.24)
+
+
+func _set_score_display(value: float) -> void:
+	_score_display_value = value
+	score_label.text = _format_score(roundi(value))
+
+
+func _format_score(value: int) -> String:
+	var digits := str(maxi(value, 0))
+	var grouped := ""
+	while digits.length() > 3:
+		grouped = "," + digits.right(3) + grouped
+		digits = digits.left(digits.length() - 3)
+	return digits + grouped
+
+
+func _heart_text(current: int, maximum: int) -> String:
+	var result := ""
+	for index: int in range(maxi(maximum, 0)):
+		result += "♥" if index < current else "♡"
+	return result
+
+
+func _display_role(role: String) -> String:
+	return "MIX" if role in ["", "NONE"] else role
 
 
 func _format_time(value_ms: int) -> String:
@@ -608,6 +983,9 @@ func _refresh_boss_panel() -> void:
 		return
 	boss_hp_label.text = "PLAYER HP %d/3    BOSS HP %d/3" % [int(boss.player_hp), int(boss.boss_hp)]
 	boss_action_label.text = "%s  ·  DEF %d" % [String(boss.action).replace("_", " "), int(boss.defense)]
+	var terminal_result := phase in [V06PlaySessionScript.PHASE_LAP_RESULT, V06PlaySessionScript.PHASE_RUN_OVER]
+	boss_hp_label.visible = not terminal_result
+	boss_action_label.visible = not terminal_result
 	boss_round_ack_button.visible = phase == V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT
 	next_lap_button.visible = phase == V06PlaySessionScript.PHASE_LAP_RESULT
 	retry_button.visible = phase == V06PlaySessionScript.PHASE_RUN_OVER
@@ -615,14 +993,34 @@ func _refresh_boss_panel() -> void:
 		var result: Dictionary = _session.boss_result()
 		boss_result_label.text = "%d vs DEF %d · %s\nPLAYER -%d / BOSS -%d" % [int(result.sum), int(result.defense), String(result.role), int(result.applied_player_damage), int(result.applied_boss_damage)]
 	elif phase == V06PlaySessionScript.PHASE_LAP_RESULT:
-		boss_title.text = "LAP CLEAR"
-		boss_result_label.text = "スフィンクスを突破！\n%s" % pb_label.text
+		boss_title.text = "周回クリア"
+		boss_result_label.text = _score_result_text(true)
 	elif phase == V06PlaySessionScript.PHASE_RUN_OVER:
-		boss_title.text = "RUN OVER"
-		boss_result_label.text = "旅はここまで。PBを残して再挑戦できます。"
+		boss_title.text = "旅の記録"
+		boss_result_label.text = _score_result_text(false)
 	else:
 		boss_title.text = "SLEEPY SPHINX"
 		boss_result_label.text = "3回振って攻撃しよう"
+
+
+func _score_result_text(victory: bool) -> String:
+	var score: int = int(_session.score())
+	var best: int = int(_session.best_score())
+	var breakdown: Dictionary = _session.score_breakdown()
+	var lead := "スフィンクスを突破！" if victory else "旅はここまで。"
+	var gap: int = best - score
+	var chase := "自己ベスト更新！" if gap <= 0 else "あと%sで自己ベスト" % _format_score(gap)
+	return "%s\nSCORE %s　BEST %s\n%s\n旅 %s / スロット %s / 発見 %s / ボス %s / 完走 %s" % [
+		lead,
+		_format_score(score),
+		_format_score(best),
+		chase,
+		_format_score(int(breakdown.get("travel", 0))),
+		_format_score(int(breakdown.get("slot", 0))),
+		_format_score(int(breakdown.get("discovery", 0))),
+		_format_score(int(breakdown.get("boss", 0))),
+		_format_score(int(breakdown.get("finish", 0))),
+	]
 
 
 func _panel_style(background: Color, border: Color, radius: int, border_width: int) -> StyleBoxFlat:

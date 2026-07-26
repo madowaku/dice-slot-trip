@@ -1,11 +1,11 @@
 version: 2
 
 goal:
-  title: "DICE SLOT TRIP v0.7 製品化"
+  title: "DICE SLOT TRIP v0.8 製品化・画面統合"
   slug: "dice-slot-trip-v06-productization"
-  kind: open_ended
-  tranche: "v0.7のデータ駆動ステージ長と通常画面の前方6マス設計を実装し、B+A+Cの製品縦切りを再検証する"
-  status: blocked
+  kind: recovery
+  tranche: "最新ローカルMD・5つのGoogle Docs・現行dirty差分を裁定し、一投シーケンスの最優先欠落を一つ実装・検証・視覚監査する"
+  status: done
 
 rules:
   pm_owns_state: true
@@ -2205,12 +2205,317 @@ tasks:
         - "All dedicated, legacy and asset tests pass; card provenance validator failures=0."
       summary: "Owner request is satisfied for access UI and card presentation. Actual v0.8 item effects and character-specific skill execution remain a separate gameplay-system task."
 
-  checks:
-  dirty_fingerprint: "pre-existing-user-worktree-with-godot-ui-and-tourism-map-edits"
+  - id: T054
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "2026-07-25のローカルMD、5つのGoogle Docs、現行dirty差分、既存選定ビジュアルとテストを読み取り専用で照合し、最初の安全な製品化実装スライスを具体化する。"
+    inputs:
+      - "C:/Users/hiro/Desktop/GooglePlay有料級にブラッシュアップしていこう！.md"
+      - "C:/Users/hiro/Desktop/各画面UI.md"
+      - "Google Doc: 探検猫スキル v1.0 (1SYG_FMojbpmkxcP9L_JRQdkWWUfWF4YHsDZ2REM3X0E)"
+      - "Google Doc: 3ROLL SLOT 基本ルール v1.0 (1vomzz3ivKrQiP1n7GbPtx_uJx5Nx2xOi_7BdMUhV0aI)"
+      - "Google Doc: カイロ画像素材生成リスト v1.0 (1Wn-KPiCcUTHN40QN9CxL-Q46QV1Jo20CWJrzw0gZ0F0)"
+      - "Google Doc: ボス戦 (1CzmOVeq7xND4quFv_HCKZux9cxnzOotFqHIaVoHjPLI)"
+      - "Google Doc: 砂時計のカイロ コース設計 v1.0 (1HQvrz43kQwR3ebP3dUKEXiSJVpUEJjNne_l3CD9bvyY)"
+      - "build/card-route-ui-stability-capture.png"
+      - "docs/design/v07/tactile-travel-instrument-approved.png"
+      - "docs/reference/runtime-title.png"
+      - "docs/reference/runtime-stage-select.png"
+      - "docs/reference/runtime-character-select.png"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/game/dice_presentation_3d.gd"
+      - "scripts/game/v06_atlas_view.gd"
+      - "scripts/game/v06_play_session.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    constraints:
+      - "Read-only; implementation files and control filesを変更しない。"
+      - "feat/card-route-uiから移動せず、mainを参照元・統合元にしない。"
+      - "ユーザー指示 > 2026-07-25ローカルMD > 現行検証済み実装 > Google Docs > 旧repo docsで衝突を裁定する。"
+      - "挙動安定化を素材感、影、光、音、全画面リッチ化より優先する。"
+      - "既存dirty差分の所有権と変更境界を明示する。"
+      - "exact visual targetが解決していない画面へimage-to-codeを適用しない。"
+    expected_output:
+      - "Source authority and contradiction matrix"
+      - "Implemented / missing / conflicting matrix for die, slot, route, landing, camera, input gate and MIX"
+      - "Current dirty-diff ownership and regression-risk map"
+      - "Exact visual-target inventory and ImageGen-needed gaps"
+      - "Ranked first-slice candidates with exact allowed_files, verify and stop_if"
+      - "Recommended first Worker task"
+    receipt:
+      result: done
+      note: "notes/T054-productization-source-and-first-slice-map.md"
+      summary: "現行dirty差分では直線7カード、1マスhop、着地後camera follow、入力gateが概ね成立。最大の欠落はdieのQuaternion上面契約で、MIX非モーダルが次点。"
+      evidence:
+        - "C:/Users/hiro/Desktop/GooglePlay有料級にブラッシュアップしていこう！.md"
+        - "C:/Users/hiro/Desktop/各画面UI.md"
+        - "scripts/game/dice_presentation_3d.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "scripts/game/v06_atlas_view.gd"
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_roll_set.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_play_session_tests.gd"
+        - "tests/run_v06_roll_set_tests.gd"
+        - "build/card-route-ui-stability-capture.png"
+        - "docs/design/v07/tactile-travel-instrument-approved.png"
+      spawned_tasks:
+        - T055
+
+  - id: T055
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T054をレビューし、挙動安定化を最優先に、最初の安全で検証可能なWorkerスライスを一つ選ぶ。"
+    inputs:
+      - "T054 receipt"
+      - "Current dirty diff"
+      - "Current Godot parse and play-screen test result"
+    constraints:
+      - "Do not implement."
+      - "一投シーケンス、論理出目と上面、停止後ハイライト、MIX非モーダルのP0から選ぶ。"
+      - "分岐・円環・ボスの既存挙動を最初のWorkerへ混ぜない。"
+      - "exact visual targetが無い場合、image-to-codeを許可しない。"
+      - "ImageGenは既存素材監査で欠落が証明された場合だけ許可する。"
+    expected_output:
+      - "Decision and rationale"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Deferred UI and asset tasks"
+    receipt:
+      result: done
+      decision: "Candidate 1: Die上面Quaternion契約"
+      rationale: "最新仕様に対する最大の未解決P0で、論理出目と実上面の一致を全1〜6で決定的に検証できる。候補2・3より変更範囲が狭く、成立済みstraight route、camera、input gateを保護できる。"
+      next_allowed_task: T056
+      deferred_tasks:
+        - "RESULT_LOCK限定Highlight"
+        - "MIX非モーダル進行"
+        - "共通UIと各画面redesign"
+        - "exact visual target選定前のimage-to-code"
+        - "既存素材監査で欠落が証明されていないImageGen"
+
+  - id: T056
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: medium
+    objective: "現行pip面法線を固定し、compact 3D dieの回転・停止姿勢をQuaternionで管理する。回転中はX/Z軸成分を含む回転で複数の上面を表示し、停止時は論理出目1〜6の面が必ずVector3.UPを向くことをdeterministic testと720×1280/360×640 captureで証明する。"
+    allowed_files:
+      - "scripts/game/dice_presentation_3d.gd"
+      - "tests/run_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "build/qa-die-quaternion-*"
+    verify:
+      - "& 'C:/Dev/Tools/Godot-4.7-stable/Godot_v4.7-stable_win64_console.exe' --headless --path . --editor --quit"
+      - "& 'C:/Dev/Tools/Godot-4.7-stable/Godot_v4.7-stable_win64_console.exe' --headless --path . --script tests/run_v06_play_screen_tests.gd"
+      - "& 'C:/Dev/Tools/Godot-4.7-stable/Godot_v4.7-stable_win64_console.exe' --headless --path . --script tests/run_tests.gd"
+      - "全1〜6で論理出目と実上面が一致するdeterministic test"
+      - "回転中に複数の上面が現れるdeterministic test"
+      - "720×1280と360×640のROLLING/LOCKED GPU capture"
+      - "git diff --check -- scripts/game/dice_presentation_3d.gd tests/run_tests.gd tests/run_v06_play_screen_tests.gd"
+    stop_if:
+      - "pip面法線が現行の対面契約と一致しない。"
+      - "allowed_files外のAPI変更が必要。"
+      - "compact viewport、二段tap、既存dirty差分の巻き戻しが必要。"
+      - "分岐・円環・ボス仕様の変更が必要。"
+      - "feat/card-route-ui以外への切り替えまたはmain取り込みが必要。"
+      - "自動検証が同じ原因で2回失敗する。"
+      - "GPU captureで回転中の上面変化を確認できない。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "scripts/game/dice_presentation_3d.gd"
+        - "tests/run_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "tests/run_v06_play_screen_tests.gd without capture"
+          status: pass
+        - cmd: "tests/run_tests.gd"
+          status: pass
+        - cmd: "headless and hidden-GPU capture attempts"
+          status: blocked
+      summary: "Quaternion上面契約、全1〜6一致、回転中の複数上面テストは完了した。DICE_QA_V06_CAPTURE_PATH指定時だけframe_post_draw待ちが終了せず、画像保存前に停止するため視覚証跡を回復タスクへ分離する。"
+      replacement_task: T058
+
+  - id: T058
+    type: pm
+    assignee: PM
+    status: blocked
+    reasoning_hint: medium
+    objective: "T056の製品コードを変更せず、QAキャプチャーの無制限frame_post_draw待ちを有界な強制描画へ置き換え、ROLLING/LOCKEDの720×1280と360×640証拠を生成・検証する。"
+    allowed_files:
+      - "tests/run_v06_play_screen_tests.gd"
+      - "build/qa-die-quaternion-*"
+      - "docs/goals/dice-slot-trip-v06-productization/state.yaml"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_play_screen_tests.gd without capture"
+      - "ROLLING and LOCKED 720x1280/360x640 capture"
+      - "image dimensions and visual inspection"
+      - "git diff --check -- tests/run_v06_play_screen_tests.gd"
+    stop_if:
+      - "製品コード変更が必要。"
+      - "画像保存が同じ原因で2回停止する。"
+      - "既存の非captureテストを弱める必要がある。"
+    receipt:
+      result: blocked
+      changed_files: []
+      commands:
+        - cmd: "replace frame_post_draw with force_draw/force_sync"
+          status: blocked
+        - cmd: "remove explicit RenderingServer synchronization after eight bounded frames"
+          status: blocked
+        - cmd: "headless OpenGL and visible OpenGL capture"
+          status: blocked
+      summary: "無制限signal待ちを除去してもSubViewportTexture.get_image()到達時に描画backendが停止する。製品コードと通常テストは健全なため、capture harness修正を止め、Godot起動条件の回復調査へ切り替える。"
+      replacement_task: T059
+
+  - id: T059
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "現行コードを追加変更せず、Godot 4.7のrender-thread／single-threaded-scene／movie writer起動条件からGPUキャプチャーを回復し、成功しない場合は既存証拠と決定的テストでT056を監査可能か裁定する。"
+    allowed_files:
+      - "build/qa-die-quaternion-*"
+      - "docs/goals/dice-slot-trip-v06-productization/state.yaml"
+    verify:
+      - "Godot CLI helpのrendering options"
+      - "render-thread safe + single-threaded-scene capture"
+      - "生成画像の寸法と目視"
+      - "残存Godot検証プロセスが無いこと"
+    stop_if:
+      - "ユーザーの既存Godot editorを終了する必要がある。"
+      - "製品コードまたはテストコードの追加変更が必要。"
+      - "二つの独立した起動条件でも同じbackend停止が再現する。"
+    receipt:
+      result: done
+      commands:
+        - cmd: "Godot CLI help rendering option inspection"
+          status: pass
+        - cmd: "render-thread safe + single-threaded-scene"
+          status: blocked
+        - cmd: "Movie Writer 360x640 fixed-frame diagnostic"
+          status: pass
+      summary: "Movie Writerでcapture分岐まで実行し、停止原因が描画同期ではなくtests/run_v06_play_screen_tests.gd:59のuntyped ArrayからArray[int]引数への型エラーだと特定した。"
+      evidence:
+        - "Invalid type in function present: Array argument is not Array[int]"
+        - "tests/run_v06_play_screen_tests.gd:59"
+      spawned_tasks:
+        - T060
+
+  - id: T060
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: low
+    objective: "キャプチャー専用ROLLING/LOCKED値をArray[int]として渡す最小修正を行い、両状態の720×1280/360×640画像を生成する。"
+    allowed_files:
+      - "tests/run_v06_play_screen_tests.gd"
+      - "build/qa-die-quaternion-*"
+      - "docs/goals/dice-slot-trip-v06-productization/state.yaml"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_play_screen_tests.gd without capture"
+      - "Movie Writer or GPU ROLLING/LOCKED capture"
+      - "720x1280 and 360x640 image dimensions"
+      - "visual inspection"
+      - "git diff --check"
+    stop_if:
+      - "tests/run_v06_play_screen_tests.gd以外のコード変更が必要。"
+      - "typed Array修正後も同じ型エラーが再発する。"
+      - "通常テストが退行する。"
+    receipt:
+      result: done
+      changed_files:
+        - "tests/run_v06_play_screen_tests.gd"
+        - "build/qa-die-quaternion-rolling-720x1280.png"
+        - "build/qa-die-quaternion-rolling-360x640.png"
+        - "build/qa-die-quaternion-locked-720x1280.png"
+        - "build/qa-die-quaternion-locked-360x640.png"
+      commands:
+        - cmd: "Godot 4.7 OpenGL ROLLING capture + play-screen suite"
+          status: pass
+        - cmd: "Godot 4.7 OpenGL LOCKED capture + play-screen suite"
+          status: pass
+        - cmd: "ffprobe dimensions for four PNGs"
+          status: pass
+        - cmd: "visual inspection at 720x1280 and 360x640"
+          status: pass
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check -- scoped T056 files"
+          status: pass
+      summary: "capture専用値をArray[int]化して例外を解消。ROLLINGは斜め姿勢で複数面が読め、LOCKEDは論理出目6が上面へ固定され、両解像度で安全領域とUI可読性を目視確認した。"
+
+  - id: T057
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "T056の実装を最新仕様、dirty差分保護、Godotテスト、720×1280/360×640証拠へ照合し、次の共通UI・画面統合タスクへ進めるか監査する。"
+    inputs:
+      - "T054 receipt"
+      - "T055 decision"
+      - "T056 receipt"
+      - "Last verification"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "計画や画像だけで実装完了としない。"
+      - "必要なWorkerが残る場合は具体的な次タスクを返す。"
+      - "Judge agentは利用上限のため、PMが同じ受入基準で保守的に監査する。"
+    expected_output:
+      - "complete_for_first_slice | not_complete"
+      - "Acceptance mapping"
+      - "Missing evidence"
+      - "Next exact task"
+    receipt:
+      result: done
+      decision: "complete"
+      completion_decision: "Die上面Quaternion契約の最初の安全な実装スライスは完了。"
+      acceptance_mapping:
+        - "1〜6の各pip面法線を固定し、完成Quaternionが対応面をVector3.UPへ向ける。"
+        - "停止時の論理出目とtop_face_for_orientationが全1〜6で一致する。"
+        - "rolling_orientationはX/Z軸成分を含み、決定的サンプルで4種類以上の上面を通る。"
+        - "SETTLINGは開始Quaternionから最終Quaternionへ0.18秒slerpし、短く減速して吸着する。"
+        - "ROLLING/LOCKEDを720×1280と360×640でGPU描画し、マップ安全領域、カード、猫、slot/ROLLの可読性を目視確認した。"
+        - "通常直線の7カード、1マスhop、着地後camera follow、完了までのinput gateはplay-screen回帰で維持された。"
+        - "feat/card-route-ui@b559d81を維持し、mainのswitch/merge/rebase/resetは実施していない。"
+      missing_evidence: []
+      next_exact_task: "RESULT_LOCK時だけ出目対応カードの外周リングを静かにフェードインし、ROLLING中は通常・ピンポイントとも盤面を光らせない。カメラ追従前後で対象カードがずれないことを専用テストと720/360 captureで証明する。"
+      summary: "T056の実装、T060のcapture回復、最新MD、dirty保護、Godot parse、専用/legacy tests、4枚のGPU証拠を照合し、最初の実装トランシェを保守的に完了判定した。"
+
+checks:
+  dirty_fingerprint: "feat/card-route-ui@b559d81; six protected dirty files: V06PlayScreen.tscn, v06_play_screen.gd, dice_presentation_3d.gd, v06_atlas_view.gd, v06_play_session.gd, run_v06_play_screen_tests.gd"
   last_verification:
     result: pass
-    task: T045
+    task: "T057-first-slice-final-audit-2026-07-26"
     commands:
+      - "git branch --show-current: feat/card-route-ui; HEAD b559d81; baseline ancestor check exit 0"
+      - "Godot 4.7 headless editor parse: pass"
+      - "Godot 4.7 OpenGL ROLLING capture + tests/run_v06_play_screen_tests.gd: failures=0"
+      - "Godot 4.7 OpenGL LOCKED capture + tests/run_v06_play_screen_tests.gd: failures=0"
+      - "tests/run_tests.gd: failures=0"
+      - "all logical faces 1..6 equal actual top pip face; quaternion rolling visits >=4 top faces"
+      - "four captures verified: rolling/locked at 720x1280 and 360x640"
+      - "visual inspection: die remains inside map safety region and does not obscure cards, cat, slots or ROLL"
+      - "git diff --check scoped T056 files: pass with line-ending warnings only"
+      - "Goal Maker PM audit: complete_for_first_slice"
+      - "git branch --show-current: feat/card-route-ui"
+      - "codex/recovery-from-retreat is ancestor of HEAD; no main operation performed"
+      - "Godot 4.7 headless editor parse: pass"
+      - "tests/run_v06_play_screen_tests.gd: failures=0"
+      - "git diff --check: pass with line-ending warnings only"
       - "T045 Goal Maker Judge: accept; tactile travel instrument UI tranche complete"
       - "T044 ImageGen provenance validator failures=0; source/runtime SHA256 exact match"
       - "T044 AMD/OpenGL GPU 720 capture plus Lanczos 360 and source comparison regenerated"
