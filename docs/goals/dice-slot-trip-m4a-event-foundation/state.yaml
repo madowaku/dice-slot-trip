@@ -1,0 +1,357 @@
+version: 2
+
+goal:
+  title: "DICE SLOT TRIP M4A イベント基盤"
+  slug: "dice-slot-trip-m4a-event-foundation"
+  kind: specific
+  tranche: "代表10イベントと共通イベント基盤を実装し、保存復元・ボス引き継ぎ・追加ダイス・既存回帰を監査する"
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: high
+    objective: "M4A仕様と現行M3実装を照合し、最小変更面、保存移行、ダイス再利用、ボス引き継ぎ、テスト構造を特定する。"
+    inputs:
+      - "docs/M4A イベント基盤詳細仕様 v0.1.md"
+      - "docs/カイロ用イベント30本v0.1.md"
+      - "scripts/app/main.gd"
+      - "scripts/core/dice_logic.gd"
+      - "scripts/game/boss_system.gd"
+      - "autoload/game_state.gd"
+      - "autoload/save_manager.gd"
+      - "tests/run_tests.gd"
+    constraints:
+      - "Read-only."
+      - "既存M0〜M3のプレイフィールを維持する。"
+      - "仕様の代表10イベントを漏れなくマッピングする。"
+    expected_output:
+      - "M4Aファイルマップ"
+      - "イベント／報酬データ設計"
+      - "保存マイグレーション案"
+      - "検証可能なWorker境界"
+    receipt:
+      result: done
+      summary: "M3を大規模改修せず、EventSystemとRewardResolverをEVENT着地へ挿入できる。10イベントJSON、GameState v3、追加ダイス再利用、単一ボス引き継ぎ判断、resolution_id冪等性が最小変更面。"
+      evidence:
+        - "scripts/app/main.gd"
+        - "scripts/core/dice_logic.gd"
+        - "autoload/game_state.gd"
+        - "autoload/save_manager.gd"
+        - "docs/M4A イベント基盤詳細仕様 v0.1.md"
+      risks:
+        - "CAI-E03はM4A詳細仕様の確定遭遇を優先する。"
+        - "追加5ダイスは移動用3個選択を使わず、5個全体の役種類を集計する。"
+        - "M4Bキャラクター固有能力と20アイテム完全実装を混在させない。"
+      spawned_tasks:
+        - T002
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Scout結果を監査し、M4Aを安全に完成できるWorkerタスクと検証条件を決定する。"
+    inputs:
+      - "T001 receipt"
+      - "M4A specification"
+    constraints:
+      - "Do not implement."
+      - "代表10イベントと共通基盤を完成条件から外さない。"
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+    receipt:
+      result: done
+      decision: "APPROVE。EventSystem、RewardResolver、GameState v3、Main接続を一つのデータ駆動Workerタスクとして実装可能。"
+      next_allowed_task: T003
+      worker_objective: "代表10イベント、地区抽選、重複抑制、到着ロール不変、二択、追加1/3/5ダイス、共通報酬、単一ボス引き継ぎ、中断復帰、DEBUG・QA・キャプチャを実装する。"
+      deferred:
+        - "残り20イベント"
+        - "基本アイテム20個の完全固有効果"
+        - "初期キャラクター4人の固有能力"
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Judgeが定義したM4Aイベント基盤と代表10イベントを実装する。"
+    inputs:
+      - "docs/M4A イベント基盤詳細仕様 v0.1.md"
+      - "docs/コイン・アイテム抽選・スキル回復 数値仕様 v0.1.md"
+    allowed_files:
+      - "data/events/cairo_m4a_events.json"
+      - "scripts/game/event_system.gd"
+      - "scripts/game/reward_resolver.gd"
+      - "scripts/core/dice_logic.gd"
+      - "autoload/game_state.gd"
+      - "autoload/save_manager.gd"
+      - "scripts/app/main.gd"
+      - "tests/run_tests.gd"
+      - "README.md"
+      - "docs/IMPLEMENTATION_NOTES.md"
+      - "docs/reference/runtime-m4a-*.png"
+    verify:
+      - "Godot 4.7 parse and all unit tests"
+      - "M4A 20 acceptance checks and all 10 forced events"
+      - "M0-M3 regression QA"
+      - "Five runtime M4A captures"
+      - "M4A報酬キー、最小アイテム抽選、SKILL_RECOVERが数値仕様に一致する"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "仕様上の重大な曖昧さがある。"
+      - "Verification fails twice without a localized cause."
+    receipt:
+      result: done
+      summary: "代表10イベント、地区抽選、重複抑制、到着ロール、二択、追加1/3/5ダイス、RewardResolver、ボス引き継ぎ、セーブv3、中断復帰、DEBUG、数値仕様を実装。"
+      changed_files:
+        - "data/events/cairo_m4a_events.json"
+        - "scripts/game/event_system.gd"
+        - "scripts/game/reward_resolver.gd"
+        - "scripts/core/dice_logic.gd"
+        - "autoload/game_state.gd"
+        - "scripts/app/main.gd"
+        - "tests/run_tests.gd"
+        - "README.md"
+        - "docs/IMPLEMENTATION_NOTES.md"
+        - "docs/reference/runtime-m4a-opening.png"
+        - "docs/reference/runtime-m4a-choice.png"
+        - "docs/reference/runtime-m4a-extra.png"
+        - "docs/reference/runtime-m4a-result.png"
+        - "docs/reference/runtime-m4a-boss_handoff.png"
+      verification:
+        - "Godot 4.7 unit: 49 PASS"
+        - "DICE_QA_M4A: checks=20 forced10=true passed=true"
+        - "M0-M3 regression: all pass"
+        - "git diff --check: pass"
+        - "runtime M4A capture x5: result 0"
+      commands:
+        - cmd: "Godot 4.7 tests/run_tests.gd"
+          status: pass
+        - cmd: "DICE_QA_M4A=1"
+          status: pass
+        - cmd: "M0-M3 regression QA"
+          status: pass
+        - cmd: "Godot viewport capture x5"
+          status: pass
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "M4A完了条件、20テスト項目、M0〜M3回帰、画面証跡を監査する。"
+    inputs:
+      - "All done task receipts"
+      - "Godot 4.7 verification logs"
+      - "Runtime screenshots"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "必須Worker作業が残る場合はcompleteにしない。"
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt:
+      result: complete
+      summary: "52 unit、M4A 20/20、hardening、サイコロ停止、追加ダイス、M0-M3回帰、git diff check、7キャプチャを再監査しcomplete判定。"
+      evidence:
+        - "DICE_QA_M4A checks=20 forced10=true passed=true"
+        - "Hardening normal_loop/warp_loop/reservation/no_repeat/rare55_45 all true"
+        - "Dice stop and extra 1/3/5 controls passed"
+        - "Seven RGB opaque 360x640 captures, black rows/cols 0"
+        - "M0-M3 sequential regression passed"
+      commands:
+        - cmd: "Godot 4.7 tests/run_tests.gd"
+          status: pass
+        - cmd: "M4A / hardening / dice / M0-M3 QA"
+          status: pass
+        - cmd: "Pillow capture audit"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "サイコロの転がり感を強化し、ロール中に左から1個ずつ目押し停止と全ダイス一括停止を併用できるようにする。通常1/3/5ダイスとM4A追加1/3/5ダイスへ共通適用する。"
+    inputs:
+      - "ステージ画面イメージ.png"
+    allowed_files:
+      - "scripts/app/main.gd"
+      - "scripts/core/dice_logic.gd"
+      - "tests/run_tests.gd"
+      - "README.md"
+      - "docs/IMPLEMENTATION_NOTES.md"
+      - "docs/reference/runtime-m4a-dice-*.png"
+    constraints:
+      - "既存の自動停止、左からの早止め、5ダイス3個選択を維持する。"
+      - "M4A追加ダイスでも移動を発生させない。"
+      - "画面を強く発光させず、落ち着いた色調を維持する。"
+    verify:
+      - "左から1個停止が従来どおり動く"
+      - "一括停止が残り全ダイスを現在値で固定する"
+      - "停止済みダイスを二重処理しない"
+      - "通常1/3/5ダイスと追加1/3/5ダイスで共通動作"
+      - "既存M0-M4A回帰"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Verification fails twice without a localized cause."
+    receipt:
+      result: done
+      summary: "参考画像に合わせてダイスを大型白面・金砂縁・影へ変更し、転がり中の回転/脈動、左からの早止め、残り一括停止を通常/追加1・3・5ダイスへ共通実装した。"
+      changed_files:
+        - "scripts/app/main.gd"
+        - "README.md"
+        - "docs/IMPLEMENTATION_NOTES.md"
+        - "docs/reference/runtime-m4a-dice-rolling-five.png"
+        - "docs/reference/runtime-m4a-dice-one-locked.png"
+      verification:
+        - "Godot 4.7 unit: 49 PASS"
+        - "DICE_QA_M4A: 20/20 PASS"
+        - "left_stable=true all_current=true no_double=true passed=true"
+        - "extra dice counts=1,3,5 passed=true"
+        - "M0-M3 regression: all pass"
+        - "dice capture x2: result 0"
+      commands:
+        - cmd: "DICE_QA_STOP_ALL=1"
+          status: pass
+        - cmd: "DICE_QA_EXTRA_DICE_CONTROLS=1"
+          status: pass
+        - cmd: "Godot 4.7 full regression"
+          status: pass
+        - cmd: "Godot viewport dice capture x2"
+          status: pass
+
+  - id: T005
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "最終監査の4不足を修正する: E30周回リセット、pending boss handoffの中断復帰、rare-event 55/45、イベントUIの可読性と正しい地区表示。"
+    allowed_files:
+      - "data/events/cairo_m4a_events.json"
+      - "scripts/game/event_system.gd"
+      - "scripts/game/reward_resolver.gd"
+      - "autoload/game_state.gd"
+      - "scripts/app/main.gd"
+      - "tests/run_tests.gd"
+      - "README.md"
+      - "docs/IMPLEMENTATION_NOTES.md"
+      - "docs/reference/runtime-m4a-*.png"
+    verify:
+      - "tile 90 crossing resets E30 once-per-loop state"
+      - "pending_boss_handoff survives save/restart and resumes exactly once"
+      - "rare-event item distribution is 55% UNCOMMON / 45% RARE"
+      - "event body/result text passes visual contrast review"
+      - "forced E20/E29 display RUINS/DUNES"
+      - "All M4A and M0-M3 regression"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Verification fails twice without a localized cause."
+    receipt:
+      result: done
+      summary: "通常/WARP周回でE30状態をリセットし、pending boss handoffのexactly-once復帰、E30 55/45、濃色UI、正しい地区表示、濃色ダイス数字、黒帯なしキャプチャを実装。"
+      changed_files:
+        - "data/events/cairo_m4a_events.json"
+        - "scripts/game/event_system.gd"
+        - "scripts/game/reward_resolver.gd"
+        - "scripts/app/main.gd"
+        - "tests/run_tests.gd"
+        - "README.md"
+        - "docs/IMPLEMENTATION_NOTES.md"
+        - "docs/reference/runtime-m4a-*.png"
+      verification:
+        - "Godot 4.7 unit: 52 PASS"
+        - "M4A 20/20: PASS"
+        - "T005 hardening: normal_loop/warp_loop/e20/e29/reservation/no_repeat/rare55_45 all true"
+        - "Dice and M0-M3 regression: PASS"
+        - "Runtime captures x7: result 0 and inspected"
+      commands:
+        - cmd: "Godot 4.7 tests/run_tests.gd"
+          status: pass
+        - cmd: "DICE_QA_M4A_HARDENING=1"
+          status: pass
+        - cmd: "DICE_QA_M4A / dice / M0-M3 regression"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+
+  - id: T006
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "M4Aキャプチャの透明黒帯を除去し、共通本文を濃色化して7枚を不透明な360x640で再生成する。"
+    allowed_files:
+      - "scripts/app/main.gd"
+      - "README.md"
+      - "docs/IMPLEMENTATION_NOTES.md"
+      - "docs/reference/runtime-m4a-*.png"
+    verify:
+      - "Seven M4A captures are opaque 360x640 without unintended black bands"
+      - "boss_handoff body uses dark readable text"
+      - "E20 RUINS and E29 DUNES remain correct"
+      - "dice numbers remain readable"
+      - "52 unit, M4A20, hardening and dice QA"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Verification fails twice without a localized cause."
+    receipt:
+      result: done
+      summary: "共通bodyをINK化し、7キャプチャを描画待ち後に背景合成・RGB化して完全不透明360x640へ再生成。"
+      changed_files:
+        - "scripts/app/main.gd"
+        - "docs/IMPLEMENTATION_NOTES.md"
+        - "docs/reference/runtime-m4a-*.png"
+      commands:
+        - cmd: "Pillow capture dimensions/alpha/black row analysis"
+          status: pass
+        - cmd: "Godot 4.7 tests/run_tests.gd"
+          status: pass
+        - cmd: "M4A / hardening / dice controls QA"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      verification:
+        - "All seven captures: RGB opaque 360x640"
+        - "Unintended black rows/columns: 0"
+        - "Boss body, event body and dice numbers are dark/readable"
+
+checks:
+  dirty_fingerprint: "main@be6576a-clean-before-m4a"
+  last_verification:
+    result: pass
+    task: "M4A"
+    commands:
+      - "Godot 4.7 tests: 52 PASS"
+      - "DICE_QA_M4A: 20/20 PASS"
+      - "DICE_QA_M4A_HARDENING: PASS"
+      - "DICE_QA_STOP_ALL / EXTRA_DICE_CONTROLS: PASS"
+      - "M0-M3 sequential regression: PASS"
+      - "Judge T999 re-audit: complete"

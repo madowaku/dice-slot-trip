@@ -5,11 +5,17 @@ enum DieState { READY, ROLLING, SETTLING, LOCKED }
 
 const MAX_DICE := 5
 const VIEWPORT_SIZE := Vector2i(640, 280)
+const COMPACT_VIEWPORT_SIZE := Vector2i(320, 320)
 const DIE_BASE_Y := 0.82
 const SETTLE_DURATION := 0.18
-const IVORY := Color("#fff4dc")
-const PIP_COLOR := Color("#352b24")
+const ROLL_X_SPEED := 5.3
+const ROLL_Y_SPEED := 7.6
+const ROLL_Z_SPEED := 4.1
+const IVORY := Color("#fff6e4")
+const IVORY_EDGE := Color("#e8d2a8")
+const PIP_COLOR := Color("#2d241c")
 const GOLD := Color("#c99b43")
+const LEATHER := Color("#6f5334")
 
 var viewport: SubViewport
 var world_root: Node3D
@@ -22,19 +28,22 @@ var settle_elapsed: Array[float] = []
 var roll_elapsed: Array[float] = []
 var base_positions: Array[Vector3] = []
 var settle_start_positions: Array[Vector3] = []
-var settle_start_rotations: Array[Vector3] = []
+var settle_start_orientations: Array[Quaternion] = []
 var active_count := 0
 var next_lock_index := -1
 var animation_time := 0.0
 var surface: MeshInstance3D
-var overlay_compact := false
-var tray_surface_visible := true
-var render_enabled := true
+var tray_rim: MeshInstance3D
+@export var overlay_compact := false
+@export var compact_single := false
+@export var layout_min_height := 176.0
+@export var tray_surface_visible := true
+@export var render_enabled := true
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if not overlay_compact:
-		custom_minimum_size = Vector2(0, 176)
+		custom_minimum_size = Vector2(0, layout_min_height)
 	stretch = true
 	_build_world()
 	set_process(true)
@@ -42,7 +51,7 @@ func _ready() -> void:
 func _build_world() -> void:
 	viewport = SubViewport.new()
 	viewport.name = "DiceSubViewport"
-	viewport.size = VIEWPORT_SIZE
+	viewport.size = COMPACT_VIEWPORT_SIZE if compact_single else VIEWPORT_SIZE
 	viewport.transparent_bg = true
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS if render_enabled else SubViewport.UPDATE_DISABLED
 	add_child(viewport)
@@ -52,27 +61,63 @@ func _build_world() -> void:
 	var env := Environment.new(); env.background_mode = Environment.BG_COLOR; env.background_color = Color(0, 0, 0, 0); env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR; env.ambient_light_color = Color("#d7e0dd"); env.ambient_light_energy = 0.36
 	environment.environment = env; world_root.add_child(environment)
 
-	camera = Camera3D.new(); camera.name = "DiceCamera"; camera.fov = 30.0; camera.position = Vector3(0, 6.2, 9.8); camera.look_at_from_position(camera.position, Vector3(0, 0.42, 0)); world_root.add_child(camera)
+	camera = Camera3D.new(); camera.name = "DiceCamera"; camera.fov = 30.0
+	camera.position = Vector3(0, 5.4, 8.0) if compact_single else Vector3(0, 6.2, 9.8)
+	camera.look_at_from_position(camera.position, Vector3(0, 0.48, 0)); world_root.add_child(camera)
 	var key := DirectionalLight3D.new(); key.name = "WarmKey"; key.light_color = Color("#ffe1ad"); key.light_energy = 1.02; key.shadow_enabled = true; key.rotation_degrees = Vector3(-52, -28, 0); world_root.add_child(key)
 	var fill := OmniLight3D.new(); fill.name = "SoftFill"; fill.light_color = Color("#bcd9dc"); fill.light_energy = 0.45; fill.omni_range = 12.0; fill.position = Vector3(-4, 4, 5); world_root.add_child(fill)
 
 	var tray := MeshInstance3D.new(); tray.name = "SoftShadowTray"; surface = tray
-	var tray_mesh := PlaneMesh.new(); tray_mesh.size = Vector2(10.5, 5.4); tray.mesh = tray_mesh
-	var tray_material := StandardMaterial3D.new(); tray_material.albedo_color = Color("#806c4e"); tray_material.roughness = 0.96; tray.material_override = tray_material
+	var tray_mesh := PlaneMesh.new(); tray_mesh.size = Vector2(4.4, 4.4) if compact_single else Vector2(10.5, 5.4); tray.mesh = tray_mesh
+	var tray_material := StandardMaterial3D.new()
+	tray_material.albedo_color = LEATHER
+	tray_material.roughness = 0.92
+	tray_material.metallic = 0.04
+	tray.material_override = tray_material
 	tray.position = Vector3(0, -0.02, 0); tray.visible = tray_surface_visible; world_root.add_child(tray)
+	tray_rim = MeshInstance3D.new(); tray_rim.name = "GoldTrayRim"
+	var rim_mesh := PlaneMesh.new(); rim_mesh.size = Vector2(4.8, 4.8) if compact_single else Vector2(10.9, 5.8)
+	tray_rim.mesh = rim_mesh
+	var rim_material := StandardMaterial3D.new()
+	rim_material.albedo_color = Color(GOLD.r, GOLD.g, GOLD.b, 0.42)
+	rim_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	rim_material.metallic = 0.45
+	rim_material.roughness = 0.42
+	tray_rim.material_override = rim_material
+	tray_rim.position = Vector3(0, -0.03, 0)
+	tray_rim.visible = tray_surface_visible
+	world_root.add_child(tray_rim)
 	for index: int in range(MAX_DICE): _build_die(index)
 
 func set_tray_visible(value: bool) -> void:
 	tray_surface_visible = value
 	if is_instance_valid(surface):
 		surface.visible = value
+	if is_instance_valid(tray_rim):
+		tray_rim.visible = value
 
 func _build_die(index: int) -> void:
 	var die := Node3D.new(); die.name = "Die3D_%d" % index; die.visible = false; world_root.add_child(die)
 	var cube := MeshInstance3D.new(); cube.name = "IvoryCube"
 	var box := BoxMesh.new(); box.size = Vector3(1.42, 1.42, 1.42); cube.mesh = box
-	var material := StandardMaterial3D.new(); material.albedo_color = IVORY; material.roughness = 0.62; material.metallic = 0.02
-	cube.material_override = material; cube.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON; die.add_child(cube)
+	var material := StandardMaterial3D.new()
+	material.albedo_color = IVORY
+	material.roughness = 0.48
+	material.metallic = 0.08
+	cube.material_override = material
+	cube.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	die.add_child(cube)
+	# Subtle gold edge frame so dice read as premium ivory rather than plain cubes.
+	var edge := MeshInstance3D.new(); edge.name = "GoldEdge"
+	var edge_box := BoxMesh.new(); edge_box.size = Vector3(1.48, 1.48, 1.48); edge.mesh = edge_box
+	var edge_material := StandardMaterial3D.new()
+	edge_material.albedo_color = Color(GOLD.r, GOLD.g, GOLD.b, 0.55)
+	edge_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	edge_material.roughness = 0.35
+	edge_material.metallic = 0.65
+	edge_material.cull_mode = BaseMaterial3D.CULL_FRONT
+	edge.material_override = edge_material
+	die.add_child(edge)
 	cube_materials.append(material)
 	var pip_transforms: Array[Transform3D] = []
 	_collect_face_pips(pip_transforms, 1, Vector3.UP, Vector3.RIGHT, Vector3.BACK)
@@ -87,7 +132,7 @@ func _build_die(index: int) -> void:
 	for pip_index: int in range(pip_transforms.size()): multi.set_instance_transform(pip_index, pip_transforms[pip_index])
 	var pip_material := StandardMaterial3D.new(); pip_material.albedo_color = PIP_COLOR; pip_material.roughness = 0.78
 	pips.multimesh = multi; pips.material_override = pip_material; die.add_child(pips)
-	dice_roots.append(die); die_states.append(DieState.READY); face_values.append(1); settle_elapsed.append(SETTLE_DURATION); roll_elapsed.append(0.0); base_positions.append(Vector3.ZERO); settle_start_positions.append(Vector3.ZERO); settle_start_rotations.append(Vector3.ZERO)
+	dice_roots.append(die); die_states.append(DieState.READY); face_values.append(1); settle_elapsed.append(SETTLE_DURATION); roll_elapsed.append(0.0); base_positions.append(Vector3.ZERO); settle_start_positions.append(Vector3.ZERO); settle_start_orientations.append(Quaternion.IDENTITY)
 
 func _collect_face_pips(transforms: Array[Transform3D], value: int, normal: Vector3, horizontal: Vector3, vertical: Vector3) -> void:
 	var patterns: Array = [[], [Vector2.ZERO], [Vector2(-1, -1), Vector2(1, 1)], [Vector2(-1, -1), Vector2.ZERO, Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2.ZERO, Vector2(-1, 1), Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 0), Vector2(1, 0), Vector2(-1, 1), Vector2(1, 1)]]
@@ -95,6 +140,19 @@ func _collect_face_pips(transforms: Array[Transform3D], value: int, normal: Vect
 		var coordinate: Vector2 = patterns[value][pip_index]
 		var position := normal * 0.735 + horizontal * coordinate.x * 0.31 + vertical * coordinate.y * 0.31
 		transforms.append(Transform3D(Basis(Quaternion(Vector3.UP, normal)), position))
+
+static func face_normal(value: int) -> Vector3:
+	match clampi(value, 1, 6):
+		1: return Vector3.UP
+		2: return Vector3.BACK
+		3: return Vector3.RIGHT
+		4: return Vector3.LEFT
+		5: return Vector3.FORWARD
+		6: return Vector3.DOWN
+	return Vector3.UP
+
+static func orientation_quaternion_for_face(value: int) -> Quaternion:
+	return Quaternion(face_normal(value), Vector3.UP).normalized()
 
 static func orientation_for_face(value: int) -> Vector3:
 	match clampi(value, 1, 6):
@@ -105,6 +163,23 @@ static func orientation_for_face(value: int) -> Vector3:
 		5: return Vector3(PI * 0.5, 0, 0)
 		6: return Vector3(PI, 0, 0)
 	return Vector3.ZERO
+
+static func top_face_for_orientation(orientation: Quaternion) -> int:
+	var best_face := 1
+	var best_dot := -INF
+	for face: int in range(1, 7):
+		var dot := (orientation * face_normal(face)).dot(Vector3.UP)
+		if dot > best_dot:
+			best_dot = dot
+			best_face = face
+	return best_face
+
+static func rolling_orientation(elapsed: float, dice_index: int = 0) -> Quaternion:
+	var phase := maxf(elapsed, 0.0) + float(dice_index) * 0.037
+	var around_x := Quaternion(Vector3.RIGHT, phase * ROLL_X_SPEED)
+	var around_z := Quaternion(Vector3.BACK, phase * ROLL_Z_SPEED)
+	var around_y := Quaternion(Vector3.UP, phase * ROLL_Y_SPEED)
+	return (around_y * around_z * around_x).normalized()
 
 static func layout_for_count(count: int) -> Array[Vector3]:
 	match clampi(count, 1, 5):
@@ -138,7 +213,7 @@ func present(values: Array[int], rolling: bool, locked_count: int) -> void:
 			if die_states[index] != DieState.ROLLING: roll_elapsed[index] = 0.0
 			die_states[index] = DieState.ROLLING
 		elif die_states[index] == DieState.ROLLING:
-			die_states[index] = DieState.SETTLING; settle_elapsed[index] = 0.0; settle_start_positions[index] = die.position; settle_start_rotations[index] = die.rotation
+			die_states[index] = DieState.SETTLING; settle_elapsed[index] = 0.0; settle_start_positions[index] = die.position; settle_start_orientations[index] = die.quaternion
 		elif not rolling and die_states[index] != DieState.SETTLING:
 			die_states[index] = DieState.READY
 		cube_materials[index].emission_enabled = index == next_lock_index
@@ -153,7 +228,8 @@ func _process(delta: float) -> void:
 		match die_states[index]:
 			DieState.ROLLING:
 				roll_elapsed[index] += delta
-				die.rotation += Vector3(7.8 + index * 0.3, 9.6 + index * 0.4, 5.2) * delta
+				var roll_time := roll_elapsed[index]
+				die.quaternion = rolling_orientation(roll_time, index)
 				var throw_progress := clampf(roll_elapsed[index] / (0.78 + float(index) * 0.035), 0.0, 1.0)
 				var residual_roll := Vector3(sin(animation_time * 7.0 + index) * 0.08, absf(sin(animation_time * 9.0 + index * 0.8)) * 0.12, 0)
 				die.position = base_positions[index] + throw_offset(throw_progress, index) + residual_roll * (1.0 - throw_progress * 0.7)
@@ -161,14 +237,14 @@ func _process(delta: float) -> void:
 				settle_elapsed[index] += delta
 				var t := clampf(settle_elapsed[index] / SETTLE_DURATION, 0.0, 1.0)
 				var eased := 1.0 - pow(1.0 - t, 3.0)
-				die.rotation = settle_start_rotations[index].lerp(orientation_for_face(face_values[index]), eased) + Vector3(0, 0, sin(t * PI) * 0.12 * (1.0 - t))
+				die.quaternion = settle_start_orientations[index].slerp(orientation_quaternion_for_face(face_values[index]), eased).normalized()
 				die.position = settle_start_positions[index].lerp(base_positions[index], eased) + Vector3(0, sin(t * PI) * 0.16, 0)
 				if t >= 1.0: die_states[index] = DieState.LOCKED
 			_:
-				die.rotation = orientation_for_face(face_values[index])
+				die.quaternion = orientation_quaternion_for_face(face_values[index])
 				die.position = base_positions[index]
 		var highlighted := index == next_lock_index
-		var base_scale := 1.48 if active_count == 1 else 1.24
+		var base_scale := 1.58 if compact_single else (1.48 if active_count == 1 else 1.24)
 		die.scale = Vector3.ONE * (base_scale + 0.07 if highlighted else base_scale)
 
 func state_name(index: int) -> String:

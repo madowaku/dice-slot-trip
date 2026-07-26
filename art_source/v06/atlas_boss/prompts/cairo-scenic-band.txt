@@ -1,0 +1,11 @@
+Use case: stylized-concept.
+Asset type: production mobile game background band for Dice Slot Trip's Cairo travel board.
+Primary request: a quiet, premium watercolor-and-ink Cairo travel vignette that can sit behind a moving six-space route: low sand dunes, a distant pyramid silhouette, a small market canopy and a restrained teal river ribbon.
+Style/medium: hand-inked cartography blended with soft 2.5D miniature scenery, matching a parchment atlas; no characters, no dice, no route tiles, no numbers, no labels, no interface text, no logo, no watermark.
+Composition/framing: wide horizontal 3:1 band with a calm readable center and slightly denser landmark silhouettes near the edges, generous negative space for gameplay overlays.
+Lighting/mood: low-stimulation daylight, warm parchment, dusty teal, muted terracotta, soft gold accents; no neon and no broad glow.
+Constraints: clean game-ready raster, coherent edges, no text, no baked topology, no UI shapes.
+Avoid: photorealism, high contrast, visual noise, hard vignette, modern buildings, duplicated landmarks.
+
+Source: built-in ImageGen generation on 2026-07-19.
+Runtime use: low-alpha background band only; route topology and all labels remain runtime-drawn in Godot.

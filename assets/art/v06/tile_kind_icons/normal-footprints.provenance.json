@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "asset_id": "normal-footprints",
+  "kind": "NORMAL",
+  "runtime_path": "assets/art/v06/tile_kind_icons/normal-footprints.png",
+  "source_path": "docs/design/v08/art-source/normal-footprints-imagegen-source.png",
+  "alpha_path": "docs/design/v08/art-source/normal-footprints-alpha.png",
+  "generation": {
+    "provider": "OpenAI built-in ImageGen",
+    "model": "built-in ImageGen (model identifier not exposed)",
+    "generated_on": "2026-07-20",
+    "original_output_path": "C:/Users/hiro/.codex/generated_images/019f7302-171d-7e83-b62c-7e7b91d5009a/exec-c1bcbee9-51e5-4323-be3d-f4ece8ffb9d2.png",
+    "prompt": "Use case: ui-mockup\nAsset type: central tile-kind glyph for a premium portrait mobile board game\nPrimary request: one unmistakable walking-footprints symbol for a NORMAL route tile, showing exactly two alternating boot-print silhouettes angled gently upward, immediately readable as ordinary movement or a safe path.\nScene/backdrop: one perfectly flat solid #00ff00 chroma-key background for local alpha removal.\nSubject: two compact explorer boot prints with simple heel-and-sole shapes, bold clean silhouette, no tread detail smaller than a phone pixel.\nStyle/medium: monochrome Kenney-like board-game icon, flat near-black warm ink, even visual weight matching bold coin, campfire, skull, pouch, open-book and swirl glyphs.\nComposition/framing: one centered glyph in a square canvas with generous padding; balanced optical mass; no border, plate or tile frame.\nLighting/mood: flat graphic, no shadows, no gradients.\nColor palette: near-black warm ink subject only on uniform green key background.\nConstraints: exactly two footprints; no text, numbers, logo or watermark; no arrows; no stones; no stacked discs; no coins; no skull; no triangle; no bag; no book; no swirl; no house.\nAvoid: texture, perspective, 3D rendering, tiny tread details, multiple variants, extra objects, background variation."
+  },
+  "source": {
+    "sha256": "01be2f0a2c92d419250dec76e152a3a9621870bb82907623d64261eed2dac2e7",
+    "bytes": 945620,
+    "width": 1254,
+    "height": 1254,
+    "mode": "RGB"
+  },
+  "alpha_cleanup": {
+    "method": "remove_chroma_key.py",
+    "key_color_sampled": "#07f909",
+    "soft_matte": true,
+    "despill": true,
+    "transparent_pixels": 1430390,
+    "partially_transparent_pixels": 2951,
+    "sha256": "537d881fc45a3867fb8c9bd1b2b0334106aa86f8e40e778fe4e8c8e8ae240822",
+    "bytes": 153948,
+    "width": 1254,
+    "height": 1254,
+    "mode": "RGBA"
+  },
+  "runtime": {
+    "sha256": "b6e1310bc805ee700abb175a2a90f3cfa2b7167c383439eb8adada690534d280",
+    "bytes": 2161,
+    "width": 128,
+    "height": 128,
+    "mode": "RGBA"
+  },
+  "normalization": {
+    "method": "alpha-bounds-crop-uniform-scale-maxfilter-3-white-mask",
+    "optical_envelope": 104,
+    "canvas": [128, 128],
+    "resized_uniformly": true,
+    "cropped_to_alpha_bounds": true,
+    "color_converted_to_white_mask": true,
+    "runtime_text_or_topology_baked": false
+  },
+  "license": {
+    "type": "project-owned AI-generated asset",
+    "kenney_reference": "style reference only; not claimed as Kenney source"
+  },
+  "review": {
+    "neutral_walkable_semantics": true,
+    "exactly_two_footprints": true,
+    "no_text": true,
+    "no_logo": true,
+    "no_watermark": true,
+    "no_arrow": true,
+    "no_stones": true,
+    "no_coins": true,
+    "no_warning_or_risk_symbol": true
+  }
+}

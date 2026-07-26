@@ -1,0 +1,12 @@
+Use case: stylized-concept
+Asset type: candidate production sprite sheet for raised route tiles in a mobile 2D game
+Input images: Image 1 is a STYLE AND PALETTE REFERENCE ONLY. Use only its restrained storybook parchment/teal/brass/rust material language. Do not copy its route, numbers, UI, cat, die, gate, labels, or composition.
+Primary request: one square 2-by-2 production sheet containing exactly four isolated raised circular travel-map tile treatments, one centered tile per equal quadrant.
+Scene/backdrop: perfectly flat solid #00FF00 chroma-key background for local background removal. Exactly uniform background, no shadows, gradients, texture, reflections, floor plane, or lighting variation. Do not use #00FF00 in the tile artwork.
+Cell layout and order: top-left MAIN = warm parchment face with restrained teal rim; top-right BYPASS = warm parchment face with a rust-red rim using a clearly broken/dashed rim language; bottom-left LOOP = warm parchment face with concentric antique-brass and muted-teal ring; bottom-right CURRENT = visibly more raised warm parchment tile with a crisp muted-teal outer rim and restrained antique-gold inner accent.
+Style/medium: soft storybook gouache game sprite, shallow 2.5D painted bevel, crisp mobile silhouette, production asset rather than concept art.
+Composition/framing: four equal square cells, one tile centered in each cell, identical apparent diameter and perspective, identical common bottom-center baseline, at least 18% clear padding around each tile, no overlap, no dividers.
+Lighting/mood: diffuse daylight only; very subtle internal bevel shading; no cast shadows; no glow; no lantern or night lighting.
+Color palette: warm parchment, muted deep teal, antique brass, restrained dusty rust.
+Constraints: exactly four tiles; no text; no letters; no numbers; no icons; no pictograms; no arrows; no route line outside the tiles; no nodes; no character; no animal; no die; no UI; no watermark; no signature. Faces must remain blank.
+Avoid: jewel-like saturation, strong bloom, photoreal materials, floor shadows, labels, poster composition, decorative border around the whole sheet.

@@ -1,0 +1,11 @@
+Use case: stylized-concept
+Asset type: production transparent cartography-ink overlay for a mobile 2D travel map
+Input images: Image 1 is a STYLE AND PALETTE REFERENCE ONLY. Do not copy its composition, route, UI, text, cat, die, gate, or topology.
+Primary request: create one square sparse Cairo cartography ink layer: a gently winding Nile ribbon plus isolated hand-drawn landmark vignettes of Giza pyramids, one Cairo mosque silhouette, a small market canopy cluster, and a few palms.
+Scene/backdrop: perfectly flat solid #00FF00 chroma-key background for local background removal. The background must be exactly uniform with no shadows, gradients, paper texture, reflections, floor plane, or lighting variation.
+Style/medium: delicate antique travel-journal pen-and-wash cartography, muted blue-gray and desaturated teal ink, restrained storybook linework, production overlay rather than concept art.
+Composition/framing: square orthographic overlay, generous open space, sparse balanced landmark clusters, Nile clearly reads as water not a road. Keep all ink at least 48 pixels from every edge.
+Lighting/mood: neutral daylight ink only; no glow, no lantern light, no night vignette.
+Color palette: muted slate-blue, dusty teal, faint warm-gray linework; do not use #00FF00 in any artwork.
+Constraints: no route line; no dotted path; no dashed path; no connected gameplay trail; no nodes; no circles intended as spaces; no arrows; no numbers; no letters; no words; no labels; no EXIT; no UI; no HUD; no character; no animal; no die; no gate; no compass rose; no border; no signature; no watermark. No cast shadow. Crisp separated ink edges with generous padding.
+Avoid: dense city scene, photorealism, perspective map, parchment background, decorative typography, glyphs, seals, stamps, repeated icons.

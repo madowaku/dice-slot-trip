@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-19",
+  "mode": "built-in ImageGen edit",
+  "approved_seed": {
+    "path": "art_source/v06/explorer_cat_seed/explorer-cat-seed-192.png",
+    "sha256": "eccf84a8ca380f2c1ad662868abdce664ad866e6072a0d67b5e00173e63cb1cd"
+  },
+  "calls": [
+    {
+      "id": "idle_4",
+      "edit_canvas": "art_source/v06/explorer_cat_animations/edit-canvases/idle-edit-canvas.png",
+      "prompt": "art_source/v06/explorer_cat_animations/prompts.md#idle--4-frames",
+      "raw": "art_source/v06/explorer_cat_animations/raw/idle-raw.png",
+      "raw_dimensions": [1774, 887],
+      "raw_sha256": "66116639cc29f0b09b5b4f51c10f876694a53b0a2d46b42abcf6b9aed836113b"
+    },
+    {
+      "id": "crouch_jump_apex_6",
+      "edit_canvas": "art_source/v06/explorer_cat_animations/edit-canvases/jump-edit-canvas.png",
+      "prompt": "art_source/v06/explorer_cat_animations/prompts.md#crouch--jump--apex--6-frames",
+      "raw": "art_source/v06/explorer_cat_animations/raw/jump-raw.png",
+      "raw_dimensions": [2172, 724],
+      "raw_sha256": "68157195d85c96ecdc043e61d1049a9a7b8517c55b853506412f21cc23563a96"
+    },
+    {
+      "id": "land_4",
+      "edit_canvas": "art_source/v06/explorer_cat_animations/edit-canvases/land-edit-canvas.png",
+      "prompt": "art_source/v06/explorer_cat_animations/prompts.md#land--4-frames",
+      "raw": "art_source/v06/explorer_cat_animations/raw/land-raw.png",
+      "raw_dimensions": [2172, 724],
+      "raw_sha256": "8d578d075481688a82789d6a917ecdb720b89d927fcb779cfc340bd35164dab9"
+    }
+  ],
+  "postprocess": {
+    "background_removal": "installed imagegen remove_chroma_key.py; auto-key border; soft matte; despill; edge-contract 1",
+    "normalization": "game-studio normalize_sprite_strip.py intermediate, followed by build-production-strips.py cross-strip canonical height and anchor pass",
+    "frame_size": [192, 192],
+    "anchor": [96, 179]
+  }
+}

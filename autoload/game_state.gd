@@ -84,6 +84,8 @@ var pending_dice_rewards: Array[Dictionary] = []
 var temporary_roll_dice_count: int = 0
 var dice_slot_chain_count: int = 0
 var last_roll_dice_count: int = 0
+## Three-roll travel readout. Each entry is one completed roll's movement value.
+var travel_roll_slots: Array[int] = []
 var master_volume: float = 1.0
 var se_volume: float = 1.0
 var dice_se_muted: bool = false
@@ -196,6 +198,21 @@ func apply_dice_roll_transition(rolled_dice_count: int, roles: Dictionary) -> Di
 	dice_slot_chain_count = dice_slot_chain_count + 1 if bool(transition.get("slot_continues", false)) else 0
 	return transition
 
+func commit_travel_roll_slot(values: Array[int]) -> bool:
+	if not roll_transaction.is_empty() and bool(roll_transaction.get("travel_roll_slot_committed", false)):
+		return false
+	var total := 0
+	for value: int in values:
+		total += clampi(value, 1, 6)
+	if total <= 0:
+		return false
+	if travel_roll_slots.size() >= 3:
+		travel_roll_slots.clear()
+	travel_roll_slots.append(total)
+	if not roll_transaction.is_empty():
+		roll_transaction["travel_roll_slot_committed"] = true
+	return true
+
 func reset_run() -> void:
 	set_route_position(BoardModelScript.ROUTE_MAIN, 0)
 	pending_route_choice.clear()
@@ -236,6 +253,7 @@ func reset_run() -> void:
 	temporary_roll_dice_count = 0
 	dice_slot_chain_count = 0
 	last_roll_dice_count = 0
+	travel_roll_slots.clear()
 	current_lap_bonus = 0
 	current_lap_roll_count = 0
 	current_lap_clean = true
@@ -625,6 +643,7 @@ func to_dictionary() -> Dictionary:
 		,"temporary_roll_dice_count": temporary_roll_dice_count
 		,"dice_slot_chain_count": dice_slot_chain_count
 		,"last_roll_dice_count": last_roll_dice_count
+		,"travel_roll_slots": travel_roll_slots.duplicate()
 		,"master_volume": clampf(master_volume, 0.0, 1.0)
 		,"se_volume": clampf(se_volume, 0.0, 1.0)
 		,"dice_se_muted": dice_se_muted
@@ -756,6 +775,13 @@ func apply_dictionary(data: Dictionary) -> void:
 	temporary_roll_dice_count = maxi(0, int(data.get("temporary_roll_dice_count", 0))) if save_version >= 5 else 0
 	dice_slot_chain_count = maxi(0, int(data.get("dice_slot_chain_count", 0))) if save_version >= 5 else 0
 	last_roll_dice_count = maxi(0, int(data.get("last_roll_dice_count", 0))) if save_version >= 5 else 0
+	travel_roll_slots.clear()
+	for raw_value: Variant in data.get("travel_roll_slots", []):
+		if travel_roll_slots.size() >= 3:
+			break
+		var loaded_value := int(raw_value)
+		if loaded_value > 0:
+			travel_roll_slots.append(loaded_value)
 	master_volume = clampf(float(data.get("master_volume", 1.0)), 0.0, 1.0)
 	se_volume = clampf(float(data.get("se_volume", 1.0)), 0.0, 1.0)
 	dice_se_muted = bool(data.get("dice_se_muted", false))

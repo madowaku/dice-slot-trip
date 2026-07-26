@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "approved_seed": "art_source/v06/explorer_cat_seed/explorer-cat-seed-192.png",
+  "approved_seed_sha256": "eccf84a8ca380f2c1ad662868abdce664ad866e6072a0d67b5e00173e63cb1cd",
+  "frame_size": [
+    192,
+    192
+  ],
+  "anchor": [
+    96,
+    179
+  ],
+  "anchor_kind": "bottom_center_feet",
+  "canonical_content_height": 172,
+  "canonical_visual_feet_center_x": 98.5,
+  "alpha_threshold": 8,
+  "strips": {
+    "idle": {
+      "source": "art_source/v06/explorer_cat_animations/matte/idle-matte.png",
+      "source_sha256": "36b9b41e04880b9c0fbfcbbdb13a16a1829faad02d76234247314adb0e873884",
+      "frame_count": 4,
+      "source_to_output_scale": 0.377192982,
+      "reference_frame": 1,
+      "review_frames": "art_source/v06/explorer_cat_animations/production-frames/idle",
+      "frames": [
+        {
+          "index": 1,
+          "beat": "idle",
+          "bbox": [
+            26,
+            8,
+            140,
+            180
+          ],
+          "locked_to_seed": true,
+          "sha256": "706e98a5fd088cb3a5f575fd2afc8dc10378619a587d240ad2a8ed2745fdeec8"
+        },
+        {
+          "index": 2,
+          "beat": "breath",
+          "bbox": [
+            26,
+            6,
+            141,
+            180
+          ],
+          "locked_to_seed": false,
+          "sha256": "fe954c6a80295be12001e14e2c9284e92eb75f7d5d9130282f5db0f8cdfed1fc"
+        },
+        {
+          "index": 3,
+          "beat": "blink",
+          "bbox": [
+            27,
+            8,
+            140,
+            180
+          ],
+          "locked_to_seed": false,
+          "sha256": "ff01b29b047762ae18fdc8fbbcdef9716c8ee44370e1e6beef529f999f08536f"
+        },
+        {
+          "index": 4,
+          "beat": "settle",
+          "bbox": [
+            26,
+            8,
+            140,
+            180
+          ],
+          "locked_to_seed": false,
+          "sha256": "0ca3953750c6ea40ac592f02f9730c68fee375062068b596c4b9f5fb76270edc"
+        }
+      ],
+      "strip": "assets/art/v06/characters/explorer_cat/explorer-cat-idle-strip.png",
+      "strip_sha256": "db440a88f39ad68e9f66261b3eecfc0963062d0568da1bda485eb6503f077111"
+    },
+    "jump": {
+      "source": "art_source/v06/explorer_cat_animations/matte/jump-matte.png",
+      "source_sha256": "a8c8f234ea50ef05cc8b63b6ec6c05101ba60c91104b4e0b24ebae2fa6eb666c",
+      "frame_count": 6,
+      "source_to_output_scale": 0.50887574,
+      "reference_frame": 1,
+      "review_frames": "art_source/v06/explorer_cat_animations/production-frames/jump",
+      "frames": [
+        {
+          "index": 1,
+          "beat": "idle",
+          "bbox": [
+            26,
+            8,
+            140,
+            180
+          ],
+          "locked_to_seed": true,
+          "sha256": "706e98a5fd088cb3a5f575fd2afc8dc10378619a587d240ad2a8ed2745fdeec8"
+        },
+        {
+          "index": 2,
+          "beat": "crouch",
+          "bbox": [
+            30,
+            30,
+            150,
+            180
+          ],
+          "locked_to_seed": false,
+          "sha256": "440af963553debe6f587345a7b6569863e3376cd3ceacfc75c0800aeb8048aeb"
+        },
+        {
+          "index": 3,
+          "beat": "deep_crouch",
+          "bbox": [
+            27,
+            40,
+            154,
+            180
+          ],
+          "locked_to_seed": false,
+          "sha256": "de9a0bebc901d6574f0828b3e2085916329dcfdf693d864284b7d580ed4faf66"
+        },
+        {
+          "index": 4,
+          "beat": "takeoff",
+          "bbox": [
+            32,
+            21,
+            149,
+            180
+          ],
+          "locked_to_seed": false,
+          "sha256": "e6990b0e1d0485f4853d6793dee1399b94728b244b432ff3ad86e16b6aa00460"
+        },
+        {
+          "index": 5,
+          "beat": "rise",
+          "bbox": [
+            30,
+            19,
+            146,
+            180
+          ],
+          "locked_to_seed": false,
+          "sha256": "0486505442dcd5d2135824315e449dd3eb893215a6b3c57bcd9dd864865816a2"
+        },
+        {
+          "index": 6,
+          "beat": "apex",
+          "bbox": [
+            30,
+            22,
+            146,
+            180
+          ],
+          "locked_to_seed": false,
+          "sha256": "8f9568a8ac35a4c7cb12e4872b67e1560c9956a2140ef4ff4fc819b22253b4cd"
+        }
+      ],
+      "strip": "assets/art/v06/characters/explorer_cat/explorer-cat-jump-strip.png",
+      "strip_sha256": "9ae1270bd75dba9664d2b055db33adadfc3f3d10c19867e9047ef1aaafbadd95"
+    },
+    "land": {
+      "source": "art_source/v06/explorer_cat_animations/matte/land-matte.png",
+      "source_sha256": "bbd6ee22662b2b40703550da0f14643993f223b0e159ebecc3971e8cc81c396a",
+      "frame_count": 4,
+      "source_to_output_scale": 0.403755869,
+      "reference_frame": 4,
+      "review_frames": "art_source/v06/explorer_cat_animations/production-frames/land",
+      "frames": [
+        {
+          "index": 1,
+          "beat": "descent",
+          "bbox": [
+            27,
+            6,
+            148,
+            180
+          ],
+          "locked_to_seed": false,
+          "sha256": "9489c922e77f646fc5c4ce1b37d972c2f28063eedc783d30ff0d09f7a27cd69d"
+        },
+        {
+          "index": 2,
+          "beat": "contact",
+          "bbox": [
+            24,
+            8,
+            142,
+            180
+          ],
+          "locked_to_seed": false,
+          "sha256": "90745356f13429892d1958a738fa17e2fb6006594b5330d7d2d65403a1fdd190"
+        },
+        {
+          "index": 3,
+          "beat": "compression",
+          "bbox": [
+            39,
+            25,
+            162,
+            180
+          ],
+          "locked_to_seed": false,
+          "sha256": "ad36309c9681af570ac03ba043fc498c8ef3c686855a297dd64b16df068f0885"
+        },
+        {
+          "index": 4,
+          "beat": "idle",
+          "bbox": [
+            26,
+            8,
+            140,
+            180
+          ],
+          "locked_to_seed": true,
+          "sha256": "706e98a5fd088cb3a5f575fd2afc8dc10378619a587d240ad2a8ed2745fdeec8"
+        }
+      ],
+      "strip": "assets/art/v06/characters/explorer_cat/explorer-cat-land-strip.png",
+      "strip_sha256": "2815ed15652fd22526f72789a2c6ac185bf10824c11dc77be949421b54fadea9"
+    }
+  },
+  "generation_call_count": 3,
+  "prompt_path": "art_source/v06/explorer_cat_animations/prompts.md",
+  "provenance_path": "art_source/v06/explorer_cat_animations/provenance.json",
+  "budgets": {
+    "runtime_png_source_bytes": 543251,
+    "runtime_png_source_limit_bytes": 1048576,
+    "runtime_decoded_bytes": 2064384,
+    "runtime_decoded_limit_bytes": 3145728
+  },
+  "content_review": {
+    "same_character_identity": true,
+    "face_readable_at_192px": true,
+    "stable_hat_scarf_backpack_and_tail": true,
+    "low_stimulation_motion": true,
+    "no_text_scenery_ui_or_shadow": true
+  }
+}

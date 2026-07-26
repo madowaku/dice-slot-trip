@@ -1,0 +1,13 @@
+Use case: stylized-concept
+Asset type: candidate production two-state boss-gate sprite sheet for a mobile 2D game
+Input images: Image 1 is a STYLE AND PALETTE REFERENCE ONLY. Use only its storybook Egyptian travel-journal material language. Do not copy its route, UI, text, cat, die, labels, or composition.
+Primary request: one square production sheet with exactly two isolated versions of the same compact Egyptian boss gate, left and right, sharing an identical architectural silhouette and bottom-center anchor.
+Scene/backdrop: perfectly flat solid #00FF00 chroma-key background for local background removal. Exactly uniform background, no shadows, gradients, texture, floor plane, reflections, or lighting variation. Do not use #00FF00 anywhere in the gate artwork.
+State layout: LEFT = sleeping/unlit state, closed arched doorway, muted sandstone, antique brass, restrained teal inlay, dark interior, no emitted light. RIGHT = awakened state of the identical gate and silhouette, same closed architecture and proportions, warm antique-gold illumination contained inside its doorway and carved inlays, restrained and readable, no broad scene lighting.
+Subject: compact symmetrical Egyptian arched gate with two short sandstone pylons and a simple feline/sphinx relief crown; no creature, no statue figures, no letters, no hieroglyph-like glyphs.
+Style/medium: soft storybook gouache game sprite, crisp mobile silhouette, shallow painted depth, production asset rather than concept art.
+Composition/framing: two equal vertical half-canvas cells, one gate centered per cell, same scale, same perspective, same bottom baseline, at least 12% padding, no overlap, no dividers.
+Lighting/mood: left diffuse daylight and unlit; right internal warm-gold awakening only. No external cast shadow, no ground plane, no lanterns, no night vignette.
+Color palette: warm sandstone, muted deep teal, antique brass; awakened accents in restrained amber-gold.
+Constraints: exactly two gate states; no text; no letters; no numbers; no labels; no route; no nodes; no UI; no character; no animal; no die; no watermark; no signature; no poster framing.
+Avoid: different silhouettes between states, open portal scenery, fire, lightning, neon, strong bloom, photorealism, floor shadow, decorative sheet border.
