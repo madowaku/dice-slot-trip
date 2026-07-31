@@ -181,7 +181,12 @@ func _test_hp_zero_boss_restore() -> void:
 	var restored: RefCounted = Session.new()
 	_expect(restored.restore_stable_snapshot(dto.session_state, 10) and restored.phase() == Session.PHASE_BOSS_ROLL_READY and restored.player_hp() == 0, "HP-zero boss start restores without healing")
 	_expect(restored.start_roll(6, 11).ok and restored.phase() == Session.PHASE_BOSS_ROUND_RESULT, "HP-zero boss accepts a complete mirror-race turn")
-	_expect(restored.acknowledge_boss_round() and restored.start_roll(6, 12).ok and restored.boss_result().victory, "HP does not replace the position-based mirror-race result")
+	_expect(restored.acknowledge_boss_round(), "HP-zero first boss turn acknowledges")
+	for now: int in [12, 13, 14]:
+		_expect(restored.start_roll(6, now).ok, "HP-zero high mirror roll %d resolves" % now)
+		if restored.phase() != Session.PHASE_BOSS_FINISHED:
+			_expect(restored.acknowledge_boss_round(), "HP-zero high mirror roll %d acknowledges" % now)
+	_expect(restored.boss_result().victory, "HP does not replace the position-based mirror-race result")
 	_expect(restored.acknowledge_boss_round() and restored.phase() == Session.PHASE_LAP_RESULT and restored.player_hp() == 0, "HP-zero race result completes without healing or RUN_OVER")
 	var terminal_dto: Dictionary = SaveData.from_session(restored)
 	var terminal: RefCounted = Session.new()

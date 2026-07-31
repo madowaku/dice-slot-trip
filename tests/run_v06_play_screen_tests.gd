@@ -126,7 +126,7 @@ func _run() -> void:
 			qa_screen.session_for_test().restart()
 			(qa_screen.get_node("%AtlasView") as Control).set_route_position(qa_screen.session_for_test().position(), true)
 			qa_screen.call("_refresh_ui")
-	_test_third_slot_boss_overlay_order(qa_screen)
+	await _test_third_slot_boss_overlay_order(qa_screen)
 	OS.set_environment("DICE_QA_V06_SCENARIO", "")
 	qa_viewport.queue_free()
 	await process_frame
@@ -460,6 +460,8 @@ func _test_third_slot_boss_overlay_order(screen: Control) -> void:
 	var resolution := screen.get_node("%ResolutionOverlay") as Control
 	var boss := screen.get_node("%BossOverlay") as Control
 	_expect(not resolution.visible and session.phase() == SessionScript.PHASE_BOSS_GATE and session.faces().is_empty(), "travel role auto-acknowledges without a resolution modal")
+	await create_timer(0.9).timeout
+	screen.call("_refresh_ui")
 	_expect(boss.visible and not (screen.get_node("%DieButton") as Button).disabled and session.faces().is_empty(), "boss result remains modal-capable after the nonmodal travel role")
 
 

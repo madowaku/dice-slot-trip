@@ -9,15 +9,35 @@ const V06SessionSaveManagerScript = preload("res://scripts/game/v06_session_save
 const V06CourseModelScript = preload("res://scripts/game/v06_course_model.gd")
 const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 const UiThemeNamesScript = preload("res://scripts/ui/ui_theme_names.gd")
+const V11BossLaneBoardScript = preload("res://scripts/ui/v11_boss_lane_board.gd")
 const ITEM_CARD: Texture2D = preload("res://assets/art/v08/cards/item-card.png")
 const SKILL_CARD: Texture2D = preload("res://assets/art/v08/cards/skill-card.png")
+const WING_GATE_PICTOGRAM: Texture2D = preload("res://assets/art/v10/boss/wing-gate.png")
+const QUICKSAND_PICTOGRAM: Texture2D = preload("res://assets/art/v10/boss/quicksand.png")
 
 const QA_SCENARIO_ATLAS_18 := "atlas_18"
 const QA_SCENARIO_BOSS_READY := "boss_ready"
+const QA_SCENARIO_BOSS_ROUND := "boss_round"
 const SLOT_BREATH_PERIOD_SECONDS := 2.0
 const SLOT_BREATH_ALPHA_AMPLITUDE := 0.025
 const TARGET_PREVIEW_SECONDS := 0.20
 const SLOT_STOP_DELAY_SECONDS := 0.12
+const BOSS_DICE_SETTLE_SECONDS := 0.14
+const BOSS_YOU_REVEAL_SECONDS := 0.14
+const BOSS_SPHINX_REVEAL_SECONDS := 0.26
+const BOSS_SLOT_TRANSFER_SECONDS := 0.12
+const BOSS_CHARGE_SECONDS := 0.08
+const BOSS_EFFECT_SECONDS := 0.18
+const BOSS_STEP_SECONDS := 0.20
+const BOSS_GOAL_GATE_SECONDS := 0.34
+const BOSS_INTRO_SECONDS := 0.82
+const BOSS_REPEAT_INTRO_SECONDS := 0.42
+const BOSS_DICE_EXPLAIN_SCALE := Vector2(1.22, 1.22)
+const BOSS_DICE_REST_Y := 850.0
+const BOSS_DICE_STOP_Y := 828.0
+const BOSS_CAMERA_SCROLL_SECONDS := 0.42
+const BOSS_CAMERA_HOLD_SECONDS := 0.12
+const BOSS_BACKDROP_FADE_SECONDS := 0.28
 const ROLLING_SLOT_STEP_SECONDS := 0.06
 const INLINE_SLOT_RESULT_SECONDS := 0.46
 const DICE_ANCHOR_NORMAL := Vector2(0.45, 0.82)
@@ -49,6 +69,7 @@ const SLOT_RESULT_STRONG_GLOW := Color(1.75, 1.68, 1.42, 1.0)
 @onready var slot_labels: Array[Label] = [%Slot0, %Slot1, %Slot2]
 @onready var pair_link: Line2D = %PairLink
 @onready var dice_presentation: DicePresentation3D = %DicePresentation
+@onready var boss_dice_presentation: DicePresentation3D = %BossDicePresentation
 @onready var die_button: Button = %DieButton
 @onready var tray_hint_label: Label = %TrayHintLabel
 @onready var back_button: Button = %BackButton
@@ -72,6 +93,10 @@ const SLOT_RESULT_STRONG_GLOW := Color(1.75, 1.68, 1.42, 1.0)
 @onready var resolution_detail: Label = %ResolutionDetail
 @onready var resolution_ack_button: Button = %ResolutionAckButton
 @onready var boss_overlay: Control = %BossOverlay
+@onready var boss_hud: PanelContainer = %BossHud
+@onready var boss_you_progress_label: Label = %BossYouProgressLabel
+@onready var boss_sphinx_progress_label: Label = %BossSphinxProgressLabel
+@onready var boss_pause_button: Button = %BossPauseButton
 @onready var boss_title: Label = %BossTitle
 @onready var boss_hp_label: Label = %BossHPLabel
 @onready var boss_race_track_label: Label = %BossRaceTrackLabel
@@ -81,6 +106,44 @@ const SLOT_RESULT_STRONG_GLOW := Color(1.75, 1.68, 1.42, 1.0)
 @onready var next_lap_button: Button = %NextLapButton
 @onready var retry_button: Button = %RetryButton
 @onready var boss_back_button: Button = %BossBackButton
+@onready var boss_panel: PanelContainer = %BossPanel
+@onready var boss_start_rule_panel: PanelContainer = %BossStartRulePanel
+@onready var boss_quick_rule_panel: PanelContainer = %BossQuickRulePanel
+@onready var mirror_panel: PanelContainer = %MirrorPanel
+@onready var boss_arena_backdrop: TextureRect = %BossArenaBackdrop
+@onready var boss_arena_backdrop_next: TextureRect = %BossArenaBackdropNext
+@onready var race_stage: Control = %RaceStage
+@onready var boss_lane_board: Control = %BossLaneBoard
+@onready var golden_gate_sprite: TextureRect = %GoldenGateSprite
+@onready var boss_dice_owner_label: Label = %BossDiceOwnerLabel
+@onready var boss_finish_dim: ColorRect = %BossFinishDim
+@onready var boss_finish_summary_label: Label = %BossFinishSummaryLabel
+@onready var player_track: ProgressBar = %PlayerTrack
+@onready var boss_track: ProgressBar = %BossTrack
+@onready var player_token: TextureRect = %PlayerToken
+@onready var boss_token: TextureRect = %BossToken
+@onready var player_foot_marker: PanelContainer = %PlayerFootMarker
+@onready var boss_foot_marker: PanelContainer = %BossFootMarker
+@onready var player_roll_value: Label = %PlayerRollValue
+@onready var boss_roll_value: Label = %BossRollValue
+@onready var boss_forward_step_labels: Array[Label] = [%BossForwardStep1, %BossForwardStep2, %BossForwardStep3, %BossForwardStep4, %BossForwardStep5, %BossForwardStep6]
+@onready var boss_player_target_label: Label = %BossPlayerTargetLabel
+@onready var boss_sphinx_target_label: Label = %BossSphinxTargetLabel
+@onready var player_landing_ring: PanelContainer = %PlayerLandingRing
+@onready var boss_landing_ring: PanelContainer = %BossLandingRing
+@onready var player_landing_ring_value: Label = %PlayerLandingRing/Value
+@onready var boss_landing_ring_value: Label = %BossLandingRing/Value
+@onready var player_state_badge: TextureRect = %PlayerStateBadge
+@onready var player_state_badge_value: Label = %PlayerStateBadge/Value
+@onready var boss_state_badge: TextureRect = %BossStateBadge
+@onready var boss_state_badge_value: Label = %BossStateBadge/Value
+@onready var boost_pictogram: TextureRect = %BoostPictogram
+@onready var sand_pictogram: TextureRect = %SandPictogram
+@onready var boss_pause_overlay: Control = %BossPauseOverlay
+@onready var boss_resume_button: Button = %BossResumeButton
+@onready var normal_hud_panel: PanelContainer = %HudPanel
+@onready var normal_stage_band: PanelContainer = %StageBand
+@onready var normal_tool_dock: PanelContainer = %ToolDock
 
 var _session: RefCounted
 var _rng := RandomNumberGenerator.new()
@@ -110,6 +173,24 @@ var _start_character_id: StringName = V06PlaySessionScript.DEFAULT_CHARACTER_ID
 var _save_manager: RefCounted
 var _save_enabled := false
 var _resume_data: Dictionary = {}
+var _boss_last_player_position := -1
+var _boss_last_position := -1
+var _boss_last_revealed_turn := -1
+var _boss_pause_open := false
+var _boss_roll_animation_active := false
+var _boss_roll_sequence_id := 0
+var _boss_intro_active := false
+var _boss_intro_complete := false
+var _boss_finished_saved_turn := -1
+var _boss_mirror_reveal_tween: Tween
+var _boss_mirror_values_visible := false
+var _boss_camera_tween: Tween
+var _boss_background_phase := -1
+var _boss_backdrop_active := 0
+var _boss_goal_presentation_active := false
+var _stage_intro_active := false
+var _boss_visual_player_position := 0.0
+var _boss_visual_sphinx_position := 0.0
 
 
 func configure_start_context(stage_id: StringName, character_id: StringName) -> void:
@@ -149,9 +230,11 @@ func _ready() -> void:
 	overview_atlas_view.set_route_position(_session.position(), true)
 	overview_atlas_view.set_overview_mode(false)
 	_refresh_ui()
-	if qa_scenario == QA_SCENARIO_BOSS_READY and _session.enter_boss(Time.get_ticks_msec()):
+	if qa_scenario in [QA_SCENARIO_BOSS_READY, QA_SCENARIO_BOSS_ROUND] and _session.enter_boss(Time.get_ticks_msec()):
 		_present_session_phase()
 		_refresh_ui()
+		if qa_scenario == QA_SCENARIO_BOSS_ROUND:
+			call_deferred("_run_face", 2)
 	if restored:
 		_present_session_phase()
 	elif not resume_requested:
@@ -175,6 +258,10 @@ func _process(delta: float) -> void:
 	if _rolling:
 		_rolling_slot_elapsed += delta
 		_refresh_rolling_slot_preview()
+		if _session != null and _session.phase() == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
+			_refresh_boss_landing_preview(_rolling_slot_face)
+	if is_instance_valid(boss_lane_board) and boss_overlay.visible:
+		_sync_boss_board_tokens()
 	_clock_refresh_elapsed += delta
 	if _clock_refresh_elapsed >= 0.1:
 		_clock_refresh_elapsed = 0.0
@@ -208,16 +295,47 @@ func _notification(what: int) -> void:
 
 func _exit_tree() -> void:
 	_motion_generation += 1
+	_boss_roll_sequence_id += 1
+	if _boss_camera_tween != null:
+		_boss_camera_tween.kill()
 	if is_instance_valid(atlas_view):
 		atlas_view.cancel_visual_motion()
 
 
 func _cancel_motion(route_position := {}) -> void:
 	_motion_generation += 1
+	_stage_intro_active = false
+	_boss_roll_sequence_id += 1
+	if _boss_camera_tween != null:
+		_boss_camera_tween.kill()
+		_boss_camera_tween = null
 	_rolling = false
 	_slot_settling = false
 	_movement_active = false
+	_boss_roll_animation_active = false
+	_boss_intro_active = false
+	_boss_intro_complete = false
+	_boss_mirror_values_visible = false
+	_boss_goal_presentation_active = false
+	_boss_finished_saved_turn = -1
+	boss_finish_dim.hide()
+	boss_finish_dim.modulate.a = 1.0
+	boss_finish_summary_label.hide()
+	boss_result_label.hide()
+	for token: Control in [player_token, boss_token]:
+		token.show()
+		token.z_index = 5
+		token.scale = Vector2.ONE
+	for marker: Control in [player_foot_marker, boss_foot_marker]:
+		marker.show()
+	boss_dice_presentation.scale = Vector2.ONE
+	boss_dice_presentation.position.y = BOSS_DICE_REST_Y
+	boss_dice_owner_label.hide()
+	if _boss_mirror_reveal_tween != null:
+		_boss_mirror_reveal_tween.kill()
+		_boss_mirror_reveal_tween = null
 	_reset_inline_slot_result()
+	_reset_slot_preview_style()
 	if is_instance_valid(atlas_view):
 		atlas_view.cancel_visual_motion(route_position)
 		atlas_view.clear_roll_preview()
@@ -279,6 +397,8 @@ func _wire_controls() -> void:
 	boss_round_ack_button.pressed.connect(_on_boss_round_acknowledged)
 	next_lap_button.pressed.connect(_on_next_lap_requested)
 	retry_button.pressed.connect(_on_replay_requested)
+	boss_pause_button.pressed.connect(_on_boss_pause_pressed)
+	boss_resume_button.pressed.connect(_on_boss_resume_pressed)
 	boss_back_button.pressed.connect(_request_back)
 
 
@@ -299,6 +419,14 @@ func _set_button_pressed(button: Button, pressed: bool) -> void:
 
 
 func _on_die_pressed() -> void:
+	if _boss_intro_active or _session == null or _session.phase() == V06PlaySessionScript.PHASE_BOSS_FINISHED:
+		return
+	if _session != null and _session.phase() == V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT:
+		if _session.acknowledge_boss_round():
+			_refresh_ui()
+			_present_session_phase()
+			_start_roll()
+		return
 	if _rolling:
 		_stop_roll()
 	elif not _movement_active and _session.can_roll():
@@ -306,8 +434,15 @@ func _on_die_pressed() -> void:
 
 
 func _start_roll() -> void:
+	if _session == null or _boss_intro_active or not _session.can_roll():
+		return
+	if _session != null and _session.phase() == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
+		_boss_roll_sequence_id += 1
+		_clear_boss_state_badges()
+		boss_dice_presentation.position.y = BOSS_DICE_REST_Y
 	atlas_view.clear_roll_preview()
 	_rolling = true
+	_boss_mirror_values_visible = false
 	_slot_settling = false
 	_rolling_slot_elapsed = 0.0
 	_rolling_slot_face = 1
@@ -315,16 +450,29 @@ func _start_roll() -> void:
 	message_label.show()
 	_refresh_ui()
 	_refresh_rolling_slot_preview()
+	if _session.phase() == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
+		boss_dice_owner_label.hide()
+		boss_dice_presentation.scale = Vector2.ONE
+		boss_dice_presentation.present([_rolling_slot_face], true, 0)
+		_refresh_boss_landing_preview(_rolling_slot_face)
 
 
 func _stop_roll() -> void:
-	if not _rolling:
+	if not _rolling or _boss_intro_active or _session == null or not _session.can_roll():
 		return
 	_rolling = false
 	_slot_settling = true
 	_movement_active = _session.can_roll()
 	var face := _rng.randi_range(1, 6)
 	_shown_face = face
+	if _session.phase() == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
+		boss_dice_presentation.present([face], false, 1)
+		boss_dice_presentation.pivot_offset = boss_dice_presentation.size * 0.5
+		boss_dice_presentation.scale = BOSS_DICE_EXPLAIN_SCALE
+		boss_dice_presentation.position.y = BOSS_DICE_STOP_Y
+		boss_dice_owner_label.text = "YOU"
+		boss_dice_owner_label.add_theme_color_override("font_color", Color("#f0c76a"))
+		boss_dice_owner_label.show()
 	_refresh_ui()
 	_run_face(face)
 
@@ -333,10 +481,19 @@ func _run_face(face: int) -> void:
 	var pre_roll_phase: StringName = _session.phase()
 	var pre_roll_position: Dictionary = _session.position()
 	var motion_generation := _motion_generation
+	var roll_sequence_id := _boss_roll_sequence_id
+	if pre_roll_phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
+		# QA hooks and keyboard/controller callers may enter through this method;
+		# once an actual face is being resolved, the intro gate is over.
+		_boss_intro_active = false
+		_boss_intro_complete = true
 	_movement_active = pre_roll_phase == V06PlaySessionScript.PHASE_READY
 	if _slot_settling:
-		await get_tree().create_timer(SLOT_STOP_DELAY_SECONDS).timeout
+		var settle_seconds := BOSS_DICE_SETTLE_SECONDS if pre_roll_phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY else SLOT_STOP_DELAY_SECONDS
+		await get_tree().create_timer(settle_seconds).timeout
 		if motion_generation != _motion_generation:
+			return
+		if pre_roll_phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY and roll_sequence_id != _boss_roll_sequence_id:
 			return
 		_slot_settling = false
 	var started: Dictionary = _session.start_roll(face, Time.get_ticks_msec())
@@ -349,11 +506,36 @@ func _run_face(face: int) -> void:
 	if pre_roll_phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
 		_shown_face = 0
 		var race_result: Dictionary = _session.boss_result()
+		if bool(race_result.get("victory", false)) or bool(race_result.get("defeat", false)):
+			# A terminal result invalidates every older await immediately. The
+			# final presentation below gets a fresh id and can finish once.
+			_boss_roll_sequence_id += 1
+			roll_sequence_id = _boss_roll_sequence_id
+			if _boss_mirror_reveal_tween != null:
+				_boss_mirror_reveal_tween.kill()
+				_boss_mirror_reveal_tween = null
+		_boss_roll_animation_active = true
 		message_label.text = "PLAYER %d / SPHINX %d" % [face, int(race_result.get("boss_roll", 7 - face))]
 		_refresh_ui()
 		_present_session_phase()
-		if _session.is_stable_for_save():
+		var sequence_completed := await _play_boss_roll_sequence(race_result, roll_sequence_id)
+		if not sequence_completed or roll_sequence_id != _boss_roll_sequence_id:
+			return
+		_boss_roll_animation_active = false
+		_rolling = false
+		_slot_settling = false
+		_movement_active = false
+		_refresh_ui()
+		_present_session_phase()
+		if _session.phase() == V06PlaySessionScript.PHASE_BOSS_FINISHED:
+			var finished_turn := int(race_result.get("turn", -1))
+			if _boss_finished_saved_turn != finished_turn:
+				_boss_finished_saved_turn = finished_turn
+				if _session.is_stable_for_save():
+					_save_stable_checkpoint()
+		elif _session.is_stable_for_save():
 			_save_stable_checkpoint()
+		_boss_roll_sequence_id += 1
 		return
 	var move_distance: int = _session.pending_move_distance()
 	message_label.text = "%dマス進む" % move_distance if move_distance == face else "出目%d・移動%d（低下中）" % [face, move_distance]
@@ -371,6 +553,206 @@ func _run_face(face: int) -> void:
 			return
 	atlas_view.release_roll_preview()
 	await _animate_pending_movement(motion_generation)
+
+
+func _play_boss_roll_sequence(result: Dictionary, sequence_id: int) -> bool:
+	var player_roll := int(result.get("player_roll", 0))
+	var boss_roll := int(result.get("boss_roll", 7 - player_roll))
+	var slot_index := clampi(_session.faces().size() - 1, 0, slot_labels.size() - 1)
+	_clear_boss_state_badges()
+	_boss_mirror_values_visible = false
+	mirror_panel.hide()
+	boss_dice_presentation.present([player_roll], false, 1)
+	boss_dice_presentation.pivot_offset = boss_dice_presentation.size * 0.5
+	boss_dice_presentation.scale = BOSS_DICE_EXPLAIN_SCALE
+	boss_dice_presentation.position.y = BOSS_DICE_STOP_Y
+	boss_dice_owner_label.text = "YOU"
+	boss_dice_owner_label.add_theme_color_override("font_color", Color("#f0c76a"))
+	boss_dice_owner_label.show()
+	if slot_index >= 0 and slot_index < slot_labels.size():
+		slot_labels[slot_index].text = "—"
+	if not await _boss_roll_wait(BOSS_YOU_REVEAL_SECONDS, sequence_id): return false
+	_reveal_boss_value(player_roll_value, str(player_roll))
+	boss_dice_presentation.flip_to_face(boss_roll)
+	if not await _boss_roll_wait(0.10, sequence_id): return false
+	boss_dice_owner_label.text = "SPHINX"
+	boss_dice_owner_label.add_theme_color_override("font_color", Color("#66d2c8"))
+	if not await _boss_roll_wait(maxf(BOSS_SPHINX_REVEAL_SECONDS - 0.10, 0.0), sequence_id): return false
+	_reveal_boss_value(boss_roll_value, str(boss_roll))
+	_boss_mirror_values_visible = true
+	mirror_panel.show()
+	_animate_mirror_reveal()
+	if not await _boss_roll_wait(BOSS_SLOT_TRANSFER_SECONDS, sequence_id): return false
+	boss_dice_owner_label.hide()
+	var die_scale_down := create_tween()
+	die_scale_down.tween_property(boss_dice_presentation, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	die_scale_down.parallel().tween_property(boss_dice_presentation, "position:y", BOSS_DICE_REST_Y, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	if slot_index >= 0 and slot_index < slot_labels.size():
+		slot_labels[slot_index].text = str(player_roll)
+		slot_labels[slot_index].modulate = Color.WHITE
+		_flash_slot_panels([slot_index], SLOT_RESULT_GLOW, 1.03)
+	if not await _boss_roll_wait(BOSS_CHARGE_SECONDS, sequence_id): return false
+	_charge_boss_tokens()
+	if not await _boss_roll_wait(BOSS_CHARGE_SECONDS, sequence_id): return false
+	var goal := int(_session.boss_snapshot().get("course_length", 20))
+	var player_before := int(result.get("player_position_before", 0))
+	var boss_before := int(result.get("boss_position_before", 0))
+	var player_base_after := int(result.get("player_base_position_after", result.get("player_position_after", 0)))
+	var boss_base_after := int(result.get("boss_base_position_after", result.get("boss_position_after", 0)))
+	var base_steps := maxi(player_base_after - player_before, boss_base_after - boss_before)
+	for step: int in range(1, base_steps + 1):
+		var player_step_position := mini(player_before + step, player_base_after)
+		var boss_step_position := mini(boss_before + step, boss_base_after)
+		_position_boss_tokens(player_step_position, boss_step_position, goal, true, BOSS_STEP_SECONDS * 0.82)
+		if not await _boss_roll_wait(BOSS_STEP_SECONDS, sequence_id): return false
+	if not await _animate_boss_landing_effects(result, sequence_id, player_base_after, boss_base_after, goal): return false
+	var terminal_turn := bool(result.get("victory", false)) or bool(result.get("defeat", false))
+	var player_after := int(result.get("player_position_after", player_base_after))
+	var boss_after := int(result.get("boss_position_after", boss_base_after))
+	if not terminal_turn:
+		if not await _settle_boss_camera_after_movement(player_after, sequence_id): return false
+	if not await _crossfade_boss_background(maxi(player_after, boss_after), sequence_id): return false
+	if terminal_turn:
+		if not await _play_boss_goal_sequence(result, sequence_id, goal): return false
+	return true
+
+
+func _animate_boss_landing_effects(result: Dictionary, sequence_id: int, player_base: int, boss_base: int, goal: int) -> bool:
+	var player_effect := str(result.get("player_effect", ""))
+	var boss_effect := str(result.get("boss_effect", ""))
+	if player_effect.is_empty() and boss_effect.is_empty():
+		return true
+	_set_target_pictogram(boost_pictogram, player_effect, player_base, true)
+	_set_target_pictogram(sand_pictogram, boss_effect, boss_base, false)
+	for effect_icon: TextureRect in [boost_pictogram, sand_pictogram]:
+		if not effect_icon.visible:
+			continue
+		effect_icon.scale = Vector2.ONE
+		effect_icon.modulate.a = 0.45
+		var pulse := create_tween()
+		pulse.tween_property(effect_icon, "modulate:a", 1.0, 0.10)
+		pulse.tween_property(effect_icon, "modulate:a", 0.82, 0.10)
+	if not await _boss_roll_wait(BOSS_EFFECT_SECONDS, sequence_id): return false
+	var player_after := int(result.get("player_position_after", player_base))
+	var boss_after := int(result.get("boss_position_after", boss_base))
+	var effect_steps := maxi(absi(player_after - player_base), absi(boss_after - boss_base))
+	for step: int in range(1, effect_steps + 1):
+		var player_position := player_base + clampi(player_after - player_base, -step, step)
+		var boss_position := boss_base + clampi(boss_after - boss_base, -step, step)
+		_position_boss_tokens(player_position, boss_position, goal, true, BOSS_STEP_SECONDS * 0.82)
+		if not await _boss_roll_wait(BOSS_STEP_SECONDS, sequence_id): return false
+	return true
+
+
+func _play_boss_goal_sequence(result: Dictionary, sequence_id: int, goal: int) -> bool:
+	_boss_goal_presentation_active = true
+	boss_result_label.hide()
+	boss_finish_summary_label.hide()
+	boss_pause_button.hide()
+	mirror_panel.hide()
+	boss_dice_owner_label.hide()
+	boss_dice_presentation.hide()
+	boss_player_target_label.hide()
+	boss_sphinx_target_label.hide()
+	boss_lane_board.clear_preview()
+	%TrayPanel.modulate = Color(0.42, 0.42, 0.42, 1.0)
+	%GoalLabel.show()
+	%GoalLabel.text = "GATE OPEN"
+	%GoalLabel.pivot_offset = %GoalLabel.size * 0.5
+	var gate_open := create_tween().set_parallel(true)
+	gate_open.tween_property(%GoalLabel, "scale", Vector2.ONE * 1.34, BOSS_GOAL_GATE_SECONDS).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	gate_open.tween_property(%GoalLabel, "modulate", Color(1.6, 1.35, 0.72, 1.0), BOSS_GOAL_GATE_SECONDS)
+	var active_backdrop: TextureRect = boss_arena_backdrop if _boss_backdrop_active == 0 else boss_arena_backdrop_next
+	var backdrop_color := active_backdrop.modulate
+	gate_open.tween_property(active_backdrop, "modulate", Color(1.35, 1.18, 0.72, backdrop_color.a), BOSS_GOAL_GATE_SECONDS * 0.5)
+	gate_open.chain().tween_property(active_backdrop, "modulate", backdrop_color, BOSS_GOAL_GATE_SECONDS * 0.5)
+	if not await _boss_roll_wait(BOSS_GOAL_GATE_SECONDS, sequence_id): return false
+	var player_won := bool(result.get("victory", false))
+	var winner_token: Control = player_token if player_won else boss_token
+	var loser_token: Control = boss_token if player_won else player_token
+	var winner_foot: Control = player_foot_marker if player_won else boss_foot_marker
+	var loser_foot: Control = boss_foot_marker if player_won else player_foot_marker
+	loser_token.hide()
+	loser_foot.hide()
+	winner_foot.hide()
+	winner_token.show()
+	winner_token.z_index = 22
+	winner_token.position = Vector2(race_stage.size.x * 0.5 - winner_token.size.x * 0.5, 118.0)
+	winner_token.pivot_offset = winner_token.size * 0.5
+	var victory_jump := create_tween()
+	victory_jump.tween_property(winner_token, "position:y", winner_token.position.y - 34.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	victory_jump.parallel().tween_property(winner_token, "scale", Vector2.ONE * 1.18, 0.16)
+	victory_jump.tween_property(winner_token, "position:y", winner_token.position.y - 8.0, 0.18).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	if not await _boss_roll_wait(0.34, sequence_id): return false
+	boss_finish_dim.modulate.a = 0.0
+	boss_finish_dim.show()
+	var finish_dim_in := create_tween()
+	finish_dim_in.tween_property(boss_finish_dim, "modulate:a", 1.0, 0.22)
+	if not await _boss_roll_wait(0.22, sequence_id): return false
+	boss_result_label.text = "YOU WIN" if player_won else "SPHINX WIN"
+	boss_result_label.add_theme_font_size_override("font_size", 46)
+	boss_result_label.show()
+	if not await _boss_roll_wait(0.50, sequence_id): return false
+	boss_finish_summary_label.text = _boss_finish_summary(result)
+	boss_finish_summary_label.show()
+	return true
+
+
+func _boss_roll_wait(seconds: float, sequence_id: int) -> bool:
+	await get_tree().create_timer(seconds).timeout
+	return is_inside_tree() and sequence_id == _boss_roll_sequence_id
+
+
+func _reveal_boss_value(label: Label, value: String) -> void:
+	label.text = value
+	label.pivot_offset = label.size * 0.5
+	label.scale = Vector2.ONE * 0.72
+	label.modulate.a = 0.4
+	var reveal := create_tween().set_parallel(true)
+	reveal.tween_property(label, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	reveal.tween_property(label, "modulate:a", 1.0, 0.14)
+
+
+func _charge_boss_tokens() -> void:
+	for control: Control in [player_token, boss_token, player_foot_marker, boss_foot_marker]:
+		control.scale = Vector2.ONE
+		control.modulate = Color.WHITE
+		var charge := create_tween()
+		charge.tween_property(control, "modulate", Color(1.18, 1.12, 0.92, 1.0), BOSS_CHARGE_SECONDS * 0.5)
+		charge.tween_property(control, "modulate", Color.WHITE, BOSS_CHARGE_SECONDS * 0.5)
+
+
+func _animate_boss_state_badges(result: Dictionary, sequence_id: int) -> bool:
+	var player_effect := str(result.get("player_effect", ""))
+	var boss_effect := str(result.get("boss_effect", ""))
+	var player_tween := _fly_state_badge(player_state_badge, player_state_badge_value, player_effect, player_token, boost_pictogram if player_effect == "WING_GATE" else sand_pictogram)
+	var boss_tween := _fly_state_badge(boss_state_badge, boss_state_badge_value, boss_effect, boss_token, boost_pictogram if boss_effect == "WING_GATE" else sand_pictogram)
+	if player_tween or boss_tween:
+		if not await _boss_roll_wait(BOSS_EFFECT_SECONDS, sequence_id): return false
+	return true
+
+
+func _fly_state_badge(badge: TextureRect, value_label: Label, effect: String, token: Control, source: TextureRect) -> bool:
+	if effect not in ["WING_GATE", "QUICKSAND"]:
+		badge.hide()
+		return false
+	badge.texture = WING_GATE_PICTOGRAM if effect == "WING_GATE" else QUICKSAND_PICTOGRAM
+	value_label.text = "+3" if effect == "WING_GATE" else "−2"
+	badge.position = source.position
+	badge.scale = Vector2.ONE
+	badge.modulate.a = 1.0
+	badge.show()
+	var target := token.position + Vector2(token.size.x - 26.0 if token == player_token else -30.0, -18.0)
+	var flight := create_tween().set_parallel(true)
+	flight.tween_property(badge, "position", target, BOSS_EFFECT_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	return true
+
+
+func _clear_boss_state_badges() -> void:
+	if is_instance_valid(player_state_badge):
+		player_state_badge.hide()
+	if is_instance_valid(boss_state_badge):
+		boss_state_badge.hide()
 
 
 func _animate_pending_movement(motion_generation := -1) -> bool:
@@ -468,14 +850,76 @@ func _present_session_phase() -> void:
 		V06PlaySessionScript.PHASE_BOSS_GATE:
 			choice_overlay.hide()
 			resolution_overlay.hide()
-			boss_overlay.show()
+			_show_boss_overlay()
 			_refresh_boss_panel()
 			die_button.grab_focus()
-		V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT, V06PlaySessionScript.PHASE_LAP_RESULT, V06PlaySessionScript.PHASE_RUN_OVER:
+		V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT, V06PlaySessionScript.PHASE_BOSS_FINISHED, V06PlaySessionScript.PHASE_LAP_RESULT, V06PlaySessionScript.PHASE_RUN_OVER:
 			choice_overlay.hide()
 			resolution_overlay.hide()
-			boss_overlay.show()
+			_show_boss_overlay()
 			_refresh_boss_panel()
+
+
+func _show_boss_overlay() -> void:
+	var entering := not boss_overlay.visible
+	boss_overlay.show()
+	if not entering:
+		return
+	_boss_intro_active = false
+	_boss_intro_complete = false
+	_boss_finished_saved_turn = -1
+	var boss: Dictionary = _session.boss_snapshot()
+	boss_lane_board.configure(int(boss.get("course_length", 20)), _session.boss_course_tiles(true), _session.boss_course_tiles(false))
+	_boss_visual_player_position = float(boss.get("player_position", 0))
+	_boss_visual_sphinx_position = float(boss.get("boss_position", 0))
+	# The first boss frame is a stable reference frame.  Seed the logical
+	# positions before the first deferred refresh so entering the overlay cannot
+	# be mistaken for a race movement tween.
+	_boss_last_player_position = int(_boss_visual_player_position)
+	_boss_last_position = int(_boss_visual_sphinx_position)
+	boss_lane_board.set_racers(_boss_visual_player_position, _boss_visual_sphinx_position)
+	boss_lane_board.set_camera_position(boss_lane_board.snapped_camera_for(_boss_visual_player_position))
+	if _boss_camera_tween != null:
+		_boss_camera_tween.kill()
+		_boss_camera_tween = null
+	_boss_background_phase = -1
+	_boss_backdrop_active = 0
+	_set_boss_background_phase_immediate(_boss_phase_for_progress(maxf(_boss_visual_player_position, _boss_visual_sphinx_position)))
+	_sync_boss_board_tokens()
+	boss_arena_backdrop.modulate.a = 0.0
+	boss_arena_backdrop_next.modulate.a = 0.0
+	boss_panel.modulate.a = 0.0
+	# Keep the board, lanes, and die at their authored scale while the intro
+	# appears.  A BACK scale tween here reads as a camera wobble on entry.
+	boss_panel.scale = Vector2.ONE
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(boss_arena_backdrop, "modulate:a", 1.0, 0.30)
+	tween.tween_property(boss_panel, "modulate:a", 1.0, 0.30)
+
+
+func _begin_boss_intro_if_needed() -> void:
+	if _boss_intro_active or _boss_intro_complete or _session == null:
+		return
+	if _session.phase() != V06PlaySessionScript.PHASE_BOSS_ROLL_READY or not _session.faces().is_empty():
+		return
+	_boss_intro_active = true
+	var intro_sequence_id := _boss_roll_sequence_id
+	call_deferred("_finish_boss_intro", intro_sequence_id)
+
+
+func _finish_boss_intro(intro_sequence_id: int) -> void:
+	var intro_seconds := BOSS_INTRO_SECONDS if _session != null and _session.lap() <= 1 else BOSS_REPEAT_INTRO_SECONDS
+	await get_tree().create_timer(intro_seconds).timeout
+	if not is_inside_tree() or intro_sequence_id != _boss_roll_sequence_id:
+		return
+	if _session == null or _session.phase() != V06PlaySessionScript.PHASE_BOSS_ROLL_READY or not _session.faces().is_empty():
+		_boss_intro_active = false
+		_boss_intro_complete = true
+		return
+	_boss_intro_active = false
+	_boss_intro_complete = true
+	_refresh_ui()
+	_present_session_phase()
 
 
 func _on_route_chosen(route_id: String) -> void:
@@ -537,6 +981,26 @@ func _on_next_lap_requested() -> void:
 	atlas_view.set_route_position(_session.position(), true)
 	_refresh_ui()
 	_save_stable_checkpoint()
+
+
+func _on_boss_pause_pressed() -> void:
+	if _boss_pause_open or not boss_overlay.visible or _session == null:
+		return
+	_boss_pause_open = true
+	_session.pause_clock(Time.get_ticks_msec())
+	boss_pause_overlay.show()
+	boss_resume_button.grab_focus()
+	_refresh_ui()
+
+
+func _on_boss_resume_pressed() -> void:
+	if not _boss_pause_open or _session == null:
+		return
+	_boss_pause_open = false
+	boss_pause_overlay.hide()
+	_session.resume_clock(Time.get_ticks_msec())
+	boss_pause_button.grab_focus()
+	_refresh_ui()
 
 
 func _request_back() -> void:
@@ -619,7 +1083,7 @@ func _on_map_closed() -> void:
 
 
 func _refresh_ui() -> void:
-	if not is_instance_valid(lap_label) or _session == null:
+	if not is_inside_tree() or not is_instance_valid(lap_label) or _session == null:
 		return
 	if not _qa_hud_override:
 		_lap_number = _session.lap()
@@ -663,6 +1127,7 @@ func _refresh_ui() -> void:
 	stage_label.text = str(stage_info.get("name_ja", "砂時計のカイロ"))
 	tile_kind_label.text = _tile_kind_display(_session.current_tile_kind())
 	var values: Array[int] = _session.faces()
+	_reset_slot_preview_style()
 	for index: int in range(slot_labels.size()):
 		slot_labels[index].text = str(values[index]) if index < values.size() else "—"
 	_refresh_slot_display(values)
@@ -682,7 +1147,7 @@ func _refresh_ui() -> void:
 					message_label.hide()
 		V06PlaySessionScript.PHASE_MOVING:
 			if _session.pending_resolution_role() != &"":
-				tray_status_label.text = "3 ROLL SLOT　　3 / 3"
+				tray_status_label.text = "3 ROLL SLOT　　%d / 3" % _slot_fill_count(values)
 				tray_hint_label.text = "役を確認中"
 			else:
 				tray_status_label.text = "MOVING"
@@ -695,44 +1160,98 @@ func _refresh_ui() -> void:
 			tray_status_label.text = String(_session.resolution_role())
 			tray_hint_label.text = "次の3投を準備中"
 		V06PlaySessionScript.PHASE_BOSS_GATE:
-			tray_status_label.text = "MIRROR RACE"
+			tray_status_label.text = "3 ROLL SLOT　　%d / 3" % values.size()
 			tray_hint_label.text = "自分の出目 x / スフィンクス 7-x"
 			message_label.text = "スフィンクスとの鏡面レース"
 		V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT:
-			tray_status_label.text = "ROUND RESULT"
-			tray_hint_label.text = "結果確認が必要です"
+			tray_status_label.text = "3 ROLL SLOT　　%d / 3" % _slot_fill_count(values)
+			tray_hint_label.text = "鏡面出目を確認して次へ"
+		V06PlaySessionScript.PHASE_BOSS_FINISHED:
+			tray_status_label.text = "3 ROLL SLOT　　%d / 3" % _slot_fill_count(values)
+			tray_hint_label.text = "レース終了"
 		V06PlaySessionScript.PHASE_LAP_RESULT:
 			tray_status_label.text = "LAP CLEAR"
 		V06PlaySessionScript.PHASE_RUN_OVER:
 			tray_status_label.text = "RUN OVER"
 	_refresh_boss_panel()
+	var boss_active: bool = not _session.boss_snapshot().is_empty() and phase in [
+		V06PlaySessionScript.PHASE_BOSS_ROLL_READY,
+		V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT,
+		V06PlaySessionScript.PHASE_BOSS_FINISHED,
+		V06PlaySessionScript.PHASE_LAP_RESULT,
+		V06PlaySessionScript.PHASE_RUN_OVER,
+	]
+	_set_boss_chrome_active(boss_active)
 	skill_tool_button.text = "スキル\nピンポイント READY" if _session.skill_gauge() >= V06PlaySessionScript.SKILL_GAUGE_MAX else "スキル\nピンポイント %d/%d" % [_session.skill_gauge(), V06PlaySessionScript.SKILL_GAUGE_MAX]
 	if _rolling:
-		die_button.text = "止める"
+		die_button.text = "STOP" if boss_active else "止める"
+	elif phase == V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT:
+		die_button.text = "ROLL"
 	elif phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
-		die_button.text = "レースダイスを振る"
+		die_button.text = "ROLL"
 	elif _shown_face > 0:
 		die_button.text = "%dマス進む" % _shown_face
 	else:
 		die_button.text = "サイコロを振る"
 	_refresh_die_layout(route_id)
 	_refresh_die_presentation()
-	die_button.disabled = _utility_open or _movement_active or (not _rolling and not _session.can_roll())
+	var boss_result_phase := phase == V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT
+	var boss_finished := phase == V06PlaySessionScript.PHASE_BOSS_FINISHED
+	die_button.visible = not boss_finished
+	die_button.disabled = _boss_intro_active or _boss_roll_animation_active or boss_finished or _boss_pause_open or _utility_open or _movement_active or (not boss_result_phase and not _rolling and not _session.can_roll())
+	boss_pause_button.disabled = boss_finished
 	var utility_disabled := _utility_open or _map_open or _movement_active or _rolling or phase != V06PlaySessionScript.PHASE_READY
 	item_tool_button.disabled = utility_disabled
 	skill_tool_button.disabled = utility_disabled
 	back_button.disabled = _movement_active
 
 
+func _set_boss_chrome_active(active: bool) -> void:
+	if not is_instance_valid(normal_hud_panel) or not is_instance_valid(normal_stage_band) or not is_instance_valid(normal_tool_dock):
+		return
+	normal_hud_panel.visible = not active
+	normal_stage_band.visible = not active
+	normal_tool_dock.visible = not active
+	dice_presentation.visible = not active
+	message_label.visible = not active
+	boss_hud.visible = active
+	var tray_panel := %TrayPanel as Control
+	var roll_row := $SafeMargin/Page/TrayPanel/TrayContent/RollRow as Control
+	var action_column := $SafeMargin/Page/TrayPanel/TrayContent/RollRow/ActionColumn as Control
+	if active:
+		_apply_boss_tray_styles()
+		tray_panel.custom_minimum_size.y = 148.0
+		roll_row.custom_minimum_size.y = 116.0
+		action_column.custom_minimum_size.x = 420.0
+		die_button.custom_minimum_size = Vector2(420.0, 104.0)
+		tray_status_label.hide()
+		tray_hint_label.hide()
+		slot_column.hide()
+		action_hint_label.hide()
+	else:
+		_apply_normal_tray_styles()
+		tray_panel.custom_minimum_size.y = 252.0
+		roll_row.custom_minimum_size.y = 178.0
+		action_column.custom_minimum_size.x = 220.0
+		die_button.custom_minimum_size = Vector2(220.0, 112.0)
+		tray_status_label.show()
+		slot_column.show()
+		if _boss_pause_open:
+			_boss_pause_open = false
+			boss_pause_overlay.hide()
+
+
 func _refresh_slot_guidance(values: Array[int], phase: StringName) -> void:
 	if _inline_slot_result_active:
 		return
 	role_label.add_theme_color_override("font_color", Color(0.73, 0.59, 0.37, 1))
-	if phase in [V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT, V06PlaySessionScript.PHASE_LAP_RESULT, V06PlaySessionScript.PHASE_RUN_OVER]:
-		role_label.text = "結果を確認"
+	if phase in [V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT, V06PlaySessionScript.PHASE_BOSS_FINISHED, V06PlaySessionScript.PHASE_LAP_RESULT, V06PlaySessionScript.PHASE_RUN_OVER]:
+		role_label.text = ""
+		role_label.hide()
 		next_need_label.text = ""
 		action_hint_label.text = ""
 		return
+	role_label.show()
 	match values.size():
 		0:
 			role_label.text = "役をつくろう"
@@ -749,6 +1268,13 @@ func _refresh_slot_guidance(values: Array[int], phase: StringName) -> void:
 	action_hint_label.text = "次の基本移動 -%d" % _session.next_basic_move_penalty() if _session.next_basic_move_penalty() > 0 else ""
 
 
+func _slot_fill_count(values: Array[int]) -> int:
+	var count := values.size()
+	if _session != null and _session.phase() in [V06PlaySessionScript.PHASE_MOVING, V06PlaySessionScript.PHASE_CHOICE_REQUIRED] and _session.pending_face() > 0:
+		count += 1
+	return mini(count, slot_labels.size())
+
+
 func _refresh_slot_display(values: Array[int]) -> void:
 	var next_slot: int = values.size()
 	if next_slot < 0 or next_slot >= slot_labels.size():
@@ -760,6 +1286,7 @@ func _refresh_slot_display(values: Array[int]) -> void:
 		slot_labels[next_slot].text = str(_session.pending_face())
 	elif _rolling or _slot_settling:
 		slot_labels[next_slot].text = str(_rolling_slot_face)
+		slot_labels[next_slot].modulate = Color(1.0, 1.0, 1.0, 0.42)
 
 
 func _refresh_rolling_slot_preview() -> void:
@@ -770,6 +1297,74 @@ func _refresh_rolling_slot_preview() -> void:
 		return
 	_rolling_slot_face = 1 + (int(_rolling_slot_elapsed / ROLLING_SLOT_STEP_SECONDS) % 6)
 	slot_labels[next_slot].text = str(_rolling_slot_face)
+	slot_labels[next_slot].modulate = Color(1.0, 1.0, 1.0, 0.42)
+	if _session.phase() == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
+		boss_dice_presentation.present([_rolling_slot_face], true, 0)
+		_refresh_boss_landing_preview(_rolling_slot_face)
+
+
+func _refresh_boss_landing_preview(face: int) -> void:
+	if _session == null or not is_instance_valid(boss_player_target_label):
+		return
+	var preview: Dictionary = _session.boss_landing_preview(face)
+	if preview.is_empty():
+		return
+	var player_tile := str(preview.get("player_tile", "NORMAL"))
+	var sphinx_tile := str(preview.get("boss_tile", "NORMAL"))
+	var player_roll := int(preview.get("player_roll", face))
+	var sphinx_roll := int(preview.get("boss_roll", 7 - face))
+	boss_player_target_label.text = "YOU %d → %s" % [player_roll, _boss_tile_short_name(player_tile)]
+	boss_sphinx_target_label.text = "SPHINX %d → %s" % [sphinx_roll, _boss_tile_short_name(sphinx_tile)]
+	boss_player_target_label.modulate = Color(1.35, 1.2, 0.78, 1.0) if player_tile != "NORMAL" else Color.WHITE
+	boss_sphinx_target_label.modulate = Color(0.72, 1.35, 1.25, 1.0) if sphinx_tile != "NORMAL" else Color.WHITE
+	player_roll_value.text = str(player_roll)
+	boss_roll_value.text = str(sphinx_roll)
+	boss_lane_board.set_preview(preview)
+	_sync_boss_board_tokens()
+	player_landing_ring.hide()
+	boss_landing_ring.hide()
+	boost_pictogram.hide()
+	sand_pictogram.hide()
+
+
+func _position_boss_landing_ring(ring: PanelContainer, value_label: Label, position: int, is_player: bool, text: String) -> void:
+	var goal := int(_session.boss_snapshot().get("course_length", 20))
+	var point := _boss_lane_point(position, is_player, goal)
+	value_label.text = text
+	ring.position = point - Vector2(ring.size.x * 0.5, ring.size.y * 0.5)
+	ring.show()
+
+
+func _set_target_pictogram(pictogram: TextureRect, tile: String, position: int, is_player: bool) -> void:
+	pictogram.visible = tile in ["WING_GATE", "QUICKSAND"]
+	if not pictogram.visible:
+		return
+	pictogram.scale = Vector2.ONE
+	pictogram.texture = WING_GATE_PICTOGRAM if tile == "WING_GATE" else QUICKSAND_PICTOGRAM
+	var value_label := pictogram.get_child(0) as Label
+	value_label.text = "+3" if tile == "WING_GATE" else "−2"
+	var goal := int(_session.boss_snapshot().get("course_length", 20))
+	var point := _boss_lane_point(position, is_player, goal)
+	pictogram.position = point + Vector2(-pictogram.size.x * 0.5, -pictogram.size.y - 24.0)
+
+
+func _boss_lane_point(position: int, is_player: bool, goal: int) -> Vector2:
+	if is_instance_valid(boss_lane_board):
+		return boss_lane_board.lane_point(float(position), is_player)
+	return Vector2.ZERO
+
+
+func _boss_tile_short_name(tile: String) -> String:
+	match tile:
+		"WING_GATE": return "翼 +3"
+		"QUICKSAND": return "流砂 −2"
+		"GOAL": return "GOAL"
+		_: return "通常"
+
+
+func _reset_slot_preview_style() -> void:
+	for label: Label in slot_labels:
+		label.modulate = Color.WHITE
 
 
 func _play_inline_slot_result(role: String, face: int, motion_generation: int) -> void:
@@ -892,6 +1487,9 @@ func _refresh_die_presentation() -> void:
 	dice_presentation.pivot_offset = dice_presentation.size * 0.5
 	var target_scale := 1.08 if _rolling else (1.05 if _shown_face > 0 and _movement_active else 1.0)
 	dice_presentation.scale = Vector2.ONE * target_scale
+	if is_instance_valid(boss_dice_presentation) and _session != null and not _session.boss_snapshot().is_empty():
+		var boss_face := _rolling_slot_face if _rolling else (_shown_face if _shown_face > 0 else 1)
+		boss_dice_presentation.present([boss_face], _rolling, 0 if _rolling else 1)
 
 
 func die_anchor_for_route(route_id: String) -> Vector2:
@@ -973,20 +1571,29 @@ func _apply_surface_styles() -> void:
 	%HudPanel.add_theme_stylebox_override("panel", _panel_style(Color("#172625"), Color("#b88a46"), 22, 4))
 	%StageBand.add_theme_stylebox_override("panel", _panel_style(Color("#ead9b7"), Color("#8d683b"), 8, 2))
 	%AtlasFrame.add_theme_stylebox_override("panel", _panel_style(Color("#e8d7b5"), Color("#9c7742"), 12, 4))
-	%TrayPanel.add_theme_stylebox_override("panel", _panel_style(Color("#ead9b7"), Color("#b88a46"), 24, 5))
+	_apply_normal_tray_styles()
 	var tool_dock_style := _panel_style(Color("#241813"), Color("#8d683b"), 18, 3)
 	tool_dock_style.content_margin_top = 8
 	tool_dock_style.content_margin_bottom = 8
 	%ToolDock.add_theme_stylebox_override("panel", tool_dock_style)
-	for slot_panel: PanelContainer in [%SlotPanel0, %SlotPanel1, %SlotPanel2]:
-		slot_panel.add_theme_stylebox_override("panel", _panel_style(Color("#efe0bf"), Color("#9c7742"), 14, 3))
-	tray_status_label.add_theme_color_override("font_color", Color("#277c80"))
-	tray_hint_label.add_theme_color_override("font_color", Color("#604b36"))
-	action_hint_label.add_theme_color_override("font_color", Color("#604b36"))
-	for modal_panel: PanelContainer in [%ChoicePanel, %ResolutionPanel, %BossPanel, %UtilityPanel]:
+	for modal_panel: PanelContainer in [%ChoicePanel, %ResolutionPanel, %UtilityPanel]:
 		modal_panel.add_theme_stylebox_override("panel", _panel_style(Color("#f1e2c2"), Color("#9b743d"), 22, 4))
+	%BossPanel.add_theme_stylebox_override("panel", _panel_style(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, 0))
+	%BossHud.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.07, 0.08, 0.96), Color("#d6a84f"), 18, 3))
+	%BossStartRulePanel.add_theme_stylebox_override("panel", _panel_style(Color(0.008, 0.018, 0.022, 0.94), Color("#d6a84f"), 18, 3))
+	%BossQuickRulePanel.add_theme_stylebox_override("panel", _panel_style(Color(0.008, 0.018, 0.022, 0.92), Color("#8e6c35"), 14, 2))
+	%MirrorPanel.add_theme_stylebox_override("panel", _panel_style(Color(0.055, 0.12, 0.14, 0.95), Color("#8e6c35"), 14, 2))
+	%PlayerRollBox.add_theme_stylebox_override("panel", _panel_style(Color("#132a31"), Color("#d6a84f"), 12, 2))
+	%BossRollBox.add_theme_stylebox_override("panel", _panel_style(Color("#132a31"), Color("#3d8f89"), 12, 2))
+	%PlayerFootMarker.add_theme_stylebox_override("panel", _panel_style(Color(0.84, 0.66, 0.31, 0.42), Color("#f0c76a"), 22, 3))
+	%BossFootMarker.add_theme_stylebox_override("panel", _panel_style(Color(0.16, 0.55, 0.53, 0.42), Color("#66d2c8"), 22, 3))
+	%PlayerLandingRing.add_theme_stylebox_override("panel", _panel_style(Color(0.03, 0.08, 0.09, 0.82), Color("#f0c76a"), 20, 4))
+	%BossLandingRing.add_theme_stylebox_override("panel", _panel_style(Color(0.03, 0.08, 0.09, 0.82), Color("#66d2c8"), 20, 4))
+	%BossDiceShadow.add_theme_stylebox_override("panel", _panel_style(Color(0.0, 0.0, 0.0, 0.48), Color(0, 0, 0, 0), 18, 0))
+	%PausePanel.add_theme_stylebox_override("panel", _panel_style(Color("#071b21"), Color("#d6a84f"), 24, 4))
+	_apply_race_track_styles()
 	die_button.theme_type_variation = UiThemeNamesScript.PRIMARY_BUTTON
-	for button: Button in [item_tool_button, skill_tool_button, back_button, utility_close_button, choice_main_button, choice_bypass_button, resolution_ack_button, boss_round_ack_button, next_lap_button, retry_button, boss_back_button]:
+	for button: Button in [item_tool_button, skill_tool_button, back_button, utility_close_button, choice_main_button, choice_bypass_button, resolution_ack_button, boss_round_ack_button, next_lap_button, retry_button, boss_pause_button, boss_resume_button, boss_back_button]:
 		button.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
 	back_button.theme_type_variation = UiThemeNamesScript.SECONDARY_BUTTON
 	item_tool_button.theme_type_variation = UiThemeNamesScript.SECONDARY_BUTTON
@@ -998,7 +1605,55 @@ func _apply_surface_styles() -> void:
 	boss_round_ack_button.theme_type_variation = UiThemeNamesScript.PRIMARY_BUTTON
 	next_lap_button.theme_type_variation = UiThemeNamesScript.PRIMARY_BUTTON
 	retry_button.theme_type_variation = UiThemeNamesScript.PRIMARY_BUTTON
+	boss_pause_button.theme_type_variation = UiThemeNamesScript.SECONDARY_BUTTON
+	boss_resume_button.theme_type_variation = UiThemeNamesScript.PRIMARY_BUTTON
 	boss_back_button.theme_type_variation = UiThemeNamesScript.SECONDARY_BUTTON
+
+
+func _apply_normal_tray_styles() -> void:
+	%TrayPanel.add_theme_stylebox_override("panel", _panel_style(Color("#ead9b7"), Color("#b88a46"), 24, 5))
+	for slot_panel: PanelContainer in slot_panels:
+		slot_panel.add_theme_stylebox_override("panel", _panel_style(Color("#efe0bf"), Color("#9c7742"), 14, 3))
+	for slot_label: Label in slot_labels:
+		slot_label.add_theme_color_override("font_color", Color("#173b3b"))
+	tray_status_label.add_theme_color_override("font_color", Color("#277c80"))
+	tray_hint_label.add_theme_color_override("font_color", Color("#604b36"))
+	role_label.add_theme_color_override("font_color", Color("#604b36"))
+	role_reward_label.add_theme_color_override("font_color", Color("#604b36"))
+	next_need_label.add_theme_color_override("font_color", Color("#604b36"))
+	action_hint_label.add_theme_color_override("font_color", Color("#604b36"))
+
+
+func _apply_boss_tray_styles() -> void:
+	%TrayPanel.add_theme_stylebox_override("panel", _panel_style(Color("#071b21"), Color("#d6a84f"), 24, 5))
+	for slot_panel: PanelContainer in slot_panels:
+		slot_panel.add_theme_stylebox_override("panel", _panel_style(Color("#102b31"), Color("#3d8f89"), 14, 3))
+	for slot_label: Label in slot_labels:
+		slot_label.add_theme_color_override("font_color", Color("#f3dfad"))
+	tray_status_label.add_theme_color_override("font_color", Color("#e8ba5c"))
+	tray_hint_label.add_theme_color_override("font_color", Color("#c6d8ce"))
+	role_label.add_theme_color_override("font_color", Color("#dfc27d"))
+	role_reward_label.add_theme_color_override("font_color", Color("#c6d8ce"))
+	next_need_label.add_theme_color_override("font_color", Color("#c6d8ce"))
+	action_hint_label.add_theme_color_override("font_color", Color("#c6d8ce"))
+
+
+func _apply_race_track_styles() -> void:
+	var track_bg := StyleBoxFlat.new()
+	track_bg.bg_color = Color(0.02, 0.04, 0.05, 0.82)
+	track_bg.border_color = Color("#80663c")
+	track_bg.set_border_width_all(2)
+	track_bg.set_corner_radius_all(12)
+	var player_fill := StyleBoxFlat.new()
+	player_fill.bg_color = Color("#d6a84f")
+	player_fill.set_corner_radius_all(10)
+	var boss_fill := StyleBoxFlat.new()
+	boss_fill.bg_color = Color("#3d8f89")
+	boss_fill.set_corner_radius_all(10)
+	player_track.add_theme_stylebox_override("background", track_bg)
+	player_track.add_theme_stylebox_override("fill", player_fill)
+	boss_track.add_theme_stylebox_override("background", track_bg.duplicate())
+	boss_track.add_theme_stylebox_override("fill", boss_fill)
 
 
 func _refresh_clock() -> void:
@@ -1073,7 +1728,7 @@ func _format_pb_delta(value: Variant) -> String:
 
 
 func _refresh_boss_panel() -> void:
-	if not is_instance_valid(boss_overlay) or _session == null:
+	if not is_inside_tree() or not is_instance_valid(boss_overlay) or _session == null:
 		return
 	var boss: Dictionary = _session.boss_snapshot()
 	var phase: StringName = _session.phase()
@@ -1081,58 +1736,320 @@ func _refresh_boss_panel() -> void:
 		return
 	var player_position := int(boss.get("player_position", 0))
 	var boss_position := int(boss.get("boss_position", 0))
-	var goal := int(boss.get("course_length", 13))
+	var goal := int(boss.get("course_length", 20))
+	player_track.max_value = goal
+	boss_track.max_value = goal
+	player_track.value = player_position
+	boss_track.value = boss_position
+	boss_you_progress_label.text = "%d / %d" % [player_position, goal]
+	boss_sphinx_progress_label.text = "%d / %d" % [boss_position, goal]
 	boss_hp_label.text = "PLAYER %d/%d    SPHINX %d/%d" % [player_position, goal, boss_position, goal]
-	boss_race_track_label.text = "YOU     %s %d/%d\nSPHINX  %s %d/%d" % [
-		_race_progress(player_position, goal), player_position, goal,
-		_race_progress(boss_position, goal), boss_position, goal,
-	]
-	boss_action_label.text = "裏目ルール  PLAYER x / SPHINX 7-x"
+	boss_action_label.text = "反対面ルール\n1↔6 / 2↔5 / 3↔4"
+	var boss_finished := phase == V06PlaySessionScript.PHASE_BOSS_FINISHED
+	var finish_presented := boss_finished and not _boss_roll_animation_active
 	var terminal_result := phase in [V06PlaySessionScript.PHASE_LAP_RESULT, V06PlaySessionScript.PHASE_RUN_OVER]
-	boss_hp_label.visible = not terminal_result
-	boss_race_track_label.visible = not terminal_result
-	boss_action_label.visible = not terminal_result
-	boss_round_ack_button.visible = phase == V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT
-	next_lap_button.visible = phase == V06PlaySessionScript.PHASE_LAP_RESULT
+	var player_history: Array = boss.get("player_roll_history", [])
+	var boss_history: Array = boss.get("boss_roll_history", [])
+	var intro_visible := not terminal_result and player_history.is_empty() and phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY and not _rolling and not _boss_intro_complete
+	var detailed_intro: bool = intro_visible and int(_session.lap()) <= 1
+	if intro_visible:
+		_begin_boss_intro_if_needed()
+	boss_hp_label.hide()
+	boss_race_track_label.hide()
+	boss_pause_button.text = "PAUSE"
+	race_stage.visible = not terminal_result
+	boss_start_rule_panel.visible = detailed_intro
+	boss_quick_rule_panel.visible = intro_visible and not detailed_intro
+	boss_action_label.visible = detailed_intro
+	mirror_panel.visible = _boss_mirror_values_visible and not intro_visible and not terminal_result and not finish_presented
+	boss_pause_button.visible = not finish_presented
+	boss_dice_presentation.visible = not finish_presented
+	var target_preview_visible := phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY and not intro_visible
+	boss_player_target_label.visible = target_preview_visible
+	boss_sphinx_target_label.visible = target_preview_visible
+	player_landing_ring.hide()
+	boss_landing_ring.hide()
+	%MirrorPairsLabel.hide()
+	if not target_preview_visible and not _boss_roll_animation_active:
+		boost_pictogram.hide()
+		sand_pictogram.hide()
+		boss_lane_board.clear_preview()
+	boss_round_ack_button.hide()
+	next_lap_button.visible = (phase == V06PlaySessionScript.PHASE_BOSS_FINISHED and not _boss_roll_animation_active) or phase == V06PlaySessionScript.PHASE_LAP_RESULT
 	retry_button.visible = phase == V06PlaySessionScript.PHASE_RUN_OVER
-	if phase == V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT:
+	boss_back_button.visible = true
+	var live_face := _rolling_slot_face if _rolling else (_shown_face if _shown_face > 0 else 1)
+	player_roll_value.text = str(live_face) if player_history.is_empty() else str(player_history.back())
+	boss_roll_value.text = str(7 - live_face) if boss_history.is_empty() else str(boss_history.back())
+	var animate_tokens := player_position != _boss_last_player_position or boss_position != _boss_last_position
+	if not _boss_roll_animation_active:
+		if finish_presented:
+			call_deferred("_position_boss_finish_winner", bool(_session.boss_result().get("victory", false)))
+		else:
+			call_deferred("_position_boss_tokens", player_position, boss_position, goal, animate_tokens)
+			call_deferred("_position_boss_forward_markers", player_position, goal)
+	if target_preview_visible and not _boss_roll_animation_active:
+		_refresh_boss_landing_preview(_rolling_slot_face if _rolling else (_shown_face if _shown_face > 0 else 1))
+	if not boss_finished:
+		boss_finish_dim.hide()
+		boss_finish_summary_label.hide()
+		%TrayPanel.modulate = Color.WHITE
+		%GoalLabel.text = "GOLDEN GATE"
+		%GoalLabel.hide()
+		%GoalLabel.scale = Vector2.ONE
+		%GoalLabel.modulate = Color.WHITE
+	if phase in [V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT, V06PlaySessionScript.PHASE_BOSS_FINISHED]:
 		var result: Dictionary = _session.boss_result()
-		var role_text := "" if String(result.get("role", "")).is_empty() else " · %s" % String(result.role)
-		var effect_text := _boss_effect_text(str(result.get("player_effect", "")), str(result.get("boss_effect", "")))
-		boss_result_label.text = "PLAYER %d → %dマス　SPHINX %d → %dマス%s\n%s" % [
-			int(result.get("player_roll", 0)), int(result.get("player_move", 0)),
-			int(result.get("boss_roll", 0)), int(result.get("boss_move", 0)),
-			role_text, effect_text,
-		]
-		boss_round_ack_button.text = "結果を見る" if bool(result.get("victory", false)) or bool(result.get("defeat", false)) else "次の一投へ"
+		player_roll_value.text = str(int(result.get("player_roll", 0)))
+		boss_roll_value.text = str(int(result.get("boss_roll", 0)))
+		boss_result_label.hide()
+		boss_result_label.text = ""
+		var revealed_turn := int(result.get("turn", -1))
+		if phase == V06PlaySessionScript.PHASE_BOSS_ROUND_RESULT and not _boss_roll_animation_active and revealed_turn != _boss_last_revealed_turn:
+			_boss_last_revealed_turn = revealed_turn
+			call_deferred("_animate_mirror_reveal")
+		if phase == V06PlaySessionScript.PHASE_BOSS_FINISHED and not _boss_roll_animation_active:
+			var finished_victory := bool(result.get("victory", false))
+			boss_result_label.text = "YOU WIN" if finished_victory else "SPHINX WIN"
+			boss_result_label.add_theme_font_size_override("font_size", 46)
+			boss_result_label.show()
+			boss_finish_dim.show()
+			boss_finish_summary_label.text = _boss_finish_summary(result)
+			boss_finish_summary_label.show()
+			%TrayPanel.modulate = Color(0.42, 0.42, 0.42, 1.0)
 	elif phase == V06PlaySessionScript.PHASE_LAP_RESULT:
+		boss_result_label.show()
+		boss_result_label.add_theme_font_size_override("font_size", 20)
 		var victory := bool(boss.get("victory", false))
 		boss_title.text = "スフィンクスに勝利！" if victory else "スフィンクスに惜敗"
 		boss_result_label.text = _score_result_text(victory)
 	elif phase == V06PlaySessionScript.PHASE_RUN_OVER:
+		boss_result_label.show()
+		boss_result_label.add_theme_font_size_override("font_size", 20)
 		boss_title.text = "旅の記録"
 		boss_result_label.text = _score_result_text(false)
 	else:
-		boss_title.text = "黄金門の鏡面レース"
-		boss_result_label.text = "高い目で進むほど、スフィンクスは遅くなる"
+		boss_result_label.hide()
+		boss_title.text = "鏡面レース  ·  スフィンクス"
+		boss_result_label.text = ""
+	_boss_last_player_position = player_position
+	_boss_last_position = boss_position
 
 
-func _race_progress(position: int, goal: int) -> String:
-	var width := 10
-	var marker := clampi(roundi(float(position) / float(maxi(goal, 1)) * width), 0, width)
-	var result := ""
-	for index: int in range(width + 1):
-		result += "●" if index == marker else "━"
-	return result
+func _position_boss_forward_markers(player_position: int, goal: int) -> void:
+	if not is_instance_valid(race_stage) or race_stage.size.x <= 0.0:
+		return
+	for label: Label in boss_forward_step_labels:
+		label.hide()
+
+
+func _position_boss_tokens(player_position: int, sphinx_position: int, goal: int, animated: bool, duration: float = 0.42) -> void:
+	if not is_instance_valid(race_stage) or race_stage.size.x <= 0.0:
+		return
+	if animated and _boss_last_player_position >= 0:
+		var start_player := _boss_visual_player_position
+		var start_sphinx := _boss_visual_sphinx_position
+		var tween := create_tween()
+		tween.tween_method(
+			_apply_boss_visual_lerp.bind(start_player, start_sphinx, float(player_position), float(sphinx_position)),
+			0.0,
+			1.0,
+			duration
+		).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	else:
+		_boss_visual_player_position = float(player_position)
+		_boss_visual_sphinx_position = float(sphinx_position)
+		_sync_boss_board_tokens()
+
+
+func _position_boss_finish_winner(player_won: bool) -> void:
+	var winner_token: Control = player_token if player_won else boss_token
+	var loser_token: Control = boss_token if player_won else player_token
+	var winner_foot: Control = player_foot_marker if player_won else boss_foot_marker
+	var loser_foot: Control = boss_foot_marker if player_won else player_foot_marker
+	loser_token.hide()
+	loser_foot.hide()
+	winner_foot.hide()
+	winner_token.show()
+	winner_token.z_index = 22
+	winner_token.position = Vector2(race_stage.size.x * 0.5 - winner_token.size.x * 0.5, 110.0)
+
+
+func _apply_boss_visual_lerp(weight: float, start_player: float, start_sphinx: float, end_player: float, end_sphinx: float) -> void:
+	_boss_visual_player_position = lerpf(start_player, end_player, weight)
+	_boss_visual_sphinx_position = lerpf(start_sphinx, end_sphinx, weight)
+	_sync_boss_board_tokens()
+
+
+func _sync_boss_board_tokens() -> void:
+	if not is_instance_valid(boss_lane_board) or not is_instance_valid(player_token):
+		return
+	if _boss_goal_presentation_active:
+		return
+	boss_lane_board.set_racers(_boss_visual_player_position, _boss_visual_sphinx_position)
+	var player_center: Vector2 = boss_lane_board.lane_point(_boss_visual_player_position, true)
+	var sphinx_center: Vector2 = boss_lane_board.lane_point(_boss_visual_sphinx_position, false)
+	# The explorer is the camera anchor and must never disappear. During a
+	# long hop, keep the actual token pinned to its lane edge until the
+	# post-movement two-space camera segments catch up.
+	player_center.y = clampf(
+		player_center.y,
+		maxf(player_token.size.y - 20.0, 92.0),
+		boss_lane_board.size.y - 20.0
+	)
+	player_token.scale = Vector2.ONE
+	boss_token.scale = Vector2.ONE
+	player_foot_marker.scale = Vector2.ONE
+	boss_foot_marker.scale = Vector2.ONE
+	var sphinx_on_screen := sphinx_center.y >= 0.0 and sphinx_center.y <= boss_lane_board.size.y
+	player_token.show()
+	player_foot_marker.show()
+	boss_token.visible = sphinx_on_screen
+	boss_foot_marker.visible = sphinx_on_screen
+	player_token.position = player_center - Vector2(player_token.size.x * 0.5, player_token.size.y - 20.0)
+	boss_token.position = sphinx_center - Vector2(boss_token.size.x * 0.5, boss_token.size.y - 20.0)
+	player_foot_marker.position = player_center - Vector2(player_foot_marker.size.x * 0.5, player_foot_marker.size.y * 0.5)
+	boss_foot_marker.position = sphinx_center - Vector2(boss_foot_marker.size.x * 0.5, boss_foot_marker.size.y * 0.5)
+
+
+func _settle_boss_camera_after_movement(player_position: int, sequence_id: int) -> bool:
+	# Keep the board fully still after the last hop/effect, then make one
+	# restrained fixed-distance translation. The second hold prevents the
+	# next ROLL affordance from appearing on the final moving frame.
+	if not await _boss_roll_wait(BOSS_CAMERA_HOLD_SECONDS, sequence_id):
+		return false
+	var segment_count := 0
+	while segment_count < 10:
+		var start := float(boss_lane_board.get("camera_position"))
+		var target := float(boss_lane_board.next_camera_scroll_target(float(player_position)))
+		if is_equal_approx(start, target):
+			break
+		if _boss_camera_tween != null:
+			_boss_camera_tween.kill()
+		_boss_camera_tween = null
+		_boss_camera_tween = create_tween()
+		_boss_camera_tween.tween_method(_apply_boss_camera_position.bind(sequence_id), start, target, BOSS_CAMERA_SCROLL_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+		if not await _boss_roll_wait(BOSS_CAMERA_SCROLL_SECONDS, sequence_id):
+			if _boss_camera_tween != null:
+				_boss_camera_tween.kill()
+			return false
+		boss_lane_board.set_camera_position(target)
+		_sync_boss_board_tokens()
+		_boss_camera_tween = null
+		segment_count += 1
+	return await _boss_roll_wait(BOSS_CAMERA_HOLD_SECONDS, sequence_id)
+
+
+func _apply_boss_camera_position(value: float, sequence_id: int) -> void:
+	if sequence_id != _boss_roll_sequence_id or _boss_goal_presentation_active:
+		return
+	boss_lane_board.set_camera_position(value)
+	_sync_boss_board_tokens()
+
+
+func _boss_phase_for_progress(progress: float) -> int:
+	if progress >= 17.0:
+		return 3
+	if progress >= 12.0:
+		return 2
+	if progress >= 6.0:
+		return 1
+	return 0
+
+
+func _backdrop_phase_spec(phase: int) -> Dictionary:
+	match clampi(phase, 0, 3):
+		1: return {"scale": Vector2(1.06, 1.06), "y": 30.0, "tint": Color(0.59, 0.65, 0.70, 1.0)}
+		2: return {"scale": Vector2(1.12, 1.12), "y": 64.0, "tint": Color(0.64, 0.68, 0.72, 1.0)}
+		3: return {"scale": Vector2(1.18, 1.18), "y": 96.0, "tint": Color(0.70, 0.72, 0.74, 1.0)}
+		_: return {"scale": Vector2.ONE, "y": 0.0, "tint": Color(0.55, 0.62, 0.68, 1.0)}
+
+
+func _configure_backdrop_phase(backdrop: TextureRect, phase: int, alpha: float) -> void:
+	var spec := _backdrop_phase_spec(phase)
+	var tint: Color = spec.get("tint", Color.WHITE)
+	backdrop.pivot_offset = backdrop.size * 0.5
+	backdrop.scale = spec.get("scale", Vector2.ONE)
+	backdrop.position.y = float(spec.get("y", 0.0))
+	backdrop.modulate = Color(tint.r, tint.g, tint.b, alpha)
+
+
+func _set_boss_background_phase_immediate(phase: int) -> void:
+	_boss_background_phase = clampi(phase, 0, 3)
+	_boss_backdrop_active = 0
+	_configure_backdrop_phase(boss_arena_backdrop, _boss_background_phase, 1.0)
+	_configure_backdrop_phase(boss_arena_backdrop_next, _boss_background_phase, 0.0)
+
+
+func _crossfade_boss_background(progress: int, sequence_id: int) -> bool:
+	var next_phase := _boss_phase_for_progress(float(progress))
+	if next_phase == _boss_background_phase:
+		return true
+	var current: TextureRect = boss_arena_backdrop if _boss_backdrop_active == 0 else boss_arena_backdrop_next
+	var incoming: TextureRect = boss_arena_backdrop_next if _boss_backdrop_active == 0 else boss_arena_backdrop
+	_configure_backdrop_phase(incoming, next_phase, 0.0)
+	var fade := create_tween().set_parallel(true)
+	fade.tween_property(current, "modulate:a", 0.0, BOSS_BACKDROP_FADE_SECONDS)
+	fade.tween_property(incoming, "modulate:a", 1.0, BOSS_BACKDROP_FADE_SECONDS)
+	if not await _boss_roll_wait(BOSS_BACKDROP_FADE_SECONDS, sequence_id):
+		fade.kill()
+		return false
+	_boss_backdrop_active = 1 - _boss_backdrop_active
+	_boss_background_phase = next_phase
+	return true
+
+
+func _animate_mirror_reveal() -> void:
+	if _boss_mirror_reveal_tween != null:
+		_boss_mirror_reveal_tween.kill()
+	for label: Label in [player_roll_value, boss_roll_value]:
+		label.pivot_offset = label.size * 0.5
+		label.scale = Vector2.ONE * 0.72
+		label.modulate.a = 0.4
+	var reveal := create_tween().set_parallel(true)
+	_boss_mirror_reveal_tween = reveal
+	reveal.tween_property(player_roll_value, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	reveal.tween_property(player_roll_value, "modulate:a", 1.0, 0.14)
+	reveal.tween_property(boss_roll_value, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(0.1)
+	reveal.tween_property(boss_roll_value, "modulate:a", 1.0, 0.14).set_delay(0.1)
 
 
 func _boss_effect_text(player_effect: String, sphinx_effect: String) -> String:
 	var parts: Array[String] = []
 	if not player_effect.is_empty():
-		parts.append("PLAYER %s" % player_effect.replace("_", " "))
+		parts.append("YOU %s" % _localized_boss_effect(player_effect))
 	if not sphinx_effect.is_empty():
-		parts.append("SPHINX %s" % sphinx_effect.replace("_", " "))
+		parts.append("SPHINX %s" % _localized_boss_effect(sphinx_effect))
 	return " / ".join(parts) if not parts.is_empty() else "停止効果なし"
+
+
+func _boss_finish_summary(result: Dictionary) -> String:
+	var turn_count := int(result.get("turn_count", 0))
+	var player_wings := int(result.get("player_wing_count", 0))
+	var player_sands := int(result.get("player_sand_count", 0))
+	var boss_wings := int(result.get("boss_wing_count", 0))
+	var boss_sands := int(result.get("boss_sand_count", 0))
+	var non_six_count := 0
+	for face: int in result.get("player_roll_history", []):
+		if face != 6:
+			non_six_count += 1
+	var pre_final_gap := absi(int(result.get("player_position_before", 0)) - int(result.get("boss_position_before", 0)))
+	return "%d投・非6選択 %d回・最終投前差 %d\nYOU　翼 %d回・流砂 %d回\nSPHINX　翼 %d回・流砂 %d回" % [
+		turn_count,
+		non_six_count,
+		pre_final_gap,
+		player_wings,
+		player_sands,
+		boss_wings,
+		boss_sands,
+	]
+
+
+func _localized_boss_effect(effect: String) -> String:
+	match effect:
+		"WING_GATE": return "翼の門 +3"
+		"QUICKSAND": return "流砂 −2"
+		_: return effect.replace("_", " ")
 
 
 func _score_result_text(victory: bool) -> String:

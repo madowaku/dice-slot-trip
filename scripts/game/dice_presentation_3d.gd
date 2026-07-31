@@ -39,6 +39,7 @@ var tray_rim: MeshInstance3D
 @export var layout_min_height := 176.0
 @export var tray_surface_visible := true
 @export var render_enabled := true
+@export var high_contrast_pips := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -128,9 +129,10 @@ func _build_die(index: int) -> void:
 	_collect_face_pips(pip_transforms, 4, Vector3.LEFT, Vector3.BACK, Vector3.UP)
 	var pips := MultiMeshInstance3D.new(); pips.name = "SixFacePips"
 	var multi := MultiMesh.new(); multi.transform_format = MultiMesh.TRANSFORM_3D; multi.instance_count = pip_transforms.size()
-	var pip_mesh := CylinderMesh.new(); pip_mesh.top_radius = 0.105; pip_mesh.bottom_radius = 0.105; pip_mesh.height = 0.045; pip_mesh.radial_segments = 12; multi.mesh = pip_mesh
+	var pip_radius := 0.12 if high_contrast_pips else 0.105
+	var pip_mesh := CylinderMesh.new(); pip_mesh.top_radius = pip_radius; pip_mesh.bottom_radius = pip_radius; pip_mesh.height = 0.045; pip_mesh.radial_segments = 12; multi.mesh = pip_mesh
 	for pip_index: int in range(pip_transforms.size()): multi.set_instance_transform(pip_index, pip_transforms[pip_index])
-	var pip_material := StandardMaterial3D.new(); pip_material.albedo_color = PIP_COLOR; pip_material.roughness = 0.78
+	var pip_material := StandardMaterial3D.new(); pip_material.albedo_color = Color("#120d08") if high_contrast_pips else PIP_COLOR; pip_material.roughness = 0.78
 	pips.multimesh = multi; pips.material_override = pip_material; die.add_child(pips)
 	dice_roots.append(die); die_states.append(DieState.READY); face_values.append(1); settle_elapsed.append(SETTLE_DURATION); roll_elapsed.append(0.0); base_positions.append(Vector3.ZERO); settle_start_positions.append(Vector3.ZERO); settle_start_orientations.append(Quaternion.IDENTITY)
 
@@ -220,6 +222,18 @@ func present(values: Array[int], rolling: bool, locked_count: int) -> void:
 		cube_materials[index].emission = GOLD
 		cube_materials[index].emission_energy_multiplier = 0.17 if index == next_lock_index else 0.0
 	queue_redraw()
+
+
+func flip_to_face(value: int) -> void:
+	if active_count < 1:
+		present([value], false, 1)
+		return
+	var die := dice_roots[0]
+	face_values[0] = clampi(value, 1, 6)
+	settle_start_positions[0] = die.position
+	settle_start_orientations[0] = die.quaternion
+	settle_elapsed[0] = 0.0
+	die_states[0] = DieState.SETTLING
 
 func _process(delta: float) -> void:
 	animation_time += delta

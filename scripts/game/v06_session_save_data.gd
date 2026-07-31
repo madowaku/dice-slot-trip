@@ -11,6 +11,7 @@ const VALID_PHASES := [
 	"CHOICE_REQUIRED",
 	"BOSS_ROLL_READY",
 	"BOSS_ROUND_RESULT",
+	"FINISHED",
 	"LAP_RESULT",
 	"RUN_OVER",
 ]
@@ -105,15 +106,15 @@ static func _validate_state(state: Dictionary) -> Dictionary:
 		for key: String in ["schema_version", "boss_id", "lap", "round", "turn", "faces", "player_hp", "boss_hp", "course_length", "player_position", "boss_position", "player_next_modifier", "boss_next_modifier", "player_first_sand_available", "player_roll_history", "boss_roll_history", "pending_ack", "terminal", "winner", "result"]:
 			if not boss.has(key):
 				return _invalid(STATUS_CORRUPT, "boss.%s is missing" % key)
-		if str(boss.get("schema_version")) != "dice-slot-trip.boss-race/1" or str(boss.get("boss_id")) != "sphinx":
+		if str(boss.get("schema_version")) != "dice-slot-trip.boss-race/3" or str(boss.get("boss_id")) != "sphinx":
 			return _invalid(STATUS_CORRUPT, "boss schema or identity is invalid")
 		if not _integer(boss.get("lap")) or int(boss.get("lap")) < 1 or not _integer(boss.get("round")) or int(boss.get("round")) < 1:
 			return _invalid(STATUS_CORRUPT, "boss turn is invalid")
 		if not boss.get("faces") is Array or (boss.get("faces") as Array).size() > 3 or not _integer(boss.get("player_hp")) or not _integer(boss.get("boss_hp")) or int(boss.get("player_hp")) < 0 or int(boss.get("player_hp")) > 3 or int(boss.get("boss_hp")) < 0 or int(boss.get("boss_hp")) > 3:
 			return _invalid(STATUS_CORRUPT, "boss state is invalid")
-		if not _integer(boss.get("course_length")) or int(boss.get("course_length")) != 13 or not _integer(boss.get("player_position")) or not _integer(boss.get("boss_position")):
+		if not _integer(boss.get("course_length")) or int(boss.get("course_length")) != 20 or not _integer(boss.get("player_position")) or not _integer(boss.get("boss_position")):
 			return _invalid(STATUS_CORRUPT, "boss race position is invalid")
-		if int(boss.get("player_position")) < 0 or int(boss.get("player_position")) > 13 or int(boss.get("boss_position")) < 0 or int(boss.get("boss_position")) > 13:
+		if int(boss.get("player_position")) < 0 or int(boss.get("player_position")) > 20 or int(boss.get("boss_position")) < 0 or int(boss.get("boss_position")) > 20:
 			return _invalid(STATUS_CORRUPT, "boss race position is outside the course")
 		if not _integer(boss.get("player_next_modifier")) or int(boss.get("player_next_modifier")) not in [-1, 0, 1] or not _integer(boss.get("boss_next_modifier")) or int(boss.get("boss_next_modifier")) not in [-1, 0, 1]:
 			return _invalid(STATUS_CORRUPT, "boss race movement modifier is invalid")
@@ -121,7 +122,7 @@ static func _validate_state(state: Dictionary) -> Dictionary:
 			return _invalid(STATUS_CORRUPT, "boss race history is invalid")
 		var player_history := boss.get("player_roll_history") as Array
 		var boss_history := boss.get("boss_roll_history") as Array
-		if player_history.size() != boss_history.size() or player_history.size() > 12:
+		if player_history.size() != boss_history.size() or player_history.size() > 11:
 			return _invalid(STATUS_CORRUPT, "boss race history length is invalid")
 		for index: int in range(player_history.size()):
 			if not _integer(player_history[index]) or not _integer(boss_history[index]) or int(player_history[index]) < 1 or int(player_history[index]) > 6 or int(boss_history[index]) != 7 - int(player_history[index]):
@@ -136,7 +137,7 @@ static func _validate_state(state: Dictionary) -> Dictionary:
 		var winner := str(boss.get("winner"))
 		if bool(boss.get("terminal")) != (winner in ["player", "boss"]):
 			return _invalid(STATUS_CORRUPT, "terminal boss winner is invalid")
-	if phase in ["BOSS_ROLL_READY", "BOSS_ROUND_RESULT", "LAP_RESULT", "RUN_OVER"] and not boss_entered:
+	if phase in ["BOSS_ROLL_READY", "BOSS_ROUND_RESULT", "FINISHED", "LAP_RESULT", "RUN_OVER"] and not boss_entered:
 		return _invalid(STATUS_CORRUPT, "boss phase has no boss state")
 	if phase in ["READY", "CHOICE_REQUIRED"] and boss_entered:
 		return _invalid(STATUS_CORRUPT, "travel phase has boss state")
@@ -145,8 +146,8 @@ static func _validate_state(state: Dictionary) -> Dictionary:
 		return _invalid(STATUS_CORRUPT, "travel stable phase has too many committed faces")
 	if phase == "BOSS_ROLL_READY" and slot_faces.size() > 2:
 		return _invalid(STATUS_CORRUPT, "boss turn-start phase has a completed slot")
-	if phase == "BOSS_ROUND_RESULT" and (slot_faces.is_empty() or slot_faces.size() > 3):
-		return _invalid(STATUS_CORRUPT, "boss result has no committed face")
+	if phase in ["BOSS_ROUND_RESULT", "FINISHED"] and slot_faces.size() > 3:
+		return _invalid(STATUS_CORRUPT, "boss result has too many committed faces")
 	if phase == "CHOICE_REQUIRED" and (int(state.get("route", {}).get("pending_face", 0)) < 1 or int(state.get("route", {}).get("pending_remaining_steps", 0)) < 1):
 		return _invalid(STATUS_CORRUPT, "choice state has no held movement")
 	if phase != "CHOICE_REQUIRED" and (int(state.get("route", {}).get("pending_face", 0)) != 0 or int(state.get("route", {}).get("pending_remaining_steps", 0)) != 0):

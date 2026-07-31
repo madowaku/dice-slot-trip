@@ -14,6 +14,8 @@ const PHASE_CHOICE_REQUIRED: StringName = &"CHOICE_REQUIRED"
 const PHASE_RESOLUTION_REQUIRED: StringName = &"RESOLUTION_REQUIRED"
 const PHASE_BOSS_ROLL_READY: StringName = &"BOSS_ROLL_READY"
 const PHASE_BOSS_ROUND_RESULT: StringName = &"BOSS_ROUND_RESULT"
+const PHASE_BOSS_FINISHED: StringName = &"FINISHED"
+const PHASE_FINISHED: StringName = PHASE_BOSS_FINISHED # Public shorthand for boss-race QA.
 const PHASE_LAP_RESULT: StringName = &"LAP_RESULT"
 const PHASE_RUN_OVER: StringName = &"RUN_OVER"
 const PHASE_BOSS_GATE: StringName = PHASE_BOSS_ROLL_READY # Compatibility only.
@@ -43,7 +45,7 @@ const SKILL_GAUGE_MAX := 3
 const SKILL_STATE_CHARGING: StringName = &"CHARGING"
 const SKILL_STATE_READY: StringName = &"READY"
 const SKILL_STATE_ARMED: StringName = &"ARMED"
-const SAVE_STABLE_PHASES := [PHASE_READY, PHASE_CHOICE_REQUIRED, PHASE_BOSS_ROLL_READY, PHASE_BOSS_ROUND_RESULT, PHASE_LAP_RESULT, PHASE_RUN_OVER]
+const SAVE_STABLE_PHASES := [PHASE_READY, PHASE_CHOICE_REQUIRED, PHASE_BOSS_ROLL_READY, PHASE_BOSS_ROUND_RESULT, PHASE_BOSS_FINISHED, PHASE_LAP_RESULT, PHASE_RUN_OVER]
 const MAX_PLAYER_HP := 3
 const DEFAULT_COIN_GAIN := 2
 const DEFAULT_REST_HEAL := 1
@@ -69,6 +71,7 @@ var _resolution_role: StringName = &""
 var _pending_resolution_role: StringName = &""
 var _pending_role_awarded := false
 var _boss_transition_pending := false
+var _boss_finish_recorded := false
 var _active_warp_gate_id := ""
 var _consumed_warp_gate_ids := {}
 var _visited_node_keys := {}
@@ -142,13 +145,15 @@ func start_roll(face: int, now_ms: int = -1) -> Dictionary:
 		if not bool(boss_event.get("ok", false)):
 			return _rejected(str(boss_event.get("error", "BOSS_ROLL_REJECTED")))
 		if str(boss_event.get("status", "")) == "TURN_RESOLVED":
-			_phase = PHASE_BOSS_ROUND_RESULT
 			var result: Dictionary = _battle.result()
+			var terminal_result := bool(result.get("victory", false)) or bool(result.get("defeat", false))
+			_phase = PHASE_BOSS_FINISHED if terminal_result else PHASE_BOSS_ROUND_RESULT
 			var boss_role := StringName(str(result.get("role", "")))
 			if boss_role != &"":
 				_award_role_score(boss_role)
 			_player_hp = int(result.get("player_hp_after", _player_hp))
-			if bool(result.get("victory", false)) or bool(result.get("defeat", false)):
+			if terminal_result and not _boss_finish_recorded:
+				_boss_finish_recorded = true
 				_stop_clock(now_ms)
 				_add_score_once("boss_complete", SCORE_BOSS_COMPLETE, "BOSS COMPLETE", "boss")
 				_update_pb()
@@ -283,6 +288,11 @@ func acknowledge_resolution() -> bool:
 
 
 func acknowledge_boss_round() -> bool:
+	# Compatibility for older callers that acknowledged the hidden result button.
+	# The live boss UI never exposes this path for FINISHED; it uses Next Lap.
+	if _phase == PHASE_BOSS_FINISHED:
+		_phase = PHASE_LAP_RESULT
+		return true
 	if _phase != PHASE_BOSS_ROUND_RESULT: return false
 	var result: Dictionary = _battle.result()
 	if not _battle.acknowledge_round(): return false
@@ -292,7 +302,7 @@ func acknowledge_boss_round() -> bool:
 
 
 func next_lap() -> bool:
-	if _phase != PHASE_LAP_RESULT: return false
+	if _phase not in [PHASE_BOSS_FINISHED, PHASE_LAP_RESULT]: return false
 	_lap += 1
 	var monotonic_floor := _last_now_ms
 	_reset_course_and_clock()
@@ -338,7 +348,7 @@ func pending_resolution_role() -> StringName: return _pending_resolution_role
 func pending_face() -> int: return _pending_face
 func pending_move_distance() -> int: return _pending_move_distance
 func pending_remaining_steps() -> int: return _pending_remaining_steps
-func is_boss_terminal() -> bool: return _phase in [PHASE_LAP_RESULT, PHASE_RUN_OVER]
+func is_boss_terminal() -> bool: return _phase in [PHASE_BOSS_FINISHED, PHASE_LAP_RESULT, PHASE_RUN_OVER]
 func can_roll() -> bool: return _phase in [PHASE_READY, PHASE_BOSS_ROLL_READY]
 func lap() -> int: return _lap
 func roll_count() -> int: return _roll_count
@@ -372,6 +382,8 @@ func pb_delta_ms(now_ms: int = -1) -> Variant:
 	return elapsed_ms(now_ms) - int(_best_ms)
 func boss_snapshot() -> Dictionary: return _battle.snapshot() if _battle != null else {}
 func boss_result() -> Dictionary: return _battle.result() if _battle != null else {}
+func boss_landing_preview(face: int) -> Dictionary: return _battle.landing_preview(face) if _battle != null else {}
+func boss_course_tiles(is_player: bool = true) -> Array: return _battle.course_tiles(is_player) if _battle != null else []
 
 
 func is_stable_for_save() -> bool:
@@ -531,7 +543,8 @@ func restore_stable_snapshot(state: Dictionary, now_ms: int = -1) -> bool:
 		if not _travel.restore_faces(face_values as Array):
 			return false
 	_phase = phase
-	if phase in [PHASE_BOSS_ROLL_READY, PHASE_BOSS_ROUND_RESULT, PHASE_LAP_RESULT, PHASE_RUN_OVER] and _battle == null:
+	_boss_finish_recorded = phase == PHASE_BOSS_FINISHED or (boss_entered and phase in [PHASE_LAP_RESULT, PHASE_RUN_OVER] and bool((_battle.snapshot() if _battle != null else {}).get("terminal", false)))
+	if phase in [PHASE_BOSS_ROLL_READY, PHASE_BOSS_ROUND_RESULT, PHASE_BOSS_FINISHED, PHASE_LAP_RESULT, PHASE_RUN_OVER] and _battle == null:
 		return false
 	if phase in [PHASE_READY, PHASE_CHOICE_REQUIRED] and _battle != null:
 		return false
@@ -601,7 +614,7 @@ func _reset_course_and_clock() -> void:
 	_mark_position_visited(_position)
 	_phase = PHASE_READY; _pending_face = 0; _pending_move_distance = 0; _pending_remaining_steps = 0; _pending_result.clear(); _pending_path.clear()
 	_next_hop_index = 0; _resolution_role = &""; _pending_resolution_role = &""; _pending_role_awarded = false
-	_boss_transition_pending = false; _last_error = ""
+	_boss_transition_pending = false; _boss_finish_recorded = false; _last_error = ""
 	_clock_armed = true; _clock_running = false; _clock_paused = false; _clock_start_ms = 0; _paused_total_ms = 0
 	_pause_started_ms = 0; _clock_stop_ms = 0; _last_now_ms = -1; _pb_updated = false
 	_pb_delta_ms = null
@@ -615,7 +628,7 @@ func _enter_boss_internal() -> void:
 		_phase = PHASE_ERROR; _last_error = "BOSS_CONFIG_FAILED"; return
 	_travel = V06RollSetScript.new()
 	_resolution_role = &""; _pending_resolution_role = &""; _pending_role_awarded = false
-	_boss_transition_pending = false; _phase = PHASE_BOSS_ROLL_READY
+	_boss_transition_pending = false; _boss_finish_recorded = false; _phase = PHASE_BOSS_ROLL_READY
 
 
 func _start_clock_if_armed(now_ms: int) -> void:
@@ -910,7 +923,7 @@ func _restore_clock(clock: Dictionary, now_ms: int) -> void:
 	var restore_now := now_ms if now_ms >= 0 else 0
 	var saved_elapsed := maxi(int(clock.get("elapsed_ms", 0)), 0)
 	_clock_armed = bool(clock.get("armed", false))
-	_clock_running = bool(clock.get("running", false)) and not _phase in [PHASE_LAP_RESULT, PHASE_RUN_OVER]
+	_clock_running = bool(clock.get("running", false)) and not _phase in [PHASE_BOSS_FINISHED, PHASE_LAP_RESULT, PHASE_RUN_OVER]
 	_clock_paused = false
 	_clock_start_ms = restore_now - saved_elapsed
 	_paused_total_ms = 0

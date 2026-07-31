@@ -184,11 +184,19 @@ func _test_boss_victory_score() -> void:
 	_expect(session.enter_boss(0), "score contract can enter the Sphinx stage")
 	_expect(session.start_roll(6, 1).ok and session.boss_result().boss_roll == 1, "first race turn derives the Sphinx mirror roll")
 	_expect(session.phase() == Session.PHASE_BOSS_ROUND_RESULT and session.acknowledge_boss_round(), "first Sphinx race turn resolves")
-	_expect(session.start_roll(6, 2).ok and session.boss_result().victory, "second high roll reaches the race goal")
-	_expect(session.score() == 3400 and session.best_score() == 3400 and session.score_breakdown().boss == 1500 and session.score_breakdown().finish == 1900, "Sphinx victory and full-HP finish award the score-spec total")
+	for now: int in [2, 3, 4]:
+		_expect(session.start_roll(6, now).ok, "high mirror roll %d resolves" % now)
+		if session.phase() != Session.PHASE_BOSS_FINISHED:
+			_expect(session.acknowledge_boss_round(), "high mirror roll %d acknowledges" % now)
+	_expect(session.boss_result().victory, "fourth high roll reaches the 20-space race goal")
+	_expect(session.score() >= 3400 and session.best_score() == session.score() and session.score_breakdown().boss == 1500 and session.score_breakdown().finish == 1900, "Sphinx victory and full-HP finish preserve boss and finish score contracts")
 	_expect(session.acknowledge_boss_round() and session.phase() == Session.PHASE_LAP_RESULT, "victory score survives into the journey result")
 	var loss: RefCounted = Session.new()
-	_expect(loss.enter_boss(0) and loss.start_roll(1, 1).ok and loss.acknowledge_boss_round() and loss.start_roll(1, 2).ok, "two low rolls produce a completed losing race")
+	_expect(loss.enter_boss(0), "losing score contract enters boss")
+	for now: int in [1, 2, 3, 4]:
+		_expect(loss.start_roll(1, now).ok, "low mirror roll %d resolves" % now)
+		if loss.phase() != Session.PHASE_BOSS_FINISHED:
+			_expect(loss.acknowledge_boss_round(), "low mirror roll %d acknowledges" % now)
 	_expect(loss.boss_result().defeat and loss.acknowledge_boss_round() and loss.phase() == Session.PHASE_LAP_RESULT, "boss loss records the result and completes the stage without RUN_OVER")
 
 
@@ -202,7 +210,7 @@ func _test_boss_terminal() -> void:
 	_expect(boss_started.ok and boss_path.size() == 2 and boss_path.back().tile_index == 57, "data-driven boss movement stops after two visible hops")
 	var terminal: Dictionary = session.finish_movement()
 	_expect(terminal.status == "BOSS_GATE_REACHED" and session.phase() == Session.PHASE_BOSS_ROLL_READY and session.position().tile_index == 57, "data-driven boss gate enters a fresh battle")
-	_expect(session.faces() == [6] and session.pending_remaining_steps() == 0, "boss race carries the first committed travel slot and discards surplus movement")
+	_expect(session.faces().is_empty() and session.pending_remaining_steps() == 0, "boss race drops the travel slot and discards surplus movement")
 	_expect(session.start_roll(1).ok and session.boss_result().boss_roll == 6 and not session.acknowledge_resolution(), "first boss roll routes only to the mirror race")
 
 
@@ -223,7 +231,7 @@ func _test_first_slot_boss_terminal() -> void:
 	_roll_and_finish(session, 2)
 	session.acknowledge_resolution()
 	var terminal: Dictionary = _roll_and_finish(session, 6)
-	_expect(terminal.status == "BOSS_GATE_REACHED" and session.faces() == [6], "first-slot boss carries the committed face into the race")
+	_expect(terminal.status == "BOSS_GATE_REACHED" and session.faces().is_empty(), "first-slot boss starts without carrying 3ROLL SLOT state")
 	_expect(session.phase() == Session.PHASE_BOSS_ROLL_READY and not session.is_boss_terminal(), "first-slot boss enters combat immediately")
 	_expect(session.pending_remaining_steps() == 0 and not session.snapshot().boss_transition_pending, "first-slot boss discards surplus without queued result transition")
 

@@ -1,143 +1,120 @@
-# Design QA — Cairo normal journey slice
+# Cairo Sphinx Boss Race v3.2 — Motion Comfort QA
 
 ## Evidence
 
-- Source visual truth: `C:\Users\hiro\Desktop\dice3.png`
-- Combined comparison: `C:\Dev\Projects\dice-slot-trip-recovery\build\design-qa-comparison.png`
-- RESULT_LOCK implementation: `C:\Dev\Projects\dice-slot-trip-recovery\build\qa-result-lock-score-hud-720x1280.png`
-- Inline MIX implementation: `C:\Dev\Projects\dice-slot-trip-recovery\build\qa-inline-mix-720x1280.png`
-- Inline PAIR implementation: `C:\Dev\Projects\dice-slot-trip-recovery\build\qa-inline-pair-720x1280.png`
-- Stage-select implementation: `C:\Dev\Projects\dice-slot-trip-recovery\build\qa-stage-select-latest-720x1280.png`
-- Detached-ring overview: `C:\Dev\Projects\dice-slot-trip-recovery\build\qa-detached-rings-map-720x1280.png`
-- Two-shortcut overview: `C:\Dev\Projects\dice-slot-trip-recovery\build\qa-two-shortcuts-map-720x1280.png`
-- Source pixels: 843 × 907
-- RESULT_LOCK and inline-result pixels: 720 × 1280
-- Stage-select pixels: 360 × 640
-- Godot logical viewport: 360 × 640; gameplay evidence was captured at 2× density.
-- Density normalization: the source was scaled to 1280 px high; stage select was scaled from 360 × 640 to 720 × 1280; the modal capture remained 720 × 1280. These were placed in one 2630 × 1280 comparison image.
-- States: normal-journey RESULT_LOCK, three-roll inline role result, and Cairo stage selection.
+- Full 360×640 race: `docs/reference/v13-boss-race-full.mp4`
+- Timeline contact sheet: `docs/reference/v13-boss-race-full-contact-sheet.png`
+- Offscreen opponent marker and readable sand penalty:
+  `docs/reference/v13-boss-race-offscreen-360x640.png`
+- Fixed-scale late-race frame:
+  `docs/reference/v13-boss-race-fixed-camera-360x640.png`
+- Retuned camera timing race:
+  `docs/reference/v14-boss-race-camera-timing.mp4`
+- Retuned camera timeline:
+  `docs/reference/v14-boss-race-camera-contact-sheet.png`
+- Dice, offscreen rival, and FINISHED polish:
+  `docs/reference/v15-boss-race-polish.mp4`
+- Offscreen Sphinx portrait:
+  `docs/reference/v15-boss-race-offscreen-sphinx.png`
+- Revised finish hierarchy:
+  `docs/reference/v15-boss-race-finish.png`
+- Player-anchor regression race:
+  `docs/reference/v16-boss-race-player-anchor.mp4`
+- Player-anchor timeline:
+  `docs/reference/v16-boss-race-player-anchor-contact-sheet.png`
+- Stable-intro regression race:
+  `docs/reference/v17-boss-race-stable-intro.mp4`
+- Stable-intro opening frames:
+  `docs/reference/v17-boss-race-stable-intro-contact-sheet.png`
 
-## Full-view comparison evidence
+## Motion-comfort audit
 
-The normal HUD gives SCORE the leading position and removes TIME, PB, LAP, and ROLLS. The Cairo card and map composition remain unchanged, while the route summary reads 58 spaces and names the Sphinx lap boss. The duplicate trial action is gone and one primary `この旅へ` action remains. The latest full-screen evidence shows the three-roll result embedded in the slot tray without covering the map.
+1. The former range camera and its dynamic zoom/cell compression are removed.
+   Board cells stay on a fixed 78px logical pitch; both lanes keep the same
+   width and horizontal coordinates for the entire race.
+2. Racer updates and landing previews never move the camera. Dice motion,
+   one-cell hops, and wing/quicksand landing effects complete against a still
+   board.
+3. After a turn has fully resolved, the board holds for 120ms, makes one
+   0.42-second `ease_in_out` vertical translation of exactly two spaces, then
+   holds for another 120ms before ROLL can return. It does not pan horizontally
+   or change the camera magnification.
+4. Characters, foot markers, target pictograms, and special-space art keep
+   `Vector2.ONE` scale during live race play.
+5. A racer beyond the visible board is hidden and replaced at the appropriate
+   lane edge by a distance chip such as `SPHINX ↑ 8マス先`.
+6. Gate approach uses four precomposed static background phases. A phase
+   transition crossfades two stationary plates; no continuous background scale
+   or position animation runs during play. The crossfade begins only after the
+   board-scroll sequence has fully completed.
+7. Quicksand now separates `流砂` from a large white `−2` inside a dark,
+   orange-bordered penalty badge. The forecast also uses the full
+   `流砂 −2` wording.
+8. FINISHED remains a dedicated result state. Camera scale is unchanged until
+   it starts, normal race input disappears, and only `次の旅へ` remains
+   actionable.
+9. Existing concrete coordinates, 20-space course, opposite-face result,
+   `翼 +3`, `流砂 −2`, and player-favored exact tie remain unchanged.
+10. The live boss die is approximately 18% larger, sits closer to the action
+    frame, uses larger near-black pips, and moves upward only for the STOP
+    reveal/flip.
+11. An offscreen Sphinx distance marker includes a static portrait so the rival
+    remains present without adding continuous animation.
+12. FINISHED now reads in order: one gate-light pulse, one winner jump, a 46px
+    winner callout, then race statistics after a 0.5-second hold.
+13. The explorer cat never disappears. During a long hop it is pinned to the
+    visible edge of its lane, then the camera repeats fixed two-space segments
+    until the cat is restored to the lower player anchor. Only an offscreen
+    Sphinx is replaced by a distance marker.
+14. Boss entry now uses a fixed-scale reference frame. The panel and board
+    fade in without a scale bounce, and the initial racer positions are seeded
+    before the first deferred refresh so the intro cannot begin with a phantom
+    movement tween.
 
-## Focused-region comparison evidence
+## 20-space baseline measurement
 
-Focused captures were needed because the two source callouts are small:
+`tests/run_v06_boss_race_metrics.gd` runs 10,000 deterministic-seed races
+against the production course and resolution code. Uniformly selected visible
+faces are used as an unbiased baseline; each selected non-six is counted as an
+intentional alternative to the maximum-distance face.
 
-- Inline result: the completed `[4][1][6]` slots, `MIX`, `+50`, and `コイン+1` remain in the tray; no dim layer, modal card, or confirmation button covers the map.
-- PAIR result: the two matching `[6]` slots are joined by a short light line, while the third slot remains outside that connection.
-- Stage actions: the single primary `この旅へ` action launches the latest V06 route, with 58-space and Sphinx information immediately above it.
-- RESULT_LOCK: only the card corresponding to the fixed face receives a restrained outline/ring. ROLLING has no target highlight. The score count-up follows the authoritative v0.1 score table.
+- Average turns: 5.074
+- Races ending within five turns: 72.7%
+- Races lasting seven or eight turns: 1.6%
+- Average wing landings: 0.881
+- Average quicksand landings: 0.900
+- Average non-six selections: 4.237
+- Average gap before the final roll: 5.252 spaces
 
-## Required fidelity surfaces
+The mean sits just above the proposed five-turn threshold, but the 72.7%
+short-race rate supports evaluating a separate 24-space candidate. The
+production course remains at 20 spaces in this revision.
 
-- Fonts and typography: the existing Japanese game font and hierarchy are preserved. SCORE is legible and dominant; coin, hearts, progress, and MAP remain secondary. No clipping or truncation is visible at 360 × 640.
-- Spacing and layout rhythm: the normal HUD fits on one row, the duplicate stage button was removed, and the taller slot tray fits role and reward copy without clipping the map or bottom tools. The two-line stage summary is an intentional narrow-screen wrap.
-- Colors and visual tokens: the existing parchment, teal, gold, and dark HUD tokens are reused. RESULT_LOCK uses a calm teal/gold emphasis rather than an active rolling glow.
-- Image quality and asset fidelity: existing Cairo, Sphinx, coin, cat, map, and die assets are retained. No visible image was replaced by emoji, placeholder geometry, or a newly approximated asset.
-- Copy and content: normal journey copy uses SCORE and 58-space progress; Cairo names the sleepy Sphinx as lap boss; the duplicate V06 trial copy is removed; `この旅へ` is the canonical launch action.
+## Automated verification
 
-## Comparison history
+- `tests/run_v06_boss_play_screen_tests.gd`: passed; fixed 78px spacing,
+  immutable camera during racer/preview updates, two-space scroll request,
+  0.42-second eased motion with 120ms holds, ROLL gating, vertical-only
+  translation, upward and downward edge markers, non-overlapping backdrop
+  crossfade, intro gating, FINISHED/stale-await guards, and 720×1280 design
+  geometry with 360×640 half-scale readability.
+- `tests/run_v06_boss_race_metrics.gd`: completed 10,000 production-logic
+  samples with a fixed seed and emitted the baseline values above.
+- `tests/run_v06_boss_battle_tests.gd`: passed; mirror pairs, two immediate
+  effects, effect counters, 20-space goal, tie priority, save restore, and no
+  boss SLOT.
+- `tests/run_v06_play_session_tests.gd`: passed.
+- `tests/run_v06_save_tests.gd`: passed.
+- `tests/run_v06_tile_effect_tests.gd`: passed.
+- `tests/run_v06_play_screen_tests.gd`: passed.
+- `tests/run_tests.gd`: passed, `failures=0`.
 
-### Iteration 1
+## Video route
 
-- [P1] The map die rendered above the resolution modal and overlapped its action.
-- [P1] Stage selection exposed two competing launch actions, with the older `この旅へ` path and a separate latest V06 trial path.
-- [P2] Cairo still presented 90 spaces in the supplied source state.
-- [P2] Normal travel foregrounded TIME/PB/LAP instead of score growth.
-- [P2] The first RESULT_LOCK capture caught the score mid-count-up and exposed an extra HUD separator.
-
-Fixes made:
-
-- Raised resolution and choice overlays above the map die.
-- Routed the Cairo postcard and single `この旅へ` button to the latest V06 journey and removed the duplicate trial button.
-- Replaced 90 with 58 and named the Sphinx lap boss.
-- Replaced normal TIME/PB/LAP/ROLLS fields with SCORE, coin, HP hearts, progress, and MAP.
-- Delayed the deterministic capture until the score tween settled and removed the redundant separator.
-
-### Iteration 2
-
-Post-fix evidence in `build/design-qa-comparison.png`, `build/qa-result-lock-score-hud-720x1280.png`, and `build/qa-resolution-modal-layer-720x1280.png` shows no remaining actionable P0/P1/P2 mismatch in this slice.
-
-### Iteration 3
-
-- [P1] MIX / PAIR / STRAIGHT / TRIPLE still interrupted travel with a full-screen confirmation modal.
-- [P2] Role rewards were awarded only after movement, so the slot could not answer immediately when the third face stopped.
-
-Fixes made:
-
-- Moved travel-role results into the slot tray and removed the confirmation step from the travel flow.
-- Awarded role score, coin, and skill gauge at result lock, before cat movement.
-- Added equal-duration role treatments: MIX soft flash, PAIR linked matches, STRAIGHT left-to-right flow, and TRIPLE strong simultaneous flash.
-- Automatically resets the three slots only after movement, landing, and camera follow complete.
-
-Post-fix evidence in `build/qa-inline-mix-720x1280.png` and `build/qa-inline-pair-720x1280.png` shows no remaining actionable P0/P1/P2 mismatch in the inline-result slice.
-
-### Iteration 4
-
-- [P1] The former ring was attached to the main route as a permanent side loop, so entering it read as ordinary route traversal.
-- [P1] A single portal could not communicate safe, dangerous, and special destinations before the player committed.
-- [P2] Ring rewards and movement score could be collected repeatedly.
-
-Fixes made:
-
-- Split the side route into independent `オアシス環` and `墓廊の輪` spaces and removed permanent minimap connector lines.
-- Added five exact-stop gates across the 58-space main route: two aqua oasis gates, two purple tomb gates, and one gold special gate.
-- Fixed each EXIT return to the tile immediately after the next gate, without retriggering that gate.
-- Made each source gate single-use per lap and normalized consumed gates and ring rewards to NORMAL.
-- Applied first-visit-only movement score and route-specific first-time EXIT scores from `スコア仕様 v0.1.md`.
-
-The production OpenGL capture in `build/qa-detached-rings-map-720x1280.png` confirms that both rings read as floating islands, the five destination gates remain visible on the main route, and no permanent line connects either ring to the route.
-
-### Iteration 5
-
-- [P1] The former single shortcut occupied the central crossing and competed with the main route and player marker.
-- [P1] Cairo needed two geographically distinct shortcuts rather than one fixed branch contract.
-- [P2] Shortcut entry, merge, distance saving, and selection state were not explicit enough on the overview.
-
-Fixes made:
-
-- Added `バザール裏路地` from 11 to 19 on the right, with a four-space saving.
-- Added `砂嵐の抜け道` from 34 to 46 on the left, with a six-space saving.
-- Kept both shortcuts connected to the main route, visually distinct from the detached ring spaces.
-- Added thicker rust-red dashed paths, split and merge markers, compact saving labels, and existing RISK / ITEM node icons.
-- Unselected paths use restrained opacity; the currently selected shortcut brightens without changing topology.
-- Generalized movement, route choice, completion score, six-space forward preview, and UI copy from one hard-coded bypass to two data-driven shortcuts.
-
-The production OpenGL capture in `build/qa-two-shortcuts-map-720x1280.png` confirms that the two branches occupy opposite outside edges and no longer form a central knot with the player, main route, or either ring.
-
-## Findings
-
-No actionable P0, P1, or P2 findings remain.
-
-## Open questions
-
-- The stage route summary wraps onto two lines at 360 px width. This is acceptable for the current information set; it can be revisited only if future HUD copy becomes longer.
-
-## Implementation checklist
-
-- [x] RESULT_LOCK-only quiet target emphasis
-- [x] Modal layering above the map die
-- [x] Single latest Cairo launch path
-- [x] 58-space Cairo route and Sphinx lap boss
-- [x] Score-led normal HUD
-- [x] MIX / PAIR / STRAIGHT / TRIPLE additive role scoring
-- [x] Nonmodal inline role results with no confirmation button
-- [x] MIX coin reward and PAIR / STRAIGHT / TRIPLE skill-gauge rewards
-- [x] Five exact-stop warp gates with distinct oasis, tomb, and gold treatments
-- [x] Two detached minimap rings with no permanent connector lines
-- [x] Fixed post-next-gate return and no immediate re-warp
-- [x] Per-lap gate consumption and one-time ring rewards
-- [x] First-visit-only movement scoring and v0.1 score categories
-- [x] Bazaar alley 11→19 / four-space saving
-- [x] Sirocco shortcut 34→46 / six-space saving
-- [x] Opposite-side shortcut placement with split and merge markers
-- [x] Faint unselected path and bright selected path
-- [x] 360 × 640 and 720 × 1280 visual verification
-
-## Follow-up polish
-
-- [P3] A later presentation milestone may give large score awards bespoke sound, particles, and material response. This is intentionally outside the current stability/information slice.
+The deterministic race uses faces `1, 1, 6, 6, 6`. It first sends SPHINX far
+ahead, proves the edge marker at YOU 2 / SPHINX 10, shows the enlarged
+quicksand penalty, then lets YOU recover and finish. Across the full recording,
+cell, racer, and pictogram scale remain fixed; board translation occurs only
+after resolved movement.
 
 final result: passed

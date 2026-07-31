@@ -1,0 +1,13 @@
+Built-in Image Gen
+Use case: stylized-concept
+Asset type: production mobile game stage backdrop, portrait 720x1280
+
+Create a clean moonlit Cairo/Giza mirror-race arena background plate in the
+same premium painterly storybook direction as the selected boss-race mockup.
+Show pyramids, Sphinx monuments, warm lanterns, a luminous golden winged gate,
+and two parallel carved-sandstone lanes leading from the foreground to the
+goal. Use sandstone, brushed brass, lapis enamel, and deep navy. Keep the
+tracks unobstructed and leave quieter space at the top and bottom for live UI.
+
+Environment only: no UI, text, labels, dice, buttons, characters, cats, hearts,
+device frame, system chrome, or watermark.

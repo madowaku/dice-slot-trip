@@ -1,28 +1,27 @@
 {
-  "schema_version": "dice-slot-trip.boss-race/1",
-  "id": "cairo_sphinx_mirror_race_v1",
-  "display_name": "黄金門の鏡面レース",
+  "schema_version": "dice-slot-trip.boss-race/3",
+  "id": "cairo_sphinx_two_lane_race_v3",
+  "display_name": "黄金門の二重レーンレース",
   "stage_id": "cairo_hourglass",
   "boss_id": "sphinx",
   "boss_display_name": "スフィンクス",
-  "course_length": 13,
-  "goal_position": 13,
-  "safety_max_turns": 12,
-  "player_first_sand_flag": "boss_ignore_first_sand",
-  "course": [
+  "course_length": 20,
+  "goal_position": 20,
+  "safety_max_turns": 11,
+  "player_course": [
     "START",
-    "NORMAL",
-    "BOOST",
-    "SAND",
-    "NORMAL",
-    "WIND",
-    "BOOST",
-    "SAND",
-    "NORMAL",
-    "BOOST",
-    "WIND",
-    "SAND",
-    "BOOST",
+    "NORMAL", "NORMAL", "NORMAL", "NORMAL", "NORMAL", "NORMAL",
+    "WING_GATE", "NORMAL", "QUICKSAND", "NORMAL", "NORMAL", "NORMAL",
+    "WING_GATE", "NORMAL", "QUICKSAND",
+    "NORMAL", "NORMAL", "NORMAL", "NORMAL",
+    "GOAL"
+  ],
+  "boss_course": [
+    "START",
+    "NORMAL", "NORMAL", "NORMAL", "NORMAL", "NORMAL", "NORMAL",
+    "QUICKSAND", "NORMAL", "WING_GATE", "NORMAL", "NORMAL", "QUICKSAND",
+    "NORMAL", "WING_GATE", "NORMAL",
+    "NORMAL", "NORMAL", "NORMAL", "NORMAL",
     "GOAL"
   ]
 }
