@@ -16,6 +16,16 @@ const KIND_ICON_REST: Texture2D = preload("res://assets/art/v06/tile_kind_icons/
 const KIND_ICON_RISK: Texture2D = preload("res://assets/art/v06/tile_kind_icons/risk-skull.png")
 const KIND_ICON_ITEM: Texture2D = preload("res://assets/art/v06/tile_kind_icons/item-pouch.png")
 const KIND_ICON_EVENT: Texture2D = preload("res://assets/art/v06/tile_kind_icons/event-book-open.png")
+const DISTRICT_SCENERY_TEXTURES: Dictionary = {
+	&"MARKET": preload("res://assets/art/v14/cairo_districts/market.png"),
+	&"PYRAMID": preload("res://assets/art/v14/cairo_districts/pyramid.png"),
+	&"OASIS": preload("res://assets/art/v14/cairo_districts/oasis.png"),
+	&"RUINS": preload("res://assets/art/v14/cairo_districts/ruins.png"),
+	&"DUNES": preload("res://assets/art/v14/cairo_districts/dunes.png"),
+}
+const DISTRICT_IDS: Array[StringName] = [&"MARKET", &"PYRAMID", &"OASIS", &"RUINS", &"DUNES"]
+const DISTRICT_START_TILES: Array[int] = [0, 12, 24, 35, 46]
+const DISTRICT_TRANSITION_TILES := 3.0
 
 const ROUTE_STYLE_MAIN: StringName = &"main_teal_solid"
 const ROUTE_STYLE_BYPASS: StringName = &"bypass_rust_dashed"
@@ -1084,6 +1094,7 @@ func _set_hop_progress(value: float, start: Vector2, target: Vector2) -> void:
 
 func _draw() -> void:
 	_draw_flat_atlas_texture()
+	_draw_district_scenery()
 	if uses_card_route():
 		_draw_card_route()
 	else:
@@ -1393,6 +1404,122 @@ func _draw_flat_atlas_texture() -> void:
 	draw_texture_rect(CAIRO_CARTOGRAPHY_INK, atlas_rect, false, Color(1.0, 1.0, 1.0, 0.24))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_rect(atlas_rect, Color(PARCHMENT, 0.08))
+
+
+static func district_scenery_state_for_main_position(tile_position: float) -> Dictionary:
+	var position := clampf(tile_position, 0.0, 57.0)
+	var district_index := 0
+	for index: int in range(DISTRICT_START_TILES.size()):
+		if position >= float(DISTRICT_START_TILES[index]):
+			district_index = index
+		else:
+			break
+	var start_tile := float(DISTRICT_START_TILES[district_index])
+	var end_tile := 58.0 if district_index == DISTRICT_START_TILES.size() - 1 else float(DISTRICT_START_TILES[district_index + 1])
+	var span := maxf(1.0, end_tile - start_tile - 1.0)
+	var local_progress := clampf((position - start_tile) / span, 0.0, 1.0)
+	var has_next := district_index < DISTRICT_IDS.size() - 1
+	var transition := smoothstep(end_tile - DISTRICT_TRANSITION_TILES, end_tile - 1.0, position) if has_next else 0.0
+	return {
+		"district_id": DISTRICT_IDS[district_index],
+		"next_district_id": DISTRICT_IDS[district_index + 1] if has_next else DISTRICT_IDS[district_index],
+		"local_progress": local_progress,
+		"transition": transition,
+	}
+
+
+func _visual_main_tile_position() -> float:
+	if _straight_travel_active and str(_straight_travel_start_position.get("route_id", "")) == V06CourseModelScript.ROUTE_MAIN:
+		var start_tile := float(_straight_travel_start_position.get("tile_index", 0))
+		return start_tile + lerpf(float(_straight_step_from), float(_straight_travel_player_step), _straight_step_progress)
+	if str(_current_position.get("route_id", "")) != V06CourseModelScript.ROUTE_MAIN:
+		return float(_current_position.get("tile_index", 0))
+	if not _carousel_previous_position.is_empty() \
+			and str(_carousel_previous_position.get("route_id", "")) == V06CourseModelScript.ROUTE_MAIN:
+		return lerpf(
+			float(_carousel_previous_position.get("tile_index", 0)),
+			float(_current_position.get("tile_index", 0)),
+			_carousel_progress
+		)
+	return float(_current_position.get("tile_index", 0))
+
+
+func _active_scenery_state() -> Dictionary:
+	var route_id := str(_current_position.get("route_id", V06CourseModelScript.ROUTE_MAIN))
+	if route_id == V06CourseModelScript.ROUTE_MAIN or (_straight_travel_active and str(_straight_travel_start_position.get("route_id", "")) == V06CourseModelScript.ROUTE_MAIN):
+		return district_scenery_state_for_main_position(_visual_main_tile_position())
+	var district_id: StringName = &"MARKET"
+	match route_id:
+		V06CourseModelScript.ROUTE_BYPASS_BAZAAR:
+			district_id = &"MARKET"
+		V06CourseModelScript.ROUTE_BYPASS_SIROCCO:
+			district_id = &"DUNES"
+		V06CourseModelScript.ROUTE_LOOP_OASIS:
+			district_id = &"OASIS"
+		V06CourseModelScript.ROUTE_LOOP_TOMB:
+			district_id = &"RUINS"
+	var route_size := maxi(1, _route_size(route_id) - 1)
+	var loop_background_static := route_id in [V06CourseModelScript.ROUTE_LOOP_OASIS, V06CourseModelScript.ROUTE_LOOP_TOMB]
+	return {
+		"district_id": district_id,
+		"next_district_id": district_id,
+		"local_progress": 0.5 if loop_background_static else clampf(float(_current_position.get("tile_index", 0)) / float(route_size), 0.0, 1.0),
+		"transition": 0.0,
+		"background_static": loop_background_static,
+	}
+
+
+func _draw_district_scenery() -> void:
+	if _overview_mode:
+		return
+	var state := _active_scenery_state()
+	var transition := float(state.get("transition", 0.0))
+	var local_progress := float(state.get("local_progress", 0.0))
+	if bool(state.get("background_static", false)):
+		local_progress = 0.5
+	_draw_district_scenery_layer(
+		StringName(state.get("district_id", &"MARKET")),
+		local_progress,
+		1.0 - transition,
+		-transition * size.x * 0.08
+	)
+	if transition > 0.001:
+		_draw_district_scenery_layer(
+			StringName(state.get("next_district_id", &"PYRAMID")),
+			0.0,
+			transition,
+			(1.0 - transition) * size.x * 0.24
+		)
+
+
+func _draw_district_scenery_layer(district_id: StringName, progress: float, alpha: float, transition_shift: float) -> void:
+	var texture := DISTRICT_SCENERY_TEXTURES.get(district_id) as Texture2D
+	if texture == null or alpha <= 0.001:
+		return
+	var source_size := texture.get_size()
+	var target_height := maxf(230.0, size.y * 0.43)
+	var target_width := target_height * source_size.x / maxf(source_size.y, 1.0)
+	var minimum_width := size.x * 1.22
+	if target_width < minimum_width:
+		var scale_up := minimum_width / target_width
+		target_width *= scale_up
+		target_height *= scale_up
+	var overflow := maxf(0.0, target_width - size.x)
+	var travel := lerpf(overflow * 0.10, overflow * 0.90, clampf(progress, 0.0, 1.0))
+	var destination := Rect2(
+		Vector2(-travel + transition_shift, size.y * 0.09),
+		Vector2(target_width, target_height)
+	)
+	draw_texture_rect(texture, destination, false, Color(1.0, 0.96, 0.84, alpha * 0.46))
+
+
+func district_scenery_receipt() -> Dictionary:
+	var state := _active_scenery_state()
+	state["visual_main_tile_position"] = _visual_main_tile_position()
+	state["overview_hidden"] = _overview_mode
+	state["asset_count"] = DISTRICT_SCENERY_TEXTURES.size()
+	state["background_static"] = bool(state.get("background_static", false))
+	return state
 
 
 func _draw_route_graph() -> void:
