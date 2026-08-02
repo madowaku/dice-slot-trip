@@ -210,7 +210,7 @@ const SLOT_RESULT_STRONG_GLOW := Color(1.75, 1.68, 1.42, 1.0)
 @onready var landing_art: TextureRect = %LandingArt
 @onready var landing_discovery_thumb: TextureRect = %LandingDiscoveryThumb
 @onready var landing_art_caption: Label = %LandingArtCaption
-@onready var landing_art_prompt: Label = %LandingArtPrompt
+@onready var landing_art_prompt: Button = %LandingArtPrompt
 @onready var boss_sequence_art: TextureRect = %BossSequenceArt
 @onready var postcard_art: TextureRect = %PostcardArt
 @onready var boost_pictogram: TextureRect = %BoostPictogram
@@ -285,6 +285,8 @@ var _boss_camera_tween: Tween
 var _boss_pictogram_anchors: Dictionary = {}
 var _mission_seen_event_serial := 0
 var _mission_toast_generation := 0
+var _operation_message_generation := 0
+var _operation_message_override_active := false
 var _boss_background_phase := -1
 var _boss_backdrop_active := 0
 var _boss_goal_presentation_active := false
@@ -331,6 +333,7 @@ func _ready() -> void:
 			call_deferred("_emit_resume_failed")
 	_mission_seen_event_serial = int(_session.mission_state().get("event_serial", 0))
 	_configure_generated_art()
+	_prepare_operation_message_band()
 	_apply_surface_styles()
 	_wire_controls()
 	_wire_press_feedback()
@@ -378,6 +381,22 @@ func _configure_generated_art() -> void:
 	boss_sequence_art.hide()
 	postcard_art.hide()
 	_prepare_inline_slot_layout()
+
+
+func _prepare_operation_message_band() -> void:
+	# Keep the guidance in the document flow between map and controls. This
+	# protects both surfaces at tall and half-scale mobile viewports.
+	var page := %Page as VBoxContainer
+	var tray_panel := %TrayPanel as PanelContainer
+	if message_band.get_parent() != page:
+		message_band.reparent(page, false)
+	page.move_child(message_band, tray_panel.get_index())
+	message_band.custom_minimum_size = Vector2(0.0, 72.0)
+	message_band.layout_mode = 2
+	if message_label.get_parent() != message_band:
+		message_label.reparent(message_band, false)
+	message_label.layout_mode = 2
+	message_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 
 func _prepare_inline_slot_layout() -> void:
@@ -626,6 +645,7 @@ func _wire_controls() -> void:
 		pinpoint_face_buttons[index].pressed.connect(_on_pinpoint_face_selected.bind(index + 1))
 	travel_menu_continue_button.pressed.connect(_on_travel_menu_continue)
 	travel_menu_exit_button.pressed.connect(_leave_stage_requested)
+	landing_art_prompt.pressed.connect(_dismiss_tile_help)
 	map_button.pressed.connect(_on_map_pressed)
 	map_close_button.pressed.connect(_on_map_closed)
 	choice_main_button.pressed.connect(_on_route_chosen.bind(V06CourseModelScript.ROUTE_MAIN))
@@ -636,10 +656,9 @@ func _wire_controls() -> void:
 	boss_pause_button.pressed.connect(_on_boss_pause_pressed)
 	boss_resume_button.pressed.connect(_on_boss_resume_pressed)
 	boss_back_button.pressed.connect(_leave_stage_requested)
-	landing_art_overlay.gui_input.connect(_on_landing_art_gui_input)
 	landing_art_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	for child: Node in landing_art_overlay.find_children("*", "Control", true, false):
-		(child as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+		(child as Control).mouse_filter = Control.MOUSE_FILTER_STOP if child == landing_art_prompt else Control.MOUSE_FILTER_IGNORE
 
 
 func _wire_press_feedback() -> void:
@@ -734,9 +753,7 @@ func _start_roll() -> void:
 	_slot_settling = false
 	_rolling_slot_elapsed = 0.0
 	_rolling_slot_face = 1
-	message_label.text = "回転中…もう一度タップで止める"
-	message_band.show()
-	message_label.show()
+	_show_operation_message("回転中…タップで止める")
 	_refresh_ui()
 	_refresh_rolling_slot_preview()
 	if _session.phase() == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
@@ -752,10 +769,12 @@ func _stop_roll() -> void:
 	_rolling = false
 	_slot_settling = true
 	_movement_active = _session.can_roll()
-	message_band.hide()
-	message_label.hide()
 	var pinpoint_face: int = int(_session.consume_pinpoint_face())
-	var face: int = pinpoint_face if pinpoint_face > 0 else _rng.randi_range(1, 6)
+	var boss_roll_active: bool = _session.phase() == V06PlaySessionScript.PHASE_BOSS_ROLL_READY
+	# In the mirror race the visible rolling face is authoritative: the face
+	# under the player's tap must be the same face committed to the session.
+	var face: int = pinpoint_face if pinpoint_face > 0 else (_rolling_slot_face if boss_roll_active else _rng.randi_range(1, 6))
+	_show_operation_message("%dマス進む！" % face, 1.0, 38)
 	_emit_feedback(V06FeedbackControllerScript.EVENT_ROLL_STOP)
 	_shown_face = face
 	if _session.phase() == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
@@ -797,7 +816,6 @@ func _run_face(face: int) -> void:
 		_refresh_ui()
 		return
 	if pre_roll_phase == V06PlaySessionScript.PHASE_BOSS_ROLL_READY:
-		_shown_face = 0
 		var race_result: Dictionary = _session.boss_result()
 		if bool(race_result.get("victory", false)) or bool(race_result.get("defeat", false)):
 			# A terminal result invalidates every older await immediately. The
@@ -1286,6 +1304,11 @@ func _on_next_lap_requested() -> void:
 		return
 	_shown_face = 0
 	_cancel_motion(_session.position())
+	# The boss viewport owns its own die pool. Clear it before revealing the
+	# normal map so a retained last face cannot survive into later laps.
+	boss_dice_presentation.present([], false, 0)
+	boss_dice_presentation.hide()
+	boss_dice_owner_label.hide()
 	boss_overlay.hide()
 	atlas_view.set_route_position(_session.position(), true)
 	_refresh_ui()
@@ -1597,16 +1620,13 @@ func _refresh_ui() -> void:
 	_refresh_slot_display(values)
 	var phase: StringName = _session.phase()
 	_refresh_slot_guidance(values, phase)
-	if phase != V06PlaySessionScript.PHASE_READY and not _distance_announcement_active:
-		message_label.show()
 	match phase:
 		V06PlaySessionScript.PHASE_READY:
 			tray_status_label.text = "残り%d" % clampi(3 - _slot_fill_count(values), 0, 3)
 			tray_hint_label.text = ""
 			next_need_label.text = ""
 			action_hint_label.text = ""
-			if not _inline_slot_result_active and not _rolling and not _movement_active and message_label.text in ["", "ダイス1個で、1マスずつ進む", "役をつくろう", "同じ数字を狙う"]:
-				message_label.hide()
+			pass
 		V06PlaySessionScript.PHASE_MOVING:
 			if _session.pending_resolution_role() != &"":
 				tray_status_label.text = "残り%d" % clampi(3 - _slot_fill_count(values), 0, 3)
@@ -1644,6 +1664,8 @@ func _refresh_ui() -> void:
 		V06PlaySessionScript.PHASE_RUN_OVER,
 	]
 	_set_boss_chrome_active(boss_active)
+	if not boss_active and not _operation_message_override_active:
+		_refresh_default_operation_message(phase)
 	if _inline_slot_result_active:
 		# The inline role/reward replaces the tray copy for this short result;
 		# keep the normal phase refresh from re-showing a stale slot header.
@@ -1726,22 +1748,42 @@ func _show_mission_toast(event: Dictionary) -> void:
 	else:
 		_emit_feedback(V06FeedbackControllerScript.EVENT_REWARD)
 	var missions: Dictionary = _session.mission_state()
+	var target_cell: PanelContainer = null
 	match kind:
-		"coin": mission_toast_label.text = "MISSION COMPLETE　コイン 15/15" if completed else "MISSION　コイン %d/15" % mini(int(missions.get("coin_gained", 0)), 15)
-		"role": mission_toast_label.text = "MISSION COMPLETE　役成立 2/2" if completed else "MISSION　役成立 %d/2" % mini(int(missions.get("role_successes", 0)), 2)
-		"no_damage": mission_toast_label.text = "MISSION COMPLETE　無傷 達成" if completed else "MISSION FAILED　無傷 失敗"
+		"coin":
+			mission_toast_label.text = "MISSION COMPLETE　コイン 15/15" if completed else "MISSION　コイン %d/15" % mini(int(missions.get("coin_gained", 0)), 15)
+			target_cell = mission_coin_cell
+		"role":
+			mission_toast_label.text = "MISSION COMPLETE　役成立 2/2" if completed else "MISSION　役成立 %d/2" % mini(int(missions.get("role_successes", 0)), 2)
+			target_cell = mission_role_cell
+		"no_damage":
+			mission_toast_label.text = "MISSION COMPLETE　無傷 達成" if completed else "MISSION FAILED　無傷 失敗"
+			target_cell = mission_no_damage_cell
 		_: return
-	mission_toast.add_theme_stylebox_override("panel", _panel_style(Color("#342314"), Color("#d6a638"), 12, 2))
-	mission_toast_label.add_theme_color_override("font_color", Color("#d6a638") if completed else Color("#f3e1bd"))
-	mission_toast.show()
+	mission_toast.hide()
+	_show_operation_message(mission_toast_label.text, 1.2, 25)
+	_flash_mission_cell(target_cell, completed)
 	_mission_toast_generation += 1
-	_hide_mission_toast_after_delay(_mission_toast_generation)
 
 
 func _hide_mission_toast_after_delay(generation: int) -> void:
 	await get_tree().create_timer(1.0).timeout
 	if generation == _mission_toast_generation and is_instance_valid(mission_toast):
 		mission_toast.hide()
+
+
+func _flash_mission_cell(cell: PanelContainer, completed: bool) -> void:
+	if not is_instance_valid(cell):
+		return
+	cell.pivot_offset = cell.size * 0.5
+	cell.scale = Vector2.ONE
+	cell.self_modulate = Color.WHITE
+	var flash := create_tween()
+	flash.tween_property(cell, "self_modulate", Color("#ffe19a") if completed else Color("#fff3cf"), 0.10)
+	flash.parallel().tween_property(cell, "scale", Vector2.ONE * 1.035, 0.10).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	flash.tween_interval(0.34)
+	flash.tween_property(cell, "self_modulate", Color.WHITE, 0.22)
+	flash.parallel().tween_property(cell, "scale", Vector2.ONE, 0.22)
 
 
 func _set_boss_chrome_active(active: bool) -> void:
@@ -1752,8 +1794,16 @@ func _set_boss_chrome_active(active: bool) -> void:
 	normal_tool_dock.visible = not active
 	dice_presentation.visible = not active
 	if active:
+		dice_presentation.present([], false, 0)
+		die_hero_art.hide()
 		message_band.hide()
 		message_label.hide()
+	else:
+		boss_dice_presentation.present([], false, 0)
+		boss_dice_presentation.hide()
+		boss_dice_owner_label.hide()
+		message_band.show()
+		message_label.show()
 	boss_hud.visible = active
 	var tray_panel := %TrayPanel as Control
 	var roll_row := $SafeMargin/Page/TrayPanel/TrayContent/RollRow as Control
@@ -1950,9 +2000,14 @@ func _play_inline_slot_result(role: String, face: int, motion_generation: int) -
 	var values: Array[int] = _session.faces()
 	values.append(face)
 	var spec := inline_slot_result_spec(role, values)
-	role_label.text = _display_role(role)
+	role_label.text = "%s！" % _display_role(role)
+	role_label.add_theme_font_size_override("font_size", 38)
 	role_label.add_theme_color_override("font_color", Color("#167f82"))
-	role_reward_label.text = str(spec.reward)
+	var score_award: Dictionary = _session.last_score_award()
+	var score_amount := int(score_award.get("amount", 0))
+	var reward_suffix := str(spec.reward).get_slice("　", 1)
+	role_reward_label.text = "+%d%s" % [score_amount, ("　" + reward_suffix) if not reward_suffix.is_empty() else ""]
+	role_reward_label.add_theme_font_size_override("font_size", 27)
 	role_reward_label.show()
 	role_label.show()
 	_refresh_inline_slot_layout()
@@ -2059,7 +2114,10 @@ func _reset_inline_slot_result() -> void:
 	if is_instance_valid(role_reward_label):
 		role_reward_label.hide()
 	if is_instance_valid(role_label):
+		role_label.remove_theme_font_size_override("font_size")
 		role_label.hide()
+	if is_instance_valid(role_reward_label):
+		role_reward_label.remove_theme_font_size_override("font_size")
 	if is_instance_valid(tray_status_label):
 		tray_status_label.hide()
 	if is_instance_valid(pair_link):
@@ -2080,20 +2138,48 @@ func _reset_move_announcement_style() -> void:
 
 func _present_move_announcement(move_distance: int, motion_generation: int) -> void:
 	_distance_announcement_active = true
-	message_label.text = "%dマス進む" % maxi(move_distance, 0)
-	message_label.add_theme_font_size_override("font_size", 42)
-	message_label.scale = Vector2.ONE * 1.12
-	message_label.modulate.a = 1.0
+	_show_operation_message("%dマス進む！" % maxi(move_distance, 0), 1.0, 42)
+
+
+func _show_operation_message(text: String, duration := 0.0, font_size := 26) -> void:
+	if not is_instance_valid(message_band) or not is_instance_valid(message_label):
+		return
+	_operation_message_generation += 1
+	var generation := _operation_message_generation
+	_operation_message_override_active = duration > 0.0
+	message_label.text = text
+	message_label.add_theme_font_size_override("font_size", font_size)
+	message_label.scale = Vector2.ONE
+	message_label.modulate = Color.WHITE
+	message_band.show()
 	message_label.show()
-	var expected_announcement := message_label.text
-	var timer_generation := motion_generation
-	get_tree().create_timer(1.0).timeout.connect(func() -> void:
-		if timer_generation != _motion_generation or not is_instance_valid(message_label):
+	if duration <= 0.0:
+		return
+	get_tree().create_timer(duration).timeout.connect(func() -> void:
+		if generation != _operation_message_generation or not is_instance_valid(message_label):
 			return
-		if message_label.text == expected_announcement:
-			message_label.hide()
+		_operation_message_override_active = false
 		_reset_move_announcement_style()
+		if _session != null:
+			_refresh_default_operation_message(_session.phase())
 	)
+
+
+func _refresh_default_operation_message(phase: StringName) -> void:
+	if _rolling:
+		_show_operation_message("回転中…タップで止める")
+		return
+	match phase:
+		V06PlaySessionScript.PHASE_READY:
+			_show_operation_message("サイコロを振ろう")
+		V06PlaySessionScript.PHASE_MOVING:
+			_show_operation_message("プレイヤーが移動中…")
+		V06PlaySessionScript.PHASE_CHOICE_REQUIRED:
+			_show_operation_message("進むルートを選ぼう")
+		V06PlaySessionScript.PHASE_RESOLUTION_REQUIRED:
+			_show_operation_message("次の3投を始めよう")
+		_:
+			_show_operation_message("旅を続けよう")
 
 
 func _refresh_die_presentation() -> void:
@@ -2113,14 +2199,37 @@ func _refresh_die_presentation() -> void:
 	var hero_visible := false
 	die_hero_art.visible = hero_visible
 	dice_presentation.visible = not boss_active
-	var display_face := _shown_face if _shown_face > 0 else 6
-	dice_presentation.present([display_face], _rolling, 0 if _rolling else 1)
-	dice_presentation.pivot_offset = dice_presentation.size * 0.5
-	var target_scale := 1.08 if _rolling else (1.05 if _shown_face > 0 and _movement_active else 1.0)
-	dice_presentation.scale = Vector2.ONE * target_scale
-	if is_instance_valid(boss_dice_presentation) and _session != null and not _session.boss_snapshot().is_empty():
-		var boss_face := _rolling_slot_face if _rolling else (_shown_face if _shown_face > 0 else 1)
+	if boss_active:
+		dice_presentation.present([], false, 0)
+	else:
+		var display_face := _shown_face if _shown_face > 0 else 6
+		dice_presentation.present([display_face], _rolling, 0 if _rolling else 1)
+		dice_presentation.pivot_offset = dice_presentation.size * 0.5
+		var target_scale := 1.08 if _rolling else (1.05 if _shown_face > 0 and _movement_active else 1.0)
+		dice_presentation.scale = Vector2.ONE * target_scale
+	if boss_active and is_instance_valid(boss_dice_presentation):
+		var boss_face := _boss_display_face()
 		boss_dice_presentation.present([boss_face], _rolling, 0 if _rolling else 1)
+	elif is_instance_valid(boss_dice_presentation):
+		boss_dice_presentation.present([], false, 0)
+		boss_dice_presentation.hide()
+
+
+func _boss_display_face() -> int:
+	if _rolling:
+		return clampi(_rolling_slot_face, 1, 6)
+	if _shown_face > 0:
+		return clampi(_shown_face, 1, 6)
+	if _session != null:
+		var result: Dictionary = _session.boss_result()
+		var result_face := int(result.get("player_roll", 0))
+		if result_face > 0:
+			return clampi(result_face, 1, 6)
+		var boss: Dictionary = _session.boss_snapshot()
+		var history: Array = boss.get("player_roll_history", [])
+		if not history.is_empty():
+			return clampi(int(history.back()), 1, 6)
+	return 1
 
 
 func die_anchor_for_route(route_id: String) -> Vector2:
@@ -2446,7 +2555,7 @@ func _refresh_boss_panel() -> void:
 	next_lap_button.visible = (phase == V06PlaySessionScript.PHASE_BOSS_FINISHED and not _boss_roll_animation_active) or phase == V06PlaySessionScript.PHASE_LAP_RESULT
 	retry_button.visible = phase == V06PlaySessionScript.PHASE_RUN_OVER
 	boss_back_button.visible = true
-	var live_face := _rolling_slot_face if _rolling else (_shown_face if _shown_face > 0 else 1)
+	var live_face := _boss_display_face()
 	player_roll_value.text = str(live_face) if player_history.is_empty() else str(player_history.back())
 	boss_roll_value.text = str(7 - live_face) if boss_history.is_empty() else str(boss_history.back())
 	var animate_tokens := player_position != _boss_last_player_position or boss_position != _boss_last_position
@@ -2457,7 +2566,7 @@ func _refresh_boss_panel() -> void:
 			call_deferred("_position_boss_tokens", player_position, boss_position, goal, animate_tokens)
 			call_deferred("_position_boss_forward_markers", player_position, goal)
 	if target_preview_visible and not _boss_roll_animation_active:
-		_refresh_boss_landing_preview(_rolling_slot_face if _rolling else (_shown_face if _shown_face > 0 else 1))
+		_refresh_boss_landing_preview(_boss_display_face())
 	if not boss_finished:
 		boss_finish_dim.hide()
 		_hide_boss_finish_copy()
@@ -2751,7 +2860,7 @@ func _configure_tile_help_card(tile_kind: String, tile_index: int) -> bool:
 	landing_art_caption.text = V06LocalizationScript.text(StringName("TILE_HELP_%s_BODY" % translation_stem))
 	landing_art_prompt.text = V06LocalizationScript.text(&"TILE_HELP_TAP_TO_CLOSE")
 	landing_discovery_thumb.texture = thumb
-	landing_discovery_thumb.visible = thumb != null
+	landing_discovery_thumb.hide()
 	return true
 
 

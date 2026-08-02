@@ -136,9 +136,12 @@ func _test_screen_contract() -> void:
 	var die_button := screen.get_node("%DieButton") as Button
 	_expect(overlay.visible and tray.visible and die_button.visible, "boss-ready keeps fixed tray and die visible")
 	var boss_tray_die := screen.get_node("%BossDicePresentation") as Control
+	var normal_map_die := screen.get_node("%DicePresentation") as Control
+	var normal_map_hero := screen.get_node("%DieHeroArt") as Control
 	var boss_roll_rect := die_button.get_global_rect()
 	var boss_die_rect := boss_tray_die.get_global_rect()
 	_expect(boss_roll_rect.position.x > boss_die_rect.position.x + boss_die_rect.size.x and boss_roll_rect.size.x >= 180.0 and boss_roll_rect.size.y >= 180.0 and (screen.get_node("%RollButtonDieIcon") as TextureRect).visible and (screen.get_node("%RollButtonOrnament") as TextureRect).texture.resource_path == "res://assets/art/ui/common/roll-button-round-v1.png", "boss tray keeps the normal round roll button on the right and the rolling die on the left")
+	_expect(boss_tray_die.is_visible_in_tree() and not normal_map_die.is_visible_in_tree() and not normal_map_hero.is_visible_in_tree() and int((normal_map_die as Object).call("pool_receipt").active_count) == 0, "boss race gives exclusive die ownership to the left-side boss viewport")
 	_expect(panel.scale == Vector2.ONE and int(screen.get("_boss_last_player_position")) == 0 and int(screen.get("_boss_last_position")) == 0, "boss intro starts from one fixed-scale frame without an entry movement tween")
 	_expect(not hud.visible and not stage_band.visible and not tool_dock.visible and boss_hud.visible, "boss race replaces the normal stage chrome with the minimal boss HUD")
 	_expect((screen.get_node("%BossYouProgressLabel") as Label).text == "0 / 20" and (screen.get_node("%BossSphinxProgressLabel") as Label).text == "0 / 20", "minimal boss HUD exposes only both 20-space race counters")
@@ -264,6 +267,13 @@ func _test_screen_contract() -> void:
 	_expect(not (screen.get_node("%MessageLabel") as Label).text.contains("完了できません"), "boss screen roll avoids movement-finish errors")
 	(screen.get_node("%BossRoundAckButton") as Button).emit_signal("pressed"); await process_frame
 	_expect(session.phase() == Session.PHASE_BOSS_ROLL_READY, "screen turn acknowledgment reaches the next mirror-race roll")
+	screen.set("_rolling", true)
+	screen.set("_rolling_slot_face", 5)
+	screen.call("_stop_roll")
+	await create_timer(0.20).timeout
+	var tapped_result: Dictionary = session.boss_result()
+	var boss_face_values: Array = screen.get_node("%BossDicePresentation").get("face_values") as Array
+	_expect(int(tapped_result.get("player_roll", 0)) == 5 and int(tapped_result.get("boss_roll", 0)) == 2 and not boss_face_values.is_empty() and int(boss_face_values[0]) == 5, "boss STOP commits and displays the exact face visible under the tap")
 	_expect((screen.get_node("%BossSphinxProgressLabel") as Label).text.contains("/ 20") and (screen.get_node("%BossActionLabel") as Label).text.contains("1↔6"), "race HUD identifies the Sphinx and the intro explains opposite faces without top/bottom wording")
 	_expect((screen as Object).call("_format_pb_delta", -2400) == "-2.4s" and (screen as Object).call("_format_pb_delta", 1300) == "+1.3s" and (screen as Object).call("_format_pb_delta", 0) == "±0.0s", "screen formats signed PB deltas")
 	var touch_ok := true
@@ -295,6 +305,11 @@ func _test_screen_contract() -> void:
 	terminal_screen.call("_run_face", 1)
 	await create_timer(2.0).timeout
 	_expect(terminal_session.faces() == terminal_faces and (terminal_screen.get_node("%Slot0") as Label).text == terminal_slot_text and not bool(terminal_screen.get("_rolling")) and (terminal_screen.get_node("%BossResultLabel") as Label).text == "旅路踏破", "old await cannot continue after FINISHED")
+	terminal_screen.call("_on_next_lap_requested")
+	await process_frame
+	var next_lap_normal_die := terminal_screen.get_node("%DicePresentation") as Control
+	var next_lap_boss_die := terminal_screen.get_node("%BossDicePresentation") as Control
+	_expect(terminal_session.lap() == 2 and next_lap_normal_die.is_visible_in_tree() and not next_lap_boss_die.is_visible_in_tree() and int((next_lap_normal_die as Object).call("pool_receipt").active_count) == 1 and int((next_lap_boss_die as Object).call("pool_receipt").active_count) == 0, "second-lap travel clears the retained boss die and restores exactly one normal die")
 	terminal_host.queue_free(); await process_frame
 	var repeat_session: RefCounted = Session.new()
 	repeat_session.enter_boss(100)
@@ -314,6 +329,7 @@ func _test_screen_contract() -> void:
 	repeat_screen.call("_present_session_phase")
 	await process_frame
 	_expect(not (repeat_screen.get_node("%BossStartRulePanel") as Control).visible and (repeat_screen.get_node("%BossQuickRulePanel") as Control).visible and (repeat_screen.get_node("%DieButton") as Button).disabled, "lap two uses the short opposite-face reminder while preserving intro input gating")
+	_expect((repeat_screen.get_node("%BossDicePresentation") as Control).is_visible_in_tree() and not (repeat_screen.get_node("%DicePresentation") as Control).is_visible_in_tree() and int(((repeat_screen.get_node("%DicePresentation") as Control) as Object).call("pool_receipt").active_count) == 0, "lap-two boss intro keeps exclusive ownership of the single race die")
 	repeat_host.queue_free(); await process_frame
 	host.queue_free(); await process_frame
 	var capture_path := OS.get_environment("DICE_QA_V06_BOSS_CAPTURE_PATH")

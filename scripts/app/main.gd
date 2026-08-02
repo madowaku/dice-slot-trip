@@ -729,9 +729,6 @@ func show_title() -> void:
 	var actions_box := VBoxContainer.new()
 	actions_box.add_theme_constant_override("separation", UiTokensScript.GAP_S)
 	actions.add_child(actions_box)
-	var tagline := _body("サイコロをそろえて、世界をめぐる。", UiTokensScript.FONT_BODY)
-	tagline.add_theme_color_override("font_color", INK)
-	actions_box.add_child(tagline)
 	var sub := _body("World Journey Board Game", UiTokensScript.FONT_CAPTION)
 	sub.add_theme_color_override("font_color", MUTED)
 	actions_box.add_child(sub)
@@ -741,8 +738,11 @@ func show_title() -> void:
 	actions_box.add_child(continue_button)
 	var utility := HBoxContainer.new()
 	utility.add_theme_constant_override("separation", UiTokensScript.GAP_S)
-	var book := _button("📖  図鑑", show_encyclopedia)
-	var settings := _button("⚙  設定", _show_settings_modal)
+	# Emoji glyphs are not included in the bundled game font and render as tofu
+	# on some Android devices. ASCII section labels keep these utilities distinct
+	# without relying on a platform fallback font.
+	var book := _button("BOOK  図鑑", show_encyclopedia)
+	var settings := _button("SOUND  設定", _show_settings_modal)
 	book.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	settings.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	utility.add_child(book)
@@ -3088,9 +3088,17 @@ func show_encyclopedia() -> void:
 		{"id":"cairo_spice_market_complete","title":"香辛料市場の一日","caption":"市場の発展を最後まで見届けた記録。"},
 	]:
 		_add_postcard_book_card(postcard_flow, definition, str(definition.id) in GameState.registered_postcards)
-	content.add_child(_spacer(4))
-	content.add_child(_title("TRAVEL FRIENDS", 28))
-	content.add_child(_body("旅の途中で、少しずつ知り合った相手たち。", 18))
+	var section_gap := Control.new()
+	section_gap.custom_minimum_size.y = 18
+	content.add_child(section_gap)
+	var friends_heading := _title("TRAVEL FRIENDS", 28)
+	friends_heading.custom_minimum_size.y = 48
+	friends_heading.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	content.add_child(friends_heading)
+	var friends_intro := _body("旅の途中で、少しずつ知り合った相手たち。", 18)
+	friends_intro.custom_minimum_size.y = 42
+	friends_intro.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	content.add_child(friends_intro)
 	var definitions := boss_definitions if not boss_definitions.is_empty() else BossSystemScript.definitions()
 	var registered_definitions: Dictionary = {}
 	# Every joined individual is its own card, including later individuals sharing a definition.
@@ -3100,13 +3108,18 @@ func show_encyclopedia() -> void:
 		found_card.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.89, 0.73, 0.96), Color("#a47a3c"), 14))
 		var found_row := HBoxContainer.new()
 		found_row.add_theme_constant_override("separation", 12)
+		found_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var portrait := TextureRect.new()
 		portrait.texture = SPHINX_TEXTURE
-		portrait.custom_minimum_size = Vector2(116, 96)
+		portrait.custom_minimum_size = Vector2(104, 96)
 		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		found_row.add_child(portrait)
-		found_row.add_child(_body("%s　%s\n出会い %d回　図鑑 No.%d\n%s" % [str(found.get("name", "")), str(found.get("personality", "")), int(found.get("encounters", 0)), int(found.get("registration_order", 0)), str(found.get("memo", ""))], 20))
+		var found_copy := _body("%s　%s\n出会い %d回　図鑑 No.%d\n%s" % [str(found.get("name", "")), str(found.get("personality", "")), int(found.get("encounters", 0)), int(found.get("registration_order", 0)), str(found.get("memo", ""))], 20)
+		found_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		found_copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		found_copy.custom_minimum_size.x = 0
+		found_row.add_child(found_copy)
 		found_card.add_child(found_row)
 		content.add_child(found_card)
 	# Definitions never joined yet remain discoverable as silhouettes.
@@ -3120,7 +3133,7 @@ func show_encyclopedia() -> void:
 		silhouette.custom_minimum_size = Vector2(0, 90)
 		silhouette.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		silhouette.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		silhouette.modulate = Color(0.18, 0.14, 0.10, 0.88)
+		silhouette.modulate = Color(0.34, 0.30, 0.25, 0.94)
 		card.add_child(silhouette)
 		card.add_child(_body("？？？　未登録\n砂の向こうに、まだ知らない気配がある。", 21))
 		content.add_child(card)
@@ -3138,7 +3151,9 @@ func _known_postcard_count() -> int:
 func _add_postcard_book_card(parent: Control, definition: Dictionary, unlocked: bool) -> void:
 	var card := PanelContainer.new()
 	card.name = "Postcard_%s" % str(definition.get("id", "unknown"))
-	card.custom_minimum_size = Vector2(318, 274)
+	# Two cards plus their gap must fit inside the 720-wide design viewport even
+	# after page margins and the vertical scrollbar reserve their space.
+	card.custom_minimum_size = Vector2(306, 274)
 	card.add_theme_stylebox_override("panel", _postcard_style(unlocked))
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation", 4)
@@ -3148,12 +3163,14 @@ func _add_postcard_book_card(parent: Control, definition: Dictionary, unlocked: 
 	art.custom_minimum_size = Vector2(0, 176)
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	art.modulate = Color.WHITE if unlocked else Color(0.12, 0.11, 0.10, 0.88)
+	art.modulate = Color.WHITE if unlocked else Color(0.38, 0.36, 0.33, 0.94)
 	stack.add_child(art)
 	var title_copy := str(definition.get("title", "旅の便り")) if unlocked else "？？？　未獲得"
 	var caption_copy := str(definition.get("caption", "")) if unlocked else "旅のどこかに、まだ見ぬ一枚がある。"
 	var copy := _body("%s\n%s" % [title_copy, caption_copy], 17)
-	copy.add_theme_color_override("font_color", INK if unlocked else Color("#d7c8b5"))
+	copy.add_theme_color_override("font_color", INK if unlocked else Color("#ead9bd"))
+	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.custom_minimum_size.x = 0
 	stack.add_child(copy)
 	card.add_child(stack)
 	parent.add_child(card)

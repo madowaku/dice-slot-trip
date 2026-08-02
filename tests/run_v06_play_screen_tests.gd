@@ -148,11 +148,16 @@ func _test_hud_copy_contract(screen: Control) -> void:
 	var hint := screen.get_node("%TrayHintLabel") as Label
 	var action := screen.get_node("%ActionHintLabel") as Label
 	var next_need := screen.get_node("%NextNeedLabel") as Label
-	_expect(session.phase() == SessionScript.PHASE_READY and not message.visible and not role.visible and status.visible and status.text == "残り3" and not hint.visible and not action.visible and not next_need.visible, "ready HUD hides static guidance copy")
+	_expect(session.phase() == SessionScript.PHASE_READY and message.visible and message.text == "サイコロを振ろう" and (screen.get_node("%MessageBand") as Control).visible and not role.visible and status.visible and status.text == "残り3" and not hint.visible and not action.visible and not next_need.visible, "ready HUD keeps one permanent operation message band")
+	_expect((screen.get_node("%ProgressLabel") as Label).get_theme_font_size("font_size") >= 46 and (screen.get_node("%ScoreLabel") as Label).get_theme_font_size("font_size") >= 34, "current position and score receive real-device numeric priority")
+	var landing_prompt := screen.get_node("%LandingArtPrompt") as Button
+	var landing_art := screen.get_node("%LandingArt") as TextureRect
+	var landing_thumb := screen.get_node("%LandingDiscoveryThumb") as TextureRect
+	_expect(landing_prompt.text.contains("タップ") and landing_prompt.custom_minimum_size.y >= UiTokensScript.TOUCH_MIN and landing_art.custom_minimum_size.x >= 570.0 and not landing_thumb.visible, "shared journey card uses one wide image and an explicit touch-sized continue button")
 	screen.call("_present_move_announcement", 4, int(screen.get("_motion_generation")))
-	_expect(message.visible and message.text == "4マス進む" and message.get_theme_font_size("font_size") >= 40, "move announcement uses actual distance and large text")
+	_expect(message.visible and message.text == "4マス進む！" and message.get_theme_font_size("font_size") >= 40, "move announcement uses actual distance and large text")
 	await create_timer(1.05).timeout
-	_expect(not message.visible, "move announcement hides after one second")
+	_expect(message.visible and message.text == "サイコロを振ろう", "move announcement restores the permanent ready guidance after one second")
 	var role_reward := screen.get_node("%RoleRewardLabel") as Label
 	var tray := screen.get_node("%TrayPanel") as Control
 	var slots_row := screen.get_node("SafeMargin/Page/TrayPanel/TrayContent/RollRow/SlotColumn/SlotLayout/SlotsRow") as Control
@@ -160,7 +165,7 @@ func _test_hud_copy_contract(screen: Control) -> void:
 	screen.call("_play_inline_slot_result", "PAIR", 4, int(screen.get("_motion_generation")))
 	await process_frame
 	screen.call("_refresh_ui")
-	_expect(role.visible and role.text == "PAIR" and role_reward.visible, "inline role copy survives a phase refresh")
+	_expect(role.visible and role.text == "PAIR！" and role_reward.visible, "inline role copy survives a phase refresh")
 	var role_rect := role.get_global_rect()
 	var reward_rect := role_reward.get_global_rect()
 	var slots_rect := slots_row.get_global_rect()
@@ -177,7 +182,7 @@ func _test_hud_copy_contract(screen: Control) -> void:
 
 func _test_named_structure(screen: Control) -> void:
 	for node_name: String in [
-		"LapLabel", "HPLabel", "PBLabel", "TimeLabel", "ScoreLabel", "ScoreDeltaLabel", "BestLabel", "CoinLabel", "ProgressLabel", "StageLabel", "MessageBand",
+		"LapLabel", "HPLabel", "PBLabel", "TimeLabel", "ScoreLabel", "ScoreDeltaLabel", "BestLabel", "CoinLabel", "ProgressLabel", "StageLabel", "MessageBand", "MessageLabel",
 		"RouteLabel", "TileKindLabel", "AtlasView", "TrayPanel", "MapButton", "MapOverlay", "MapFrameArt", "OverviewAtlasView", "MapCloseButton", "BranchChoiceAtlasView", "Slot0",
 		"Slot1", "Slot2", "DicePresentation", "DieButton", "ChoiceOverlay", "ResolutionOverlay",
 		"RollCountLabel", "RollButtonDieIcon", "RollButtonCopy", "RoleLabel", "RoleRewardLabel", "PairLink", "NextNeedLabel", "ActionHintLabel",
@@ -218,6 +223,9 @@ func _test_layout_and_touch(screen: Control) -> void:
 	_expect(touch_ok, "every screen and overlay button meets the touch minimum")
 	var atlas := screen.get_node("%AtlasView") as Control
 	_expect(atlas.custom_minimum_size.y >= 450.0, "two-row HUD preserves at least 450px of atlas height")
+	var message_band := screen.get_node("%MessageBand") as Control
+	var tray_panel := screen.get_node("%TrayPanel") as Control
+	_expect(message_band.get_parent() == screen.get_node("%Page") and message_band.get_global_rect().position.y >= atlas.get_global_rect().end.y - 1.0 and message_band.get_global_rect().end.y <= tray_panel.get_global_rect().position.y + 1.0, "operation message band owns a fixed row between map and controls")
 	var first_slot := screen.get_node("%SlotPanel0") as Control
 	var last_slot := screen.get_node("%SlotPanel2") as Control
 	var die := screen.get_node("%DieButton") as Control
@@ -432,7 +440,7 @@ func _test_inline_slot_result_flow(screen: Control) -> void:
 	await create_timer(0.20).timeout
 	_expect(session.phase() == SessionScript.PHASE_MOVING and session.pending_resolution_role() == &"MIX", "third stopped face resolves MIX before cat movement")
 	_expect(session.position() == position_before and session.visual_position() == position_before, "cat and logical route remain still during inline slot result")
-	_expect((typed_screen.get_node("%RoleLabel") as Label).text == "MIX" and (typed_screen.get_node("%RoleRewardLabel") as Label).visible and (typed_screen.get_node("%RoleRewardLabel") as Label).text.contains("+50"), "slot panel presents role and reward without a modal")
+	_expect((typed_screen.get_node("%RoleLabel") as Label).text == "MIX！" and (typed_screen.get_node("%RoleRewardLabel") as Label).visible and (typed_screen.get_node("%RoleRewardLabel") as Label).text.contains("+50"), "slot panel presents role and reward without a modal")
 	_expect(not (typed_screen.get_node("%TrayStatusLabel") as Label).visible, "inline result keeps the slot header hidden")
 	_expect(not (typed_screen.get_node("%ResolutionOverlay") as Control).visible and session.score() == 370 and session.coins() == 1, "MIX score and coin are awarded while the resolution modal stays hidden")
 	var mix_spec: Dictionary = typed_screen.inline_slot_result_spec("MIX", [4, 1, 6])
@@ -513,7 +521,7 @@ func _test_compact_die_motion(screen: Control) -> void:
 	var presentation := screen.get_node("%DicePresentation")
 	screen.call("_start_roll")
 	await process_frame
-	_expect(presentation.state_name(0) == "ROLLING" and (screen.get_node("%DieButton") as Button).text == "止める" and not (screen.get_node("%DieHeroArt") as Control).visible and (presentation as Control).visible and (screen.get_node("%MessageBand") as Control).visible and (screen.get_node("%MessageLabel") as Label).text == "回転中…もう一度タップで止める", "right-side die action enters rolling state with a high-contrast stop instruction and one rotating 3D die")
+	_expect(presentation.state_name(0) == "ROLLING" and (screen.get_node("%DieButton") as Button).text == "止める" and not (screen.get_node("%DieHeroArt") as Control).visible and (presentation as Control).visible and (screen.get_node("%MessageBand") as Control).visible and (screen.get_node("%MessageLabel") as Label).text == "回転中…タップで止める", "right-side die action enters rolling state with a high-contrast stop instruction and one rotating 3D die")
 	_expect(not bool((screen.get_node("%AtlasView") as Control).roll_preview_receipt().active), "rolling never lights a destination card")
 	await create_timer(0.55).timeout
 	_expect(bool(screen.get("_rolling")) and presentation.state_name(0) == "ROLLING" and (screen.get_node("%DieButton") as Button).text == "止める", "right-side die action keeps rolling until the player taps again")

@@ -42,6 +42,10 @@ const STAGE_OVERVIEW_HOLD_SECONDS := 0.80
 const CONTEXT_PREVIEW_IN_SECONDS := 0.55
 const CONTEXT_PREVIEW_HOLD_SECONDS := 2.80
 const CONTEXT_PREVIEW_OUT_SECONDS := 0.55
+const OVERVIEW_ZOOM := 0.28
+const OVERVIEW_DETAIL_ZOOM := 0.52
+const OVERVIEW_CENTER := Vector2(520.0, 60.0)
+const OVERVIEW_TAP_DRAG_THRESHOLD := 18.0
 const LANDING_NORMAL_SECONDS := 0.48
 const LANDING_SPECIAL_SECONDS := 0.78
 const LANDING_HOLD_SECONDS := 0.08
@@ -109,6 +113,10 @@ var _exit_steps := -1
 var _loop_wrap_count := 0
 var _loop_rescue_threshold := V06CourseModelScript.LOOP_RESCUE_WRAP_THRESHOLD
 var _overview_mode := false
+var _overview_detail_mode := false
+var _overview_pointer_active := false
+var _overview_pointer_origin := Vector2.ZERO
+var _overview_pointer_travel := 0.0
 var _kind_preview_overrides: Dictionary = {}
 var _consumed_warp_gate_ids := {}
 var _consumed_reward_node_keys := {}
@@ -179,12 +187,44 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+func _gui_input(event: InputEvent) -> void:
+	if not _overview_mode or _camera_presentation_active:
+		return
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			_begin_overview_pointer(touch.position)
+		else:
+			_finish_overview_pointer(touch.position)
+		accept_event()
+	elif event is InputEventScreenDrag:
+		var drag := event as InputEventScreenDrag
+		_update_overview_pointer(drag.position, drag.relative)
+		accept_event()
+	elif event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		var button := event as InputEventMouseButton
+		if button.device == InputEvent.DEVICE_ID_EMULATION:
+			return
+		if button.pressed:
+			_begin_overview_pointer(button.position)
+		else:
+			_finish_overview_pointer(button.position)
+		accept_event()
+	elif event is InputEventMouseMotion and _overview_pointer_active:
+		var motion := event as InputEventMouseMotion
+		if motion.device == InputEvent.DEVICE_ID_EMULATION:
+			return
+		if motion.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			_update_overview_pointer(motion.position, motion.relative)
+			accept_event()
+
+
 func set_route_position(route_position: Dictionary, immediate := false) -> bool:
 	if not _is_known_position(route_position):
 		return false
 	_current_position = route_position.duplicate(true)
 	_cat_world = world_position_for(_current_position)
-	_camera_target_world = _camera_focus_for(_current_position)
+	_camera_target_world = world_position_for(_current_position) if _overview_mode and _overview_detail_mode else _camera_focus_for(_current_position)
 	if immediate or _camera_world == Vector2.ZERO:
 		_camera_world = _camera_target_world
 	if _course.is_loop_route(str(_current_position.route_id)):
@@ -197,9 +237,12 @@ func set_route_position(route_position: Dictionary, immediate := false) -> bool:
 
 func set_overview_mode(enabled: bool) -> void:
 	_overview_mode = enabled
+	_overview_detail_mode = false
+	_overview_pointer_active = false
+	mouse_filter = Control.MOUSE_FILTER_PASS if enabled else Control.MOUSE_FILTER_IGNORE
 	if enabled:
-		_world_zoom = 0.28
-		_camera_target_world = Vector2(520.0, 60.0)
+		_world_zoom = OVERVIEW_ZOOM
+		_camera_target_world = OVERVIEW_CENTER
 		_camera_world = _camera_target_world
 	else:
 		_world_zoom = 0.72
@@ -210,6 +253,76 @@ func set_overview_mode(enabled: bool) -> void:
 
 func is_overview_mode() -> bool:
 	return _overview_mode
+
+
+func toggle_overview_zoom() -> bool:
+	if not _overview_mode or _camera_presentation_active:
+		return false
+	_overview_detail_mode = not _overview_detail_mode
+	_world_zoom = OVERVIEW_DETAIL_ZOOM if _overview_detail_mode else OVERVIEW_ZOOM
+	_camera_target_world = world_position_for(_current_position) if _overview_detail_mode else OVERVIEW_CENTER
+	_camera_world = _camera_target_world
+	queue_redraw()
+	return true
+
+
+func pan_overview_vertical(screen_delta_y: float) -> bool:
+	if not _overview_mode or not _overview_detail_mode or _camera_presentation_active:
+		return false
+	_camera_world.y = clampf(
+		_camera_world.y - screen_delta_y / maxf(_world_zoom, 0.01),
+		_overview_world_y_bounds().x,
+		_overview_world_y_bounds().y
+	)
+	_camera_target_world = _camera_world
+	queue_redraw()
+	return true
+
+
+func overview_interaction_receipt() -> Dictionary:
+	return {
+		"enabled": _overview_mode and not _camera_presentation_active,
+		"detail": _overview_detail_mode,
+		"zoom": _world_zoom,
+		"camera_world": _camera_world,
+		"current_world": world_position_for(_current_position),
+		"vertical_drag_enabled": _overview_mode and _overview_detail_mode,
+	}
+
+
+func _begin_overview_pointer(position: Vector2) -> void:
+	_overview_pointer_active = true
+	_overview_pointer_origin = position
+	_overview_pointer_travel = 0.0
+
+
+func _update_overview_pointer(position: Vector2, relative: Vector2) -> void:
+	if not _overview_pointer_active:
+		return
+	_overview_pointer_travel = maxf(_overview_pointer_travel, _overview_pointer_origin.distance_to(position))
+	# Keep horizontal gestures available to surrounding UI; this map only owns
+	# deliberate vertical movement while its detail view is open.
+	if absf(relative.y) > absf(relative.x):
+		pan_overview_vertical(relative.y)
+
+
+func _finish_overview_pointer(position: Vector2) -> void:
+	if not _overview_pointer_active:
+		return
+	_overview_pointer_travel = maxf(_overview_pointer_travel, _overview_pointer_origin.distance_to(position))
+	_overview_pointer_active = false
+	if _overview_pointer_travel <= OVERVIEW_TAP_DRAG_THRESHOLD:
+		toggle_overview_zoom()
+
+
+func _overview_world_y_bounds() -> Vector2:
+	var minimum := INF
+	var maximum := -INF
+	for route_points: Array in _route_points.values():
+		for point: Vector2 in route_points:
+			minimum = minf(minimum, point.y)
+			maximum = maxf(maximum, point.y)
+	return Vector2(minimum, maximum) if minimum <= maximum else Vector2.ZERO
 
 
 func play_stage_overview_sweep(keep_overview := false) -> void:
@@ -271,6 +384,8 @@ func show_branch_comparison(route_id: String) -> bool:
 	center /= 1.30
 	_comparison_route_id = route_id
 	_overview_mode = true
+	_overview_detail_mode = false
+	mouse_filter = Control.MOUSE_FILTER_PASS
 	_world_zoom = 0.50
 	_camera_world = center
 	_camera_target_world = center
@@ -341,6 +456,9 @@ func _set_camera_frame(zoom: float, center: Vector2) -> void:
 func _restore_local_camera() -> void:
 	_comparison_route_id = ""
 	_overview_mode = false
+	_overview_detail_mode = false
+	_overview_pointer_active = false
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_world_zoom = 0.72
 	_camera_target_world = _camera_focus_for(_current_position)
 	_camera_world = _camera_target_world
@@ -794,6 +912,9 @@ func cancel_visual_motion(route_position := {}) -> void:
 	_camera_presentation_kind = ""
 	_comparison_route_id = ""
 	_overview_mode = false
+	_overview_detail_mode = false
+	_overview_pointer_active = false
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_world_zoom = 0.72
 	if route_position is Dictionary and not (route_position as Dictionary).is_empty():
 		set_route_position(route_position, true)
