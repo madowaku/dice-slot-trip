@@ -1326,7 +1326,6 @@ func _draw() -> void:
 		_draw_route_graph()
 	if uses_card_route():
 		_draw_map_dice_shadow()
-	_draw_route_legend()
 	_draw_cat_marker()
 	_draw_bypass_entry_effect()
 	_draw_portal_transfer()

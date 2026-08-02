@@ -14,7 +14,7 @@ const V06LocalizationScript = preload("res://scripts/ui/v06_localization.gd")
 const V06FeedbackControllerScript = preload("res://scripts/ui/v06_feedback_controller.gd")
 const V11BossLaneBoardScript = preload("res://scripts/ui/v11_boss_lane_board.gd")
 const ITEM_CARD: Texture2D = preload("res://assets/art/v08/cards/item-card.png")
-const SKILL_CARD: Texture2D = preload("res://assets/art/v08/cards/skill-card.png")
+const SKILL_PINPOINT_ART: Texture2D = preload("res://assets/art/ui/common/skill-pinpoint-v1.png")
 const WING_GATE_PICTOGRAM: Texture2D = preload("res://assets/art/v10/boss/wing-gate.png")
 const QUICKSAND_PICTOGRAM: Texture2D = preload("res://assets/art/v10/boss/quicksand.png")
 const DICE_UI_ART: Texture2D = preload("res://assets/art/ui/common/dice-ivory-brass.png")
@@ -67,14 +67,16 @@ const BOSS_GOAL_GATE_SECONDS := 0.34
 const BOSS_INTRO_SECONDS := 0.82
 const BOSS_REPEAT_INTRO_SECONDS := 0.42
 const BOSS_DICE_EXPLAIN_SCALE := Vector2(1.22, 1.22)
-const BOSS_DICE_REST_Y := 850.0
-const BOSS_DICE_STOP_Y := 828.0
+const BOSS_DICE_REST_Y := 900.0
+const BOSS_DICE_STOP_Y := 878.0
+const BOSS_DICE_LEFT_X := 80.0
+const BOSS_DICE_SHADOW_OFFSET_Y := 128.0
 const BOSS_CAMERA_SCROLL_SECONDS := 0.42
 const BOSS_CAMERA_HOLD_SECONDS := 0.12
 const BOSS_BACKDROP_FADE_SECONDS := 0.28
 const ROLLING_SLOT_STEP_SECONDS := 0.06
 const INLINE_SLOT_RESULT_SECONDS := 0.46
-const DICE_ANCHOR_NORMAL := Vector2(0.45, 0.82)
+const DICE_ANCHOR_NORMAL := Vector2(0.45, 0.80)
 const DICE_ANCHOR_LOOP := Vector2(0.88, 0.82)
 const ROLL_BUTTON_ATLAS_CELL := Vector2(941.0, 418.0)
 const SLOT_RESULT_GLOW := Color(1.45, 1.42, 1.30, 1.0)
@@ -95,6 +97,7 @@ const SLOT_RESULT_STRONG_GLOW := Color(1.75, 1.68, 1.42, 1.0)
 @onready var tile_kind_label: Label = %TileKindLabel
 @onready var atlas_view: V06AtlasView = %AtlasView
 @onready var message_label: Label = %MessageLabel
+@onready var message_band: PanelContainer = %MessageBand
 @onready var tray_status_label: Label = %TrayStatusLabel
 @onready var role_label: Label = %RoleLabel
 @onready var role_reward_label: Label = %RoleRewardLabel
@@ -175,6 +178,7 @@ const SLOT_RESULT_STRONG_GLOW := Color(1.75, 1.68, 1.42, 1.0)
 @onready var race_stage: Control = %RaceStage
 @onready var boss_lane_board: Control = %BossLaneBoard
 @onready var golden_gate_sprite: TextureRect = %GoldenGateSprite
+@onready var boss_dice_shadow: PanelContainer = %BossDiceShadow
 @onready var boss_dice_owner_label: Label = %BossDiceOwnerLabel
 @onready var boss_finish_dim: ColorRect = %BossFinishDim
 @onready var boss_finish_kicker_label: Label = %BossFinishKickerLabel
@@ -356,6 +360,7 @@ func _configure_generated_art() -> void:
 	slot_tray_art.texture = SLOT_TRAY_ART
 	slot_snap_sparkle.texture = SLOT_SNAP_SPARKLE
 	die_hero_art.texture = DICE_UI_ART
+	skill_tool_button.icon = SKILL_PINPOINT_ART
 	boss_sequence_art.texture = BOSS_START_ART
 	postcard_art.texture = POSTCARD_ART
 	_roll_button_ornament_atlas = AtlasTexture.new()
@@ -516,6 +521,8 @@ func _cancel_motion(route_position := {}) -> void:
 	_rolling = false
 	_slot_settling = false
 	_movement_active = false
+	if is_instance_valid(message_band):
+		message_band.hide()
 	_boss_roll_animation_active = false
 	_boss_intro_active = false
 	_boss_intro_complete = false
@@ -685,11 +692,11 @@ func _refresh_roll_button_ornament() -> void:
 		state = 2
 	elif _roll_button_pressed or _rolling:
 		state = 1
-	if slot_column.visible:
+	if slot_column.visible or (is_instance_valid(boss_overlay) and boss_overlay.visible):
 		roll_button_ornament.texture = ROLL_BUTTON_ROUND_ART
 		match state:
 			1: roll_button_ornament.self_modulate = Color(1.0, 0.94, 0.78, 1.0)
-			2: roll_button_ornament.self_modulate = Color(0.58, 0.58, 0.54, 1.0)
+			2: roll_button_ornament.self_modulate = Color(0.82, 0.79, 0.70, 1.0)
 			3: roll_button_ornament.self_modulate = Color(1.0, 0.90, 0.58, 1.0)
 			_: roll_button_ornament.self_modulate = Color.WHITE
 	else:
@@ -728,6 +735,7 @@ func _start_roll() -> void:
 	_rolling_slot_elapsed = 0.0
 	_rolling_slot_face = 1
 	message_label.text = "回転中…もう一度タップで止める"
+	message_band.show()
 	message_label.show()
 	_refresh_ui()
 	_refresh_rolling_slot_preview()
@@ -744,6 +752,8 @@ func _stop_roll() -> void:
 	_rolling = false
 	_slot_settling = true
 	_movement_active = _session.can_roll()
+	message_band.hide()
+	message_label.hide()
 	var pinpoint_face: int = int(_session.consume_pinpoint_face())
 	var face: int = pinpoint_face if pinpoint_face > 0 else _rng.randi_range(1, 6)
 	_emit_feedback(V06FeedbackControllerScript.EVENT_ROLL_STOP)
@@ -1363,7 +1373,7 @@ func _on_skill_tool_pressed() -> void:
 	_utility_mode = "skill"
 	_utility_entries.clear()
 	_utility_index = 0
-	_open_utility_card("旅人スキル  ·  ピンポイント", SKILL_CARD, "")
+	_open_utility_card("旅人スキル  ·  ピンポイント", SKILL_PINPOINT_ART, "")
 	_refresh_skill_utility()
 
 
@@ -1423,7 +1433,7 @@ func _refresh_skill_utility() -> void:
 	utility_action_button.hide()
 	pinpoint_face_row.show()
 	utility_title.text = "旅人スキル  ·  ピンポイント"
-	utility_card_art.texture = SKILL_CARD
+	utility_card_art.texture = SKILL_PINPOINT_ART
 	var armed_face: int = int(_session.pinpoint_face())
 	var ready: bool = _session.skill_state() == V06PlaySessionScript.SKILL_STATE_READY and _session.skill_gauge() >= V06PlaySessionScript.SKILL_GAUGE_MAX
 	if armed_face > 0:
@@ -1742,6 +1752,7 @@ func _set_boss_chrome_active(active: bool) -> void:
 	normal_tool_dock.visible = not active
 	dice_presentation.visible = not active
 	if active:
+		message_band.hide()
 		message_label.hide()
 	boss_hud.visible = active
 	var tray_panel := %TrayPanel as Control
@@ -1749,13 +1760,19 @@ func _set_boss_chrome_active(active: bool) -> void:
 	var action_column := $SafeMargin/Page/TrayPanel/TrayContent/RollRow/ActionColumn as Control
 	if active:
 		_apply_boss_tray_styles()
-		tray_panel.custom_minimum_size.y = 148.0
-		roll_row.custom_minimum_size.y = 116.0
-		action_column.custom_minimum_size.x = 420.0
-		die_button.custom_minimum_size = Vector2(420.0, 104.0)
-		roll_button_die_icon.hide()
-		roll_button_copy.offset_top = 0.0
-		roll_button_copy.offset_bottom = 0.0
+		tray_panel.custom_minimum_size.y = 252.0
+		roll_row.custom_minimum_size.y = 190.0
+		roll_row.alignment = BoxContainer.ALIGNMENT_END
+		action_column.custom_minimum_size = Vector2(190.0, 190.0)
+		die_button.custom_minimum_size = Vector2(190.0, 190.0)
+		roll_button_die_icon.show()
+		roll_button_copy.offset_top = 122.0
+		roll_button_copy.offset_bottom = -15.0
+		if not _rolling and _session.phase() == V06PlaySessionScript.PHASE_BOSS_ROLL_READY and _shown_face <= 0:
+			boss_dice_presentation.position.y = BOSS_DICE_REST_Y
+		boss_dice_presentation.position.x = BOSS_DICE_LEFT_X
+		boss_dice_shadow.position = Vector2(BOSS_DICE_LEFT_X + 5.0, boss_dice_presentation.position.y + BOSS_DICE_SHADOW_OFFSET_Y)
+		boss_dice_owner_label.position.x = BOSS_DICE_LEFT_X + 11.0
 		tray_status_label.hide()
 		tray_hint_label.hide()
 		slot_column.hide()
@@ -1765,6 +1782,7 @@ func _set_boss_chrome_active(active: bool) -> void:
 		_apply_normal_tray_styles()
 		tray_panel.custom_minimum_size.y = 252.0
 		roll_row.custom_minimum_size.y = 190.0
+		roll_row.alignment = BoxContainer.ALIGNMENT_CENTER
 		action_column.custom_minimum_size = Vector2(190.0, 190.0)
 		die_button.custom_minimum_size = Vector2(190.0, 190.0)
 		roll_button_die_icon.show()
@@ -2089,9 +2107,12 @@ func _refresh_die_presentation() -> void:
 		V06PlaySessionScript.PHASE_LAP_RESULT,
 		V06PlaySessionScript.PHASE_RUN_OVER,
 	]
-	var hero_visible: bool = not boss_active and not _rolling and not _movement_active and _shown_face <= 0 and _session.faces().is_empty()
+	# Use the simple 3D die for every normal-map state so rolling and settling
+	# remain visible.  The antique raster stays available for the roll button,
+	# but is hidden here to avoid a duplicate die over the map.
+	var hero_visible := false
 	die_hero_art.visible = hero_visible
-	dice_presentation.visible = not boss_active and not hero_visible
+	dice_presentation.visible = not boss_active
 	var display_face := _shown_face if _shown_face > 0 else 6
 	dice_presentation.present([display_face], _rolling, 0 if _rolling else 1)
 	dice_presentation.pivot_offset = dice_presentation.size * 0.5
@@ -2186,6 +2207,7 @@ func _apply_surface_styles() -> void:
 	%HudPanel.add_theme_stylebox_override("panel", _panel_style(Color("#172625"), Color("#b88a46"), 22, 4))
 	%StageBand.add_theme_stylebox_override("panel", _panel_style(Color("#ead9b7"), Color("#8d683b"), 8, 2))
 	%AtlasFrame.add_theme_stylebox_override("panel", _panel_style(Color("#e8d7b5"), Color("#9c7742"), 12, 4))
+	%MessageBand.add_theme_stylebox_override("panel", _panel_style(Color("#352015"), Color("#d1a14b"), 12, 2))
 	_apply_normal_tray_styles()
 	var tool_dock_style := _panel_style(Color("#241813"), Color("#8d683b"), 18, 3)
 	tool_dock_style.content_margin_top = 8
@@ -2236,6 +2258,11 @@ func _apply_surface_styles() -> void:
 
 func _apply_normal_tray_styles() -> void:
 	%TrayPanel.add_theme_stylebox_override("panel", _panel_style(Color("#ead9b7"), Color("#b88a46"), 24, 5))
+	%TrayPanel.modulate = Color.WHITE
+	%SlotColumn.modulate = Color.WHITE
+	%SlotTrayArt.modulate = Color.WHITE
+	roll_button_ornament.self_modulate = Color.WHITE
+	die_hero_art.modulate = Color.WHITE
 	for slot_panel: PanelContainer in slot_panels:
 		slot_panel.add_theme_stylebox_override("panel", _panel_style(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, 0))
 	for slot_label: Label in slot_labels:

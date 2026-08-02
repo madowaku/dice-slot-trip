@@ -135,6 +135,10 @@ func _test_screen_contract() -> void:
 	var center := overlay.get_node("Center") as Control
 	var die_button := screen.get_node("%DieButton") as Button
 	_expect(overlay.visible and tray.visible and die_button.visible, "boss-ready keeps fixed tray and die visible")
+	var boss_tray_die := screen.get_node("%BossDicePresentation") as Control
+	var boss_roll_rect := die_button.get_global_rect()
+	var boss_die_rect := boss_tray_die.get_global_rect()
+	_expect(boss_roll_rect.position.x > boss_die_rect.position.x + boss_die_rect.size.x and boss_roll_rect.size.x >= 180.0 and boss_roll_rect.size.y >= 180.0 and (screen.get_node("%RollButtonDieIcon") as TextureRect).visible and (screen.get_node("%RollButtonOrnament") as TextureRect).texture.resource_path == "res://assets/art/ui/common/roll-button-round-v1.png", "boss tray keeps the normal round roll button on the right and the rolling die on the left")
 	_expect(panel.scale == Vector2.ONE and int(screen.get("_boss_last_player_position")) == 0 and int(screen.get("_boss_last_position")) == 0, "boss intro starts from one fixed-scale frame without an entry movement tween")
 	_expect(not hud.visible and not stage_band.visible and not tool_dock.visible and boss_hud.visible, "boss race replaces the normal stage chrome with the minimal boss HUD")
 	_expect((screen.get_node("%BossYouProgressLabel") as Label).text == "0 / 20" and (screen.get_node("%BossSphinxProgressLabel") as Label).text == "0 / 20", "minimal boss HUD exposes only both 20-space race counters")

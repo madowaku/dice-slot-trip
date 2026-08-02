@@ -1,4 +1,4 @@
-[gd_scene load_steps=25 format=3]
+[gd_scene load_steps=27 format=3]
 
 [ext_resource type="Script" path="res://scripts/app/v06_play_screen.gd" id="1_screen"]
 [ext_resource type="Script" path="res://scripts/game/v06_atlas_view.gd" id="2_atlas"]
@@ -20,6 +20,8 @@
 [ext_resource type="Texture2D" path="res://assets/art/ui/mission/shield-mission.png" id="18_mission_shield"]
 [ext_resource type="Texture2D" path="res://assets/art/ui/common/dice-ivory-brass.png" id="19_mission_die"]
 [ext_resource type="Script" path="res://scripts/ui/circular_button.gd" id="20_circular_button"]
+[ext_resource type="Texture2D" path="res://assets/art/ui/common/map-panel-frame-v1.png" id="21_map_frame"]
+[ext_resource type="Texture2D" path="res://assets/art/ui/common/skill-pinpoint-v1.png" id="22_skill_pinpoint"]
 
 [sub_resource type="Shader" id="Shader_night_vignette"]
 code = "shader_type canvas_item;\n\nvoid fragment() {\n\tfloat mask_value = texture(TEXTURE, UV).r;\n\tCOLOR = vec4(0.025, 0.055, 0.075, mask_value * 0.58);\n}\n"
@@ -277,17 +279,19 @@ vertical_alignment = 1
 
 [node name="ProgressLabel" type="Label" parent="SafeMargin/Page/HudPanel/Hud/HudRow2"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(65, 0)
+custom_minimum_size = Vector2(92, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.94, 0.84, 0.62, 1)
-theme_override_font_sizes/font_size = 23
+theme_override_colors/font_color = Color(0.98, 0.91, 0.72, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.11, 0.11, 0.92)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 32
 text = "1/58"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="MapButton" type="Button" parent="SafeMargin/Page/HudPanel/Hud/HudRow2"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(72, 96)
+custom_minimum_size = Vector2(80, 96)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "全体マップ"
@@ -794,7 +798,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(216, 96)
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-icon = ExtResource("10_skill_card")
+icon = ExtResource("22_skill_pinpoint")
 expand_icon = true
 icon_max_width = 68
 text = "スキル\nピンポイント"
@@ -1113,10 +1117,24 @@ text = "MISSION"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="MessageBand" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+z_index = 27
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 16.0
+offset_top = 848.0
+offset_right = -16.0
+offset_bottom = 928.0
+grow_horizontal = 2
+mouse_filter = 2
+
 [node name="MessageLabel" type="Label" parent="."]
 unique_name_in_owner = true
 visible = false
-z_index = 25
+z_index = 28
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
@@ -1126,8 +1144,10 @@ offset_right = -16.0
 offset_bottom = 920.0
 grow_horizontal = 2
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.91, 0.82, 0.67, 1)
-theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.98, 0.91, 0.77, 1)
+theme_override_colors/font_outline_color = Color(0.13, 0.075, 0.035, 0.98)
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 26
 text = "ダイス1個で、1マスずつ進む"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -1545,22 +1565,22 @@ horizontal_alignment = 1
 
 [node name="BossDiceShadow" type="PanelContainer" parent="BossOverlay/Center/BossPanel/RaceStage"]
 unique_name_in_owner = true
-z_index = 5
+z_index = 16
 layout_mode = 0
-offset_left = 262.0
-offset_top = 956.0
-offset_right = 394.0
-offset_bottom = 982.0
+offset_left = 85.0
+offset_top = 1028.0
+offset_right = 217.0
+offset_bottom = 1054.0
 mouse_filter = 2
 
 [node name="BossDicePresentation" type="SubViewportContainer" parent="BossOverlay/Center/BossPanel/RaceStage"]
 unique_name_in_owner = true
-z_index = 6
+z_index = 17
 layout_mode = 0
-offset_left = 257.0
-offset_top = 850.0
-offset_right = 399.0
-offset_bottom = 975.0
+offset_left = 80.0
+offset_top = 900.0
+offset_right = 222.0
+offset_bottom = 1025.0
 mouse_filter = 2
 script = ExtResource("8_dice")
 compact_single = true
@@ -1573,10 +1593,10 @@ unique_name_in_owner = true
 visible = false
 z_index = 8
 layout_mode = 0
-offset_left = 268.0
-offset_top = 810.0
-offset_right = 388.0
-offset_bottom = 846.0
+offset_left = 91.0
+offset_top = 860.0
+offset_right = 211.0
+offset_bottom = 896.0
 theme_override_colors/font_color = Color(0.965, 0.79, 0.408, 1)
 theme_override_colors/font_outline_color = Color(0.01, 0.04, 0.05, 1)
 theme_override_constants/outline_size = 7
@@ -2355,8 +2375,19 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
+[node name="MapFrameArt" type="TextureRect" parent="MapOverlay/Center"]
+unique_name_in_owner = true
+z_index = 0
+custom_minimum_size = Vector2(660, 820)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("21_map_frame")
+expand_mode = 1
+stretch_mode = 5
+
 [node name="MapPanel" type="PanelContainer" parent="MapOverlay/Center"]
 unique_name_in_owner = true
+z_index = 1
 custom_minimum_size = Vector2(620, 780)
 layout_mode = 2
 

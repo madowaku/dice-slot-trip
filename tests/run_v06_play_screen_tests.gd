@@ -177,8 +177,8 @@ func _test_hud_copy_contract(screen: Control) -> void:
 
 func _test_named_structure(screen: Control) -> void:
 	for node_name: String in [
-		"LapLabel", "HPLabel", "PBLabel", "TimeLabel", "ScoreLabel", "ScoreDeltaLabel", "BestLabel", "CoinLabel", "ProgressLabel", "StageLabel",
-		"RouteLabel", "TileKindLabel", "AtlasView", "TrayPanel", "MapButton", "MapOverlay", "OverviewAtlasView", "MapCloseButton", "BranchChoiceAtlasView", "Slot0",
+		"LapLabel", "HPLabel", "PBLabel", "TimeLabel", "ScoreLabel", "ScoreDeltaLabel", "BestLabel", "CoinLabel", "ProgressLabel", "StageLabel", "MessageBand",
+		"RouteLabel", "TileKindLabel", "AtlasView", "TrayPanel", "MapButton", "MapOverlay", "MapFrameArt", "OverviewAtlasView", "MapCloseButton", "BranchChoiceAtlasView", "Slot0",
 		"Slot1", "Slot2", "DicePresentation", "DieButton", "ChoiceOverlay", "ResolutionOverlay",
 		"RollCountLabel", "RollButtonDieIcon", "RollButtonCopy", "RoleLabel", "RoleRewardLabel", "PairLink", "NextNeedLabel", "ActionHintLabel",
 		"BossOverlay", "ToolDock", "ItemToolButton", "SkillToolButton", "UtilityOverlay", "UtilityCardArt", "UtilityCloseButton", "BackButton",
@@ -193,11 +193,12 @@ func _test_named_structure(screen: Control) -> void:
 	var die_buttons := screen.find_children("*Die*", "Button", true, false)
 	_expect(grouped_dice.size() == 1 and die_buttons.size() == 1 and grouped_dice[0].name == "DieButton", "screen exposes exactly one roll action")
 	var dice_receipt: Dictionary = screen.get_node("%DicePresentation").pool_receipt()
-	_expect(dice_receipt.active_count == 1 and dice_receipt.viewport_size.x >= 96 and dice_receipt.viewport_size.x == dice_receipt.viewport_size.y, "map renders exactly one compact square 3D die")
+	var hero_die := screen.get_node("%DieHeroArt") as TextureRect
+	_expect(dice_receipt.active_count == 1 and dice_receipt.viewport_size.x >= 96 and dice_receipt.viewport_size.x == dice_receipt.viewport_size.y and not hero_die.visible and (screen.get_node("%DicePresentation") as Control).visible, "normal map presents one rotating 3D die without the duplicate antique overlay")
 	_expect((screen.get_node("%ScoreLabel") as Label).text == "0" and (screen.get_node("%CoinLabel") as Label).text == "0" and (screen.get_node("%HPLabel") as Label).text == "♥♥♥", "normal travel HUD starts from growing score, coin, and HP")
 	_expect((screen.get_node("%LapLabel") as Label).visible and (screen.get_node("%LapLabel") as Label).text == "1" and not (screen.get_node("%LapLabel") as Label).text.contains("/") and not (screen.get_node("%PBLabel") as Label).visible and not (screen.get_node("%TimeLabel") as Label).is_visible_in_tree() and (screen.get_node("%ProgressLabel") as Label).text == "1/58", "two-row HUD shows value-only lap and hides PB and TIME while keeping main-route progress")
 	_expect((screen.get_node("%BestLabel") as Label).text == screen.call("_format_score", int(screen.session_for_test().best_score())), "BEST is formatted from the session best score")
-	_expect((screen.get_node("%MapButton") as Button).text == "全体マップ" and (screen.get_node("%MapButton") as Button).custom_minimum_size.x >= 72.0 and (screen.get_node("%MapButton") as Button).custom_minimum_size.y >= 96.0, "map action uses the requested copy and touch contract")
+	_expect((screen.get_node("%MapButton") as Button).text == "全体マップ" and (screen.get_node("%MapButton") as Button).custom_minimum_size.x >= 72.0 and (screen.get_node("%MapButton") as Button).custom_minimum_size.y >= 96.0 and (screen.get_node("%MapFrameArt") as TextureRect).texture.resource_path == "res://assets/art/ui/common/map-panel-frame-v1.png", "map action uses the requested copy, touch contract, and generated frame")
 	_expect((screen.get_node("%Slot0") as Label).text == "—" and (screen.get_node("%Slot2") as Label).text == "—", "initial slots are blank")
 	_expect((screen.get_node("%DieButton") as Button).text == "振る", "the right-side roll action starts ready")
 	_expect((screen.get_node("%RollButtonCopy") as Label).text == "振る" and (screen.get_node("%RollButtonDieIcon") as TextureRect).visible, "round roll action carries the reference dice-over-copy composition")
@@ -228,7 +229,7 @@ func _test_layout_and_touch(screen: Control) -> void:
 	map_die.scale = Vector2.ONE * 1.08
 	var rolling_die_rect := map_die.get_global_rect()
 	map_die.scale = Vector2.ONE
-	_expect(map_die.get_parent() == atlas and atlas_rect.encloses(die_rect) and safe_rect.encloses(die_rect) and atlas_rect.encloses(rolling_die_rect), "the 3D die stays inside the lower map safety zone while rolling")
+	_expect(map_die.get_parent() == atlas and atlas_rect.encloses(die_rect) and safe_rect.encloses(die_rect) and atlas_rect.encloses(rolling_die_rect), "the rotating 3D die stays inside the lower map safety zone while rolling")
 	var slot_art := screen.get_node("%SlotTrayArt") as Control
 	var slot_centers := [first_slot.get_global_rect().get_center(), (screen.get_node("%SlotPanel1") as Control).get_global_rect().get_center(), last_slot.get_global_rect().get_center()]
 	var art_rect := slot_art.get_global_rect()
@@ -241,7 +242,7 @@ func _test_layout_and_touch(screen: Control) -> void:
 	_expect((screen.get_node("%SlotPanel0") as Control).size.y >= 90 and (screen.get_node("%Slot0") as Label).get_theme_font_size("font_size") >= 50 and (screen.get_node("%BackButton") as Button).text.contains("メニュー"), "slot values fill the authored windows, numbers are large, and stage exit lives behind the menu")
 	var tool_dock := screen.get_node("%ToolDock") as Control
 	_expect(tool_dock.get_global_rect().position.y >= tray.get_global_rect().end.y and (screen.get_node("%AtlasView") as Control).size.y >= 450.0, "item and skill dock sits below the raised tray without shrinking the playfield below contract")
-	_expect((screen.get_node("%ItemToolButton") as Button).icon.resource_path == "res://assets/art/v08/cards/item-card.png" and (screen.get_node("%SkillToolButton") as Button).icon.resource_path == "res://assets/art/v08/cards/skill-card.png", "tool buttons use the two production ImageGen card rasters")
+	_expect((screen.get_node("%ItemToolButton") as Button).icon.resource_path == "res://assets/art/v08/cards/item-card.png" and (screen.get_node("%SkillToolButton") as Button).icon.resource_path == "res://assets/art/ui/common/skill-pinpoint-v1.png", "tool buttons use the item card and generated pinpoint skill icon")
 	_test_utility_cards(screen)
 
 
@@ -252,7 +253,7 @@ func _test_utility_cards(screen: Control) -> void:
 	_expect(overlay.visible and (screen.get_node("%DieButton") as Button).disabled and (screen.get_node("%UtilityTitle") as Label).text == "旅のアイテム" and (screen.get_node("%UtilityDetail") as Label).text.contains("0 / 3") and (screen.get_node("%UtilityActionButton") as Button).disabled, "ITEM button opens its functional empty-bag card and gates gameplay input")
 	screen.call("_on_utility_closed")
 	screen.call("_on_skill_tool_pressed")
-	_expect(overlay.visible and (screen.get_node("%DieButton") as Button).disabled and (screen.get_node("%UtilityTitle") as Label).text.contains("ピンポイント") and (screen.get_node("%UtilityCardArt") as TextureRect).texture.resource_path == "res://assets/art/v08/cards/skill-card.png" and (screen.get_node("%PinpointFace1") as Button).disabled, "SKILL button explains pinpoint and gates face choice until READY")
+	_expect(overlay.visible and (screen.get_node("%DieButton") as Button).disabled and (screen.get_node("%UtilityTitle") as Label).text.contains("ピンポイント") and (screen.get_node("%UtilityCardArt") as TextureRect).texture.resource_path == "res://assets/art/ui/common/skill-pinpoint-v1.png" and (screen.get_node("%PinpointFace1") as Button).disabled, "SKILL button explains pinpoint and gates face choice until READY")
 	screen.call("_on_utility_closed")
 	_expect(not overlay.visible and not session.snapshot().clock_paused and not (screen.get_node("%DieButton") as Button).disabled, "closing a utility card restores gameplay input and the run clock")
 
@@ -512,7 +513,7 @@ func _test_compact_die_motion(screen: Control) -> void:
 	var presentation := screen.get_node("%DicePresentation")
 	screen.call("_start_roll")
 	await process_frame
-	_expect(presentation.state_name(0) == "ROLLING" and (screen.get_node("%DieButton") as Button).text == "止める", "right-side die action enters visible rolling state on the first tap")
+	_expect(presentation.state_name(0) == "ROLLING" and (screen.get_node("%DieButton") as Button).text == "止める" and not (screen.get_node("%DieHeroArt") as Control).visible and (presentation as Control).visible and (screen.get_node("%MessageBand") as Control).visible and (screen.get_node("%MessageLabel") as Label).text == "回転中…もう一度タップで止める", "right-side die action enters rolling state with a high-contrast stop instruction and one rotating 3D die")
 	_expect(not bool((screen.get_node("%AtlasView") as Control).roll_preview_receipt().active), "rolling never lights a destination card")
 	await create_timer(0.55).timeout
 	_expect(bool(screen.get("_rolling")) and presentation.state_name(0) == "ROLLING" and (screen.get_node("%DieButton") as Button).text == "止める", "right-side die action keeps rolling until the player taps again")
