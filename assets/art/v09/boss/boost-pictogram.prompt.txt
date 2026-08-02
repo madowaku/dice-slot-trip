@@ -1,0 +1,8 @@
+Mode: generation
+Model/tool: OpenAI image generation
+
+Prompt:
+Create one production-ready 2D game tile pictogram for a mobile Cairo boss race: BOOST. A bold stack of three upward chevrons with a subtle winged-scarab silhouette, antique Egyptian gold and bright turquoise enamel, chunky readable silhouette, lightly weathered carved-metal texture, centered orthographic icon, no words, no letters, no numbers, no border, no UI panel, no shadow outside the object. Isolated on a perfectly flat solid chroma-magenta (#ff00ff) background. Square 1:1 composition. The icon must remain instantly readable at 60 pixels.
+
+Postprocess:
+Removed the chroma-magenta background to transparent alpha with remove_chroma_key.py.

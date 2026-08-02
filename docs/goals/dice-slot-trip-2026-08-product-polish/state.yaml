@@ -1,0 +1,1386 @@
+version: 2
+
+goal:
+  title: "DICE SLOT TRIP 2026-08 製品化ブラッシュアップ"
+  slug: "dice-slot-trip-2026-08-product-polish"
+  kind: open_ended
+  tranche: "通常マップのロール／スロット操作を、状態別文言・残りスロット表示・単一タッチ入力で整理する安全な実装スライスを完了する"
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "添付録画の4〜6秒台、現行ボスレース実装、関連テスト、dirty差分を読み取り、カメラ目標の競合と効果座標ずれの正確な所有箇所・再現経路・安全な変更境界を特定する。"
+    inputs:
+      - "C:/Users/hiro/Desktop/レコーディング 2026-08-01 110108.mp4"
+      - "C:/Users/hiro/.codex/attachments/b830feba-29f8-4db5-b780-2dd363c07ffd/pasted-text.txt"
+      - "scripts/ui/v11_boss_lane_board.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/game/v06_boss_battle.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/record_v10_boss_race.gd"
+      - "Current dirty diff"
+    constraints:
+      - "Read-only."
+      - "実装ファイルや既存差分を変更しない。"
+      - "録画で見える事実とコードからの推測を分ける。"
+      - "Control / CanvasLayer / Node2D の座標変換と tween ownership を具体的に追う。"
+    expected_output:
+      - "録画のフレーム時系列"
+      - "カメラ更新 call graph と競合箇所"
+      - "効果表示の座標系とずれの原因"
+      - "関連 dirty 差分の所有権・回帰リスク"
+      - "再現・検証コマンド"
+      - "候補 Worker scope"
+    receipt:
+      result: done
+      note: "notes/T001-boss-camera-effect-map.md"
+      summary: "録画の反復スクロールは2マス単位で再計算される複数camera Tweenと一致し、効果ずれはcamera更新時にpictogramだけ再投影されないstale local projectionが原因と特定した。"
+      evidence:
+        - "scripts/app/v06_play_screen.gd:1493"
+        - "scripts/app/v06_play_screen.gd:2128"
+        - "scripts/ui/v11_boss_lane_board.gd:97"
+        - "tests/run_v06_boss_play_screen_tests.gd:209"
+        - "C:/tmp/dice-slot-t001-late/contact.png"
+      spawned_tasks:
+        - T002
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T001証拠をレビューし、一ターン一回のカメラ決定と対象追従効果を満たす最小で安全な実装タスクを定義する。"
+    inputs:
+      - "T001 receipt"
+      - "Current dirty diff"
+      - "Current Godot parse and boss test result"
+    constraints:
+      - "Do not implement."
+      - "UI全面改修や新規画像生成を混ぜない。"
+      - "既存dirty差分を保護できるscopeだけを許可する。"
+    expected_output:
+      - "Decision and rationale"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Deferred findings"
+    receipt:
+      result: done
+      decision: "両者がraw lane viewport内なら固定。収まらない時だけプレイヤーのsnapped_camera_forを一度計算し、単一Tweenで移動する。pictogramは着地セルanchorを保持してcamera更新ごとにlane_pointへ再投影する。"
+      rationale: "現行はプレイヤーcamera anchorと画面外相手表示を製品契約にしており、先頭者・中点優先は意味変更になる。根因はplay screenの反復Tweenとpictogram再投影欠落なのでboard APIやscene変更は不要。"
+      next_allowed_task: T003
+      blocked_tasks:
+        - "v11 board API変更"
+        - "scene hierarchy変更"
+        - "visual redesign"
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "最終player/boss位置からcamera targetを一度だけ決め、両者がraw lane viewport内なら固定、そうでなければplayerのsnapped_camera_forへ単一Tweenする。landing-cell pictogram anchorを保持し、token同期とcamera Tween中に同じlane_pointへ再投影し、旧反復scrollテストを固定・単一Tween・player-priority・pictogram追従契約へ置換する。"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "Godot 4.7 tests/run_v06_boss_play_screen_tests.gd"
+      - "Godot 4.7 tests/run_tests.gd"
+      - "git diff --check -- scripts/app/v06_play_screen.gd tests/run_v06_boss_play_screen_tests.gd"
+      - "both visible => camera unchanged; non-fitting => one player-priority target/Tween; pictogram stays at lane_point(anchor_cell)+offset before/after camera"
+    stop_if:
+      - "v11_boss_lane_board.gd、V06PlayScreen.tscn、画像、game model、または他ファイルの変更が必要。"
+      - "既存v06_play_screen.gd dirty hunksの整形・削除・巻き戻しが必要。"
+      - "両者viewport内判定をtoken clamp後の表示位置で代用する必要がある。"
+      - "同一原因で検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_boss_play_screen_tests.gd"
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "Godot 4.7 tests/run_v06_boss_play_screen_tests.gd"
+          status: pass
+        - cmd: "Godot 4.7 tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check -- scripts/app/v06_play_screen.gd tests/run_v06_boss_play_screen_tests.gd"
+          status: pass
+      summary: "両者のraw token footprintが収まればcamera固定、収まらなければplayer snapped targetへの単一Tweenに変更。landing-cell pictogram anchorを保持してtoken/camera同期ごとに再投影し、旧反復scroll testを新契約へ置換した。"
+      caveat: "v06_play_screen.gdの既存dirty差分を保持し、対象関数周辺だけを局所変更した。"
+
+  - id: T004
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "既存capture harnessでボス一投を720×1280と360×640に記録し、camera移動が最大一回であること、両者が見える時は固定されること、効果pictogramと着地セルの相対位置がcamera前後で維持されることを視覚監査する。"
+    allowed_files:
+      - "build/qa-boss-camera-*"
+      - "docs/goals/dice-slot-trip-2026-08-product-polish/state.yaml"
+      - "docs/goals/dice-slot-trip-2026-08-product-polish/notes/T004-*"
+    verify:
+      - "Existing boss capture harness completes without product-code edits"
+      - "720x1280 capture visual inspection"
+      - "360x640 capture visual inspection"
+      - "Camera target/Tween count remains one by automated contract"
+      - "Pictogram center remains at landing-cell lane_point plus authored offset"
+    stop_if:
+      - "製品コード、scene、test harnessの変更が必要。"
+      - "既存Godot editorを停止する必要がある。"
+      - "同じcapture failureが2回再現する。"
+    receipt:
+      result: done
+      note: "notes/T004-boss-camera-visual-qa.md"
+      summary: "Godot OpenGL full raceとfocused anchor動画を完走。25-frame contactでcameraは静止→一つの連続移動→静止となり、pictogramはlanding cellと一緒に移動して独立driftしなかった。"
+      evidence:
+        - "build/qa-boss-camera-360x640.avi"
+        - "build/qa-boss-camera-anchor-360x640.avi"
+        - "build/qa-boss-camera-anchor-tween-contact.png"
+        - "build/qa-boss-camera-anchor-before-720x1280.png"
+        - "build/qa-boss-camera-anchor-mid-720x1280.png"
+        - "build/qa-boss-camera-anchor-after-720x1280.png"
+      commands:
+        - cmd: "Godot 4.7 OpenGL Movie Writer full race 360x640"
+          status: pass
+        - cmd: "Godot 4.7 OpenGL Movie Writer focused anchor sequence 360x640"
+          status: pass
+        - cmd: "ffmpeg 25-frame transition contact and 720x1280 Lanczos evidence"
+          status: pass
+        - cmd: "headless native 720x1280 SubViewport static capture"
+          status: blocked
+      caveat: "native 720 static capture timed out in the known SubViewport texture readback path; native 720 geometry assertions plus 720x1280 expanded real movie frames were used."
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "録画・ユーザー受入条件・実装diff・自動テスト・720/360視覚証拠へ照合し、現在トランシェが完了したか監査する。"
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current dirty diff"
+      - "Recording timeline"
+    constraints:
+      - "Do not implement."
+      - "必要なWorkerがqueuedまたはactiveなら完了を拒否する。"
+    expected_output:
+      - "complete | not_complete"
+      - "Acceptance mapping"
+      - "Missing evidence"
+      - "Next exact task if not complete"
+    receipt:
+      result: done
+      decision: complete
+      completion_decision: complete
+      acceptance_mapping:
+        - "両者のraw token footprintがlane viewport内ならcamera固定。専用test pass。"
+        - "収まらない場合はplayer snapped_camera_forを一度だけ計算し、loopなしの単一Tween。コード・test・motion evidenceが一致。"
+        - "pictogramはlanding-cell anchorを保持し、camera callbackごとに再投影。before/mid/afterで独立driftなし。"
+        - "main@6322e1dと大量protected dirtyを維持し、実装scopeは指定2ファイル。"
+        - "Godot 4.7 parse、dedicated boss suite、legacy suite、scoped diff-checkがpass。"
+        - "360 OpenGL動画は静止→単一連続移動→静止で、再始動・逆走なし。"
+      missing_evidence:
+        - "native 720 raster captureはSubViewport timeoutで欠落したが、native 720 geometry assertions、解像度非依存の座標契約、360実動動画、720 Lanczos evidenceで非blocking。"
+      risks:
+        - "720 Lanczos画像は720固有renderer sampling品質を証明しないが、今回のcamera/Tween/座標受入条件を覆さない。"
+      next_exact_task: "通常マップの常時小説明文を撤去し、確定時だけ大きな『Nマス進む』を約1秒表示する次トランシェを起票する。"
+
+  - id: T005
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "通常マップの常時小説明文と3 ROLL SLOT文言をruntimeから撤去し、出目確定時だけ実移動距離を大きく約1秒表示する最小実装scopeを定義する。"
+    inputs:
+      - "Previous T999 next_exact_task"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "既存V06PlayScreen.tscn dirty hunksを巻き戻さない。"
+      - "アイテム、スキル、図鑑、通常マップ番号、ボスUI redesignは混ぜない。"
+      - "inline slot resultの意味のある一時表示は保持する。"
+    expected_output:
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Kept transient states and deferred copy"
+    receipt:
+      result: done
+      decision: "MessageLabelを既存ノードのまま約1秒の移動距離announcementへ再利用し、sceneは触らずruntimeでidle文言・RoleLabel・TrayStatusLabelを隠す。inline role/rewardだけ短時間保持する。"
+      rationale: "V06PlayScreen.tscnには213行規模のprotected dirty差分があり、scene編集なしで誤説明をruntimeから確実に除去できる。_refresh_uiのREADY/global showとnormal chromeのTrayStatus showを同時に止める必要がある。"
+      next_allowed_task: T006
+      kept_transient_states:
+        - "actual pending move distance announcement約1秒"
+        - "inline role/reward/effect約0.46秒"
+        - "route-choice、movement error、tile landing、stage intro、boss messages"
+      deferred:
+        - "scene source strings cleanup"
+        - "map +1..+6 numbering"
+        - "items/skills/dex/postcards"
+
+  - id: T006
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "scripts/app/v06_play_screen.gdだけで、通常idleのMessageLabel/RoleLabel/TrayStatusLabelとREADY role guidanceを隠し、通常dice-confirm時に実pending_move_distanceを大きく約1秒表示する。stale timerで後続メッセージを消さないようmotion generationを使い、inline slot resultのrole/rewardだけ短時間表示して終了時に隠す。専用テストでidle copy、announcement font/text/timeout、inline result保持を検証する。"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "Godot 4.7 tests/run_v06_play_screen_tests.gd"
+      - "Godot 4.7 tests/run_tests.gd"
+      - "git diff --check -- scripts/app/v06_play_screen.gd tests/run_v06_play_screen_tests.gd"
+      - "idle Message/Role/TrayStatus hidden; normal roll shows actual distance with large font then hides around 1s; inline role/reward stays visible then clears"
+    stop_if:
+      - "V06PlayScreen.tscn、他ファイル、assets、model、layout redesignが必要。"
+      - "既存dirty hunksの整形・削除・巻き戻しが必要。"
+      - "timerをdeterministicにできず、route/boss/tile transient stateを壊す。"
+      - "inline role/rewardが消える、または長く残る。"
+      - "同一原因で検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "Godot 4.7 tests/run_v06_play_screen_tests.gd"
+          status: pass
+        - cmd: "Godot 4.7 tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check -- scripts/app/v06_play_screen.gd tests/run_v06_play_screen_tests.gd"
+          status: pass
+      summary: "通常READYのMessage/Role/TrayStatusと補助文をruntimeで隠し、確定した実pending_move_distanceを大きく約1秒表示。timerはmotion generationと表示文identityを確認して後続文を消さず、font/scaleも復元。inline resultはrole/reward/effectだけを短時間保持し、slot headerは表示しない。"
+      caveat: "V06PlayScreen.tscnと既存dirty差分は変更せず、実装・専用テストの2ファイルに限定。"
+
+  - id: T010
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "通常マップの情報密度、移動距離announcement、inline result、720/360 visual evidenceを監査し、このUI整理トランシェの完了可否を判定する。"
+    inputs:
+      - "T005 decision"
+      - "T006 receipt"
+      - "Current dirty diff"
+      - "Last verification"
+    constraints:
+      - "Do not implement."
+      - "queued/active required Workerがあれば完了を拒否する。"
+    expected_output:
+      - "complete | not_complete"
+      - "Acceptance mapping"
+      - "Missing evidence"
+      - "Next exact task"
+    receipt:
+      result: not_complete
+      decision: not_complete
+      acceptance_mapping:
+        - "READY静止HUDはidle PNGで常時小説明文と3 ROLL SLOTが消えている。"
+        - "実移動距離の大きな4マス進む表示は360 PNGで確認できる。"
+        - "timerはmotion generationと表示文identityを確認し、後続文を消さない実装になっている。"
+        - "Godot parse、専用play-screen suite、全suite、scoped diff-checkはpass。"
+      blocking_gaps:
+        - "qa-hud-copy-focused-720x1280.aviはffprobe上360x640で、native 720 raster proofになっていない。"
+        - "inline PNG/cropでPAIRと報酬がslot panel下端に重なり、読める形で表示されていない。"
+      evidence:
+        - "build/qa-hud-copy-idle-360x640.png"
+        - "build/qa-hud-copy-announcement-360x640.png"
+        - "build/qa-hud-copy-inline-218-crop.png"
+        - "build/qa-hud-copy-focused-360x640.avi"
+      next_exact_task: "T011: inline role/rewardを既存sceneを保護したランタイム配置で明瞭化し、native 720x1280 focused capture経路と360/720証跡を確立する。"
+
+  - id: T011
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "inline slot resultのRoleLabel/RoleRewardLabelを既存sceneのprotected dirtyを巻き戻さず、runtime-onlyの安全な配置・z-order・clip対策でslot panelと重ならない位置へ出す。TrayStatusLabelは非表示のまま、role/reward/effectは短時間表示する。既存QA harnessまたはbuild配下のcapture helperで360x640とnative 720x1280の実画像を記録できる経路を確認し、720 fallbackを隠さず証跡に残す。"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "build/qa_hud_copy_record.gd"
+      - "build/qa_hud_copy_record.tscn"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "Godot 4.7 tests/run_v06_play_screen_tests.gd"
+      - "Godot 4.7 tests/run_tests.gd"
+      - "git diff --check -- scripts/app/v06_play_screen.gd tests/run_v06_play_screen_tests.gd build/qa_hud_copy_record.gd build/qa_hud_copy_record.tscn"
+      - "inline role/reward are visibly legible and do not overlap slot panels or tray header in 360 raster"
+      - "capture reports actual raster dimensions; native 720 is required or explicitly recorded as blocked without claiming pass"
+    stop_if:
+      - "V06PlayScreen.tscn or unrelated product files must be edited; stop and report scene-change requirement instead of touching protected dirty hunks."
+      - "runtime positioning is unstable across READY, MOVING, boss, or inline reset states."
+      - "native 720 capture cannot be completed after one bounded attempt; preserve 360 evidence and report the limitation."
+      - "same failure repeats twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "build/qa_hud_copy_record.gd"
+        - "build/qa_hud_copy_record.tscn"
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "Godot 4.7 tests/run_v06_play_screen_tests.gd"
+          status: pass
+        - cmd: "Godot 4.7 tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check and trailing-whitespace scan for four scoped files"
+          status: pass
+        - cmd: "Godot OpenGL Movie Writer focused inline helper 360x640"
+          status: pass
+        - cmd: "ffprobe focused inline movie dimensions"
+          status: pass
+      summary: "RoleLabel/RoleRewardLabelをruntime-onlyでscene rootへ一度reparentし、slot rowの直下へglobal配置。Container clipに隠れずPAIRと報酬が読め、TrayStatus/TrayHintは非表示のまま。phase refresh後もrole/rewardを保持し、resetで隠してslot rowの通常レイアウトを復元する。"
+      evidence:
+        - "build/qa-hud-copy-reparent-window-360x640.avi"
+        - "build/qa-hud-copy-focused-current-360x640.avi"
+        - "C:/tmp/t011-reparent-frame65.png"
+        - "build/qa-hud-copy-final-contact-360x640.png"
+        - "HUD_CAPTURE_DIMENSIONS runtime_viewport=720x1280 design_viewport=720x1280 window=360x640 role P(32,1030) S(421,35) reward P(32,1069) S(421,32) slot row P(32,898) S(421,128)"
+      caveat: "Godot Movie Writerの720指定はprojectのwindow overrideにより360x640へfallback。ffprobeで寸法を確認し、native 720 raster claimはしていない。SubViewport static captureとheadless movieのbounded attemptsはtimeout/crashしたため再試行せず、720 design geometry assertionsとruntime dimension logを補助証跡として残す。"
+
+  - id: T012
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T011のruntime inlineレイアウト修正、360実画像、720 fallbackの正確な寸法報告、自動テスト、protected dirty境界を監査し、現在トランシェを完了できるか判定する。native 720が環境制約で取得不能な場合は、bounded attemptの証跡と代替720 design geometryが十分か明示する。"
+    inputs:
+      - "T010 not_complete receipt"
+      - "T011 receipt"
+      - "Current dirty diff"
+      - "Godot test outputs"
+      - "360 inline frame and contact sheet"
+    constraints:
+      - "Do not implement."
+      - "Do not treat a 360 raster as 720 evidence."
+      - "If accepting completion with native 720 blocked, state why the gap is nonblocking and record the exact next backlog item."
+    expected_output:
+      - "complete | not_complete"
+      - "Acceptance mapping"
+      - "Evidence gaps and risks"
+      - "Next exact task"
+    receipt:
+      result: done
+      decision: complete
+      completion_decision: complete
+      acceptance_mapping:
+        - "READY idle rasterで常時小説明文と3 ROLL SLOT/statusが非表示。"
+        - "実移動距離の大きな4マス進む表示、font 42、約1秒hide、motion generation/text identity guardを専用testと360 movieで確認。"
+        - "inline PAIRと+150 ゲージ+1がslot row直下で可読、TrayStatus/TrayHintは非表示、phase refresh後も保持、resetで非表示とslot-row geometry復元。"
+        - "runtime-only reparent/z40/global placementでsceneとprotected dirty layoutを変更せず、input gate・playfield・touch・720 design rootを維持。"
+        - "Godot 4.7 parse、dedicated suite failures=0、full suite failures=0、scoped diff-check pass。"
+        - "360 OpenGL movieと抽出frameでidle/announcement/inlineを目視確認。"
+      evidence:
+        - "C:/tmp/t011-reparent-frame65.png"
+        - "build/qa-hud-copy-reparent-window-360x640.avi"
+        - "build/qa-hud-copy-final-idle-360x640.png"
+        - "build/qa-hud-copy-final-announcement-360x640.png"
+        - "build/qa-hud-copy-focused-current-360x640.avi"
+        - "HUD_CAPTURE_DIMENSIONS runtime_viewport=720x1280 design_viewport=720x1280 window=360x640 role P(32,1030) S(421,35) reward P(32,1069) S(421,32) slot row P(32,898) S(421,128)"
+      missing_evidence:
+        - "native 720 rasterはproject window overrideとSubViewport/headless readback timeout/crashで未取得。720 labelled moviesはffprobe 360x640であり、720 evidenceとは主張しない。"
+      risks:
+        - "native rendererでの720-specific sampling品質は未確認。ただしruntime geometry contract、720 design assertions、360実動状態、寸法ログで今回のUI状態・入力契約を相互確認しており、今回トランシェの完了を妨げない。"
+      next_exact_task: "次トランシェ: 通常マップのマス番号を現在/+1〜+6へ整理し、#02〜#07表記を撤去する。native 720 rasterは環境が解消した時に再取得する。"
+
+  - id: T013
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "通常マップの7枚カードに表示される相対ステップと小さな絶対番号の所有箇所、分岐・ループ・カルーセル状態への影響、既存テストとdirty境界を特定し、現在地／+1〜+6へ統一する最小Worker scopeを返す。"
+    inputs:
+      - "T012 next_exact_task"
+      - "ChatGPT Image 2026年8月1日 14_15_43.png"
+      - "scripts/game/v06_atlas_view.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "scenes/app/V06PlayScreen.tscnのprotected dirtyを変更しない。"
+      - "通常マップ以外のoverview、ボスレーン、分岐ルートの意味を変えない。"
+      - "相対距離が非整数または戻り方向になる文脈を発見したらWorker前に報告する。"
+    expected_output:
+      - "Exact ownership and render path"
+      - "Expected labels for all seven visible cards"
+      - "Exact Worker objective, allowed_files, verify, stop_if"
+    receipt:
+      result: done
+      summary: "7枚カードの所有経路は_draw→_draw_card_route→_draw_card_tile。静止main/bypassはrelative steps 0..6なので現在地/+1〜+6が正しい。小さな#NNは同関数末尾の別drawで、overview/topologyの_tile_labelとは独立。"
+      evidence:
+        - "scripts/game/v06_atlas_view.gd:1315-1425"
+        - "scripts/game/v06_atlas_view.gd:2122-2127"
+        - "tests/run_v06_visual_asset_tests.gd:35-62"
+      ambiguity: "直線移動中の通過済みカードはnegative relative step、main終端付近の補完カードは後方マスでもstable slot上は+Nになる。推奨はnegativeを·のまま、overview/loop/topology absolute labelは変更しない。"
+      next_allowed_task: T014
+
+  - id: T014
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T013のedge caseを評価し、現在地／+1〜+6の適用範囲を静止通常カード・移動中negative cards・main終端backfill・overview/loopへ明確化して、安全なWorker契約を決定する。"
+    inputs:
+      - "T013 receipt"
+      - "ChatGPT Image 2026年8月1日 14_15_43.png"
+      - "scripts/game/v06_atlas_view.gd"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "理想画像の読み順を満たしつつ、後方マスを未来距離と誤表示しない。"
+      - "overview、loop、branch comparisonのtopology labelsを混ぜない。"
+    expected_output:
+      - "Decision for settled, transient negative, and terminal backfill labels"
+      - "Exact Worker objective"
+      - "allowed_files, verify, stop_if"
+    receipt:
+      result: done
+      decision: "straight travel中はworld cardへpre-roll基準ラベルを固定し、各hopで再採番しない。実pathと真のforward successorsだけを現在地/+N、terminal filler/backfillは·。camera follow後のfinish_straight_travelで一度だけsettled基準へ切り替える。"
+      label_policy:
+        settled_main_bypass: "current=現在地、ordered _forward_successorsだけ+1〜+6。"
+        transient_travel: "travel_offset基準の旧ラベルをworld cardへ固定。negative relative_stepでは再採番しない。"
+        terminal_backfill: "後方補完とterminal_fillerは·。"
+        overview_loop_branch: "_tile_labelのabsolute topology labelsを維持。"
+        absolute_card_numbers: "通常card routeの小さな#NN描画を撤去。"
+      next_allowed_task: T015
+
+  - id: T015
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "通常main/bypass card routeの主ラベルを、settled時は真のforward successorsに対する現在地/+1〜+6、active straight travel時はworld cardへ固定したpre-roll travel_offset基準へ変更し、backfill/fillerを·にする。camera follow完了後のfinish_straight_travelだけを再採番境界とし、小さな#NN描画を撤去する。card_route_receiptでposition keyと表示ラベルを検証可能にする。"
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "Godot 4.7 tests/run_v06_play_screen_tests.gd"
+      - "Godot 4.7 tests/run_tests.gd"
+      - "git diff --check -- scripts/game/v06_atlas_view.gd tests/run_v06_play_screen_tests.gd"
+      - "settled main/bypass labels are 現在地,+1..+6 when six true successors exist"
+      - "world-card key→label mappings remain stable through hop, landing, and camera follow, then relabel once after finish"
+      - "terminal backfill/filler labels are · and card #NN rendering is absent"
+      - "overview/loop/branch topology labels remain unchanged"
+    stop_if:
+      - "Any file outside allowed_files is required."
+      - "camera timing/target、screen anchor、scene、assets、course data、_tile_label semanticsの変更が必要。"
+      - "existing dirty camera/context/test hunksの整形・削除・巻き戻しが必要。"
+      - "既存route/window stateからtrue successorとbackfillを区別できない。"
+      - "same verification failure occurs twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "Godot 4.7 tests/run_v06_play_screen_tests.gd"
+          status: pass
+        - cmd: "Godot 4.7 tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check -- scripts/game/v06_atlas_view.gd tests/run_v06_play_screen_tests.gd"
+          status: pass
+      summary: "settled通常カードは真のordered successorsだけ現在地/+1〜+6、backfill/fillerは·。straight travel中はpre-roll world-card labelsをhop・landing・camera followまで固定し、finish後だけ再採番。card #NN drawを撤去し、receiptへposition key/display label/fit geometryを追加した。"
+      evidence:
+        - "V06_PLAY_SCREEN_TESTS failures=0"
+        - "DICE_SLOT_TRIP_TESTS failures=0"
+        - "main/bypass/terminal/travel stability/360 and 720 fit assertions"
+      caveat: "既存dirty camera/context/test hunksを保持し、許可2ファイルの局所変更に限定。"
+
+  - id: T016
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T015の相対ラベル、移動中の固定、camera settle後の一回更新、terminal backfill、#NN撤去、自動/視覚証跡を監査し、このトランシェの完了可否を判定する。"
+    inputs:
+      - "T013 and T014 receipts"
+      - "T015 receipt"
+      - "Current dirty diff"
+      - "Fresh Godot verification and 360 visual evidence"
+    constraints:
+      - "Do not implement."
+      - "required Workerがqueued/activeなら完了を拒否する。"
+    expected_output:
+      - "complete | not_complete"
+      - "Acceptance mapping"
+      - "Missing evidence and next exact task"
+    receipt:
+      result: done
+      decision: complete
+      completion_decision: complete
+      acceptance_mapping:
+        - "hop→landing→camera follow→finishを専用testで通し、finish_straight_travelだけをsettled再採番境界にした。"
+        - "world-card position key→labelはhop/landing中に不変で、camera follow後も共有カードがpre-roll labelを維持。"
+        - "settled main/bypassは現在地と真のordered successors +1〜+6。terminal backfill/fillerは·。"
+        - "card routeの小さな#NN drawを撤去し、overview/loop/branch topology label経路は変更なし。"
+        - "360実rasterで現在地/+1〜+6の可読性と#NN不在を確認。720はruntime geometry fit assertionsで確認。"
+        - "Godot parse、dedicated、visual asset、full suite、scoped diff-checkがpass。"
+      evidence:
+        - "build/qa-relative-labels-settled-360x640.png"
+        - "build/qa-relative-labels-360x640.avi (360x640, 30fps, 3.033s)"
+        - "V06_PLAY_SCREEN_TESTS failures=0"
+        - "V06_VISUAL_ASSET_TESTS failures=0"
+        - "DICE_SLOT_TRIP_TESTS failures=0"
+      missing_evidence:
+        - "native 720x1280 raster captureは既知のSubViewport readback timeoutで未取得。exact 720 runtime geometry assertionsにより今回の完了にはnonblocking。"
+      risks:
+        - "720 assertionsはfit geometryを保証するが、renderer固有sampling品質は未確認。"
+        - "許可2ファイルにはprotected pre-existing dirtyがあり、将来のcommit準備でもhunk ownership維持が必要。"
+      next_exact_task: "理想画面との差分から、上部HUDとミッション帯の情報階層を現行ゲームデータに合わせて小さく再設計する。"
+
+  - id: T017
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "理想画像の上部2段HUDとMISSION帯を、現行V06PlayScreenのノード・session/state/saveデータ・レイアウト・テスト・dirty差分へ対応付け、実在データだけで構成できる最小実装scopeを特定する。"
+    inputs:
+      - "C:/Users/hiro/Desktop/ChatGPT Image 2026年8月1日 14_15_43.png"
+      - "User contract: LAP has no maximum and displays an increasing integer"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/game/v06_play_session.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "存在しないBESTやmission progressを捏造しない。"
+      - "LAPを2/3など上限付きで表示しない。"
+      - "protected scene/script dirty hunksを巻き戻さない。"
+      - "盤面、ダイス、tray、入力領域を狭める提案は寸法証拠なしに行わない。"
+    expected_output:
+      - "Node/data ownership map for SCORE, BEST, LAP, HP, coin, current position, route and missions"
+      - "What can be implemented now vs deferred"
+      - "Exact Worker objective, allowed_files, verify and stop_if"
+    receipt:
+      result: done
+      summary: "実在データでSCORE/BEST/無制限LAP/HP/coin/main position/58/MAP/stage/routeは構成可能。MISSIONのno-damage/coin15/role2はtarget、reset、failure、branch、save semanticsが存在せず、現HPは回復可能なのでno-damage証明にもならない。"
+      ownership:
+        - "SCORE=_score、BEST=_best_score persisted records、LAP=_lap >=1 and _lap += 1、HP=_player_hp、coin=_coins。"
+        - "main position=tile_index+1/main_tile_count。bypass/loopは既存route-local表記を保持。"
+        - "StageBand/MapButton/overlay wiringは既存ノードで利用可能。"
+      layout: "720x1280、safe margin 16。現HUD 104px、StageBand 54px、Atlas min 470px、Tray 252px、ToolDock 118px。約166〜170pxの2段HUDはruntime fit検証前提で可能。"
+      defer: "MISSION帯はdefinition/targets/reset/failure/save contract決定まで延期。"
+      evidence:
+        - "scenes/app/V06PlayScreen.tscn:62-279"
+        - "scripts/app/v06_play_screen.gd:1293-1345"
+        - "scripts/game/v06_play_session.gd:81-107,304-380,497-521,655-656"
+        - "tests/run_v06_play_screen_tests.gd:196-228"
+      next_allowed_task: T018
+
+  - id: T018
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "T017証拠を基に、実在データだけで理想画像へ近づける上部2段HUDの安全なWorker契約を決め、MISSION帯を今スライスへ含めない理由と次に必要な仕様決定を明示する。"
+    inputs:
+      - "T017 receipt"
+      - "C:/Users/hiro/Desktop/ChatGPT Image 2026年8月1日 14_15_43.png"
+      - "User contract: LAP is an unbounded increasing integer"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "LAPに最大値やslashを付けない。"
+      - "mission data/targetsを捏造しない。"
+      - "Atlas/tray/die/touch geometryを既存contract未満にしない。"
+    expected_output:
+      - "Approved HUD hierarchy and exact copy"
+      - "Exact Worker objective, allowed_files, verify, stop_if"
+      - "Deferred mission specification questions"
+    receipt:
+      result: done
+      decision: "MISSION semanticsは捏造せず延期し、clean HUD scene regionだけを局所編集して2段HUDを先行実装する。"
+      hierarchy:
+        - "Row1: SCORE + animated delta / BEST persisted score / LAP caption + unbounded integer value only。"
+        - "Row2: HP hearts / coin balance / 現在 + truthful route-local progress / 全体マップ。"
+        - "StageBandは独立して保持。PB/time/roll countは通常HUDでは非表示のまま。"
+      copy:
+        - "SCORE, BEST, LAP"
+        - "現在 <n>/58 on main; ALLEY/BYPASS/OASIS/LOOP route-local alternatives off main"
+        - "全体マップ"
+      rationale: "sessionにはbest_scoreとunbounded lapが既にpersistされ、HUD scene regionはHEAD比clean。MISSION targets/reset/failure/saveは不存在。"
+      next_allowed_task: T019
+
+  - id: T019
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "既存normal HUDを2段へ再構成し、Row1へSCORE/BEST/LAP integer、Row2へHP/coin/現在の実route progress/全体マップを配置する。BestLabelをsession.best_scoreへ接続し、LapLabelはcaptionと分離した上限なし整数だけを表示する。StageBand、boss chrome、Atlas/tray/die/inputを保持する。"
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "Godot 4.7 tests/run_v06_play_screen_tests.gd"
+      - "Godot 4.7 tests/run_tests.gd"
+      - "git diff --check -- scenes/app/V06PlayScreen.tscn scripts/app/v06_play_screen.gd tests/run_v06_play_screen_tests.gd"
+      - "720x1280 root fit, AtlasView >=450px, Tray/die/tool dock contracts, MAP >=72x96"
+      - "BEST equals formatted session.best_score; QA lap 4 renders integer 4 with no slash/max"
+      - "main progress is 現在 n/58; branch/loop stays route-local"
+    stop_if:
+      - "Any mission target/progress or save semantics must be invented."
+      - "Any file outside allowed_files is required."
+      - "HUD edit overlaps protected scene hunks or requires reformat/revert of unrelated dirty work."
+      - "Atlas, tray, die, tool dock or touch geometry falls below existing contracts."
+      - "branch/loop must be mislabeled as global /58."
+      - "same verification failure occurs twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "tests/run_v06_play_screen_tests.gd: failures=0"
+        - "tests/run_tests.gd: failures=0"
+        - "scoped git diff --check: pass"
+      summary: "通常HUDを2段へ再構成。Row1はSCORE/delta、session.best_score由来BEST、value-only unbounded LAP。Row2はHP、coin、truthful route progress、全体マップ。StageBandとboss chrome、既存dirty hunksを保持した。"
+
+  - id: T020
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T019の2段HUDを実データ、LAP無制限契約、720/360 layout、protected dirty、自動/視覚証跡へ照合し、上部HUDスライスの完了可否を判定する。"
+    inputs:
+      - "T017-T019 receipts"
+      - "Current dirty diff"
+      - "Fresh Godot tests and visual evidence"
+    constraints:
+      - "Do not implement."
+      - "MISSION帯未実装を上部HUD完了と混同せず、次の仕様タスクとして明示する。"
+    expected_output:
+      - "complete | not_complete for HUD slice"
+      - "Acceptance mapping and missing evidence"
+      - "Exact mission specification questions"
+    receipt:
+      result: done
+      decision: complete
+      completion_decision: "HUD slice complete; HUD+MISSION tranche remains active."
+      acceptance_mapping:
+        - "Row1はSCORE/delta、persisted BEST、value-only integer LAP。next_lapは+1でsave/restoreに上限・分母なし。"
+        - "Row2はcoin、HP、truthful main n/58またはroute-local progress、全体マップ。"
+        - "720 geometry contractsと360x640 real raster/movieでclipping・overlapなし。"
+        - "Fresh parse、dedicated、visual、full、goal checker、scoped diff-checkがpass。"
+      nonblocking:
+        - "360pxではcaptionとscore deltaが小さめ。"
+        - "native 720 rasterなし。exact 720 geometry assertionsで補完。"
+      next_allowed_task: T021
+
+  - id: T021
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "ミッション帯の固定3項目について達成判定、reset/persistence、表示状態をユーザーと確定し、実装可能な契約へ落とす。"
+    constraints:
+      - "仕様確定前にmission trackingやsave schemaを実装しない。"
+      - "上部HUDの完了差分を変更しない。"
+    expected_output:
+      - "No-damageの失敗条件とscope"
+      - "coin 15のgross/net定義とscope"
+      - "role 2のqualifying roles/count定義とscope"
+      - "completion/failure displayとreward/persistence契約"
+      - "次Workerのallowed_files/verify/stop_if"
+    receipt:
+      result: done
+      summary: "カイロ初期セットを旅/スロット/挑戦の3本柱に確定。黄金を集めよ=coin 15、三連のひらめき=non-MIX役2回、傷なき探検=damageなしでgoal。無傷は継続中/失敗を残し、進捗時toast、達成時stampを採用する。"
+      decisions:
+        - "MISSION band: 無傷 継続中|失敗、コイン n/15、役成立 n/2。"
+        - "damage後も無傷項目を消さず暗くする。"
+        - "最初の実装は固定3項目。候補6種、銅銀金、rotation、medal/unlock、score rewardは後続slice。"
+
+  - id: T022
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "v06 sessionのcoin獲得、non-MIX役成立、travel/boss damage、goal/lap遷移、stable save、HUD chromeを追い、固定3ミッションを正確にtrack/persist/renderする最小変更境界を特定する。"
+    inputs:
+      - "User-approved mission design in T021"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_boss_battle.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "relevant tests and current dirty diff"
+    constraints:
+      - "Read-only."
+      - "既存dirty hunksを変更しない。"
+      - "coinはgross取得とcurrent balanceを区別し、MIX/COIN/reward sourceを列挙する。"
+      - "damageはtravelとbossの全経路を列挙する。"
+    expected_output:
+      - "event/state/save call graph"
+      - "mission scope/reset/completionの安全な推奨"
+      - "layout budget and toast hook"
+      - "exact Worker allowed_files/verify/stop_if candidate"
+    receipt:
+      result: done
+      summary: "Scout agent was stopped after prolonged non-response; PM completed the read-only trace. Mission state must be explicit because current HP can heal and current coin balance can fall."
+      evidence:
+        - "v06_play_session.gd _apply_current_tile_effect: COIN gain and actual RISK HP loss"
+        - "v06_play_session.gd _award_role_score: PAIR/STRAIGHT/TRIPLE plus MIX fallback; _role_counts persisted"
+        - "v06_play_session.gd boss result copies player_hp_after into session"
+        - "v06_play_session.gd stable_save_snapshot/restore_stable_snapshot"
+        - "v06_play_session.gd _reset_course_and_clock resets coin/role/stage_flags but carries HP across next_lap"
+        - "V06PlayScreen.tscn current HUD/StageBand/Atlas layout and dedicated MessageLabel"
+      recommendation:
+        - "Per-lap explicit mission state: gross_coin_gained, non-MIX role_success_count, no_damage_active, completion flags."
+        - "Count both COIN tile gains and MIX +1 as positive coin acquisition; spending never reduces mission progress."
+        - "Any actual HP decrease in travel or boss permanently fails no-damage for that lap; healing does not restore it."
+        - "Complete no-damage at successful lap/stage result; reset all mission state at next_lap."
+        - "Persist a mission dictionary; old saves migrate conservatively from coin balance, non-MIX role_counts, and current HP."
+        - "Use a dedicated mission toast rather than competing with movement MessageLabel."
+
+  - id: T023
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T021/T022から固定3ミッションの正確なtracking/save/UI contractと最小Worker scopeを承認する。"
+    inputs:
+      - "T021-T022 receipts"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "銅銀金、mission rotation、medal/unlock、score rewardを混ぜない。"
+    expected_output:
+      - "Decision and exact semantics"
+      - "Worker objective/allowed_files/verify/stop_if"
+    receipt:
+      result: done
+      decision: "固定3missionをper-lapで実装。optional schema-v1 persistence、victory-only no-damage completion、legacy conservative migration、dedicated band/toastを採用し、reward/metagameは除外。"
+      exact_semantics:
+        - "coinはapplied COIN amountとMIX +1のgross acquisition。loss/spendで減らず15でlatch。"
+        - "PAIR/STRAIGHT/TRIPLEの各成立をtravel/bossとも数え、MIX除外、2でlatch。"
+        - "実HP減少だけでno-damageを即時failed latch。healで復活せず、terminal boss victory時だけcompleted latch。"
+        - "new run/retryとsuccessful next_lapだけでreset。save/load、route change、boss entryでは保持。"
+        - "normal playとterminal boss resultでbandを保持し、dedicated toastはinitial render/restoreでreplayしない。"
+      next_allowed_task: T024
+
+  - id: T024
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "V06PlaySessionへカイロ固定3missionのper-lap modelとoptional schema-v1 persistenceを実装し、V06PlayScreenへ3-row bandとindependent one-shot toastを表示する。gold completion stamp、retained dim failure、focused state/save/UI testsを加え、rewardやprotected unrelated hunksを変更しない。"
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_mission_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "scoped git diff --check"
+    stop_if:
+      - "allowed_files外の変更が必要。"
+      - "既存dirty hunksのreformat/revert/replaceが必要。"
+      - "legacy compatibilityにschema version bumpが必要。"
+      - "720/360でband/toastをcollision-freeにできない。"
+      - "pre-boss arrivalまたはboss defeatをsuccessful goalとして扱う必要がある。"
+      - "同一原因で検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "scenes/app/V06PlayScreen.tscn"
+        - "tests/run_v06_mission_tests.gd"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "tests/run_v06_mission_tests.gd: failures=0 (13 assertions)"
+        - "tests/run_v06_save_tests.gd: failures=0"
+        - "tests/run_v06_play_screen_tests.gd: failures=0"
+        - "tests/run_v06_boss_play_screen_tests.gd: failures=0"
+        - "scoped diff/trailing whitespace check: pass"
+      summary: "per-lap coin/non-MIX-role/no-damage stateをtravel/boss hookへ接続し、optional schema-v1 persistenceとlegacy migration、next-lap/retry reset、3-row band、gold stamp、dim failure、independent 1s toastを実装。reward/rank/rotationは未変更。"
+
+  - id: T025
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "固定3ミッションの360/720表示、toast、damage failure、completion、save round-tripを自動/視覚監査する。"
+    receipt:
+      result: done
+      decision: not_complete
+      evidence:
+        - "build/qa-missions-settled-360x640.png"
+        - "build/qa-missions-360x640.avi (360x640, 91 frames, 30fps)"
+        - "Fresh parse, mission/save/play/boss/visual/full tests: pass"
+      findings:
+        - "mission model/save/toast mechanics are correct and fully green."
+        - "360 raster shows dark text on an unstyled dark MissionBand, making all three rows nearly unreadable."
+        - "Band uses long mission names instead of requested short 無傷/コイン/役成立 copy."
+        - "Progress toast says generic 進捗 instead of the actual n/target value."
+      next_allowed_task: T027
+
+  - id: T026
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "固定3ミッションsliceがユーザー仕様、runtime evidence、tests、protected dirtyへ適合するか最終監査する。"
+    receipt:
+      result: done
+      decision: complete
+      completion_decision: "固定カイロmission sliceはapproved user designを満たし、tranche complete。"
+      acceptance_mapping:
+        - "shield/no-damage、coin、die/non-MIX roleの3 pillarsをequal-width real-asset cellsで表示。"
+        - "coin gross acquisition 15、PAIR/STRAIGHT/TRIPLE occurrence 2、no-damage ongoing/latched failure/victory-only completion。"
+        - "actual capped toast、gold completion、failure retained。"
+        - "optional schema-v1 persistence、legacy conservative restore、retry/next-lap reset。"
+        - "denominator-free unbounded LAPを保持し、native captureはLAP 4。"
+        - "82px strip、Atlas 470px、transient message outside Page flow。"
+        - "Product Design QA passed; board checker、parse、mission/save/play/boss/visual/full、diff-check pass。"
+      risks_p3:
+        - "referenceはseparator/bevel depthがよりornate。"
+        - "completion/failure native screenshotsは後続polish evidence候補。"
+        - "dirty worktreeのcommit/review時はunrelated hunksとuntracked mission asset/testを明示保護する。"
+      next_exact_task: "候補6種と銅銀金rank、mission selection、reward/medal metagameを別trancheで設計する。"
+
+  - id: T027
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "MissionBandをparchment/high-contrastへ整え、MISSION headerと短い無傷/コイン/役成立copy、actual n/target toastへ修正し、360/720で視認性と既存layoutを保持する。"
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_mission_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "scoped git diff --check"
+      - "360x640 real raster shows all mission rows legibly"
+    stop_if:
+      - "mission model/save/reward filesの変更が必要。"
+      - "既存dirty hunksのreformat/revertが必要。"
+      - "AtlasViewが450px未満またはtouch/layout contractが崩れる。"
+      - "同一原因で検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_mission_tests.gd"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "tests/run_v06_mission_tests.gd: failures=0 (15 assertions)"
+        - "tests/run_v06_play_screen_tests.gd: failures=0"
+        - "tests/run_v06_visual_asset_tests.gd: failures=0"
+        - "scoped diff/trailing whitespace checks: pass"
+      summary: "104px parchment/high-contrast MissionBand、MISSION header、無傷/コイン/役成立の短縮copy、gold completion check、actual capped n/target toastへ修正。"
+      caveat: "native headless raster readbackは既知timeout。PM Movie Writer captureで補完する。"
+
+  - id: T028
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "理想画像と修正版360 captureを同一state/regionで比較し、Product Design design QAを完了してdesign-qa.mdへ記録する。"
+    allowed_files:
+      - "design-qa.md"
+      - "build/qa-missions-*"
+      - "assets/art/ui/mission/shield-mission.png"
+      - "docs/goals/dice-slot-trip-2026-08-product-polish/state.yaml"
+    verify:
+      - "Godot OpenGL Movie Writer 360x640"
+      - "source and implementation opened together"
+      - "fonts/spacing/colors/assets/copy review"
+      - "design-qa.md final result passed|blocked"
+    receipt:
+      result: done
+      decision: not_complete
+      note: "design-qa.md"
+      evidence:
+        - "build/qa-missions-comparison-720x640.png"
+        - "build/qa-missions-band-comparison-720x116.png"
+      findings:
+        - "P2: vertical mission stack consumes excess playfield budget and movement announcement can clip top HUD captions."
+        - "P2: source uses shield/coin/die anchors while implementation is text-only."
+      asset:
+        - "assets/art/ui/mission/shield-mission.png: built-in ImageGen, chroma-key removal, 256x256 RGBA validated"
+      next_allowed_task: T029
+
+  - id: T029
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "MissionBandを86px以下のhorizontal stripへ再構成し、MISSION tagとshield/coin/die real assetsを持つ3 equal cellsへ短縮copy/statusを配置してplayfieldとtransient messageのvertical budgetを回復する。"
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_mission_tests.gd"
+      - "assets/art/ui/mission/shield-mission.png.import"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped diff-check"
+      - "MissionBand <=86, Atlas >=450, root fit including visible MessageLabel"
+    stop_if:
+      - "mission model/save/reward変更が必要。"
+      - "既存dirty hunksのreformat/revertが必要。"
+      - "360pxでshort copyがwrap/truncateする。"
+      - "同一原因で検証が2回失敗する。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_mission_tests.gd"
+        - "assets/art/ui/mission/shield-mission.png.import"
+      commands:
+        - "Godot 4.7 headless editor parse/import: pass"
+        - "tests/run_v06_mission_tests.gd attempt 1: fail"
+        - "tests/run_v06_mission_tests.gd corrective attempt 2: same fail"
+      summary: "<=82px horizontal stripとreal shield/coin/die assetsは実装。equal-cell geometryとvisible MessageLabel時root/Atlas contractが同一原因で2回failし停止。"
+      blockers:
+        - "three mission cells are not exactly equal width"
+        - "visible MessageLabel still breaks root-fit/Atlas >=450"
+      needs_judge: true
+
+  - id: T030
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "T029のruntime rectを数値化し、equal mission cellsとvisible MessageLabel時overflowの所有node/minimum-size原因を特定して、既存実装を活かす最小recovery patchを定義する。"
+    inputs:
+      - "T029 blocked receipt"
+      - "current MissionBand/MessageLabel scene and mission tests"
+      - "current 720 runtime rects"
+    constraints:
+      - "Read-only."
+      - "既存T029 editsをrevertしない。"
+      - "mission model/save/rewardは対象外。"
+    expected_output:
+      - "exact rect/minimum evidence"
+      - "root overflow equation"
+      - "minimal allowed files and concrete recovery"
+    receipt:
+      result: done
+      summary: "Explorer was stopped after delayed response; PM reproduced both failures and mapped their layout causes."
+      evidence:
+        - "MissionNoDamageCell/CoinCell/RoleCell share EXPAND_FILL but their child Copy labels have unequal intrinsic minima; HBox adds equal surplus to unequal bases, so final widths differ."
+        - "MessageLabel is a direct SafeMargin/Page VBox child. Movement announcement overrides font to 42 and becomes a larger layout minimum, pushing Page past 1280 after persistent mission chrome consumes prior slack."
+      decision:
+        - "Give all three cells the same explicit minimum width at or above the largest child minimum."
+        - "Move MessageLabel out of Page flow into a root-level anchored transient overlay; keep unique-name access and behavior unchanged."
+      next_allowed_task: T031
+
+  - id: T031
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "3 mission cellsへ同一explicit minimum widthを与え、MessageLabelをPage VBox外のroot-level transient overlayへ移して、horizontal mission stripとAtlas>=450を保ったままvisible announcement時root fitを回復する。"
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_mission_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped diff-check"
+      - "equal cell widths, MessageLabel parent outside Page, visible announcement root fit, Atlas>=450"
+    stop_if:
+      - "script/model/save/reward変更が必要。"
+      - "360pxでmission copyまたはannouncementがwrap/truncateする。"
+      - "同一原因で検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "tests/run_v06_mission_tests.gd"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "tests/run_v06_mission_tests.gd: failures=0"
+        - "tests/run_v06_play_screen_tests.gd: failures=0"
+        - "tests/run_v06_visual_asset_tests.gd: failures=0"
+        - "tests/run_tests.gd: failures=0"
+        - "scoped hygiene checks: pass"
+      summary: "3 cellsへ同一176px minimum（integer distributionで最大1px差）を設定。MessageLabelをPage flow外のroot overlayへ移し、visible announcement時もroot fit、Atlas 470px、copy non-wrapを回復。"
+
+  - id: T032
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "T031後の360 Movie Writer captureを理想画像と再比較し、design-qa.mdをpassedまたはblockedへ更新する。"
+    allowed_files:
+      - "design-qa.md"
+      - "build/qa-missions-*"
+      - "docs/goals/dice-slot-trip-2026-08-product-polish/state.yaml"
+    verify:
+      - "360x640 native movie/raster"
+      - "same-size full and focused comparison"
+      - "fonts/spacing/colors/assets/copy"
+    receipt:
+      result: done
+      decision: complete
+      note: "design-qa.md"
+      evidence:
+        - "build/qa-missions-v3-360x640.avi (360x640, 91 frames, 30fps)"
+        - "build/qa-missions-v3-idle-360x640.png"
+        - "build/qa-missions-v3-toast-360x640.png"
+        - "build/qa-missions-v3-comparison-720x640.png"
+      summary: "Product Design QA passed: 82px horizontal real-asset strip, readable short copy, stable top HUD/board/tray, actual progress toast, no actionable P0/P1/P2 for this slice."
+
+  - id: T033
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "候補6種の既存状態フック、旅/スロット/挑戦のpillar選出、銅銀金閾値、score reward event、save互換境界を調査し、最小実装候補を定義する。"
+    inputs:
+      - "User-approved candidate six and rank/reward direction"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_mission_tests.gd"
+      - "Current dirty diff"
+    constraints:
+      - "Read-only。既存の完成済み固定3missionを変更しない。"
+      - "運だけの数字ミッションを追加しない。"
+      - "報酬の二重加算、ランクの後退、save migrationの破壊を具体的に確認する。"
+    expected_output:
+      - "candidate six stable IDs and pillar mapping"
+      - "selection rule that keeps Cairo first set deterministic"
+      - "bronze/silver/gold threshold and promotion semantics"
+      - "score reward event IDs and persistence"
+      - "exact Worker allowed_files/verify/stop_if"
+    receipt:
+      status: pass
+      summary: "Scout found fixed3 mission hooks, persisted route.awarded_score_event_ids, and missing explicit item/loop counters. Proposed stable IDs cairo_coin15/cairo_triple2/cairo_no_damage/cairo_no_item/cairo_time_trial/cairo_ring_exit2; deterministic one-per-pillar selection, optional candidate save fields, and mission:<id>:<rank> reward IDs. Exact rank thresholds and pillar mapping require Judge approval."
+      evidence:
+        - "scripts/game/v06_play_session.gd: mission_state/_advance_coin_mission/_advance_role_mission/_fail_no_damage_mission; _add_score_once and route.awarded_score_event_ids persistence"
+        - "scripts/game/v06_session_save_data.gd: optional missions schema-v1 validator with absent-field legacy compatibility"
+        - "scripts/game/v06_course_model.gd and data/stages/v06_cairo_course.json: route transitions, steps_to_loop_exit, loop definitions"
+      next: "Judge must fix candidate six pillar mapping, rank thresholds, cumulative/per-lap semantics, and Worker scope before implementation."
+
+  - id: T034
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T033とユーザー方針から、候補6種の選出、銅銀金昇格、スコア報酬、セーブ契約を承認する。"
+    inputs:
+      - "T033 scout receipt"
+      - "Previous T026 completion receipt"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement。"
+      - "初期3missionの表示・無上限LAP・保存を壊さない。"
+      - "selection/rewardの曖昧さはWorker前に停止する。"
+    expected_output:
+      - "Decision and exact semantics"
+      - "Worker objective/allowed_files/verify/stop_if"
+    receipt:
+      decision: "Approve a minimal deterministic catalog with one visible mission per pillar and per-lap monotonic rank/reward semantics. Keep default IDs [cairo_coin15, cairo_triple2, cairo_no_damage] and existing cells/copy/geometry. Catalog-only alternates are cairo_no_item (旅), cairo_time_trial (挑戦), and cairo_ring_exit2 (旅); no RNG or rotation in this slice. Coin ranks are 10/15/20 gross, role ranks 1/2/3 non-MIX, time ranks <=30/25/20 seconds on terminal victory. Binary no_damage/no_item/ring_exit2 are bronze-only and no_item remains locked because no item-use API exists. New rank fields are optional in missions schema-v1, reset each lap/retry, preserve on save/load, and all3 bronze bonus is +2000. Rank rewards are cumulative +500/+1000/+2000 via mission:<id>:bronze|silver|gold and mission:all3:bronze through existing route.awarded_score_event_ids; restore never replays."
+      evidence:
+        - "T033 Scout receipt and scripts/game/v06_play_session.gd fixed mission hooks, score idempotence, route/loop transitions, and clock"
+        - "scripts/game/v06_session_save_data.gd optional missions fields preserve schema-v1 legacy saves"
+      worker_scope: "T035 may edit session/save/UI/scene, existing mission/save/play tests, and add tests/run_v06_candidate_mission_tests.gd. Do not add an item API or alter fixed3 geometry/assets."
+      verify:
+        - "Godot 4.7 headless editor parse"
+        - "candidate, mission, save, play, boss-play tests plus full v06 suite"
+        - "scoped git diff --check"
+
+  - id: T035
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "T034承認契約に従い、候補6種の選出、銅銀金ランク、冪等スコア報酬、optional save state、mission UIを実装する。"
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_candidate_mission_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_candidate_mission_tests.gd"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped git diff --check -- allowed_files"
+    stop_if:
+      - "allowed_files外の変更が必要。"
+      - "schema bump/required-field changes, cumulative rank, lap cap, fixed3 geometry/asset changes, or item API invention is needed."
+      - "ring-exit signal cannot be observed through existing loop-to-main transition."
+      - "duplicate reward prevention after save/restore cannot be proven."
+      - "same verification cause fails twice."
+    receipt:
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "tests/run_v06_candidate_mission_tests.gd"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "scoped git diff --check: pass"
+      summary: "Added six-ID mission catalog and deterministic one-per-pillar resolver with fixed Cairo defaults, per-lap monotonic ranks, cumulative bronze/silver/gold score events, all3 bronze bonus, optional schema-v1 save fields, and conservative legacy rank migration. No item API or optional runtime hook was invented. Candidate tests cover catalog, defaults, rank jump, and idempotence; full runtime QA remains for PM."
+
+  - id: T036
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "候補選出、ランク昇格、報酬、save round-trip、360/720 mission presentationを自動・視覚QAする。"
+    receipt:
+      status: pass
+      summary: "PM QA passed the candidate catalog/rank/reward suite, fixed mission regression, save/load and screen regression suites, full legacy suite, visual asset checks, scoped diff-check, and a fresh OpenGL Movie Writer capture. The atlas_18 screen fixture now expects the intentional +500 role bronze reward (score 1090) and confirms cairo_triple2 bronze."
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "tests/run_v06_candidate_mission_tests.gd: V06_CANDIDATE_MISSION_TESTS failures=0"
+        - "tests/run_v06_mission_tests.gd: V06_MISSION_TESTS failures=0"
+        - "tests/run_v06_save_tests.gd: V06_SAVE_TESTS failures=0"
+        - "tests/run_v06_play_screen_tests.gd: V06_PLAY_SCREEN_TESTS failures=0"
+        - "tests/run_v06_boss_play_screen_tests.gd: V06_BOSS_PLAY_SCREEN_TESTS failures=0"
+        - "tests/run_tests.gd: DICE_SLOT_TRIP_TESTS failures=0"
+        - "tests/run_v06_visual_asset_tests.gd: V06_VISUAL_ASSET_TESTS failures=0"
+        - "scoped git diff --check: pass"
+        - "Godot OpenGL Movie Writer build/qa-candidate-mission-360x640.avi: 360x640, 91 frames, 30fps, 3.033s"
+      evidence:
+        - "build/qa-candidate-mission-360x640.avi"
+        - "build/qa-candidate-mission-360x640.png"
+
+  - id: T037
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "候補6種・銅銀金・スコア報酬トランシェがユーザー仕様、既存3mission、セーブ互換、実測証跡へ適合するか最終監査する。"
+    receipt:
+      decision: complete
+      summary: "Final Judge confirms the six stable catalog IDs, deterministic travel→slot→challenge resolver, per-lap monotonic ranks, cumulative idempotent rank rewards and all3 bonus, schema-v1 optional save compatibility, fixed3 UI/LAP preservation, and all requested QA evidence. No remaining mission-tranche blocker."
+      evidence:
+        - "scripts/game/v06_play_session.gd: mission_catalog/resolve_active_missions, rank thresholds and reward IDs, per-lap reset, stable snapshot/restore"
+        - "scripts/game/v06_session_save_data.gd: optional active_ids/ranks/ring_exits validation without schema bump"
+        - "scripts/app/v06_play_screen.gd: existing three-cell mission band retained"
+        - "T036 PM QA: parse, candidate, mission, save, play, boss, full, visual, diff-check pass; 360x640 Movie Writer 91 frames"
+      remaining: "none"
+
+  - id: T038
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "改善案.mdと現行通常マップUIを照合し、ロールボタン／スロットのControl境界、入力経路、常時説明文、既存テスト、360/720レイアウト制約をread-onlyで特定する。"
+    inputs:
+      - "C:/Users/hiro/Desktop/改善案.md"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "T037 final completion receipt"
+    constraints:
+      - "Read-only。既存のボスカメラ、盤面、ミッション、セーブ実装を変更しない。"
+      - "新しいラスター素材は提案しない。"
+      - "見た目のボタンと押下Controlの一致、二重入力防止、48pxタッチ目標を根拠付きで確認する。"
+    expected_output:
+      - "exact control/input ownership and safe worker files"
+      - "minimal copy/layout change proposal for roll and slot"
+      - "verification commands and visual capture path"
+    receipt:
+      result: done
+      summary: "Scout mapped the normal tray: DieButton is the single 220x112 input with a full-size ornament child, while the three 112x128 slot panels are display-only. Existing code already blocks rolling/movement re-entry and has the large transient Nマス進む announcement; normal-only static copy/status remains the cleanup target."
+      evidence:
+        - "scenes/app/V06PlayScreen.tscn:527-718, 589-696"
+        - "scripts/app/v06_play_screen.gd:553-670, 1353-1439, 1827-1848"
+        - "tests/run_v06_play_screen_tests.gd:187-234, 342-349, 504-528"
+      worker_scope: "scripts/app/v06_play_screen.gd, scenes/app/V06PlayScreen.tscn, tests/run_v06_play_screen_tests.gd only; preserve boss/session/mission/save and do not add raster assets."
+
+  - id: T039
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T038の証拠から、通常マップ操作の最小安全変更、文言、Control境界、テスト範囲を承認する。"
+    inputs:
+      - "T038 Scout receipt"
+      - "改善案.mdの通常マップ操作部分"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement。"
+      - "主ロール入力は1つ、ボス画面と既存カメラ挙動は保護する。"
+      - "新素材生成や未指定のゲームルール変更をWorker前に停止する。"
+    expected_output:
+      - "exact Worker objective/allowed_files/verify/stop_if"
+      - "approved copy and touch/layout semantics"
+    receipt:
+      decision: "Approve a normal-map-only control slice: ready button text 振る, rolling 止める, stopped/slot-settling retains the disabled Nマス進む result, movement shows 移動中…; the central 1-second Nマス進む announcement remains the only movement explanation. Hide normal static 3 ROLL SLOT/TrayHint/NextNeed/ActionHint/RoleLabel guidance; keep role result transient. Reuse TrayStatusLabel for compact 残りN, keep one 220x112 DieButton as the sole touch target, preserve ornament alignment and all boss/session/mission/save/camera semantics."
+      evidence:
+        - "T038 Scout receipt and scripts/app/v06_play_screen.gd:614-670, 1353-1439"
+        - "scenes/app/V06PlayScreen.tscn:527-718"
+        - "tests/run_v06_play_screen_tests.gd:187-234, 504-528"
+      next_allowed_task: T040
+
+  - id: T040
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "T039承認契約に従い、通常マップのロールボタン／スロットUIと操作状態を実装し、専用回帰テストを追加する。"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped git diff --check -- scripts/app/v06_play_screen.gd scenes/app/V06PlayScreen.tscn tests/run_v06_play_screen_tests.gd"
+    stop_if:
+      - "allowed_files外の変更、新素材、ボスカメラ変更、ゲームルール変更が必要。"
+      - "3-slot/session semantics or mission/save/camera/boss behavior changes are required."
+      - "220x112 DieButton cannot remain the sole normal roll Control or duplicate press starts/stops more than once."
+      - "同じ検証原因が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "scenes/app/V06PlayScreen.tscn"
+        - "tests/run_v06_play_screen_tests.gd"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "scoped git diff --check: pass"
+      summary: "Normal map roll control now uses 振る/止める, keeps the stopped Nマス進む result, shows 移動中… during movement, reuses TrayStatusLabel for remaining slots 残り3/2/1/0, hides static slot guidance outside transient inline role results, and preserves the sole 220x112 DieButton/ornament control."
+
+  - id: T041
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "通常マップの入力・Control境界、360/720視覚、既存mission/save/boss回帰を自動・視覚QAする。"
+    receipt:
+      status: pass
+      summary: "PM QA passed the updated normal-map control contract and all protected regressions. The fresh 360x640 capture shows the compact 残りN tray state and the single roll control without adding assets."
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "tests/run_v06_play_screen_tests.gd: V06_PLAY_SCREEN_TESTS failures=0"
+        - "tests/run_v06_boss_play_screen_tests.gd: V06_BOSS_PLAY_SCREEN_TESTS failures=0"
+        - "tests/run_v06_mission_tests.gd: V06_MISSION_TESTS failures=0"
+        - "tests/run_v06_save_tests.gd: V06_SAVE_TESTS failures=0"
+        - "tests/run_tests.gd: DICE_SLOT_TRIP_TESTS failures=0"
+        - "tests/run_v06_visual_asset_tests.gd: V06_VISUAL_ASSET_TESTS failures=0"
+        - "scoped git diff --check: pass"
+        - "Godot OpenGL Movie Writer build/qa-roll-slot-360x640.avi: 360x640, 91 frames, 30fps, 3.033s"
+      evidence:
+        - "build/qa-roll-slot-360x640.avi"
+        - "build/qa-roll-slot-360x640.png"
+
+  - id: T042
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "通常マップ操作トランシェが改善案のロール／スロット要望、既存挙動、タッチ制約、実測証跡に適合するか最終監査する。"
+    receipt:
+      result: done
+      decision: complete
+      completion_decision: complete
+      summary: "Final Judge confirms the normal-map roll/slot control slice: state-specific 振る/止める/Nマス進む/移動中… copy, compact 残り3/2/1/0 slot status, hidden static guidance, and a single 220x112 DieButton with ornament. Existing three-slot/session semantics and boss/camera/mission/save behavior remain protected."
+      evidence:
+        - "scripts/app/v06_play_screen.gd:614-670, 1363-1439, 1532-1548, 1807-1830"
+        - "scenes/app/V06PlayScreen.tscn:589-629, 677-696"
+        - "tests/run_v06_play_screen_tests.gd:143-234, 504-528"
+        - "build/qa-roll-slot-360x640.avi (360x640, 91 frames, 30fps, 3.033s)"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "tests/run_v06_play_screen.gd: V06_PLAY_SCREEN_TESTS failures=0"
+        - "tests/run_v06_boss_play_screen_tests.gd: V06_BOSS_PLAY_SCREEN_TESTS failures=0"
+        - "tests/run_v06_mission_tests.gd: V06_MISSION_TESTS failures=0"
+        - "tests/run_v06_save_tests.gd: V06_SAVE_TESTS failures=0"
+        - "tests/run_tests.gd: DICE_SLOT_TRIP_TESTS failures=0"
+        - "tests/run_v06_visual_asset_tests.gd: V06_VISUAL_ASSET_TESTS failures=0"
+        - "scoped git diff --check: pass"
+      remaining: "none"
+
+checks:
+  dirty_fingerprint: "main@6322e1d; large protected dirty and untracked worktree including boss v09-v12 assets and scripts/app/v06_play_screen.gd"
+  last_verification:
+    result: pass
+    task: T042
+    commands:
+      - "Godot 4.7 headless editor parse: pass"
+      - "tests/run_v06_mission_tests.gd: failures=0"
+      - "tests/run_v06_save_tests.gd: failures=0"
+      - "tests/run_v06_play_screen_tests.gd: failures=0"
+      - "tests/run_v06_boss_play_screen_tests.gd: failures=0"
+      - "tests/run_v06_visual_asset_tests.gd: failures=0"
+      - "tests/run_tests.gd: failures=0"
+      - "scoped git diff --check: pass"
+      - "Godot OpenGL Movie Writer qa-missions-v3 360x640: 91 frames, 30fps, 3.033s"
+      - "Goal Maker state checker: pass"
+      - "Product Design design-qa.md: final result passed"
+      - "Goal Maker Judge T026: complete"
+      - "Goal Maker Judge T037: complete"
+      - "Goal Maker Judge T042: complete"

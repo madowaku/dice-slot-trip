@@ -1,0 +1,13 @@
+Built-in Image Gen
+Use case: ui-mockup
+Asset type: selected visual target for a portrait mobile boss-race screen
+
+Design a polished cozy-premium Cairo mirror race for Dice Slot Trip. The boss
+is the supplied sleepy cat Sphinx. Use a moonlit Giza plateau, warm lanterns,
+two parallel carved-stone lanes, BOOST and SAND tiles, and a luminous golden
+gate. Keep the playfield dominant. Add a compact boss identity, a clear
+YOU + SPHINX = 7 inverse-roll panel, a three-slot history, and one large roll
+action. Use tactile sandstone, brass, lapis teal, deep navy, and warm gold.
+
+Avoid generic dashboards, giant beige modals, casino neon, excessive text,
+tiny controls, photorealism, clutter, device chrome, and watermarks.

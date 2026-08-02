@@ -21,6 +21,9 @@ const VALID_ROUTE_IDS := ["main", "bypass_bazaar_alley", "bypass_sirocco", "loop
 const STAGE_FLAG_NEXT_MOVE_PENALTY := "v06_next_basic_move_penalty"
 const STAGE_FLAG_LAST_TILE_EFFECT := "v06_last_tile_effect"
 const STAGE_FLAG_RESOLVED_TILE_EFFECT_IDS := "v06_resolved_tile_effect_ids"
+const STAGE_FLAG_SEEN_TILE_EXPLANATIONS := "v06_seen_tile_explanations"
+const STAGE_FLAG_ACTIVE_LOOP_WRAPS := "v06_active_loop_wraps"
+const VALID_TILE_EXPLANATION_KINDS := ["EVENT", "ITEM", "COIN", "REST", "RISK", "WARP"]
 
 
 static func from_session(session: RefCounted) -> Dictionary:
@@ -98,6 +101,10 @@ static func _validate_state(state: Dictionary) -> Dictionary:
 	result = _validate_clock(state.get("clock"))
 	if not bool(result.get("ok", false)):
 		return result
+	if state.has("missions"):
+		result = _validate_missions(state.get("missions"))
+		if not bool(result.get("ok", false)):
+			return result
 	if not state.get("boss") is Dictionary or not state.get("boss_entered") is bool:
 		return _invalid(STATUS_CORRUPT, "boss fields are invalid")
 	var boss_entered := bool(state.get("boss_entered"))
@@ -157,6 +164,40 @@ static func _validate_state(state: Dictionary) -> Dictionary:
 	return {"ok": true, "status": STATUS_VALID}
 
 
+static func _validate_missions(value: Variant) -> Dictionary:
+	if not value is Dictionary:
+		return _invalid(STATUS_CORRUPT, "missions is not an object")
+	var missions := value as Dictionary
+	for key: String in ["schema_version", "coin_gained", "coin_target", "coin_completed", "role_successes", "role_target", "role_completed", "no_damage_active", "no_damage_completed", "event_serial", "last_event"]:
+		if not missions.has(key):
+			return _invalid(STATUS_CORRUPT, "missions.%s is missing" % key)
+	if not _integer(missions.get("schema_version")) or int(missions.get("schema_version")) != 1:
+		return _invalid(STATUS_CORRUPT, "missions schema is invalid")
+	for key: String in ["coin_gained", "role_successes", "event_serial"]:
+		if not _integer(missions.get(key)) or int(missions.get(key)) < 0:
+			return _invalid(STATUS_CORRUPT, "missions progress is invalid")
+	if int(missions.get("coin_target")) != 15 or int(missions.get("role_target")) != 2:
+		return _invalid(STATUS_CORRUPT, "missions targets are invalid")
+	for key: String in ["coin_completed", "role_completed", "no_damage_active", "no_damage_completed"]:
+		if not missions.get(key) is bool:
+			return _invalid(STATUS_CORRUPT, "missions flags are invalid")
+	if bool(missions.get("no_damage_completed")) and not bool(missions.get("no_damage_active")):
+		return _invalid(STATUS_CORRUPT, "completed no-damage mission is failed")
+	if not missions.get("last_event") is Dictionary:
+		return _invalid(STATUS_CORRUPT, "missions last event is invalid")
+	if missions.has("active_ids"):
+		if not missions.get("active_ids") is Array: return _invalid(STATUS_CORRUPT, "missions active_ids invalid")
+		for id in missions.get("active_ids") as Array:
+			if not id is String: return _invalid(STATUS_CORRUPT, "missions active id invalid")
+	if missions.has("ranks"):
+		if not missions.get("ranks") is Dictionary: return _invalid(STATUS_CORRUPT, "missions ranks invalid")
+		for rank in (missions.get("ranks") as Dictionary).values():
+			if not _integer(rank) or int(rank) < 0 or int(rank) > 3: return _invalid(STATUS_CORRUPT, "missions rank invalid")
+	if missions.has("ring_exits") and (not _integer(missions.get("ring_exits")) or int(missions.get("ring_exits")) < 0):
+		return _invalid(STATUS_CORRUPT, "missions ring exits invalid")
+	return {"ok": true, "status": STATUS_VALID}
+
+
 static func _validate_player(value: Variant) -> Dictionary:
 	if not value is Dictionary:
 		return _invalid(STATUS_CORRUPT, "player is not an object")
@@ -206,6 +247,17 @@ static func _validate_v06_stage_flags(flags: Dictionary) -> bool:
 		for key: Variant in (resolved as Dictionary).keys():
 			if not key is String or not (resolved as Dictionary).get(key) is bool:
 				return false
+	if flags.has(STAGE_FLAG_SEEN_TILE_EXPLANATIONS):
+		var seen: Variant = flags.get(STAGE_FLAG_SEEN_TILE_EXPLANATIONS)
+		if not seen is Dictionary:
+			return false
+		for key: Variant in (seen as Dictionary).keys():
+			if not key is String or str(key) not in VALID_TILE_EXPLANATION_KINDS or not (seen as Dictionary).get(key) is bool:
+				return false
+	if flags.has(STAGE_FLAG_ACTIVE_LOOP_WRAPS):
+		var wraps: Variant = flags.get(STAGE_FLAG_ACTIVE_LOOP_WRAPS)
+		if not _integer(wraps) or int(wraps) < 0 or int(wraps) > 2:
+			return false
 	return true
 
 

@@ -37,6 +37,11 @@ const STRAIGHT_TARGET_PREVIEW_SECONDS := 0.20
 const STRAIGHT_CAMERA_FOLLOW_SECONDS := 0.42
 const PORTAL_TRANSFER_HALF_SECONDS := 0.34
 const BYPASS_ENTRY_SECONDS := 0.72
+const STAGE_SWEEP_SECONDS := 4.20
+const STAGE_OVERVIEW_HOLD_SECONDS := 0.80
+const CONTEXT_PREVIEW_IN_SECONDS := 0.55
+const CONTEXT_PREVIEW_HOLD_SECONDS := 2.80
+const CONTEXT_PREVIEW_OUT_SECONDS := 0.55
 const LANDING_NORMAL_SECONDS := 0.48
 const LANDING_SPECIAL_SECONDS := 0.78
 const LANDING_HOLD_SECONDS := 0.08
@@ -101,6 +106,8 @@ var _camera_target_world := Vector2.ZERO
 var _world_zoom := 0.72
 var _elapsed := 0.0
 var _exit_steps := -1
+var _loop_wrap_count := 0
+var _loop_rescue_threshold := V06CourseModelScript.LOOP_RESCUE_WRAP_THRESHOLD
 var _overview_mode := false
 var _kind_preview_overrides: Dictionary = {}
 var _consumed_warp_gate_ids := {}
@@ -128,6 +135,7 @@ var _straight_step_tween: Tween
 var _straight_camera_tween: Tween
 var _portal_transfer_tween: Tween
 var _bypass_entry_tween: Tween
+var _camera_presentation_tween: Tween
 var _landing_tween: Tween
 var _roll_preview_tween: Tween
 var _visual_motion_generation := 0
@@ -139,6 +147,14 @@ var _bypass_entry_progress := 0.0
 var _bypass_entry_name := ""
 var _bypass_entry_saved_steps := 0
 var _bypass_entry_play_count := 0
+var _camera_presentation_active := false
+var _camera_presentation_kind := ""
+var _comparison_route_id := ""
+var _camera_presentation_play_counts := {
+	"stage_sweep": 0,
+	"branch_context": 0,
+	"loop_return_context": 0,
+}
 
 
 func _ready() -> void:
@@ -157,8 +173,9 @@ func _process(delta: float) -> void:
 	_elapsed += delta
 	if _cat_animation_state == &"idle":
 		_cat_animation_frame = idle_animation_frame_for_elapsed(_elapsed)
-	var follow_weight := 1.0 - exp(-delta / CAMERA_FOLLOW_SECONDS)
-	_camera_world = _camera_world.lerp(_camera_target_world, follow_weight)
+	if not _camera_presentation_active:
+		var follow_weight := 1.0 - exp(-delta / CAMERA_FOLLOW_SECONDS)
+		_camera_world = _camera_world.lerp(_camera_target_world, follow_weight)
 	queue_redraw()
 
 
@@ -193,6 +210,143 @@ func set_overview_mode(enabled: bool) -> void:
 
 func is_overview_mode() -> bool:
 	return _overview_mode
+
+
+func play_stage_overview_sweep(keep_overview := false) -> void:
+	_begin_camera_presentation("stage_sweep")
+	var main_points: Array = _route_points.get(V06CourseModelScript.ROUTE_MAIN, [])
+	if main_points.is_empty():
+		_restore_local_camera()
+		return
+	_overview_mode = true
+	_world_zoom = 0.42
+	_camera_world = main_points[mini(3, main_points.size() - 1)]
+	_camera_target_world = _camera_world
+	queue_redraw()
+	var generation := _visual_motion_generation
+	_camera_presentation_tween = create_tween()
+	_camera_presentation_tween.set_parallel(true)
+	_camera_presentation_tween.tween_property(self, "_camera_world", main_points[maxi(main_points.size() - 5, 0)], STAGE_SWEEP_SECONDS).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_camera_presentation_tween.tween_property(self, "_world_zoom", 0.34, STAGE_SWEEP_SECONDS).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_camera_presentation_tween.set_parallel(false)
+	_camera_presentation_tween.tween_method(_set_camera_frame.bind(Vector2(520.0, 60.0)), 0.34, 0.28, 0.34).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_camera_presentation_tween.tween_interval(STAGE_OVERVIEW_HOLD_SECONDS)
+	await _wait_for_visual_tween(_camera_presentation_tween, generation)
+	if generation != _visual_motion_generation:
+		return
+	if keep_overview:
+		set_overview_mode(true)
+		_camera_presentation_active = false
+		_camera_presentation_kind = ""
+	else:
+		_restore_local_camera()
+
+
+func play_branch_context(route_id: String) -> void:
+	var definition := _bypass_definition(route_id)
+	if definition.is_empty():
+		return
+	var fork := world_position_for({"route_id": V06CourseModelScript.ROUTE_MAIN, "tile_index": _fork_index(route_id)})
+	var rejoin := world_position_for({"route_id": V06CourseModelScript.ROUTE_MAIN, "tile_index": _rejoin_index(route_id)})
+	var branch_points: Array = _route_points.get(route_id, [])
+	var center := (fork + rejoin) * 0.5
+	for point: Vector2 in branch_points:
+		center += point / float(maxi(branch_points.size(), 1)) * 0.30
+	center = center / 1.30
+	await _play_context_preview("branch_context", center, 0.50)
+
+
+func show_branch_comparison(route_id: String) -> bool:
+	var definition := _bypass_definition(route_id)
+	if definition.is_empty():
+		return false
+	var fork_index := _fork_index(route_id)
+	set_route_position({"route_id": V06CourseModelScript.ROUTE_MAIN, "tile_index": fork_index}, true)
+	var fork := world_position_for({"route_id": V06CourseModelScript.ROUTE_MAIN, "tile_index": fork_index})
+	var rejoin := world_position_for({"route_id": V06CourseModelScript.ROUTE_MAIN, "tile_index": _rejoin_index(route_id)})
+	var branch_points: Array = _route_points.get(route_id, [])
+	var center := (fork + rejoin) * 0.5
+	for point: Vector2 in branch_points:
+		center += point / float(maxi(branch_points.size(), 1)) * 0.30
+	center /= 1.30
+	_comparison_route_id = route_id
+	_overview_mode = true
+	_world_zoom = 0.50
+	_camera_world = center
+	_camera_target_world = center
+	queue_redraw()
+	return true
+
+
+func play_loop_return_context(route_position: Dictionary) -> void:
+	if str(route_position.get("route_id", "")) != V06CourseModelScript.ROUTE_MAIN:
+		return
+	var tile_index := int(route_position.get("tile_index", 0))
+	var main_points: Array = _route_points.get(V06CourseModelScript.ROUTE_MAIN, [])
+	if main_points.is_empty():
+		return
+	var from_index := maxi(tile_index - 3, 0)
+	var to_index := mini(tile_index + 4, main_points.size() - 1)
+	var center := Vector2.ZERO
+	for index: int in range(from_index, to_index + 1):
+		center += main_points[index]
+	center /= float(to_index - from_index + 1)
+	await _play_context_preview("loop_return_context", center, 0.52)
+
+
+func camera_presentation_receipt() -> Dictionary:
+	return {
+		"active": _camera_presentation_active,
+		"kind": _camera_presentation_kind,
+		"overview": _overview_mode,
+		"zoom": _world_zoom,
+		"play_counts": _camera_presentation_play_counts.duplicate(true),
+	}
+
+
+func _play_context_preview(kind: String, center: Vector2, zoom: float) -> void:
+	_begin_camera_presentation(kind)
+	_overview_mode = true
+	var generation := _visual_motion_generation
+	_camera_presentation_tween = create_tween()
+	_camera_presentation_tween.set_parallel(true)
+	_camera_presentation_tween.tween_property(self, "_camera_world", center, CONTEXT_PREVIEW_IN_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_camera_presentation_tween.tween_property(self, "_world_zoom", zoom, CONTEXT_PREVIEW_IN_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_camera_presentation_tween.set_parallel(false)
+	_camera_presentation_tween.tween_interval(CONTEXT_PREVIEW_HOLD_SECONDS)
+	_camera_presentation_tween.set_parallel(true)
+	_camera_presentation_tween.tween_property(self, "_camera_world", _camera_focus_for(_current_position), CONTEXT_PREVIEW_OUT_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	_camera_presentation_tween.tween_property(self, "_world_zoom", 0.72, CONTEXT_PREVIEW_OUT_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	_camera_presentation_tween.set_parallel(false)
+	await _wait_for_visual_tween(_camera_presentation_tween, generation)
+	if generation != _visual_motion_generation:
+		return
+	_restore_local_camera()
+
+
+func _begin_camera_presentation(kind: String) -> void:
+	if is_instance_valid(_camera_presentation_tween):
+		_camera_presentation_tween.kill()
+	_camera_presentation_active = true
+	_camera_presentation_kind = kind
+	_camera_presentation_play_counts[kind] = int(_camera_presentation_play_counts.get(kind, 0)) + 1
+
+
+func _set_camera_frame(zoom: float, center: Vector2) -> void:
+	_world_zoom = zoom
+	_camera_world = center
+	queue_redraw()
+
+
+func _restore_local_camera() -> void:
+	_comparison_route_id = ""
+	_overview_mode = false
+	_world_zoom = 0.72
+	_camera_target_world = _camera_focus_for(_current_position)
+	_camera_world = _camera_target_world
+	_camera_presentation_active = false
+	_camera_presentation_kind = ""
+	queue_redraw()
 
 
 func animate_hop_to(route_position: Dictionary, duration := HOP_SECONDS) -> void:
@@ -481,6 +635,7 @@ func straight_travel_receipt() -> Dictionary:
 
 func card_route_receipt() -> Dictionary:
 	var relative_steps: Array[float] = []
+	var position_labels: Array[Dictionary] = []
 	if _straight_travel_active:
 		var spacing := _straight_card_spacing()
 		var camera_slots := _straight_camera_offset / spacing if spacing > 0.0 else 0.0
@@ -488,11 +643,56 @@ func card_route_receipt() -> Dictionary:
 			var route_offset := float(travel_offset) - camera_slots
 			if route_offset < -0.55 or route_offset > float(FORWARD_VISIBLE) + 0.55:
 				continue
+			var route_position := _straight_window_position(travel_offset)
 			relative_steps.append(float(travel_offset - _straight_travel_player_step))
+			position_labels.append({
+				"position_key": _position_key(str(route_position.get("route_id", "")), int(route_position.get("tile_index", -1))),
+				"display_label": _straight_travel_card_label(route_position, travel_offset),
+				"terminal_filler": bool(route_position.get("terminal_filler", false)),
+			})
 	else:
-		for index: int in range(mini(1 + prominent_positions().size(), CAROUSEL_SLOT_NORMALIZED.size())):
+		var positions: Array[Dictionary] = [_current_position.duplicate(true)]
+		positions.append_array(prominent_positions())
+		for index: int in range(mini(positions.size(), CAROUSEL_SLOT_NORMALIZED.size())):
 			relative_steps.append(float(index))
-	return {"card_count": relative_steps.size(), "relative_steps": relative_steps}
+			position_labels.append({
+				"position_key": _position_key(str(positions[index].get("route_id", "")), int(positions[index].get("tile_index", -1))),
+				"display_label": _settled_card_label(positions[index], index == 0),
+				"terminal_filler": false,
+			})
+	for entry: Dictionary in position_labels:
+		var display_label := str(entry.get("display_label", ""))
+		var font_size := _card_route_label_font_size(display_label, display_label == "現在地")
+		entry["font_size"] = font_size
+		entry["label_width"] = APP_FONT.get_string_size(display_label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
+		entry["card_width"] = _card_route_card_size().x
+	return {"card_count": relative_steps.size(), "relative_steps": relative_steps, "position_labels": position_labels}
+
+
+func _settled_card_label(route_position: Dictionary, is_current: bool) -> String:
+	if is_current:
+		return "現在地"
+	var successors := _forward_successors(str(_current_position.get("route_id", "")), int(_current_position.get("tile_index", 0)))
+	for successor_index: int in range(successors.size()):
+		if _same_route_position(route_position, successors[successor_index]):
+			return "+%d" % (successor_index + 1)
+	return "·"
+
+
+func _straight_travel_card_label(route_position: Dictionary, travel_offset: int) -> String:
+	if bool(route_position.get("terminal_filler", false)):
+		return "·"
+	if travel_offset == 0:
+		return "現在地"
+	if travel_offset <= _straight_travel_distance:
+		return "+%d" % travel_offset
+	var destination := _straight_travel_positions[mini(_straight_travel_distance, _straight_travel_positions.size() - 1)]
+	var successors := _forward_successors(str(destination.get("route_id", "")), int(destination.get("tile_index", 0)))
+	var successor_index := travel_offset - _straight_travel_distance - 1
+	if successor_index >= 0 and successor_index < successors.size() \
+			and _same_route_position(route_position, successors[successor_index]):
+		return "+%d" % travel_offset
+	return "·"
 
 
 func animate_straight_step(step: int, duration := HOP_SECONDS) -> void:
@@ -559,6 +759,8 @@ func finish_straight_travel(route_position: Dictionary) -> bool:
 
 func cancel_visual_motion(route_position := {}) -> void:
 	_visual_motion_generation += 1
+	if is_instance_valid(_camera_presentation_tween):
+		_camera_presentation_tween.kill()
 	if is_instance_valid(_straight_step_tween):
 		_straight_step_tween.kill()
 	if is_instance_valid(_straight_camera_tween):
@@ -588,6 +790,11 @@ func cancel_visual_motion(route_position := {}) -> void:
 	_portal_transfer_progress = 0.0
 	_bypass_entry_active = false
 	_bypass_entry_progress = 0.0
+	_camera_presentation_active = false
+	_camera_presentation_kind = ""
+	_comparison_route_id = ""
+	_overview_mode = false
+	_world_zoom = 0.72
 	if route_position is Dictionary and not (route_position as Dictionary).is_empty():
 		set_route_position(route_position, true)
 	else:
@@ -1007,6 +1214,24 @@ func displayed_exit_steps() -> int:
 	return -1
 
 
+func set_loop_rescue_progress(wrap_count: int, threshold: int = V06CourseModelScript.LOOP_RESCUE_WRAP_THRESHOLD) -> void:
+	_loop_rescue_threshold = maxi(threshold, 1)
+	_loop_wrap_count = clampi(wrap_count, 0, _loop_rescue_threshold)
+	queue_redraw()
+
+
+func exit_emphasis_receipt() -> Dictionary:
+	var route_id := str(_current_position.get("route_id", ""))
+	return {
+		"active": _course.is_loop_route(route_id) and _exit_steps > 0,
+		"route_id": route_id,
+		"exit_index": _course.loop_exit_index(route_id) if _course.is_loop_route(route_id) else -1,
+		"steps": displayed_exit_steps(),
+		"wrap_count": _loop_wrap_count,
+		"rescue_threshold": _loop_rescue_threshold,
+	}
+
+
 func world_position_for(route_position: Dictionary) -> Vector2:
 	var route_id := str(route_position.get("route_id", ""))
 	var tile_index := int(route_position.get("tile_index", -1))
@@ -1157,6 +1382,7 @@ func _draw_card_route() -> void:
 	var positions: Array[Dictionary] = []
 	var centers: Array[Vector2] = []
 	var relative_steps: Array[float] = []
+	var display_labels: Array[String] = []
 	if _straight_travel_active:
 		# Keep the whole visual travel window alive. The window contains the
 		# starting card through destination + six cards, then the camera offset
@@ -1171,12 +1397,14 @@ func _draw_card_route() -> void:
 			positions.append(route_position)
 			centers.append(_card_route_slot_position(route_offset))
 			relative_steps.append(float(travel_offset - _straight_travel_player_step))
+			display_labels.append(_straight_travel_card_label(route_position, travel_offset))
 	else:
 		positions = [_current_position.duplicate(true)]
 		positions.append_array(prominent_positions())
 		for index: int in range(mini(positions.size(), CAROUSEL_SLOT_NORMALIZED.size())):
 			centers.append(_card_route_slot_position(float(index)))
 			relative_steps.append(float(index))
+			display_labels.append(_settled_card_label(positions[index], index == 0))
 	if positions.is_empty():
 		return
 	if centers.size() >= 2:
@@ -1190,7 +1418,7 @@ func _draw_card_route() -> void:
 			is_current = is_zero_approx(relative_steps[index])
 		else:
 			is_current = index == 0
-		_draw_card_tile(route_position, centers[index], is_current, index, relative_steps[index])
+		_draw_card_tile(route_position, centers[index], is_current, display_labels[index])
 		if index > 0:
 			var chevron_center := centers[index - 1].lerp(centers[index], 0.52)
 			_draw_direction_chevron(chevron_center, Vector2.RIGHT, Color(0.30, 0.48, 0.42, 0.62), 3.0)
@@ -1235,7 +1463,15 @@ func _card_route_slot_position(slot_index: float) -> Vector2:
 	return Vector2(margin + card_size.x * 0.5 + slot_index * (card_size.x + gap), size.y * 0.48)
 
 
-func _draw_card_tile(route_position: Dictionary, center: Vector2, is_current: bool, slot_index: int, relative_step := -999.0) -> void:
+func _card_route_label_font_size(label: String, is_current: bool) -> int:
+	var font_size := 18 if label == "現在地" else (30 if is_current else 28)
+	var available_width := _card_route_card_size().x - 4.0
+	while font_size > 8 and APP_FONT.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x > available_width:
+		font_size -= 1
+	return font_size
+
+
+func _draw_card_tile(route_position: Dictionary, center: Vector2, is_current: bool, step_label: String) -> void:
 	var route_id := str(route_position.get("route_id", ""))
 	var tile_index := int(route_position.get("tile_index", 0))
 	var kind := displayed_tile_kind_for(route_id, tile_index)
@@ -1255,15 +1491,12 @@ func _draw_card_tile(route_position: Dictionary, center: Vector2, is_current: bo
 	var border := Color("#f5d37e") if is_current else Color("#9c7742")
 	draw_style_box(_card_style(fill, border, 4.0 if is_current else 2.0), card_rect)
 	var number_color := Color("#fff4dc") if is_current else Color("#56422e")
-	var display_step := float(slot_index) if is_zero_approx(relative_step + 999.0) else relative_step
-	var step_label := "·" if display_step < 0.0 else str(int(round(display_step)))
-	draw_string(APP_FONT, card_rect.position + Vector2(0.0, 34.0), step_label, HORIZONTAL_ALIGNMENT_CENTER, card_rect.size.x, 30 if is_current else 28, number_color)
+	var label_font_size := _card_route_label_font_size(step_label, is_current)
+	draw_string(APP_FONT, card_rect.position + Vector2(0.0, 34.0), step_label, HORIZONTAL_ALIGNMENT_CENTER, card_rect.size.x, label_font_size, number_color)
 	var badge_center := Vector2(card_rect.get_center().x, card_rect.position.y + card_rect.size.y * (0.42 if is_current else 0.49))
 	var badge_radius := minf(card_rect.size.x * 0.34, 29.0)
 	_draw_kind_shape(badge_center, badge_radius, StringName(spec.shape_id), fill.darkened(0.16) if is_current else fill.darkened(0.06), Color("#fff0ca") if is_current else Color("#5c4933"))
 	_draw_kind_icon(badge_center, badge_radius * (0.72 if kind == "RISK" else 0.62), StringName(spec.icon_id), Color("#fff0ca") if is_current else Color("#51402e"))
-	var absolute_label := "#%02d" % (tile_index + 1)
-	draw_string(APP_FONT, card_rect.position + Vector2(0.0, card_rect.size.y - 10.0), absolute_label, HORIZONTAL_ALIGNMENT_CENTER, card_rect.size.x, 12, Color("#fff4dc") if is_current else Color("#765e42"))
 
 
 func _card_kind_hint(kind: String) -> String:
@@ -1536,7 +1769,7 @@ func _draw_route_graph() -> void:
 		for point: Vector2 in bypass:
 			bypass_graph.append(point)
 		bypass_graph.append(main[_rejoin_index(bypass_route)])
-		var active := str(_current_position.get("route_id", "")) == bypass_route
+		var active := str(_current_position.get("route_id", "")) == bypass_route or _comparison_route_id == bypass_route
 		var line_color := Color(BYPASS_RUST, 0.94 if active else 0.34)
 		for index: int in range(bypass_graph.size() - 1):
 			_draw_dashed_segment(_to_screen(bypass_graph[index]), _to_screen(bypass_graph[index + 1]), line_color, 10.0 if active else 8.0, 15.0)
@@ -1564,7 +1797,7 @@ func _draw_route_graph() -> void:
 			var graph: Array[Vector2] = [main[_fork_index(route_id)]]
 			graph.append_array(_route_points[route_id])
 			graph.append(main[_rejoin_index(route_id)])
-			_draw_bypass_annotation(bypass_definition, graph, str(_current_position.get("route_id", "")) == route_id, true)
+			_draw_bypass_annotation(bypass_definition, graph, str(_current_position.get("route_id", "")) == route_id or _comparison_route_id == route_id, true)
 	_draw_boss_gate(_to_screen(main[_boss_index()]))
 	var shown_exit_steps := displayed_exit_steps()
 	if shown_exit_steps > 0:
@@ -1608,13 +1841,18 @@ func _draw_route_tile(route_id: String, tile_index: int, screen_position: Vector
 	if screen_position.x < -80.0 or screen_position.x > size.x + 80.0 or screen_position.y < -80.0 or screen_position.y > size.y + 80.0:
 		return
 	var is_current := route_id == str(_current_position.route_id) and tile_index == int(_current_position.tile_index)
+	var is_active_exit: bool = _course.is_loop_route(str(_current_position.get("route_id", ""))) and route_id == str(_current_position.get("route_id", "")) and tile_index == _course.loop_exit_index(route_id)
 	var loop_preview_tile: bool = _course.is_loop_route(route_id) and _loop_preview_active()
 	if not prominent and not loop_preview_tile and not is_current:
 		return
-	var radius := (CAROUSEL_CONTEXT_RADIUS if _carousel_tile_is_context else carousel_tile_radius(_carousel_tile_is_current)) if uses_semicircle_carousel() else (16.0 if _overview_mode and is_current else (11.0 if _overview_mode else (31.0 if is_current else (15.0 if loop_preview_tile and not prominent else 25.0))))
+	var radius := (CAROUSEL_CONTEXT_RADIUS if _carousel_tile_is_context else carousel_tile_radius(_carousel_tile_is_current)) if uses_semicircle_carousel() else (16.0 if _overview_mode and is_current else (11.0 if _overview_mode else (31.0 if is_current else (29.0 if is_active_exit else (15.0 if loop_preview_tile and not prominent else 25.0)))))
 	# Only the current vicinity rises above the printed atlas. Canonical labels
 	# stay runtime-drawn, so the art never owns topology or UI text.
 	draw_circle(screen_position + Vector2(0.0, 8.0), radius + (5.0 if is_current else 2.0), Color(0.20, 0.13, 0.07, 0.26 if is_current else 0.18))
+	if is_active_exit:
+		draw_circle(screen_position, radius + 13.0, Color(EXIT_GOLD, 0.16))
+		draw_arc(screen_position, radius + 10.0, 0.0, TAU, 40, Color("#f6d477"), 4.0, true)
+		draw_arc(screen_position, radius + 4.0, 0.0, TAU, 40, Color(EXIT_GOLD, 0.78), 2.0, true)
 	var accent := MAIN_TEAL if route_id == V06CourseModelScript.ROUTE_MAIN else (BYPASS_RUST if _course.is_bypass_route(route_id) else (LOOP_TEAL if route_id == V06CourseModelScript.ROUTE_LOOP_OASIS else LOOP_TOMB))
 	var tile_scale := tile_draw_diameter_for_radius(radius) / ROUTE_TILE_CELL_SIZE.x
 	var tile_size := ROUTE_TILE_CELL_SIZE * tile_scale
@@ -1629,8 +1867,8 @@ func _draw_route_tile(route_id: String, tile_index: int, screen_position: Vector
 	var kind := displayed_tile_kind_for(route_id, tile_index)
 	if not _carousel_tile_is_context:
 		_draw_tile_kind_badge(screen_position - Vector2(0.0, radius * 0.88), radius, kind, is_current)
-	var label := _tile_label(route_id, tile_index)
-	var text_color := Color("#fff3d5") if is_current else (Color("#a4947e") if _carousel_tile_is_context else MUTED_INK)
+	var label := "EXIT" if is_active_exit else _tile_label(route_id, tile_index)
+	var text_color := Color("#8a5713") if is_active_exit else (Color("#fff3d5") if is_current else (Color("#a4947e") if _carousel_tile_is_context else MUTED_INK))
 	var label_size := 10 if _overview_mode else (11 if _carousel_tile_is_context else (12 if loop_preview_tile and not prominent else 14))
 	draw_string(APP_FONT, screen_position + Vector2(-radius, radius * 0.88), label, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, label_size, text_color)
 
@@ -1850,9 +2088,12 @@ func _draw_route_legend() -> void:
 
 
 func _draw_exit_badge(center: Vector2, steps: int) -> void:
-	var rect := Rect2(center - Vector2(63, 25), Vector2(126, 50))
-	draw_style_box(_panel_style(Color("#f3e4bf"), EXIT_GOLD, 10), rect)
-	draw_string(APP_FONT, rect.position + Vector2(0, 33), "EXIT %d" % steps, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 22, Color("#3b6d6e"))
+	var rect := Rect2(center - Vector2(78, 34), Vector2(156, 68))
+	draw_style_box(_panel_style(Color("#123532"), Color("#f2c65d"), 13), rect)
+	var distance_copy := str(TranslationServer.translate(&"LOOP_EXIT_DISTANCE")) % steps
+	var rescue_copy := str(TranslationServer.translate(&"LOOP_RESCUE_PROGRESS")) % [_loop_wrap_count, _loop_rescue_threshold]
+	draw_string(APP_FONT, rect.position + Vector2(0, 29), distance_copy, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 21, Color("#ffe4a0"))
+	draw_string(APP_FONT, rect.position + Vector2(0, 53), rescue_copy, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 15, Color("#d7c9aa"))
 
 
 func _draw_boss_gate(center: Vector2) -> void:

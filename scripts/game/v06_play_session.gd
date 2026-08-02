@@ -53,6 +53,20 @@ const DEFAULT_RISK_AMOUNT := 1
 const STAGE_FLAG_NEXT_MOVE_PENALTY := "v06_next_basic_move_penalty"
 const STAGE_FLAG_LAST_TILE_EFFECT := "v06_last_tile_effect"
 const STAGE_FLAG_RESOLVED_TILE_EFFECT_IDS := "v06_resolved_tile_effect_ids"
+const STAGE_FLAG_SEEN_TILE_EXPLANATIONS := "v06_seen_tile_explanations"
+const STAGE_FLAG_ACTIVE_LOOP_WRAPS := "v06_active_loop_wraps"
+const STAGE_FLAG_NEXT_MOVE_BONUS := "v06_next_move_bonus"
+const STAGE_FLAG_RISK_SHIELD := "v06_risk_shield"
+const STAGE_FLAG_PINPOINT_FACE := "v06_pinpoint_face"
+const TILE_EXPLANATION_KINDS := ["EVENT", "ITEM", "COIN", "REST", "RISK", "WARP"]
+const ITEM_CAPACITY := 3
+const ITEM_WATER_CANTEEN := "water_canteen"
+const ITEM_BRASS_COMPASS := "brass_compass"
+const ITEM_SCARAB_SEAL := "scarab_seal"
+const ITEM_IDS := [ITEM_WATER_CANTEEN, ITEM_BRASS_COMPASS, ITEM_SCARAB_SEAL]
+const MISSION_SCHEMA_VERSION := 1
+const MISSION_COIN_TARGET := 15
+const MISSION_ROLE_TARGET := 2
 
 var _course: RefCounted
 var _travel: RefCounted
@@ -94,6 +108,18 @@ var _best_score := 0
 var _score_event_serial := 0
 var _last_score_award: Dictionary = {}
 var _score_breakdown: Dictionary = {}
+var _mission_coin_gained := 0
+var _mission_role_successes := 0
+var _mission_no_damage_active := true
+var _mission_no_damage_completed := false
+var _mission_coin_completed := false
+var _mission_role_completed := false
+var _mission_event_serial := 0
+var _last_mission_event: Dictionary = {}
+var _mission_ranks: Dictionary = {}
+var _mission_active_ids: Array[String] = ["cairo_coin15", "cairo_triple2", "cairo_no_damage"]
+var _mission_ring_exits := 0
+var _last_loop_rescue_triggered := false
 
 # Clock state. The session never reads system time.
 var _clock_armed := true
@@ -129,7 +155,9 @@ func restart() -> bool:
 func retry_run() -> bool:
 	if not _course_ready:
 		return false
+	var seen_tile_explanations := seen_tile_explanation_kinds()
 	_reset_run_state(true)
+	_restore_seen_tile_explanations(seen_tile_explanations)
 	return true
 
 
@@ -151,13 +179,17 @@ func start_roll(face: int, now_ms: int = -1) -> Dictionary:
 			var boss_role := StringName(str(result.get("role", "")))
 			if boss_role != &"":
 				_award_role_score(boss_role)
+			var hp_before := _player_hp
 			_player_hp = int(result.get("player_hp_after", _player_hp))
+			if _player_hp < hp_before:
+				_fail_no_damage_mission()
 			if terminal_result and not _boss_finish_recorded:
 				_boss_finish_recorded = true
 				_stop_clock(now_ms)
 				_add_score_once("boss_complete", SCORE_BOSS_COMPLETE, "BOSS COMPLETE", "boss")
 				_update_pb()
 				if bool(result.get("victory", false)):
+					_complete_no_damage_mission()
 					_add_score_once("boss_victory", SCORE_BOSS_VICTORY, "BOSS WIN", "boss")
 				_award_finish_score()
 				_update_best_score()
@@ -170,6 +202,7 @@ func start_roll(face: int, now_ms: int = -1) -> Dictionary:
 	if not _accept_now(now_ms):
 		return _rejected("TIMESTAMP_REGRESSION")
 	_start_clock_if_armed(now_ms)
+	_last_loop_rescue_triggered = false
 	_pending_face = face
 	_pending_move_distance = _basic_move_distance(face)
 	var result: Dictionary = _course.advance(_position, _pending_move_distance, "", _course_context())
@@ -179,6 +212,7 @@ func start_roll(face: int, now_ms: int = -1) -> Dictionary:
 		_last_error = str(result.get("error", "COURSE_ADVANCE_FAILED"))
 		return _rejected(_last_error)
 	_consume_next_move_penalty()
+	_consume_next_move_bonus()
 	_prepare_movement(result)
 	_prepare_pending_role_reward()
 	_roll_count += 1
@@ -235,12 +269,17 @@ func finish_movement() -> Dictionary:
 		return _rejected("PENDING_ROLE_MISMATCH")
 	var entered_gate_id := str(result.get("entered_warp_gate_id", ""))
 	var exited_gate_id := str(result.get("exited_warp_gate_id", ""))
+	var movement_wraps := maxi(int(result.get("loop_wraps", 0)), 0)
+	if movement_wraps > 0:
+		_stage_flags[STAGE_FLAG_ACTIVE_LOOP_WRAPS] = loop_wrap_count() + movement_wraps
 	if not entered_gate_id.is_empty():
+		_stage_flags[STAGE_FLAG_ACTIVE_LOOP_WRAPS] = 0
 		_active_warp_gate_id = entered_gate_id
 		_consumed_warp_gate_ids[entered_gate_id] = true
 		_mark_position_visited(_position)
 		_add_score_once("warp:%s" % entered_gate_id, SCORE_WARP, "WARP %s" % entered_gate_id, "discovery")
 	elif not exited_gate_id.is_empty():
+		_last_loop_rescue_triggered = bool(result.get("forced_loop_exit", false))
 		_mark_position_visited(_position)
 	var landing_kind := current_tile_kind()
 	_resolve_landing_effect(landing_kind)
@@ -248,6 +287,7 @@ func finish_movement() -> Dictionary:
 	_award_route_completion_score(result)
 	if not exited_gate_id.is_empty():
 		_active_warp_gate_id = ""
+		_stage_flags[STAGE_FLAG_ACTIVE_LOOP_WRAPS] = 0
 	if _travel.is_complete() and not _pending_role_awarded:
 		_award_role_score(_resolution_role)
 	_pending_resolution_role = &""
@@ -303,9 +343,11 @@ func acknowledge_boss_round() -> bool:
 
 func next_lap() -> bool:
 	if _phase not in [PHASE_BOSS_FINISHED, PHASE_LAP_RESULT]: return false
+	var seen_tile_explanations := seen_tile_explanation_kinds()
 	_lap += 1
 	var monotonic_floor := _last_now_ms
 	_reset_course_and_clock()
+	_restore_seen_tile_explanations(seen_tile_explanations)
 	_last_now_ms = monotonic_floor
 	return true
 
@@ -357,12 +399,169 @@ func score() -> int: return _score
 func coins() -> int: return _coins
 func skill_gauge() -> int: return _skill_gauge
 func skill_state() -> StringName: return _skill_state
+func pinpoint_face() -> int: return clampi(int(_stage_flags.get(STAGE_FLAG_PINPOINT_FACE, 0)), 0, 6)
 func role_counts() -> Dictionary: return _role_counts.duplicate(true)
+func mission_state() -> Dictionary:
+	return {
+		"schema_version": MISSION_SCHEMA_VERSION,
+		"coin_gained": _mission_coin_gained,
+		"coin_target": MISSION_COIN_TARGET,
+		"coin_completed": _mission_coin_completed,
+		"role_successes": _mission_role_successes,
+		"role_target": MISSION_ROLE_TARGET,
+		"role_completed": _mission_role_completed,
+		"no_damage_active": _mission_no_damage_active,
+		"no_damage_completed": _mission_no_damage_completed,
+		"event_serial": _mission_event_serial,
+		"last_event": _last_mission_event.duplicate(true),
+		"catalog": mission_catalog(),
+		"active_ids": _mission_active_ids.duplicate(),
+		"ranks": _mission_ranks.duplicate(true),
+		"ring_exits": _mission_ring_exits,
+	}
+
+func mission_catalog() -> Array[Dictionary]:
+	return [
+		{"id":"cairo_coin15","pillar":"travel","target":15,"ranks":{"bronze":10,"silver":15,"gold":20}},
+		{"id":"cairo_triple2","pillar":"slot","target":2,"roles":["PAIR","STRAIGHT","TRIPLE"],"ranks":{"bronze":1,"silver":2,"gold":3}},
+		{"id":"cairo_no_damage","pillar":"challenge","target":1,"ranks":{"bronze":1}},
+		{"id":"cairo_no_item","pillar":"travel","target":1,"locked":true,"ranks":{"bronze":1}},
+		{"id":"cairo_time_trial","pillar":"challenge","target":20,"thresholds":[30,25,20],"ranks":{"bronze":30,"silver":25,"gold":20}},
+		{"id":"cairo_ring_exit2","pillar":"travel","target":2,"ranks":{"bronze":2}},
+	]
+
+func resolve_active_missions() -> Array[String]:
+	var by_pillar := {"travel":"", "slot":"", "challenge":""}
+	for id in _mission_active_ids:
+		for entry in mission_catalog():
+			if str(entry.get("id")) == id:
+				var pillar := str(entry.get("pillar", ""))
+				if by_pillar.has(pillar) and str(by_pillar[pillar]).is_empty(): by_pillar[pillar] = id
+	var result: Array[String] = []
+	for pillar in ["travel", "slot", "challenge"]:
+		if not str(by_pillar[pillar]).is_empty(): result.append(str(by_pillar[pillar]))
+	return result
 func last_role() -> StringName: return _last_role
 func inventory() -> Dictionary: return _inventory.duplicate(true)
 func item_consumption() -> Dictionary: return _item_consumption.duplicate(true)
+func inventory_total() -> int:
+	var total := 0
+	for quantity: Variant in _inventory.values():
+		total += maxi(int(quantity), 0)
+	return total
+
+func item_catalog() -> Array[Dictionary]:
+	return [
+		{"id":ITEM_WATER_CANTEEN,"name":"旅人の水筒","description":"HPを1回復する。満タンの時は使わない。","art_index":5},
+		{"id":ITEM_BRASS_COMPASS,"name":"真鍮のコンパス","description":"次の通常移動を+1マスする。","art_index":0},
+		{"id":ITEM_SCARAB_SEAL,"name":"スカラベの護符","description":"次に止まったリスクマスの効果を無効化する。","art_index":4},
+	]
+
+func inventory_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for definition: Dictionary in item_catalog():
+		var amount := maxi(int(_inventory.get(str(definition.id), 0)), 0)
+		if amount <= 0:
+			continue
+		var entry := definition.duplicate(true)
+		entry["amount"] = amount
+		entries.append(entry)
+	return entries
+
+func use_item(item_id: String) -> Dictionary:
+	if _phase != PHASE_READY:
+		return _rejected("ITEM_NOT_AVAILABLE")
+	if int(_inventory.get(item_id, 0)) <= 0:
+		return _rejected("ITEM_NOT_OWNED")
+	var result := {"ok":false,"item_id":item_id,"text":""}
+	match item_id:
+		ITEM_WATER_CANTEEN:
+			if _player_hp >= MAX_PLAYER_HP:
+				return _rejected("HP_FULL")
+			_player_hp = mini(_player_hp + 1, MAX_PLAYER_HP)
+			result.text = "HP +1"
+		ITEM_BRASS_COMPASS:
+			if int(_stage_flags.get(STAGE_FLAG_NEXT_MOVE_BONUS, 0)) > 0:
+				return _rejected("COMPASS_ALREADY_ACTIVE")
+			_stage_flags[STAGE_FLAG_NEXT_MOVE_BONUS] = 1
+			result.text = "NEXT MOVE +1"
+		ITEM_SCARAB_SEAL:
+			if bool(_stage_flags.get(STAGE_FLAG_RISK_SHIELD, false)):
+				return _rejected("SCARAB_ALREADY_ACTIVE")
+			_stage_flags[STAGE_FLAG_RISK_SHIELD] = true
+			result.text = "RISK GUARD"
+		_:
+			return _rejected("UNKNOWN_ITEM")
+	_inventory[item_id] = int(_inventory.get(item_id, 0)) - 1
+	if int(_inventory[item_id]) <= 0:
+		_inventory.erase(item_id)
+	_item_consumption[item_id] = int(_item_consumption.get(item_id, 0)) + 1
+	result.ok = true
+	return result
+
+func arm_pinpoint(face: int) -> Dictionary:
+	if _phase != PHASE_READY:
+		return _rejected("SKILL_NOT_AVAILABLE")
+	if face < 1 or face > 6:
+		return _rejected("INVALID_FACE")
+	if _skill_state != SKILL_STATE_READY or _skill_gauge < SKILL_GAUGE_MAX:
+		return _rejected("SKILL_NOT_READY")
+	_skill_gauge = 0
+	_skill_state = SKILL_STATE_ARMED
+	_stage_flags[STAGE_FLAG_PINPOINT_FACE] = face
+	return {"ok":true,"status":"PINPOINT_ARMED","face":face,"text":"NEXT FACE %d" % face}
+
+func consume_pinpoint_face() -> int:
+	if _skill_state != SKILL_STATE_ARMED:
+		return 0
+	var face := pinpoint_face()
+	_stage_flags.erase(STAGE_FLAG_PINPOINT_FACE)
+	_skill_state = SKILL_STATE_CHARGING
+	return face
 func stage_flags() -> Dictionary: return _stage_flags.duplicate(true)
+func tile_explanation_kind(tile_kind: String) -> String:
+	var normalized := tile_kind.strip_edges().to_upper()
+	if normalized.begins_with("WARP"):
+		return "WARP"
+	return normalized if normalized in TILE_EXPLANATION_KINDS else ""
+
+
+func has_seen_tile_explanation(tile_kind: String) -> bool:
+	var normalized := tile_explanation_kind(tile_kind)
+	if normalized.is_empty():
+		return false
+	var seen: Variant = _stage_flags.get(STAGE_FLAG_SEEN_TILE_EXPLANATIONS, {})
+	return seen is Dictionary and bool((seen as Dictionary).get(normalized, false))
+
+
+func mark_tile_explanation_seen(tile_kind: String) -> bool:
+	var normalized := tile_explanation_kind(tile_kind)
+	if normalized.is_empty():
+		return false
+	var seen: Dictionary = (_stage_flags.get(STAGE_FLAG_SEEN_TILE_EXPLANATIONS, {}) as Dictionary).duplicate(true)
+	seen[normalized] = true
+	_stage_flags[STAGE_FLAG_SEEN_TILE_EXPLANATIONS] = seen
+	return true
+
+
+func seen_tile_explanation_kinds() -> Array[String]:
+	var result: Array[String] = []
+	var seen: Variant = _stage_flags.get(STAGE_FLAG_SEEN_TILE_EXPLANATIONS, {})
+	if not seen is Dictionary:
+		return result
+	for kind: String in TILE_EXPLANATION_KINDS:
+		if bool((seen as Dictionary).get(kind, false)):
+			result.append(kind)
+	return result
+
+
+func _restore_seen_tile_explanations(kinds: Array[String]) -> void:
+	for kind: String in kinds:
+		mark_tile_explanation_seen(kind)
+
+
 func next_basic_move_penalty() -> int: return maxi(int(_stage_flags.get(STAGE_FLAG_NEXT_MOVE_PENALTY, 0)), 0)
+func next_basic_move_bonus() -> int: return maxi(int(_stage_flags.get(STAGE_FLAG_NEXT_MOVE_BONUS, 0)), 0)
 func last_tile_effect_result() -> Dictionary:
 	var value: Variant = _stage_flags.get(STAGE_FLAG_LAST_TILE_EFFECT, {})
 	return (value as Dictionary).duplicate(true) if value is Dictionary else {}
@@ -458,6 +657,7 @@ func stable_save_snapshot(now_ms: int = -1) -> Dictionary:
 			"pb_delta_ms": pb_delta_ms(now_ms),
 			"pb_updated": _pb_updated,
 		},
+		"missions": mission_state(),
 		"clock": {
 			"elapsed_ms": elapsed_ms(now_ms),
 			"armed": _clock_armed,
@@ -542,6 +742,7 @@ func restore_stable_snapshot(state: Dictionary, now_ms: int = -1) -> bool:
 		_travel = V06RollSetScript.new()
 		if not _travel.restore_faces(face_values as Array):
 			return false
+	_restore_missions(state.get("missions", null), player, _role_counts, phase)
 	_phase = phase
 	_boss_finish_recorded = phase == PHASE_BOSS_FINISHED or (boss_entered and phase in [PHASE_LAP_RESULT, PHASE_RUN_OVER] and bool((_battle.snapshot() if _battle != null else {}).get("terminal", false)))
 	if phase in [PHASE_BOSS_ROLL_READY, PHASE_BOSS_ROUND_RESULT, PHASE_BOSS_FINISHED, PHASE_LAP_RESULT, PHASE_RUN_OVER] and _battle == null:
@@ -576,6 +777,9 @@ func pending_bypass() -> Dictionary:
 
 
 func steps_to_loop_exit() -> int: return _course.steps_to_exit(_position) if _course_ready else -1
+func loop_wrap_count() -> int: return maxi(int(_stage_flags.get(STAGE_FLAG_ACTIVE_LOOP_WRAPS, 0)), 0)
+func loop_rescue_threshold() -> int: return V06CourseModelScript.LOOP_RESCUE_WRAP_THRESHOLD
+func last_loop_rescue_triggered() -> bool: return _last_loop_rescue_triggered
 
 
 func snapshot(now_ms: int = -1) -> Dictionary:
@@ -590,6 +794,7 @@ func snapshot(now_ms: int = -1) -> Dictionary:
 		"active_warp_gate_id":_active_warp_gate_id, "consumed_warp_gate_ids":consumed_warp_gate_ids(),
 		"consumed_reward_node_keys":consumed_reward_node_keys(), "visited_node_keys":visited_node_keys(),
 		"best_score":_best_score, "score_breakdown":score_breakdown(), "last_score_award":last_score_award(),
+		"missions":mission_state(),
 		"elapsed_ms":elapsed, "best_ms":_best_ms, "pb_delta_ms":pb_delta_ms(now_ms),
 		"pb_updated":_pb_updated, "clock_armed":_clock_armed, "clock_running":_clock_running, "clock_paused":_clock_paused}
 
@@ -606,6 +811,8 @@ func _reset_course_and_clock() -> void:
 	_travel = V06RollSetScript.new(); _battle = null
 	_score = 0; _coins = 0; _skill_gauge = 0; _skill_state = SKILL_STATE_CHARGING; _score_event_serial = 0; _last_score_award.clear()
 	_role_counts = {"MIX":0, "PAIR":0, "STRAIGHT":0, "TRIPLE":0}; _last_role = &""
+	_reset_missions()
+	_last_loop_rescue_triggered = false
 	_inventory.clear(); _item_consumption.clear(); _stage_flags.clear()
 	_score_breakdown = {"travel":0, "slot":0, "discovery":0, "boss":0, "finish":0}
 	_position = {"route_id":"main", "tile_index":0}; _visual_position = _position.duplicate(true)
@@ -697,6 +904,7 @@ func _course_context() -> Dictionary:
 	return {
 		"active_warp_gate_id":_active_warp_gate_id,
 		"disabled_warp_gate_ids":consumed_warp_gate_ids(),
+		"loop_wrap_count":loop_wrap_count(),
 	}
 
 
@@ -721,7 +929,7 @@ func _award_landing_score(kind: String) -> void:
 
 
 func _resolve_landing_effect(kind: String) -> Dictionary:
-	if kind not in ["COIN", "REST", "RISK"]:
+	if kind not in ["COIN", "REST", "RISK", "ITEM"]:
 		_stage_flags[STAGE_FLAG_LAST_TILE_EFFECT] = {}
 		return {}
 	var node_key := _position_key(_position)
@@ -744,6 +952,7 @@ func _resolve_landing_effect(kind: String) -> Dictionary:
 	if kind == "COIN":
 		if not _consumed_reward_node_keys.has(node_key):
 			_coins += amount
+			_advance_coin_mission(amount)
 			_consumed_reward_node_keys[node_key] = true
 			result.applied = true
 			result.text = "COIN +%d" % amount
@@ -752,22 +961,45 @@ func _resolve_landing_effect(kind: String) -> Dictionary:
 		_player_hp = mini(_player_hp + amount, MAX_PLAYER_HP)
 		result.applied = _player_hp != before
 		result.text = "HP +%d" % (_player_hp - before) if result.applied else "HP FULL"
-	elif kind == "RISK":
-		match effect_kind:
-			"coin_loss":
-				var before := _coins
-				_coins = maxi(_coins - amount, 0)
-				result.applied = _coins != before
-				result.text = "COIN -%d" % (before - _coins)
-			"next_move":
-				_stage_flags[STAGE_FLAG_NEXT_MOVE_PENALTY] = maxi(amount, 1)
+	elif kind == "ITEM":
+		if not _consumed_reward_node_keys.has(node_key):
+			var item_id: String = str(ITEM_IDS[posmod(int(_position.get("tile_index", 0)), ITEM_IDS.size())])
+			if inventory_total() < ITEM_CAPACITY:
+				_inventory[item_id] = int(_inventory.get(item_id, 0)) + 1
 				result.applied = true
-				result.text = "NEXT MOVE -%d" % maxi(amount, 1)
-			_:
-				var before := _player_hp
-				_player_hp = maxi(_player_hp - amount, 0)
-				result.applied = _player_hp != before
-				result.text = "DAMAGE -%d" % (before - _player_hp)
+				result["item_id"] = item_id
+				result.text = "ITEM  %s" % _item_name(item_id)
+			else:
+				_coins += 2
+				_advance_coin_mission(2)
+				result.applied = true
+				result["converted_to_coins"] = 2
+				result.text = "ITEM FULL  COIN +2"
+			_consumed_reward_node_keys[node_key] = true
+	elif kind == "RISK":
+		if bool(_stage_flags.get(STAGE_FLAG_RISK_SHIELD, false)):
+			_stage_flags.erase(STAGE_FLAG_RISK_SHIELD)
+			result.applied = true
+			result["guarded"] = true
+			result.text = "SCARAB GUARD"
+		else:
+			match effect_kind:
+				"coin_loss":
+					var before := _coins
+					_coins = maxi(_coins - amount, 0)
+					result.applied = _coins != before
+					result.text = "COIN -%d" % (before - _coins)
+				"next_move":
+					_stage_flags[STAGE_FLAG_NEXT_MOVE_PENALTY] = maxi(amount, 1)
+					result.applied = true
+					result.text = "NEXT MOVE -%d" % maxi(amount, 1)
+				_:
+					var before := _player_hp
+					_player_hp = maxi(_player_hp - amount, 0)
+					result.applied = _player_hp != before
+					if result.applied:
+						_fail_no_damage_mission()
+					result.text = "DAMAGE -%d" % (before - _player_hp)
 	resolved_ids[resolution_id] = true
 	_stage_flags[STAGE_FLAG_RESOLVED_TILE_EFFECT_IDS] = resolved_ids
 	_stage_flags[STAGE_FLAG_LAST_TILE_EFFECT] = result.duplicate(true)
@@ -794,12 +1026,24 @@ func _default_effect_amount(tile_kind: String) -> int:
 
 
 func _basic_move_distance(face: int) -> int:
-	return maxi(face - next_basic_move_penalty(), 1)
+	return maxi(face + next_basic_move_bonus() - next_basic_move_penalty(), 1)
 
 
 func _consume_next_move_penalty() -> void:
 	if next_basic_move_penalty() > 0:
 		_stage_flags[STAGE_FLAG_NEXT_MOVE_PENALTY] = 0
+
+
+func _consume_next_move_bonus() -> void:
+	if next_basic_move_bonus() > 0:
+		_stage_flags.erase(STAGE_FLAG_NEXT_MOVE_BONUS)
+
+
+func _item_name(item_id: String) -> String:
+	for definition: Dictionary in item_catalog():
+		if str(definition.get("id", "")) == item_id:
+			return str(definition.get("name", item_id))
+	return item_id
 
 
 func _award_route_completion_score(result: Dictionary) -> void:
@@ -832,6 +1076,8 @@ func _award_role_score(role: StringName) -> void:
 	if role == &"":
 		return
 	_record_role(role)
+	if role in [V06RollSetScript.ROLE_PAIR, V06RollSetScript.ROLE_STRAIGHT, V06RollSetScript.ROLE_TRIPLE]:
+		_advance_role_mission()
 	match role:
 		V06RollSetScript.ROLE_TRIPLE:
 			_skill_gauge = SKILL_GAUGE_MAX
@@ -844,6 +1090,7 @@ func _award_role_score(role: StringName) -> void:
 			_add_score(SCORE_STRAIGHT, "STRAIGHT", "slot")
 		_:
 			_coins += 1
+			_advance_coin_mission(1)
 			_add_score(SCORE_MIX, "MIX", "slot")
 	_skill_state = SKILL_STATE_READY if _skill_gauge >= SKILL_GAUGE_MAX else SKILL_STATE_CHARGING
 
@@ -854,6 +1101,113 @@ func _record_role(role: StringName) -> void:
 	var role_key := String(role)
 	_role_counts[role_key] = int(_role_counts.get(role_key, 0)) + 1
 	_last_role = role
+
+
+func _reset_missions() -> void:
+	_mission_coin_gained = 0
+	_mission_role_successes = 0
+	_mission_no_damage_active = true
+	_mission_no_damage_completed = false
+	_mission_coin_completed = false
+	_mission_role_completed = false
+	_mission_event_serial = 0
+	_last_mission_event.clear()
+	_mission_ranks = {}
+	_mission_ring_exits = 0
+
+
+func _advance_coin_mission(amount: int) -> void:
+	if amount <= 0:
+		return
+	_mission_coin_gained += amount
+	_update_mission_rank("cairo_coin15", _mission_coin_gained)
+	if not _mission_coin_completed and _mission_coin_gained >= MISSION_COIN_TARGET:
+		_mission_coin_completed = true
+		_emit_mission_event("coin", true)
+	else:
+		_emit_mission_event("coin", false)
+
+
+func _advance_role_mission() -> void:
+	_mission_role_successes += 1
+	_update_mission_rank("cairo_triple2", _mission_role_successes)
+	if not _mission_role_completed and _mission_role_successes >= MISSION_ROLE_TARGET:
+		_mission_role_completed = true
+		_emit_mission_event("role", true)
+	else:
+		_emit_mission_event("role", false)
+
+
+func _fail_no_damage_mission() -> void:
+	if not _mission_no_damage_active or _mission_no_damage_completed:
+		return
+	_mission_no_damage_active = false
+	_emit_mission_event("no_damage", false)
+
+
+func _complete_no_damage_mission() -> void:
+	if not _mission_no_damage_active or _mission_no_damage_completed:
+		return
+	_mission_no_damage_completed = true
+	_update_mission_rank("cairo_no_damage", 1)
+	_emit_mission_event("no_damage", true)
+
+
+func _emit_mission_event(kind: String, completed: bool) -> void:
+	_mission_event_serial += 1
+	_last_mission_event = {"serial": _mission_event_serial, "kind": kind, "completed": completed}
+
+func _update_mission_rank(id: String, progress: int) -> void:
+	var rank := int(_mission_ranks.get(id, 0))
+	var thresholds: Array = []
+	match id:
+		"cairo_coin15": thresholds = [10, 15, 20]
+		"cairo_triple2": thresholds = [1, 2, 3]
+		"cairo_no_damage": thresholds = [1]
+		_: return
+	var new_rank := rank
+	for index in range(thresholds.size()):
+		if progress >= int(thresholds[index]): new_rank = maxi(new_rank, index + 1)
+	for crossed in range(rank + 1, new_rank + 1):
+		var names := ["bronze", "silver", "gold"]
+		var rank_name: String = str(names[crossed - 1])
+		var award_amount: int = int([500, 1000, 2000][crossed - 1])
+		_add_score_once("mission:%s:%s" % [id, rank_name], award_amount, "MISSION %s" % rank_name.to_upper(), "finish")
+	_mission_ranks[id] = new_rank
+	if new_rank >= 1 and _mission_active_ids.all(func(x): return int(_mission_ranks.get(x, 0)) >= 1):
+		_add_score_once("mission:all3:bronze", 2000, "ALL MISSIONS", "finish")
+
+
+func _restore_missions(value: Variant, player: Dictionary, roles: Dictionary, phase: StringName) -> void:
+	if value is Dictionary and int((value as Dictionary).get("schema_version", 0)) == MISSION_SCHEMA_VERSION:
+		var saved := value as Dictionary
+		_mission_coin_gained = maxi(int(saved.get("coin_gained", 0)), 0)
+		_mission_role_successes = maxi(int(saved.get("role_successes", 0)), 0)
+		_mission_no_damage_active = bool(saved.get("no_damage_active", true))
+		_mission_no_damage_completed = bool(saved.get("no_damage_completed", false))
+		_mission_coin_completed = bool(saved.get("coin_completed", _mission_coin_gained >= MISSION_COIN_TARGET))
+		_mission_role_completed = bool(saved.get("role_completed", _mission_role_successes >= MISSION_ROLE_TARGET))
+		_mission_active_ids = []
+		for id in saved.get("active_ids", ["cairo_coin15", "cairo_triple2", "cairo_no_damage"]): _mission_active_ids.append(str(id))
+		_mission_ranks = (saved.get("ranks", {}) as Dictionary).duplicate(true)
+		_mission_ring_exits = maxi(int(saved.get("ring_exits", 0)), 0)
+		if _mission_ranks.is_empty():
+			if _mission_coin_completed: _mission_ranks["cairo_coin15"] = 1
+			if _mission_role_completed: _mission_ranks["cairo_triple2"] = 1
+			if _mission_no_damage_completed: _mission_ranks["cairo_no_damage"] = 1
+	else:
+		_mission_coin_gained = maxi(int(player.get("coins", 0)), 0)
+		_mission_role_successes = maxi(int(roles.get("PAIR", 0)), 0) + maxi(int(roles.get("STRAIGHT", 0)), 0) + maxi(int(roles.get("TRIPLE", 0)), 0)
+		_mission_no_damage_active = int(player.get("hp", MAX_PLAYER_HP)) >= MAX_PLAYER_HP
+		_mission_no_damage_completed = _mission_no_damage_active and phase in [PHASE_BOSS_FINISHED, PHASE_LAP_RESULT] and bool((_battle.result() if _battle != null else {}).get("victory", false))
+		_mission_coin_completed = _mission_coin_gained >= MISSION_COIN_TARGET
+		_mission_role_completed = _mission_role_successes >= MISSION_ROLE_TARGET
+		_mission_ranks = {}
+		if _mission_coin_completed: _mission_ranks["cairo_coin15"] = 1
+		if _mission_role_completed: _mission_ranks["cairo_triple2"] = 1
+		if _mission_no_damage_completed: _mission_ranks["cairo_no_damage"] = 1
+	_mission_event_serial = 0
+	_last_mission_event.clear()
 
 
 func _prepare_pending_role_reward() -> void:

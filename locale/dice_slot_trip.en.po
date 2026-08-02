@@ -1,0 +1,91 @@
+msgid ""
+msgstr ""
+"Language: en\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "TILE_HELP_EVENT_TITLE"
+msgstr "CAIRO EVENT"
+
+msgid "TILE_HELP_EVENT_BODY"
+msgstr "An encounter changes the course of your hourglass journey."
+
+msgid "TILE_HELP_ITEM_TITLE"
+msgstr "ITEM FOUND"
+
+msgid "TILE_HELP_ITEM_BODY"
+msgstr "Gain a useful travel item. Check it in the Item menu."
+
+msgid "TILE_HELP_COIN_TITLE"
+msgstr "COINS FOUND"
+
+msgid "TILE_HELP_COIN_BODY"
+msgstr "Gain coins that count toward missions and your score."
+
+msgid "TILE_HELP_REST_TITLE"
+msgstr "TAKE A REST"
+
+msgid "TILE_HELP_REST_BODY"
+msgstr "Rest by the water and recover lost HP."
+
+msgid "TILE_HELP_RISK_TITLE"
+msgstr "DANGER ZONE"
+
+msgid "TILE_HELP_RISK_BODY"
+msgstr "A risky tile may deal damage or slow your next move. Shortcuts have a price."
+
+msgid "TILE_HELP_WARP_TITLE"
+msgstr "WARP POINT"
+
+msgid "TILE_HELP_WARP_BODY"
+msgstr "An entrance to another route. In a ring, it can lead you toward the exit."
+
+msgid "TILE_HELP_TAP_TO_CLOSE"
+msgstr "Tap anywhere to continue"
+
+msgid "TRAVEL_MENU_BUTTON"
+msgstr "MENU"
+
+msgid "TRAVEL_MENU_TITLE"
+msgstr "TRAVEL MENU"
+
+msgid "TRAVEL_MENU_DETAIL"
+msgstr "Journey paused"
+
+msgid "TRAVEL_MENU_CONTINUE"
+msgstr "Continue Journey"
+
+msgid "TRAVEL_MENU_EXIT"
+msgstr "Return to Stage Select"
+
+msgid "LOOP_EXIT_DISTANCE"
+msgstr "%d to EXIT"
+
+msgid "LOOP_RESCUE_PROGRESS"
+msgstr "Rescue %d / %d laps"
+
+msgid "LOOP_RESCUE_TOAST"
+msgstr "The hourglass guided you out on the third lap"
+
+msgid "VICTORY_KICKER"
+msgstr "JOURNEY COMPLETE"
+
+msgid "DEFEAT_KICKER"
+msgstr "JOURNEY RECORD"
+
+msgid "VICTORY_TITLE"
+msgstr "ROUTE CLEARED"
+
+msgid "DEFEAT_TITLE"
+msgstr "SPHINX WINS"
+
+msgid "VICTORY_SCORE"
+msgstr "SCORE %s"
+
+msgid "VICTORY_MISSIONS"
+msgstr "MISSION %d / %d"
+
+msgid "VICTORY_ALL_MISSIONS"
+msgstr "ALL MISSIONS COMPLETE"
+
+msgid "VICTORY_NEXT"
+msgstr "NEXT JOURNEY"

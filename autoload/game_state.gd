@@ -89,6 +89,7 @@ var travel_roll_slots: Array[int] = []
 var master_volume: float = 1.0
 var se_volume: float = 1.0
 var dice_se_muted: bool = false
+var haptics_enabled: bool = true
 
 ## TOURMAP-03B durable roll transaction.  Visual positions are intentionally
 ## omitted; only gameplay facts needed to resume after an app restart persist.
@@ -647,6 +648,7 @@ func to_dictionary() -> Dictionary:
 		,"master_volume": clampf(master_volume, 0.0, 1.0)
 		,"se_volume": clampf(se_volume, 0.0, 1.0)
 		,"dice_se_muted": dice_se_muted
+		,"haptics_enabled": haptics_enabled
 		,"roll_transaction": roll_transaction.duplicate(true)
 		,"total_lap_points": maxi(0, total_lap_points)
 		,"current_lap_bonus": maxi(0, current_lap_bonus)
@@ -785,6 +787,7 @@ func apply_dictionary(data: Dictionary) -> void:
 	master_volume = clampf(float(data.get("master_volume", 1.0)), 0.0, 1.0)
 	se_volume = clampf(float(data.get("se_volume", 1.0)), 0.0, 1.0)
 	dice_se_muted = bool(data.get("dice_se_muted", false))
+	haptics_enabled = bool(data.get("haptics_enabled", true))
 	roll_transaction = (data.get("roll_transaction", {}) as Dictionary).duplicate(true)
 	if not roll_transaction.is_empty():
 		var transaction_phase := str(roll_transaction.get("phase", roll_transaction.get("roll_phase", "")))

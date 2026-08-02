@@ -48,10 +48,15 @@ const CAIRO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/cairo-
 const TITLE_HERO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/title-hero.png")
 const WORLD_MAP_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/world-travel-map.png")
 const CAIRO_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/cairo-city-card.png")
+const KYOTO_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/kyoto-city-card.png")
+const NEWYORK_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/newyork-city-card.png")
+const SINGAPORE_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/singapore-city-card.png")
+const VENICE_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/venice-city-card.png")
 const SPHINX_TEXTURE: Texture2D = preload("res://assets/art/bosses/sleepy-sphinx.png")
 const RELAXED_TRAVELER_TEXTURE: Texture2D = preload("res://assets/art/characters/relaxed-traveler.png")
 const ITEM_CARD_TEXTURE: Texture2D = preload("res://assets/art/v08/cards/item-card.png")
 const SKILL_CARD_TEXTURE: Texture2D = preload("res://assets/art/v08/cards/skill-card.png")
+const CAIRO_JOURNEY_POSTCARD: Texture2D = preload("res://assets/art/postcards/cairo/cairo-journey-postcard.png")
 const UI_CLICK_STREAM: AudioStream = preload("res://assets/audio/ui/click_003.ogg")
 const UI_CONFIRM_STREAM: AudioStream = preload("res://assets/audio/ui/select_001.ogg")
 const APP_FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -61,6 +66,53 @@ const INK := Color("#4c3c2e")
 const TEAL := Color("#287b80")
 const GOLD := Color("#c79c48")
 const MUTED := Color("#8c7862")
+const STAGE_CAIRO: StringName = &"cairo_hourglass"
+const STAGE_KYOTO: StringName = &"kyoto_thousand_year_maze"
+const STAGE_SINGAPORE: StringName = &"singapore_sky_garden"
+const STAGE_NEWYORK: StringName = &"newyork_sleepless_city"
+const STAGE_VENICE: StringName = &"venice_water_maze"
+const STAGE_SELECT_DEFINITIONS: Dictionary = {
+	STAGE_CAIRO: {
+		"title": "砂時計のカイロ",
+		"card_title": "砂時計のカイロ",
+		"description": "市場、オアシス、遺跡をめぐる、ゆったり一周の旅。",
+		"route": "58マス",
+		"boss_label": "周回ボス：眠そうなスフィンクス",
+		"unlocked": true,
+	},
+	STAGE_KYOTO: {
+		"title": "千年迷宮の京都",
+		"card_title": "千年迷宮の京都",
+		"description": "紅葉の古都で、鳥居と竹林をたどる碁盤目の迷宮。",
+		"route": "ルート準備中",
+		"boss_label": "ボス（仮）：千年碁盤の白狐",
+		"unlocked": false,
+	},
+	STAGE_SINGAPORE: {
+		"title": "雨あがりの空中庭園シンガポール",
+		"card_title": "雨あがりの空中庭園\nシンガポール",
+		"description": "スコールのあとの湾岸で、雲上庭園と光の橋を渡る旅。",
+		"route": "ルート準備中",
+		"boss_label": "ボス（仮）：雨雲のマーライオン",
+		"unlocked": false,
+	},
+	STAGE_NEWYORK: {
+		"title": "眠らない街ニューヨーク",
+		"card_title": "眠らない街\nニューヨーク",
+		"description": "夜景と橋を駆け抜け、消えない灯りの大通りを巡る旅。",
+		"route": "ルート準備中",
+		"boss_label": "ボス（仮）：眠らぬリバティキャット",
+		"unlocked": false,
+	},
+	STAGE_VENICE: {
+		"title": "水路迷宮ヴェネツィア",
+		"card_title": "水路迷宮\nヴェネツィア",
+		"description": "夕映えの運河で、ゴンドラの分岐と仮面の路地を巡る旅。",
+		"route": "ルート準備中",
+		"boss_label": "ボス（仮）：水門の仮面獅子",
+		"unlocked": false,
+	},
+}
 const CHARACTER_OPTIONS: Array[Dictionary] = [
 	{
 		"id": &"relaxed",
@@ -93,6 +145,7 @@ const CHARACTER_OPTIONS: Array[Dictionary] = [
 
 var rng := RandomNumberGenerator.new()
 var root_stack: VBoxContainer
+var stage_preview_id: StringName = STAGE_CAIRO
 var board_view: BoardView
 var board_view_mode: String = "tourism"
 var dice_row: HBoxContainer
@@ -221,10 +274,11 @@ func _ready() -> void:
 	v06_save_manager = V06SessionSaveManagerScript.new()
 	match OS.get_environment("DICE_QA_SCREEN"):
 		"stage": show_stage_select()
-		"character": show_character_select()
-		"character_selected":
-			show_character_select()
-			_select_character(&"relaxed")
+		"stage_kyoto": _preview_stage(STAGE_KYOTO)
+		"stage_singapore": _preview_stage(STAGE_SINGAPORE)
+		"stage_newyork": _preview_stage(STAGE_NEWYORK)
+		"stage_venice": _preview_stage(STAGE_VENICE)
+		"character", "character_selected": _start_new_v06_game()
 		"game": show_game()
 		"v06": show_v06_game()
 		"font": show_font_qa()
@@ -435,21 +489,33 @@ func _make_world_page() -> VBoxContainer:
 	margin.add_child(root_stack)
 	return root_stack
 
-func _postcard_style(active: bool) -> StyleBoxFlat:
+func _postcard_style(unlocked: bool, selected: bool = false) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color("#f8e8c5") if active else Color(0.16, 0.13, 0.11, 0.92)
-	style.border_color = GOLD if active else Color("#5a4a38")
-	style.set_border_width_all(3 if active else 2)
+	style.bg_color = Color("#f8e8c5") if unlocked else Color(0.13, 0.10, 0.08, 0.96)
+	style.border_color = GOLD if selected else (TEAL if unlocked else Color("#695541"))
+	style.set_border_width_all(4 if selected else 2)
 	style.set_corner_radius_all(12)
-	style.content_margin_left = UiTokensScript.GAP_S
-	style.content_margin_right = UiTokensScript.GAP_S
-	style.content_margin_top = UiTokensScript.GAP_S * 0.5
-	style.content_margin_bottom = UiTokensScript.GAP_S * 0.5
+	style.content_margin_left = 4
+	style.content_margin_right = 4
+	style.content_margin_top = 4
+	style.content_margin_bottom = 4
 	style.shadow_color = Color(0.10, 0.06, 0.03, 0.35)
-	style.shadow_size = 8
+	style.shadow_size = 10 if selected else 7
 	return style
 
-func _add_city_postcard(parent: Control, city: String, journey: String, position: Vector2, card_size: Vector2, active: bool, action: Callable, card_texture: Texture2D = null) -> Button:
+func _add_city_postcard(
+		parent: Control,
+		city: String,
+		journey: String,
+		position: Vector2,
+		card_size: Vector2,
+		unlocked: bool,
+		action: Callable,
+		card_texture: Texture2D = null,
+		selected: bool = false,
+		boss_label: String = "",
+		description: String = ""
+	) -> Button:
 	var button := Button.new()
 	button.name = "city_%s" % city.to_lower()
 	button.text = ""
@@ -457,75 +523,124 @@ func _add_city_postcard(parent: Control, city: String, journey: String, position
 	button.size = card_size
 	button.clip_contents = true
 	button.add_theme_font_size_override("font_size", UiTokensScript.FONT_CAPTION)
-	button.add_theme_color_override("font_color", INK if active else Color("#d7c8b5"))
-	button.add_theme_color_override("font_hover_color", TEAL if active else Color("#d7c8b5"))
+	button.add_theme_color_override("font_color", INK if unlocked else Color("#d7c8b5"))
+	button.add_theme_color_override("font_hover_color", TEAL if unlocked else Color("#f5dfae"))
 	button.add_theme_color_override("font_disabled_color", Color("#d7c8b5"))
-	button.add_theme_stylebox_override("normal", _postcard_style(active))
-	button.add_theme_stylebox_override("hover", _postcard_style(active))
-	button.add_theme_stylebox_override("pressed", _postcard_style(active))
-	button.add_theme_stylebox_override("disabled", _postcard_style(false))
-	button.disabled = not active
-	button.tooltip_text = "%sは%s" % [journey, "選択できます" if active else "次の旅の気配として封印中"]
-	if active and action.is_valid():
-		button.pressed.connect(func() -> void: _play_ui_click(true))
+	button.add_theme_stylebox_override("normal", _postcard_style(unlocked, selected))
+	button.add_theme_stylebox_override("hover", _postcard_style(unlocked, true))
+	button.add_theme_stylebox_override("pressed", _postcard_style(unlocked, true))
+	button.add_theme_stylebox_override("disabled", _postcard_style(false, selected))
+	button.disabled = not action.is_valid()
+	button.tooltip_text = "%s\n%s\n%s\n%s" % [
+		journey,
+		description,
+		boss_label,
+		"旅立てます" if unlocked else "未解放（内容は準備中）",
+	]
+	if action.is_valid():
+		button.pressed.connect(func() -> void: _play_ui_click(unlocked))
 		button.pressed.connect(action)
 	if card_texture != null:
-		var caption_height := 84.0
+		var inset := 5.0
 		var art := TextureRect.new()
 		art.texture = card_texture
 		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		art.position = Vector2(6, 6)
-		art.size = Vector2(card_size.x - 12, card_size.y - caption_height - 12.0)
+		art.position = Vector2(inset, inset)
+		art.size = card_size - Vector2(inset * 2.0, inset * 2.0)
 		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		button.add_child(art)
+		if not unlocked:
+			var lock_wash := ColorRect.new()
+			lock_wash.color = Color(0.09, 0.06, 0.04, 0.34)
+			lock_wash.position = art.position
+			lock_wash.size = art.size
+			lock_wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			button.add_child(lock_wash)
+		var caption_height := 72.0 if unlocked else 76.0
 		var caption_bg := ColorRect.new()
-		caption_bg.color = Color(0.97, 0.89, 0.72, 0.96)
-		caption_bg.position = Vector2(6, card_size.y - caption_height - 6.0)
-		caption_bg.size = Vector2(card_size.x - 12, caption_height)
+		caption_bg.color = Color(0.97, 0.89, 0.72, 0.94) if unlocked else Color(0.13, 0.10, 0.08, 0.76)
+		caption_bg.position = Vector2(inset, card_size.y - caption_height - inset)
+		caption_bg.size = Vector2(card_size.x - inset * 2.0, caption_height)
 		caption_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		button.add_child(caption_bg)
-		var caption := _body("%s\n● この旅へ" % city, UiTokensScript.FONT_CAPTION)
-		caption.position = caption_bg.position
-		caption.size = caption_bg.size
+		var caption := Label.new()
+		caption.text = "%s\n● この旅へ" % journey if unlocked else journey
+		caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		caption.add_theme_font_size_override("font_size", UiTokensScript.FONT_MAP_CAPTION if unlocked else 18)
+		caption.add_theme_color_override("font_color", INK if unlocked else Color("#f3dfb6"))
+		if not unlocked:
+			caption.add_theme_color_override("font_outline_color", Color(0.04, 0.03, 0.02, 0.90))
+			caption.add_theme_constant_override("outline_size", 2)
+		caption.position = caption_bg.position + Vector2(7, 2)
+		caption.size = caption_bg.size - Vector2(14, 4)
 		caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		button.add_child(caption)
-	elif active:
-		var active_label := _body("%s\n%s\n● 旅に出る" % [city, journey], UiTokensScript.FONT_CAPTION)
+		if not unlocked:
+			var lock_badge := Panel.new()
+			lock_badge.position = Vector2(10, 10)
+			lock_badge.size = Vector2(82, 32)
+			lock_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var badge_style := StyleBoxFlat.new()
+			badge_style.bg_color = Color(0.31, 0.12, 0.10, 0.95)
+			badge_style.border_color = GOLD if selected else Color("#9b6643")
+			badge_style.set_border_width_all(2)
+			badge_style.set_corner_radius_all(14)
+			lock_badge.add_theme_stylebox_override("panel", badge_style)
+			var badge_label := Label.new()
+			badge_label.text = "未解放"
+			badge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			badge_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			badge_label.add_theme_font_size_override("font_size", UiTokensScript.FONT_MAP_DETAIL)
+			badge_label.add_theme_color_override("font_color", Color("#ffe6ae"))
+			badge_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			badge_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			lock_badge.add_child(badge_label)
+			button.add_child(lock_badge)
+			var seal := Panel.new()
+			seal.position = Vector2(card_size.x - 54.0, 10)
+			seal.size = Vector2(44, 44)
+			seal.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var seal_style := StyleBoxFlat.new()
+			seal_style.bg_color = Color(0.50, 0.16, 0.14, 0.96)
+			seal_style.border_color = Color("#e0b35a")
+			seal_style.set_border_width_all(2)
+			seal_style.set_corner_radius_all(22)
+			seal.add_theme_stylebox_override("panel", seal_style)
+			var seal_mark := Label.new()
+			seal_mark.text = "封"
+			seal_mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			seal_mark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			seal_mark.add_theme_font_size_override("font_size", UiTokensScript.FONT_MAP_CAPTION)
+			seal_mark.add_theme_color_override("font_color", Color("#f8e4aa"))
+			seal_mark.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			seal_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			seal.add_child(seal_mark)
+			button.add_child(seal)
+	elif unlocked:
+		var active_label := _body("%s\n● この旅へ" % journey, UiTokensScript.FONT_CAPTION)
 		active_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		active_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		active_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		button.add_child(active_label)
 	else:
-		# Sealed destination: silhouette + wax-seal mood instead of a plain "準備中".
-		var seal_fill := ColorRect.new()
-		seal_fill.color = Color(0.12, 0.10, 0.08, 0.55)
-		seal_fill.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		seal_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		button.add_child(seal_fill)
-		var seal_panel := PanelContainer.new()
-		seal_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		seal_panel.custom_minimum_size = Vector2(72, 72)
-		seal_panel.position = Vector2((card_size.x - 72.0) * 0.5, 18.0)
-		var seal_style := _premium_panel(Color(0.55, 0.18, 0.16, 0.94), Color("#e0b35a"), 36)
-		seal_style.shadow_size = 6
-		seal_panel.add_theme_stylebox_override("panel", seal_style)
-		var seal_mark := _body("封", UiTokensScript.FONT_TITLE)
-		seal_mark.add_theme_color_override("font_color", Color("#f6e2a8"))
-		seal_mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		seal_mark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		seal_panel.add_child(seal_mark)
-		button.add_child(seal_panel)
-		var sealed_caption := _body("%s\n%s\n次の旅の気配" % [city, journey], UiTokensScript.FONT_CAPTION)
+		var sealed_caption := _body("%s\n未解放" % journey, UiTokensScript.FONT_CAPTION)
 		sealed_caption.add_theme_color_override("font_color", Color("#e8d7bc"))
-		sealed_caption.position = Vector2(8, card_size.y - 78.0)
-		sealed_caption.size = Vector2(card_size.x - 16.0, 72.0)
-		sealed_caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		sealed_caption.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		sealed_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		button.add_child(sealed_caption)
 	parent.add_child(button)
 	return button
+
+func _city_postcard_uses_texture(button: Button, expected: Texture2D) -> bool:
+	if not is_instance_valid(button) or expected == null:
+		return false
+	for node: Node in button.find_children("*", "TextureRect", true, false):
+		if (node as TextureRect).texture == expected:
+			return true
+	return false
 
 func _title(text: String, size_px: int = UiTokensScript.FONT_TITLE) -> Label:
 	var label := Label.new()
@@ -650,12 +765,29 @@ func _show_settings_modal() -> void:
 	var dice_mute := CheckButton.new(); dice_mute.text = "ダイスSEをミュート"; dice_mute.button_pressed = GameState.dice_se_muted; dice_mute.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
 	dice_mute.toggled.connect(func(value: bool) -> void: GameState.dice_se_muted = value; if is_instance_valid(dice_audio): dice_audio.set_muted(value))
 	content.add_child(dice_mute)
+	var haptics_toggle := CheckButton.new(); haptics_toggle.text = "振動フィードバック"; haptics_toggle.button_pressed = GameState.haptics_enabled; haptics_toggle.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
+	haptics_toggle.toggled.connect(func(value: bool) -> void: GameState.haptics_enabled = value)
+	content.add_child(haptics_toggle)
 	content.add_child(_body("音量0でも出目・目押し・移動は変わりません。", UiTokensScript.FONT_CAPTION))
 	var close := _button("保存して閉じる", func() -> void: return, true); close.toggle_mode = true; content.add_child(close)
 	await close.pressed
 	SaveManager.save_now(); _close_modal(modal.layer)
 
 func show_stage_select() -> void:
+	stage_preview_id = STAGE_CAIRO
+	_render_stage_select()
+
+func _stage_select_definition(stage_id: StringName) -> Dictionary:
+	var fallback: Dictionary = STAGE_SELECT_DEFINITIONS[STAGE_CAIRO]
+	return STAGE_SELECT_DEFINITIONS.get(stage_id, fallback)
+
+func _preview_stage(stage_id: StringName) -> void:
+	if not STAGE_SELECT_DEFINITIONS.has(stage_id):
+		stage_id = STAGE_CAIRO
+	stage_preview_id = stage_id
+	_render_stage_select()
+
+func _render_stage_select() -> void:
 	# The only currently released stage is Cairo. Keep the selected stage aligned
 	# with the product card even when an older save was previously loaded by QA.
 	GameState.selected_stage_id = GameState.DEFAULT_STAGE
@@ -677,23 +809,57 @@ func show_stage_select() -> void:
 	map_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	map_area.clip_contents = true
 	page.add_child(map_area)
-	_add_city_postcard(map_area, "PARIS", "月夜のパリ", Vector2(66, 72), Vector2(190, 136), false, Callable())
-	_add_city_postcard(map_area, "TOKYO", "桜風の東京", Vector2(464, 72), Vector2(190, 136), false, Callable())
-	_add_city_postcard(map_area, "ROME", "遺跡のローマ", Vector2(55, 390), Vector2(195, 136), false, Callable())
-	_add_city_postcard(map_area, "SINGAPORE", "雨粒のシンガポール", Vector2(365, 390), Vector2(290, 136), false, Callable())
-	var cairo := _add_city_postcard(map_area, "CAIRO", "砂時計のカイロ", Vector2(245, 210), Vector2(240, 172), true, show_character_select, CAIRO_CITY_CARD)
-	cairo.add_theme_font_size_override("font_size", 21)
+	var newyork_definition := _stage_select_definition(STAGE_NEWYORK)
+	var venice_definition := _stage_select_definition(STAGE_VENICE)
+	var kyoto_definition := _stage_select_definition(STAGE_KYOTO)
+	var singapore_definition := _stage_select_definition(STAGE_SINGAPORE)
+	var cairo_definition := _stage_select_definition(STAGE_CAIRO)
+	_add_city_postcard(map_area, "NEWYORK", str(newyork_definition.card_title), Vector2(18, 132), Vector2(190, 136), false, _preview_stage.bind(STAGE_NEWYORK), NEWYORK_CITY_CARD, stage_preview_id == STAGE_NEWYORK, str(newyork_definition.boss_label), str(newyork_definition.description))
+	_add_city_postcard(map_area, "VENICE", str(venice_definition.card_title), Vector2(220, 62), Vector2(190, 136), false, _preview_stage.bind(STAGE_VENICE), VENICE_CITY_CARD, stage_preview_id == STAGE_VENICE, str(venice_definition.boss_label), str(venice_definition.description))
+	_add_city_postcard(map_area, "KYOTO", str(kyoto_definition.card_title), Vector2(464, 56), Vector2(190, 136), false, _preview_stage.bind(STAGE_KYOTO), KYOTO_CITY_CARD, stage_preview_id == STAGE_KYOTO, str(kyoto_definition.boss_label), str(kyoto_definition.description))
+	_add_city_postcard(map_area, "SINGAPORE", str(singapore_definition.card_title), Vector2(446, 390), Vector2(210, 136), false, _preview_stage.bind(STAGE_SINGAPORE), SINGAPORE_CITY_CARD, stage_preview_id == STAGE_SINGAPORE, str(singapore_definition.boss_label), str(singapore_definition.description))
+	_add_city_postcard(map_area, "CAIRO", str(cairo_definition.card_title), Vector2(245, 210), Vector2(240, 172), true, _start_new_v06_game, CAIRO_CITY_CARD, stage_preview_id == STAGE_CAIRO, str(cairo_definition.boss_label), str(cairo_definition.description))
 	GameState.ensure_boss_data()
-	var route := _body("選択中：砂時計のカイロ　｜　58マス　｜　周回ボス：眠そうなスフィンクス", UiTokensScript.FONT_CAPTION)
-	route.add_theme_color_override("font_color", Color("#fce7ba"))
+	var preview_definition := _stage_select_definition(stage_preview_id)
+	var preview_unlocked := bool(preview_definition.get("unlocked", false))
 	var route_panel := PanelContainer.new()
 	route_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.19, 0.14, 0.10, 0.88), GOLD, 18))
-	route_panel.add_child(route)
+	var route_box := VBoxContainer.new()
+	route_box.add_theme_constant_override("separation", 4)
+	var route := _body("選択中：%s　｜　%s" % [str(preview_definition.title), str(preview_definition.route)], UiTokensScript.FONT_CAPTION)
+	route.add_theme_color_override("font_color", Color("#fce7ba"))
+	route_box.add_child(route)
+	var description := _body(str(preview_definition.description), UiTokensScript.FONT_MAP_CAPTION)
+	description.add_theme_color_override("font_color", Color("#e8d4ae"))
+	route_box.add_child(description)
+	var boss := _body(str(preview_definition.boss_label), UiTokensScript.FONT_MAP_CAPTION)
+	boss.add_theme_color_override("font_color", Color("#ffd67b") if preview_unlocked else Color("#d9b986"))
+	route_box.add_child(boss)
+	route_panel.add_child(route_box)
 	page.add_child(route_panel)
-	page.add_child(_button("この旅へ", show_character_select, true))
+	if preview_unlocked:
+		page.add_child(_button("探検猫で出発", _start_new_v06_game, true))
+	else:
+		var locked_cta := _button("未解放・旅の準備中", Callable(), true)
+		locked_cta.name = "stage_locked_cta"
+		locked_cta.disabled = true
+		locked_cta.tooltip_text = "この都市のステージはまだ未解放です"
+		page.add_child(locked_cta)
 	var back := _button("もどる", show_title)
 	page.add_child(back)
 
+func _start_new_v06_game() -> void:
+	var selected_stage_id: StringName = GameState.selected_stage_id
+	if String(selected_stage_id).is_empty():
+		selected_stage_id = GameState.DEFAULT_STAGE
+	GameState.start_new_game()
+	GameState.selected_stage_id = selected_stage_id
+	GameState.selected_character_id = GameState.DEFAULT_CHARACTER
+	show_v06_game(selected_stage_id, GameState.DEFAULT_CHARACTER)
+
+# DEBUG ONLY: the product flow starts directly with the explorer cat. Keep this
+# screen isolated for legacy QA and future character work without routing users
+# through it or changing the saved character schema.
 func show_character_select() -> void:
 	var page := _make_page()
 	pending_character_id = &""
@@ -944,9 +1110,17 @@ func show_v06_game(stage_id: StringName = &"", character_id: StringName = &"", r
 	screen.configure_start_context(resolved_stage_id, resolved_character_id)
 	screen.configure_save_manager(_v06_save_manager())
 	screen.configure_resume_data(resume_data)
-	add_child(screen)
 	screen.connect("back_requested", Callable(self, "show_stage_select"))
 	screen.connect("resume_failed", Callable(self, "show_title"))
+	screen.connect("postcard_unlocked", Callable(self, "_on_postcard_unlocked"))
+	add_child(screen)
+
+
+func _on_postcard_unlocked(postcard_id: String) -> void:
+	if postcard_id.is_empty() or postcard_id in GameState.registered_postcards:
+		return
+	GameState.registered_postcards.append(postcard_id)
+	SaveManager.save_now()
 
 func show_game() -> void:
 	var page := _make_page()
@@ -2887,17 +3061,54 @@ func _prepare_next_boss_after_join() -> Dictionary:
 
 func show_encyclopedia() -> void:
 	var page := _make_page()
-	page.add_child(_title("スフィンクス図鑑", 44))
-	page.add_child(_body("旅の途中で、少しずつ知り合った相手たち。", 20))
+	page.add_child(_title("旅の図鑑", 44))
+	page.add_child(_body("旅で手に入れた便りと、砂漠で知り合った相手たち。", 20))
+	var scroll := ScrollContainer.new()
+	scroll.name = "TravelEncyclopediaScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+	var content := VBoxContainer.new()
+	content.name = "TravelEncyclopediaContent"
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 14)
+	scroll.add_child(content)
+	content.add_child(_title("POSTCARDS", 28))
+	var postcard_count := _known_postcard_count()
+	content.add_child(_body("旅の便り　%d / 2" % postcard_count, 18))
+	var postcard_flow := HFlowContainer.new()
+	postcard_flow.name = "PostcardGallery"
+	postcard_flow.add_theme_constant_override("h_separation", 12)
+	postcard_flow.add_theme_constant_override("v_separation", 12)
+	content.add_child(postcard_flow)
+	for definition: Dictionary in [
+		{"id":"cairo_journey_complete","title":"砂時計のカイロ","caption":"眠そうなスフィンクスとゴールを越えた旅の記念。"},
+		{"id":"cairo_spice_market_complete","title":"香辛料市場の一日","caption":"市場の発展を最後まで見届けた記録。"},
+	]:
+		_add_postcard_book_card(postcard_flow, definition, str(definition.id) in GameState.registered_postcards)
+	content.add_child(_spacer(4))
+	content.add_child(_title("TRAVEL FRIENDS", 28))
+	content.add_child(_body("旅の途中で、少しずつ知り合った相手たち。", 18))
 	var definitions := boss_definitions if not boss_definitions.is_empty() else BossSystemScript.definitions()
 	var registered_definitions: Dictionary = {}
 	# Every joined individual is its own card, including later individuals sharing a definition.
 	for found: Dictionary in GameState.encyclopedia:
 		registered_definitions[str(found.get("definition_id", ""))] = true
-		var found_card := VBoxContainer.new()
-		found_card.add_theme_constant_override("separation", 4)
-		found_card.add_child(_body("%s　%s\n出会い %d回　図鑑 No.%d\n%s" % [str(found.get("name", "")), str(found.get("personality", "")), int(found.get("encounters", 0)), int(found.get("registration_order", 0)), str(found.get("memo", ""))], 21))
-		page.add_child(found_card)
+		var found_card := PanelContainer.new()
+		found_card.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.89, 0.73, 0.96), Color("#a47a3c"), 14))
+		var found_row := HBoxContainer.new()
+		found_row.add_theme_constant_override("separation", 12)
+		var portrait := TextureRect.new()
+		portrait.texture = SPHINX_TEXTURE
+		portrait.custom_minimum_size = Vector2(116, 96)
+		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		found_row.add_child(portrait)
+		found_row.add_child(_body("%s　%s\n出会い %d回　図鑑 No.%d\n%s" % [str(found.get("name", "")), str(found.get("personality", "")), int(found.get("encounters", 0)), int(found.get("registration_order", 0)), str(found.get("memo", ""))], 20))
+		found_card.add_child(found_row)
+		content.add_child(found_card)
 	# Definitions never joined yet remain discoverable as silhouettes.
 	for definition: Dictionary in definitions:
 		if registered_definitions.has(str(definition.get("id", ""))):
@@ -2912,9 +3123,40 @@ func show_encyclopedia() -> void:
 		silhouette.modulate = Color(0.18, 0.14, 0.10, 0.88)
 		card.add_child(silhouette)
 		card.add_child(_body("？？？　未登録\n砂の向こうに、まだ知らない気配がある。", 21))
-		page.add_child(card)
-	page.add_child(_spacer(10))
+		content.add_child(card)
 	page.add_child(_button("もどる", show_title))
+
+
+func _known_postcard_count() -> int:
+	var count := 0
+	for postcard_id: String in ["cairo_journey_complete", "cairo_spice_market_complete"]:
+		if postcard_id in GameState.registered_postcards:
+			count += 1
+	return count
+
+
+func _add_postcard_book_card(parent: Control, definition: Dictionary, unlocked: bool) -> void:
+	var card := PanelContainer.new()
+	card.name = "Postcard_%s" % str(definition.get("id", "unknown"))
+	card.custom_minimum_size = Vector2(318, 274)
+	card.add_theme_stylebox_override("panel", _postcard_style(unlocked))
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 4)
+	var art := TextureRect.new()
+	art.name = "PostcardArt"
+	art.texture = CAIRO_JOURNEY_POSTCARD
+	art.custom_minimum_size = Vector2(0, 176)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	art.modulate = Color.WHITE if unlocked else Color(0.12, 0.11, 0.10, 0.88)
+	stack.add_child(art)
+	var title_copy := str(definition.get("title", "旅の便り")) if unlocked else "？？？　未獲得"
+	var caption_copy := str(definition.get("caption", "")) if unlocked else "旅のどこかに、まだ見ぬ一枚がある。"
+	var copy := _body("%s\n%s" % [title_copy, caption_copy], 17)
+	copy.add_theme_color_override("font_color", INK if unlocked else Color("#d7c8b5"))
+	stack.add_child(copy)
+	card.add_child(stack)
+	parent.add_child(card)
 
 func _build_debug_box() -> Control:
 	var overlay := PanelContainer.new()
@@ -3899,7 +4141,7 @@ func _qa_ui_audio() -> void:
 	_play_ui_click(false)
 	var click_ok := is_instance_valid(ui_audio_player) and ui_audio_player.stream == UI_CLICK_STREAM
 	var player_id := ui_audio_player.get_instance_id()
-	show_character_select()
+	_start_new_v06_game()
 	await get_tree().process_frame
 	var survives_transition := is_instance_valid(ui_audio_player) and ui_audio_player.get_instance_id() == player_id and get_node_or_null("UIAudioPlayer") == ui_audio_player
 	var passed := city_connected and confirm_ok and click_ok and survives_transition
@@ -3939,18 +4181,36 @@ func _qa_android_ui() -> void:
 	var title_layout_ok := _root_layout_fits() and _visible_buttons_meet_touch_min()
 	show_stage_select(); await get_tree().process_frame
 	var stage_layout_ok := _root_layout_fits() and _visible_buttons_meet_touch_min()
-	show_character_select(); await get_tree().process_frame
-	var character_layout_ok := _root_layout_fits() and _visible_buttons_meet_touch_min()
-	var character_before := GameState.selected_character_id
-	var character_initial_ok := is_instance_valid(character_start_button) and character_start_button.disabled and pending_character_id == &""
-	_select_character(&"photographer")
-	var selected_card_count := 0
-	for card: Variant in character_cards.values():
-		if (card as Button).theme_type_variation == UiThemeNamesScript.SELECTED_BUTTON:
-			selected_card_count += 1
-	var character_flow_ok := character_initial_ok and GameState.selected_character_id == character_before \
-		and pending_character_id == &"photographer" and not character_start_button.disabled \
-		and selected_card_count == 1 and "フォトグラファー" in character_detail_label.text
+	var locked_stage_layout_ok := true
+	var locked_stage_specs: Array[Dictionary] = [
+		{"node": "city_kyoto", "id": STAGE_KYOTO, "texture": KYOTO_CITY_CARD},
+		{"node": "city_singapore", "id": STAGE_SINGAPORE, "texture": SINGAPORE_CITY_CARD},
+		{"node": "city_newyork", "id": STAGE_NEWYORK, "texture": NEWYORK_CITY_CARD},
+		{"node": "city_venice", "id": STAGE_VENICE, "texture": VENICE_CITY_CARD},
+	]
+	for spec: Dictionary in locked_stage_specs:
+		show_stage_select(); await get_tree().process_frame
+		var locked_cards := find_children(str(spec.node), "Button", true, false)
+		var locked_card_ok := not locked_cards.is_empty() \
+			and _city_postcard_uses_texture(locked_cards[0] as Button, spec.texture as Texture2D)
+		if locked_card_ok:
+			(locked_cards[0] as Button).emit_signal("pressed")
+		await get_tree().process_frame
+		var locked_stage_ctas := find_children("stage_locked_cta", "Button", true, false)
+		locked_stage_layout_ok = locked_stage_layout_ok and locked_card_ok \
+			and stage_preview_id == StringName(spec.id) and get_node_or_null("V06PlayScreen") == null \
+			and _root_layout_fits() and _visible_buttons_meet_touch_min() \
+			and not locked_stage_ctas.is_empty() and (locked_stage_ctas[0] as Button).disabled
+	show_stage_select(); await get_tree().process_frame
+	var cairo_cards := find_children("city_cairo", "Button", true, false)
+	var cairo_card_ok := not cairo_cards.is_empty() \
+		and _city_postcard_uses_texture(cairo_cards[0] as Button, CAIRO_CITY_CARD)
+	if cairo_card_ok:
+		(cairo_cards[0] as Button).emit_signal("pressed")
+	await get_tree().process_frame
+	var v06_start_ok := cairo_card_ok and get_node_or_null("V06PlayScreen") != null \
+		and GameState.selected_character_id == GameState.DEFAULT_CHARACTER \
+		and GameState.selected_stage_id == GameState.DEFAULT_STAGE
 	var legacy := original.duplicate(true)
 	legacy.erase("board_view_mode")
 	GameState.apply_dictionary(legacy)
@@ -3972,9 +4232,9 @@ func _qa_android_ui() -> void:
 	await get_tree().process_frame
 	var tourism_restored := board_view is TourismMapView
 	var game_layout_ok := _root_layout_fits() and _visible_buttons_meet_touch_min()
-	var layouts_ok := title_layout_ok and stage_layout_ok and character_layout_ok and game_layout_ok
-	var passed := coverage_ok and theme_ok and scale_tokens_ok and controls_ok and layouts_ok and character_flow_ok and legacy_tourism and classic_loaded and classic_after_new_trip and classic_after_character and tourism_restored
-	print("QA_ANDROID_UI font=%s theme=%s scale=%s controls=%s layouts=%s title=%s stage=%s character=%s character_flow=%s game=%s legacy_tourism=%s classic_load=%s new_trip=%s character_mode=%s tourism=%s passed=%s" % [coverage_ok, theme_ok, scale_tokens_ok, controls_ok, layouts_ok, title_layout_ok, stage_layout_ok, character_layout_ok, character_flow_ok, game_layout_ok, legacy_tourism, classic_loaded, classic_after_new_trip, classic_after_character, tourism_restored, passed])
+	var layouts_ok := title_layout_ok and stage_layout_ok and locked_stage_layout_ok and game_layout_ok
+	var passed := coverage_ok and theme_ok and scale_tokens_ok and controls_ok and layouts_ok and v06_start_ok and legacy_tourism and classic_loaded and classic_after_new_trip and classic_after_character and tourism_restored
+	print("QA_ANDROID_UI font=%s theme=%s scale=%s controls=%s layouts=%s title=%s stage=%s locked_stage=%s v06_start=%s game=%s legacy_tourism=%s classic_load=%s new_trip=%s character_mode=%s tourism=%s passed=%s" % [coverage_ok, theme_ok, scale_tokens_ok, controls_ok, layouts_ok, title_layout_ok, stage_layout_ok, locked_stage_layout_ok, v06_start_ok, game_layout_ok, legacy_tourism, classic_loaded, classic_after_new_trip, classic_after_character, tourism_restored, passed])
 	GameState.apply_dictionary(original)
 	SaveManager.save_now()
 	if not passed: push_error("ANDROID-UI-01 QA failed.")

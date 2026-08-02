@@ -1,0 +1,91 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "TILE_HELP_EVENT_TITLE"
+msgstr "カイロ EVENT"
+
+msgid "TILE_HELP_EVENT_BODY"
+msgstr "街の出来事が、砂時計の旅に小さな変化をもたらす。"
+
+msgid "TILE_HELP_ITEM_TITLE"
+msgstr "旅道具を発見"
+
+msgid "TILE_HELP_ITEM_BODY"
+msgstr "旅を助ける道具を入手する。アイテム欄から確認できる。"
+
+msgid "TILE_HELP_COIN_TITLE"
+msgstr "コインを発見"
+
+msgid "TILE_HELP_COIN_BODY"
+msgstr "コインを獲得する。ミッションやスコアにもつながる。"
+
+msgid "TILE_HELP_REST_TITLE"
+msgstr "ひとやすみ"
+
+msgid "TILE_HELP_REST_BODY"
+msgstr "水辺で休み、失ったHPを回復する。"
+
+msgid "TILE_HELP_RISK_TITLE"
+msgstr "危険地帯"
+
+msgid "TILE_HELP_RISK_BODY"
+msgstr "ダメージや移動低下が起こる危険なマス。近道には代償がある。"
+
+msgid "TILE_HELP_WARP_TITLE"
+msgstr "ワープ地点"
+
+msgid "TILE_HELP_WARP_BODY"
+msgstr "別ルートへ移動する入口。円環では出口へ向かう道を選べる。"
+
+msgid "TILE_HELP_TAP_TO_CLOSE"
+msgstr "画面をタップして旅を続ける"
+
+msgid "TRAVEL_MENU_BUTTON"
+msgstr "メニュー"
+
+msgid "TRAVEL_MENU_TITLE"
+msgstr "旅のメニュー"
+
+msgid "TRAVEL_MENU_DETAIL"
+msgstr "旅を中断しています"
+
+msgid "TRAVEL_MENU_CONTINUE"
+msgstr "旅を続ける"
+
+msgid "TRAVEL_MENU_EXIT"
+msgstr "ステージ選択へ戻る"
+
+msgid "LOOP_EXIT_DISTANCE"
+msgstr "EXITまで %d"
+
+msgid "LOOP_RESCUE_PROGRESS"
+msgstr "救済 %d / %d周"
+
+msgid "LOOP_RESCUE_TOAST"
+msgstr "砂時計の導きで、3周目の出口から本線へ戻った"
+
+msgid "VICTORY_KICKER"
+msgstr "JOURNEY COMPLETE"
+
+msgid "DEFEAT_KICKER"
+msgstr "JOURNEY RECORD"
+
+msgid "VICTORY_TITLE"
+msgstr "旅路踏破"
+
+msgid "DEFEAT_TITLE"
+msgstr "スフィンクス勝利"
+
+msgid "VICTORY_SCORE"
+msgstr "SCORE %s"
+
+msgid "VICTORY_MISSIONS"
+msgstr "MISSION %d / %d"
+
+msgid "VICTORY_ALL_MISSIONS"
+msgstr "ALL MISSIONS COMPLETE"
+
+msgid "VICTORY_NEXT"
+msgstr "次の旅へ"

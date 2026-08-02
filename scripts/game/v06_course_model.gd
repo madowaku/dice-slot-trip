@@ -9,6 +9,7 @@ const ROUTE_BYPASSES: Array[String] = [ROUTE_BYPASS_BAZAAR, ROUTE_BYPASS_SIROCCO
 const ROUTE_LOOP_OASIS := "loop_oasis_ring"
 const ROUTE_LOOP_TOMB := "loop_tomb_ring"
 const ROUTE_LOOP := ROUTE_LOOP_OASIS # Compatibility alias for older callers.
+const LOOP_RESCUE_WRAP_THRESHOLD := 3
 
 const MAIN_KINDS: Array[String] = [
 	"START","NORMAL","COIN","NORMAL","EVENT","ITEM","NORMAL","REST","COIN","NORMAL","WARP_OASIS","BYPASS_FORK",
@@ -123,6 +124,7 @@ func advance(position: Variant, distance: Variant, route_choice: Variant = "", c
 
 	var entered_gate_id := ""
 	var exited_gate_id := ""
+	var forced_loop_exit := false
 	if current.route_id == ROUTE_MAIN:
 		var gate := warp_gate_for_main_index(int(current.tile_index))
 		if not gate.is_empty() and not disabled_gates.has(str(gate.id)):
@@ -130,17 +132,28 @@ func advance(position: Variant, distance: Variant, route_choice: Variant = "", c
 			current = {"route_id":str(gate.route_id), "tile_index":int(gate.entry_index)}
 			entered_gate_id = str(gate.id)
 			transitions.append({"kind":"warp_enter", "gate_id":entered_gate_id, "style":str(gate.style), "from":portal_from, "to":current.duplicate(true)})
-	elif is_loop_route(str(current.route_id)) and int(current.tile_index) == loop_exit_index(str(current.route_id)):
+	elif is_loop_route(str(current.route_id)):
+		var accumulated_wraps := maxi(int(context.get("loop_wrap_count", 0)), 0) + wraps
+		var exact_exit := int(current.tile_index) == loop_exit_index(str(current.route_id))
+		var rescue_exit := wraps > 0 and accumulated_wraps >= LOOP_RESCUE_WRAP_THRESHOLD and not exact_exit
+		if not exact_exit and not rescue_exit:
+			var loop_result := _result(true, "OK", current, consumed, remaining, path, transitions, choice, wraps, false, "")
+			loop_result.entered_warp_gate_id = entered_gate_id
+			loop_result.exited_warp_gate_id = exited_gate_id
+			loop_result.forced_loop_exit = false
+			return loop_result
 		var active_gate := warp_gate(active_gate_id)
 		if active_gate.is_empty() or str(active_gate.route_id) != str(current.route_id):
 			return _error_result("WARP_CONTEXT_REQUIRED", fallback, distance)
 		var exit_from: Dictionary = current.duplicate(true)
 		current = {"route_id":ROUTE_MAIN, "tile_index":int(active_gate.return_index)}
 		exited_gate_id = active_gate_id
-		transitions.append({"kind":"warp_exit", "gate_id":active_gate_id, "from":exit_from, "to":current.duplicate(true)})
+		forced_loop_exit = rescue_exit
+		transitions.append({"kind":"warp_exit", "gate_id":active_gate_id, "forced":forced_loop_exit, "from":exit_from, "to":current.duplicate(true)})
 	var result := _result(true, "OK", current, consumed, remaining, path, transitions, choice, wraps, false, "")
 	result.entered_warp_gate_id = entered_gate_id
 	result.exited_warp_gate_id = exited_gate_id
+	result.forced_loop_exit = forced_loop_exit
 	return result
 
 

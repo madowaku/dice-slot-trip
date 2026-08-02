@@ -33,6 +33,11 @@ window/handheld/orientation=1
 
 theme/custom="res://assets/ui/theme_mobile.tres"
 
+[internationalization]
+
+locale/translations=PackedStringArray("res://locale/dice_slot_trip.ja.po", "res://locale/dice_slot_trip.en.po")
+locale/fallback="ja"
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
