@@ -33,10 +33,14 @@ func _init() -> void:
 		_expect(roll_set.append_face(face), "MIX face appends")
 	_expect(roll_set.evaluate_role() == V06RollSetScript.ROLE_MIX, "distinct non-consecutive faces make MIX")
 	_expect(roll_set.reset_after_resolution(), "MIX resets")
-	for face: int in [5, 3, 4]:
-		_expect(roll_set.append_face(face), "unordered STRAIGHT face appends")
-	_expect(roll_set.evaluate_role() == V06RollSetScript.ROLE_STRAIGHT, "STRAIGHT is order independent")
-	_expect(roll_set.reset_after_resolution(), "unordered STRAIGHT resets")
+	for face: int in [5, 4, 3]:
+		_expect(roll_set.append_face(face), "descending STRAIGHT face appends")
+	_expect(roll_set.evaluate_role() == V06RollSetScript.ROLE_STRAIGHT, "descending consecutive faces make STRAIGHT")
+	_expect(roll_set.reset_after_resolution(), "descending STRAIGHT resets")
+	for face: int in [1, 3, 2]:
+		_expect(roll_set.append_face(face), "shuffled run face appends")
+	_expect(roll_set.evaluate_role() == V06RollSetScript.ROLE_MIX, "shuffled consecutive faces make MIX")
+	_expect(roll_set.reset_after_resolution(), "shuffled run resets")
 	var pair_permutations: Array[Array] = [[6, 1, 6], [3, 5, 5]]
 	for values: Array in pair_permutations:
 		for face: int in values:

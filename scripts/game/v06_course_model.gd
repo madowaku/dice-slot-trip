@@ -8,20 +8,25 @@ const ROUTE_BYPASS := ROUTE_BYPASS_BAZAAR # Compatibility alias for the first fo
 const ROUTE_BYPASSES: Array[String] = [ROUTE_BYPASS_BAZAAR, ROUTE_BYPASS_SIROCCO]
 const ROUTE_LOOP_OASIS := "loop_oasis_ring"
 const ROUTE_LOOP_TOMB := "loop_tomb_ring"
+const MAX_ADVANCE_DISTANCE := 12
 const ROUTE_LOOP := ROUTE_LOOP_OASIS # Compatibility alias for older callers.
 const LOOP_RESCUE_WRAP_THRESHOLD := 3
 
 const MAIN_KINDS: Array[String] = [
-	"START","NORMAL","COIN","NORMAL","EVENT","ITEM","NORMAL","REST","COIN","NORMAL","WARP_OASIS","BYPASS_FORK",
-	"ITEM","COIN","ITEM","NORMAL","REST","COIN","ITEM","NORMAL","NORMAL","RISK","WARP_OASIS","NORMAL",
-	"COIN","EVENT","ITEM","NORMAL","REST","RISK","NORMAL","NORMAL","COIN","WARP_TOMB","BYPASS_FORK","ITEM",
-	"NORMAL","RISK","REST","COIN","NORMAL","EVENT","ITEM","NORMAL","WARP_TOMB","COIN","NORMAL","REST",
-	"EVENT","NORMAL","ITEM","RISK","COIN","NORMAL","WARP_GOLD","RISK","NORMAL","BOSS_GATE",
+	"START","NORMAL","NORMAL","NORMAL","COIN","NORMAL","NORMAL","NORMAL","COIN","NORMAL",
+	"NORMAL","REST","NORMAL","COIN","NORMAL","NORMAL","NORMAL","RISK","COIN","NORMAL",
+	"REST","NORMAL","ITEM","NORMAL","WARP_OASIS","COIN","NORMAL","REST","NORMAL","RISK",
+	"EVENT","COIN","BYPASS_FORK","NORMAL","RISK","NORMAL","REST","NORMAL","COIN","NORMAL",
+	"ITEM","RISK","NORMAL","EVENT","NORMAL","NORMAL","COIN","WARP_OASIS","NORMAL","REST",
+	"NORMAL","NORMAL","RISK","NORMAL","NORMAL","COIN","NORMAL","ITEM","REST","NORMAL",
+	"NORMAL","EVENT","RISK","NORMAL","COIN","NORMAL","WARP_TOMB","NORMAL","NORMAL","REST",
+	"NORMAL","BYPASS_FORK","COIN","WARP_TOMB","RISK","ITEM","NORMAL","EVENT","NORMAL","NORMAL",
+	"COIN","NORMAL","NORMAL","REST","WARP_GOLD","COIN","NORMAL","RISK","NORMAL","BOSS_GATE",
 ]
-const BYPASS_BAZAAR_KINDS: Array[String] = ["RISK","ITEM","NORMAL"]
-const BYPASS_SIROCCO_KINDS: Array[String] = ["RISK","NORMAL","ITEM","RISK","NORMAL"]
+const BYPASS_BAZAAR_KINDS: Array[String] = ["RISK","REST","RISK","REST"]
+const BYPASS_SIROCCO_KINDS: Array[String] = ["RISK","REST","RISK","REST","RISK"]
 const OASIS_KINDS: Array[String] = ["EXIT_GATE","NORMAL","COIN","LOOP_ENTRY","REST","LOOP_ENTRY","ITEM","NORMAL"]
-const TOMB_KINDS: Array[String] = ["EXIT_GATE","RISK","LOOP_ENTRY_GOLD","LOOP_ENTRY","RISK","LOOP_ENTRY","ITEM","COIN"]
+const TOMB_KINDS: Array[String] = ["EXIT_GATE","RISK","LOOP_ENTRY_GOLD","LOOP_ENTRY","EXIT_GATE","LOOP_ENTRY","ITEM","COIN"]
 
 var _definition: Dictionary = {}
 var _valid := false
@@ -69,7 +74,10 @@ func advance(position: Variant, distance: Variant, route_choice: Variant = "", c
 		return _error_result("UNKNOWN_ROUTE", fallback, distance)
 	if index < 0 or index >= _route_size(route):
 		return _error_result("INDEX_OUT_OF_RANGE", fallback, distance)
-	if not distance is int or int(distance) < 1 or int(distance) > 6:
+	# Dice faces stop at six, but travel support can add up to four spaces.
+	# Keep the route walker responsible for the full continuous move so only
+	# the final destination resolves as a landing tile.
+	if not distance is int or int(distance) < 1 or int(distance) > MAX_ADVANCE_DISTANCE:
 		return _error_result("INVALID_DISTANCE", fallback, distance)
 	if not route_choice is String:
 		return _error_result("INVALID_ROUTE_CHOICE", fallback, distance)
@@ -84,7 +92,7 @@ func advance(position: Variant, distance: Variant, route_choice: Variant = "", c
 	var starting_gate := warp_gate_for_main_index(index) if route == ROUTE_MAIN else {}
 	if not starting_gate.is_empty() and not disabled_gates.has(str(starting_gate.id)):
 		return _error_result("TRANSIENT_POSITION", fallback, distance)
-	if is_loop_route(route) and index == loop_exit_index(route):
+	if is_loop_route(route) and is_loop_exit(route, index):
 		return _error_result("TRANSIENT_POSITION", fallback, distance)
 	if route == ROUTE_MAIN and index == _boss_index():
 		return _error_result("AT_BOSS_GATE", fallback, distance)
@@ -134,7 +142,7 @@ func advance(position: Variant, distance: Variant, route_choice: Variant = "", c
 			transitions.append({"kind":"warp_enter", "gate_id":entered_gate_id, "style":str(gate.style), "from":portal_from, "to":current.duplicate(true)})
 	elif is_loop_route(str(current.route_id)):
 		var accumulated_wraps := maxi(int(context.get("loop_wrap_count", 0)), 0) + wraps
-		var exact_exit := int(current.tile_index) == loop_exit_index(str(current.route_id))
+		var exact_exit := is_loop_exit(str(current.route_id), int(current.tile_index))
 		var rescue_exit := wraps > 0 and accumulated_wraps >= LOOP_RESCUE_WRAP_THRESHOLD and not exact_exit
 		if not exact_exit and not rescue_exit:
 			var loop_result := _result(true, "OK", current, consumed, remaining, path, transitions, choice, wraps, false, "")
@@ -146,10 +154,13 @@ func advance(position: Variant, distance: Variant, route_choice: Variant = "", c
 		if active_gate.is_empty() or str(active_gate.route_id) != str(current.route_id):
 			return _error_result("WARP_CONTEXT_REQUIRED", fallback, distance)
 		var exit_from: Dictionary = current.duplicate(true)
-		current = {"route_id":ROUTE_MAIN, "tile_index":int(active_gate.return_index)}
+		var return_index := int(active_gate.return_index)
+		if exact_exit:
+			return_index = loop_exit_return_index(str(current.route_id), int(current.tile_index), return_index)
+		current = {"route_id":ROUTE_MAIN, "tile_index":return_index}
 		exited_gate_id = active_gate_id
 		forced_loop_exit = rescue_exit
-		transitions.append({"kind":"warp_exit", "gate_id":active_gate_id, "forced":forced_loop_exit, "from":exit_from, "to":current.duplicate(true)})
+		transitions.append({"kind":"warp_exit", "gate_id":active_gate_id, "forced":forced_loop_exit, "exit_index":int(exit_from.tile_index), "return_index":return_index, "from":exit_from, "to":current.duplicate(true)})
 	var result := _result(true, "OK", current, consumed, remaining, path, transitions, choice, wraps, false, "")
 	result.entered_warp_gate_id = entered_gate_id
 	result.exited_warp_gate_id = exited_gate_id
@@ -161,8 +172,12 @@ func steps_to_exit(position: Dictionary) -> int:
 	var route := str(position.get("route_id", ""))
 	if not is_loop_route(route) or not position.get("tile_index") is int:
 		return -1
-	var value := posmod(loop_exit_index(route) - int(position.tile_index), _route_size(route))
-	return value if value > 0 else -1
+	var nearest := _route_size(route) + 1
+	for exit_index: int in loop_exit_indices(route):
+		var value := posmod(exit_index - int(position.tile_index), _route_size(route))
+		if value > 0:
+			nearest = mini(nearest, value)
+	return nearest if nearest <= _route_size(route) else -1
 
 
 func stage_summary() -> Dictionary:
@@ -200,6 +215,47 @@ func loop_exit_index(route_id: String) -> int:
 	return int(loop_definition(route_id).get("exit_index", 0))
 
 
+func loop_exit_indices(route_id: String) -> Array[int]:
+	var result: Array[int] = [loop_exit_index(route_id)]
+	var loop := loop_definition(route_id)
+	if loop.has("alternate_exit_index"):
+		var alternate := int(loop.get("alternate_exit_index", -1))
+		if alternate >= 0 and alternate not in result:
+			result.append(alternate)
+	return result
+
+
+func is_loop_exit(route_id: String, tile_index: int) -> bool:
+	return tile_index in loop_exit_indices(route_id)
+
+
+func loop_exit_return_index(route_id: String, tile_index: int, fallback: int) -> int:
+	var loop := loop_definition(route_id)
+	if tile_index == int(loop.get("alternate_exit_index", -1)):
+		return int(loop.get("alternate_return_index", fallback))
+	if tile_index == loop_exit_index(route_id):
+		return int(loop.get("exit_return_index", fallback))
+	return fallback
+
+
+func loop_exit_label(route_id: String, tile_index: int) -> String:
+	if not is_loop_exit(route_id, tile_index):
+		return ""
+	return "少し戻る" if tile_index == int(loop_definition(route_id).get("alternate_exit_index", -1)) else "ゴール前"
+
+
+func tile_kind_for_position(position: Dictionary) -> String:
+	var route_id := str(position.get("route_id", ""))
+	var tile_index := int(position.get("tile_index", -1))
+	var routes: Dictionary = _definition.get("routes", {})
+	if not routes.has(route_id) or not routes[route_id] is Array:
+		return ""
+	var route := routes[route_id] as Array
+	if tile_index < 0 or tile_index >= route.size() or not route[tile_index] is Dictionary:
+		return ""
+	return str((route[tile_index] as Dictionary).get("kind", ""))
+
+
 func is_loop_route(route_id: String) -> bool:
 	return route_id in [ROUTE_LOOP_OASIS, ROUTE_LOOP_TOMB]
 
@@ -214,7 +270,14 @@ func effect_for_position(position: Dictionary) -> Dictionary:
 	if tile_index < 0 or tile_index >= route.size() or not route[tile_index] is Dictionary:
 		return {}
 	var effect: Variant = (route[tile_index] as Dictionary).get("effect", {})
-	return (effect as Dictionary).duplicate(true) if effect is Dictionary else {}
+	if effect is Dictionary and not (effect as Dictionary).is_empty():
+		return (effect as Dictionary).duplicate(true)
+	var kind := str((route[tile_index] as Dictionary).get("kind", ""))
+	match kind:
+		"COIN": return {"kind":"coin_gain", "amount":2, "consume_once":true}
+		"REST": return {"kind":"heal", "amount":1, "consume_once":false}
+		"RISK": return {"kind":"hp_damage", "amount":1, "consume_once":false}
+	return {}
 
 
 func is_bypass_route(route_id: String) -> bool:
@@ -253,7 +316,7 @@ func bypass_rejoin(route_id: String) -> Dictionary:
 
 
 func _validate(data: Dictionary) -> bool:
-	if not _integral_equals(data.get("schema_version"), 2) or data.get("course_id") != "cairo_v06":
+	if not _integral_equals(data.get("schema_version"), 2) or data.get("course_id") != "cairo_v06" or data.get("course_version") != "cairo_v06_90_life3_v1":
 		return false
 	if not data.get("routes") is Dictionary or not data.get("bypasses") is Array or not data.get("loops") is Dictionary or not data.get("warp_gates") is Array:
 		return false
@@ -269,8 +332,8 @@ func _validate(data: Dictionary) -> bool:
 	if not _stage_matches(data.get("stage", {}), MAIN_KINDS.size()):
 		return false
 	var bypass_specs := [
-		[ROUTE_BYPASS_BAZAAR, 11, 19, 8, 4, 4, "right"],
-		[ROUTE_BYPASS_SIROCCO, 34, 46, 12, 6, 6, "left"],
+		[ROUTE_BYPASS_BAZAAR, 32, 41, 9, 5, 4, "right"],
+		[ROUTE_BYPASS_SIROCCO, 71, 83, 12, 6, 6, "left"],
 	]
 	var bypasses_value: Array = data.bypasses
 	if bypasses_value.size() != bypass_specs.size():
@@ -295,10 +358,16 @@ func _validate(data: Dictionary) -> bool:
 		var loop: Variant = loops.get(route_id)
 		if not loop is Dictionary or not _integral_equals(loop.get("exit_index"), 0) or not _integral_number(loop.get("exit_score")):
 			return false
+	var tomb_loop := loops.get(ROUTE_LOOP_TOMB, {}) as Dictionary
+	if not _integral_equals(tomb_loop.get("alternate_exit_index"), 4) \
+			or not _integral_equals(tomb_loop.get("exit_return_index"), 88) \
+			or not _integral_equals(tomb_loop.get("alternate_return_index"), 76):
+		return false
 	var gates: Array = data.warp_gates
 	if gates.size() != 5:
 		return false
-	var expected_indices := [10, 22, 33, 44, 54]
+	var expected_indices := [24, 47, 66, 73, 84]
+	var expected_returns := [29, 60, 70, 76, 88]
 	var ids := {}
 	for index: int in range(gates.size()):
 		var gate: Variant = gates[index]
@@ -313,7 +382,7 @@ func _validate(data: Dictionary) -> bool:
 			return false
 		if not _integral_number(gate.get("entry_index")) or int(gate.entry_index) < 0 or int(gate.entry_index) >= 8:
 			return false
-		if not _integral_number(gate.get("return_index")) or int(gate.return_index) <= int(gate.main_index) or int(gate.return_index) >= 57:
+		if not _integral_equals(gate.get("return_index"), expected_returns[index]):
 			return false
 	return true
 

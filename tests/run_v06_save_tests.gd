@@ -13,6 +13,8 @@ var failures := 0
 func _init() -> void:
 	_cleanup()
 	_test_new_save_round_trip()
+	_test_three_roll_onboarding_lifetime()
+	_test_skill_ready_discovery_flag_validation()
 	_test_stable_slot_sizes_and_states()
 	_test_branch_loop_and_warp_restore()
 	_test_boss_restore()
@@ -22,6 +24,10 @@ func _init() -> void:
 	_test_fault_injection_and_atomic_boundaries()
 	_test_primary_backup_combinations_and_stale_temp()
 	_test_semantic_dto_rejection()
+	_test_schema2_roulette_arithmetic()
+	_test_schema1_course_migration_contract()
+	_test_active_event_semantic_validation()
+	_test_challenge_score_and_hp0_migration()
 	_test_stable_boundary_and_deep_copy_contracts()
 	_test_tomb_loop_restore()
 	_test_old_save_is_separate_and_load_is_idempotent()
@@ -57,6 +63,41 @@ func _test_new_save_round_trip() -> void:
 	_expect(altered_session.restore_stable_snapshot(altered.session_state, 2000) and altered_session.inventory().get("compass", 0) == 1 and altered_session.item_consumption().get("compass", false) and altered_session.skill_state() == Session.SKILL_STATE_ARMED, "future-compatible player fields restore without adding an effect")
 
 
+func _test_three_roll_onboarding_lifetime() -> void:
+	_cleanup()
+	var manager: RefCounted = SaveManager.new(TEST_PATH)
+	var session: RefCounted = Session.new()
+	_expect(not session.has_seen_three_roll_onboarding() and session.is_untouched_journey_start(), "a new journey is unseen and eligible at the untouched start")
+	session.mark_three_roll_onboarding_seen()
+	_expect(manager.save_session(session).ok, "onboarding dismissal is stable-save eligible")
+	var loaded: Dictionary = manager.load_result()
+	var restored: RefCounted = Session.new()
+	_expect(loaded.ok and restored.restore_stable_snapshot(loaded.data.session_state, 1000) and restored.has_seen_three_roll_onboarding(), "onboarding seen flag round-trips through the save slot")
+	_expect(restored.retry_run() and restored.has_seen_three_roll_onboarding(), "retry preserves the journey onboarding seen flag")
+	var lap_session: RefCounted = Session.new()
+	lap_session.mark_three_roll_onboarding_seen()
+	_expect(lap_session.enter_boss(0), "next-lap onboarding setup enters the boss")
+	for now: int in [1, 2, 3, 4]:
+		lap_session.start_roll(6, now)
+		if lap_session.phase() != Session.PHASE_BOSS_FINISHED:
+			lap_session.acknowledge_boss_round()
+	_expect(lap_session.next_lap() and lap_session.has_seen_three_roll_onboarding(), "next lap preserves the journey onboarding seen flag")
+	var progressed: RefCounted = Session.new()
+	_roll_and_finish(progressed, 1)
+	_expect(not progressed.is_untouched_journey_start(), "a progressed READY journey is not onboarding eligible")
+	_expect(not Session.new().has_seen_three_roll_onboarding(), "an explicit new journey starts unseen")
+
+
+func _test_skill_ready_discovery_flag_validation() -> void:
+	var session: RefCounted = Session.new()
+	session.mark_skill_ready_discovery_seen()
+	var dto: Dictionary = SaveData.from_session(session)
+	_expect(SaveData.validate(dto).ok and bool(dto.session_state.player.stage_flags.get(Session.STAGE_FLAG_SKILL_READY_DISCOVERY_SEEN, false)), "skill READY discovery seen flag is persisted as schema2 durable state")
+	var invalid := dto.duplicate(true)
+	invalid.session_state.player.stage_flags[Session.STAGE_FLAG_SKILL_READY_DISCOVERY_SEEN] = 1
+	_expect(not SaveData.validate(invalid).ok, "skill READY discovery seen flag rejects non-boolean save data")
+
+
 func _test_stable_slot_sizes_and_states() -> void:
 	_cleanup()
 	var manager: RefCounted = SaveManager.new(TEST_PATH)
@@ -69,10 +110,12 @@ func _test_stable_slot_sizes_and_states() -> void:
 	_roll_and_finish(session, 1)
 	var two: Dictionary = manager.save_session(session)
 	_expect(two.ok and two.data.session_state.slot.current_roll_index == 2, "slot two is saved before the third face")
+	_set_main_fixture(session, 29, [2, 1])
 	_roll_and_finish(session, 1)
-	_expect(session.phase() == Session.PHASE_RESOLUTION_REQUIRED, "third face resolves before the stable acknowledgement boundary")
-	var unstable_resolution: Dictionary = manager.save_session(session)
-	_expect(not unstable_resolution.ok and unstable_resolution.status == SaveManager.STATUS_NOT_STABLE, "RESOLUTION_REQUIRED is not saved before acknowledgement")
+	_expect(session.phase() == Session.PHASE_EVENT_REQUIRED and session.active_event().return_phase == "RESOLUTION_REQUIRED", "third-face EVENT is the stable boundary before role acknowledgement")
+	var event_checkpoint: Dictionary = manager.save_session(session)
+	_expect(event_checkpoint.ok and event_checkpoint.data.session_state.active_event.event_id == "market_hawker", "EVENT_REQUIRED persists its active narrative card")
+	_expect(session.acknowledge_event() and session.phase() == Session.PHASE_RESOLUTION_REQUIRED, "EVENT acknowledgement returns to the queued role exactly once")
 	_expect(session.acknowledge_resolution(), "travel resolution acknowledges to a stable state")
 	var three_after_resolution: Dictionary = manager.save_session(session)
 	_expect(three_after_resolution.ok and three_after_resolution.data.session_state.slot.current_roll_index == 0, "post-resolution travel checkpoint clears the consumed three-slot set")
@@ -91,16 +134,18 @@ func _test_stable_slot_sizes_and_states() -> void:
 	boss.start_roll(2, 2)
 	var boss_partial_save: Dictionary = manager.save_session(boss)
 	var boss_partial_loaded: Dictionary = manager.load_result()
-	_expect(boss_partial_save.ok and boss_partial_loaded.ok and boss_partial_loaded.data.session_state.slot.current_roll_index == 0 and boss_partial_loaded.data.session_state.boss.pending_ack, "completed boss turn is stable without filling 3ROLL SLOT")
+	_expect(boss_partial_save.ok and boss_partial_loaded.ok and boss_partial_loaded.data.session_state.slot.current_roll_index == 1 and boss_partial_loaded.data.session_state.boss.pending_ack, "completed boss turn saves the first boss SLOT face")
 	boss = Session.new()
 	_expect(boss.enter_boss(0), "boss slot test re-enters a fresh battle")
 	for face: int in [6, 6, 6, 6]:
+		if boss.phase() == Session.PHASE_BOSS_FINISHED:
+			break
 		boss.start_roll(face, face)
 		if boss.phase() != Session.PHASE_BOSS_FINISHED:
 			boss.acknowledge_boss_round()
 	_expect(boss.phase() == Session.PHASE_BOSS_FINISHED, "terminal boss result is a stable slot boundary")
 	var boss_result_saved: Dictionary = manager.save_session(boss)
-	_expect(boss_result_saved.ok and boss_result_saved.data.session_state.slot.current_roll_index == 0 and int(boss_result_saved.data.session_state.score.role_counts.get("STRAIGHT", 0)) == 0, "terminal boss result persists without boss SLOT or role count")
+	_expect(boss_result_saved.ok and boss_result_saved.data.session_state.slot.current_roll_index == 0 and int(boss_result_saved.data.session_state.score.role_counts.get("TRIPLE", 0)) == 1, "terminal boss result persists the resolved boss role and reset slot")
 	var restored: RefCounted = Session.new()
 	_expect(restored.restore_stable_snapshot(boss_result_saved.data.session_state, 1000) and restored.phase() == Session.PHASE_BOSS_FINISHED and restored.faces() == boss.faces(), "FINISHED slot result restores exactly")
 
@@ -109,8 +154,7 @@ func _test_branch_loop_and_warp_restore() -> void:
 	_cleanup()
 	var manager: RefCounted = SaveManager.new(TEST_PATH)
 	var branch: RefCounted = Session.new()
-	_roll_and_finish(branch, 6)
-	_roll_and_finish(branch, 5)
+	_set_main_fixture(branch, 32, [6, 5])
 	branch.start_roll(4)
 	_consume_hops(branch)
 	var choice: Dictionary = branch.finish_movement()
@@ -124,11 +168,10 @@ func _test_branch_loop_and_warp_restore() -> void:
 	if branch_restored.phase() == Session.PHASE_RESOLUTION_REQUIRED:
 		branch_restored.acknowledge_resolution()
 	var bypass_save: Dictionary = manager.save_session(branch_restored)
-	_expect(bypass_save.ok and "bypass_bazaar_alley:1" in bypass_save.data.session_state.route.visited_node_keys and "bypass_clear:bypass_bazaar_alley" in bypass_save.data.session_state.route.awarded_score_event_ids, "bypass route history and one-time completion are persisted after rejoin")
+	_expect(bypass_save.ok and "bypass_bazaar_alley:3" in bypass_save.data.session_state.route.visited_node_keys and "bypass_clear:bypass_bazaar_alley" not in bypass_save.data.session_state.route.awarded_score_event_ids, "bypass route history persists without a hidden completion bonus")
 
 	var loop: RefCounted = Session.new()
-	_roll_and_finish(loop, 6)
-	_roll_and_finish(loop, 3)
+	_set_main_fixture(loop, 23, [6, 3])
 	_roll_and_finish(loop, 1)
 	_expect(loop.active_warp_gate_id() == "W1" and "W1" in loop.consumed_warp_gate_ids(), "warp consumption settles with the warp destination")
 	_expect(loop.acknowledge_resolution(), "warp travel role acknowledges before the ring roll")
@@ -150,21 +193,30 @@ func _test_boss_restore() -> void:
 	var restored_round: RefCounted = Session.new()
 	_expect(round_save.ok and restored_round.restore_stable_snapshot(round_save.data.session_state, 1000) and restored_round.phase() == Session.PHASE_BOSS_ROUND_RESULT and restored_round.boss_snapshot().pending_ack, "boss round result restores its pending acknowledgement")
 	var victory: RefCounted = Session.new()
+	_set_player_hp(victory, 1)
 	victory.enter_boss(0)
 	for now: int in [1, 2, 3, 4]:
+		if victory.phase() == Session.PHASE_BOSS_FINISHED:
+			break
 		victory.start_roll(6, now)
 		if victory.phase() != Session.PHASE_BOSS_FINISHED:
 			victory.acknowledge_boss_round()
 	var victory_save: Dictionary = manager.save_session(victory)
 	var victory_restored: RefCounted = Session.new()
-	_expect(victory.phase() == Session.PHASE_BOSS_FINISHED and victory_save.ok and victory_restored.restore_stable_snapshot(victory_save.data.session_state, 1000) and victory_restored.boss_result().victory, "boss victory FINISHED result restores before its next journey")
+	_expect(victory.phase() == Session.PHASE_BOSS_FINISHED and victory_save.ok and victory_restored.restore_stable_snapshot(victory_save.data.session_state, 1000) and victory_restored.boss_result().victory and victory_restored.heart_roulette_pending(), "boss victory and pending heart roulette restore before the next journey")
+	var heart_reward: Dictionary = victory_restored.resolve_heart_roulette(1)
+	var heart_save: Dictionary = manager.save_session(victory_restored)
+	var heart_restored: RefCounted = Session.new()
+	_expect(heart_reward.ok and heart_save.ok and heart_restored.restore_stable_snapshot(heart_save.data.session_state, 1000) and heart_restored.player_max_hp() == 3 and heart_restored.player_hp() == 3 and not heart_restored.heart_roulette_pending(), "resolved HP-only reward survives save and restore")
 	_expect(victory.acknowledge_boss_round(), "legacy boss result acknowledgement reaches LAP_RESULT")
 	var lap_result_save: Dictionary = manager.save_session(victory)
 	var lap_result_restored: RefCounted = Session.new()
 	_expect(lap_result_save.ok and lap_result_restored.restore_stable_snapshot(lap_result_save.data.session_state, 1000) and lap_result_restored.phase() == Session.PHASE_LAP_RESULT, "LAP_RESULT restores after terminal boss acknowledgement")
 	var defeat: RefCounted = Session.new()
 	defeat.enter_boss(0)
-	for now: int in [1, 2, 3, 4]:
+	for now: int in range(1, 12):
+		if defeat.phase() == Session.PHASE_BOSS_FINISHED:
+			break
 		defeat.start_roll(1, now)
 		if defeat.phase() != Session.PHASE_BOSS_FINISHED:
 			defeat.acknowledge_boss_round()
@@ -353,6 +405,206 @@ func _test_semantic_dto_rejection() -> void:
 	_expect(not SaveData.validate(bad_node).ok and not SaveData.validate(bad_inventory).ok and not SaveData.validate(bad_slot).ok and not SaveData.validate(bad_clock).ok and not SaveData.validate(bad_pending).ok and not SaveData.validate(bad_active).ok and not SaveData.validate(bad_nan).ok, "semantic DTO corruption is rejected without relying on JSON parse failure")
 
 
+func _test_schema2_roulette_arithmetic() -> void:
+	var session := Session.new()
+	_set_player_hp(session, 1)
+	_enter_victory(session)
+	_expect(session.resolve_heart_roulette(1).ok, "resolved roulette fixture awards +2")
+	var valid := SaveData.from_session(session)
+	_expect(SaveData.validate(valid).ok, "schema2 resolved roulette accepts exact HP arithmetic")
+	var bad_hp_after := valid.duplicate(true)
+	bad_hp_after.session_state.player.heart_roulette.result.hp_after = 2
+	var bad_gain := valid.duplicate(true)
+	bad_gain.session_state.player.heart_roulette.result.heal_gain = 1
+	_expect(not SaveData.validate(bad_hp_after).ok and not SaveData.validate(bad_gain).ok, "schema2 rejects forged hp_after and heal_gain arithmetic")
+	var bad_max_type := valid.duplicate(true)
+	bad_max_type.session_state.player.max_hp = 3.5
+	var bad_max_value := valid.duplicate(true)
+	bad_max_value.session_state.player.max_hp = 4
+	var bad_life_low := valid.duplicate(true)
+	bad_life_low.session_state.player.life = -1
+	var bad_life_high := valid.duplicate(true)
+	bad_life_high.session_state.player.life = 4
+	_expect(not SaveData.validate(bad_max_type).ok and not SaveData.validate(bad_max_value).ok and not SaveData.validate(bad_life_low).ok and not SaveData.validate(bad_life_high).ok, "schema2 rejects noninteger/non3 max_hp and LIFE outside 0..3")
+
+
+func _test_schema1_course_migration_contract() -> void:
+	var ordinary := SaveData.from_session(Session.new(&"cairo_hourglass", &"gambler"))
+	ordinary.schema_version = 1
+	ordinary.erase("course_version")
+	ordinary.session_state.lap = 12
+	ordinary.session_state.score.total = 777
+	ordinary.session_state.score.lap_total = 123
+	ordinary.session_state.score.breakdown.travel = 700
+	ordinary.session_state.score.role_counts.PAIR = 9
+	ordinary.session_state.score.last_award = {"points":12}
+	ordinary.session_state.records.best_score = 888
+	ordinary.session_state.player.hp = 0
+	ordinary.session_state.player.coins = 44
+	ordinary.session_state.player.skill_gauge = 3
+	ordinary.session_state.player.skill_state = "READY"
+	ordinary.session_state.player.inventory = {"compass":2}
+	ordinary.session_state.player.item_consumption = {"compass":true}
+	ordinary.session_state.player.stage_flags = {"v06_three_roll_onboarding_seen":true, "v06_seen_event_ids":{"market_hawker":true}, "v06_next_basic_move_penalty":1}
+	ordinary.session_state.route.current_node_id = "main:57"
+	ordinary.session_state.route.route_id = "main"
+	ordinary.session_state.route.tile_index = 57
+	ordinary.session_state.route.pending_face = 6
+	ordinary.session_state.route.pending_remaining_steps = 4
+	ordinary.session_state.route.available_route_ids = ["main"]
+	ordinary.session_state.route.active_warp_gate_id = "W2"
+	ordinary.session_state.route.consumed_warp_gate_ids = ["W1", "W2"]
+	ordinary.session_state.route.loop_id = "loop_oasis_ring"
+	ordinary.session_state.route.loop_tile_index = 5
+	ordinary.session_state.route.loop_exit_steps = 3
+	ordinary.session_state.missions = {"legacy_transient":true}
+	var ordinary_result := SaveData.validate(ordinary)
+	var migrated: Dictionary = ordinary_result.get("data", {})
+	_expect(ordinary_result.ok and migrated.course_version == SaveData.COURSE_VERSION and migrated.stage_id == "cairo_hourglass" and migrated.character_id == "gambler", "schema1 ordinary migrates to the exact course while preserving stage and character")
+	_expect(migrated.session_state.route.current_node_id == "main:0" and migrated.session_state.player.hp == 1 and migrated.session_state.player.max_hp == 3 and migrated.session_state.player.life == 3, "schema1 ordinary restarts at main0 with HP/LIFE invariants")
+	_expect(migrated.session_state.lap == 12 and migrated.session_state.score.total == 777 and migrated.session_state.score.breakdown.travel == 700 and migrated.session_state.records.best_score == 888, "schema1 ordinary preserves cumulative score, BEST, lap, and records")
+	_expect(migrated.session_state.score.lap_total == 0 and migrated.session_state.score.role_counts.PAIR == 0 and migrated.session_state.score.last_award.is_empty(), "schema1 ordinary resets lap-local score state")
+	_expect(migrated.session_state.player.stage_flags == {"v06_three_roll_onboarding_seen":true, "v06_seen_event_ids":{"market_hawker":true}}, "schema1 ordinary preserves only approved durable flags")
+	_expect(migrated.session_state.route == {"current_node_id":"main:0", "route_id":"main", "tile_index":0, "pending_face":0, "pending_remaining_steps":0, "available_route_ids":[], "active_warp_gate_id":"", "consumed_warp_gate_ids":[], "visited_node_keys":["main:0"], "consumed_reward_node_keys":[], "awarded_score_event_ids":[], "loop_id":"", "loop_tile_index":-1, "loop_exit_steps":-1, "exit_position":{}}, "schema1 ordinary discards old main57 movement, warp, loop, and visit transients")
+	_expect(migrated.session_state.player.coins == 0 and migrated.session_state.player.skill_gauge == 0 and migrated.session_state.player.skill_state == "CHARGING" and migrated.session_state.player.inventory.is_empty() and migrated.session_state.player.item_consumption.is_empty() and not migrated.session_state.has("missions"), "schema1 ordinary clears coins, skill, inventory, consumption, and missions")
+	var ordinary_second := SaveData.validate(migrated)
+	_expect(ordinary_second.ok and ordinary_second.data == migrated, "schema1 ordinary migration is idempotent after normalization")
+	_cleanup()
+	var manager := SaveManager.new(TEST_PATH)
+	_write(manager.save_path, JSON.stringify(ordinary))
+	var managed := manager.load_result()
+	_expect(managed.ok and managed.status == SaveManager.STATUS_VALID_PRIMARY and managed.data.schema_version == SaveData.SCHEMA_VERSION and managed.data.course_version == SaveData.COURSE_VERSION and managed.data.session_state.route.current_node_id == "main:0", "manager load returns normalized schema2 data for a genuine schema1 ordinary save")
+	_cleanup()
+
+	for hp: int in [1, 2, 3]:
+		var terminal := SaveData.from_session(Session.new())
+		terminal.schema_version = 1
+		terminal.erase("course_version")
+		terminal.session_state.player.hp = hp
+		terminal.session_state.erase("active_event")
+		terminal.session_state.player.heart_roulette = {"pending":true, "resolved":false, "slot_index":-1, "result":{}}
+		terminal.session_state.phase = "FINISHED"
+		terminal.session_state.boss_entered = true
+		terminal.session_state.boss = _legacy_victory_boss()
+		var terminal_result := SaveData.validate(terminal)
+		var terminal_state: Dictionary = terminal_result.get("data", {}).get("session_state", {})
+		_expect(terminal_result.ok and terminal_state.route.current_node_id == "main:89" and terminal_state.phase == "FINISHED", "schema1 terminal HP%d stays next-lap capable at main89" % hp)
+		_expect(bool(terminal_state.player.heart_roulette.pending) == (hp < 3), "schema1 explicit pending terminal HP%d preserves recovery only when wounded/PERFECT" % hp)
+		var terminal_second := SaveData.validate(terminal_result.data)
+		_expect(terminal_second.ok and terminal_second.data == terminal_result.data, "schema1 terminal HP%d migration is idempotent" % hp)
+
+	var resolved := SaveData.from_session(Session.new())
+	resolved.schema_version = 1
+	resolved.erase("course_version")
+	resolved.session_state.player.hp = 2
+	resolved.session_state.phase = "FINISHED"
+	resolved.session_state.boss_entered = true
+	resolved.session_state.boss = _legacy_victory_boss()
+	resolved.session_state.player.heart_roulette = {"pending":false, "resolved":true, "slot_index":0, "result":{"legacy":true}}
+	var first := SaveData.validate(resolved)
+	var second := SaveData.validate(first.data)
+	_expect(first.ok and second.ok and second.data == first.data and not first.data.session_state.player.heart_roulette.pending and not first.data.session_state.player.heart_roulette.resolved, "schema1 resolved roulette clears without a duplicate reward and migration is idempotent")
+	_cleanup()
+	var resolved_manager := SaveManager.new(TEST_PATH)
+	_write(resolved_manager.save_path, JSON.stringify(resolved))
+	var managed_resolved := resolved_manager.load_result()
+	_expect(managed_resolved.ok and managed_resolved.data.schema_version == SaveData.SCHEMA_VERSION and not managed_resolved.data.session_state.player.heart_roulette.pending, "manager normalized-load never re-awards a resolved legacy roulette")
+	_cleanup()
+
+
+func _legacy_victory_boss() -> Dictionary:
+	var battle_session := Session.new()
+	_enter_victory(battle_session)
+	return battle_session.stable_save_snapshot(0).boss
+
+
+func _enter_victory(session: RefCounted) -> void:
+	session.enter_boss(0)
+	for now: int in range(1, 12):
+		if session.phase() == Session.PHASE_BOSS_FINISHED:
+			break
+		session.start_roll(6, now)
+		if session.phase() != Session.PHASE_BOSS_FINISHED:
+			session.acknowledge_boss_round()
+
+
+func _test_active_event_semantic_validation() -> void:
+	var ready_event := Session.new()
+	_set_main_fixture(ready_event, 29, [])
+	_roll_and_finish(ready_event, 1)
+	var ready_dto: Dictionary = SaveData.from_session(ready_event)
+	_expect(SaveData.validate(ready_dto).ok and ready_dto.session_state.active_event.return_phase == "READY", "valid READY-return EVENT save is accepted")
+
+	var resolution_event := Session.new()
+	_set_main_fixture(resolution_event, 29, [2, 1])
+	_roll_and_finish(resolution_event, 1)
+	var resolution_dto: Dictionary = SaveData.from_session(resolution_event)
+	_expect(SaveData.validate(resolution_dto).ok and resolution_dto.session_state.active_event.return_phase == "RESOLUTION_REQUIRED", "valid RESOLUTION-return EVENT save is accepted")
+
+	var wrong_mapping := ready_dto.duplicate(true)
+	wrong_mapping.session_state.active_event.event_id = "ferry_offer"
+	var non_event_node := ready_dto.duplicate(true)
+	non_event_node.session_state.route.current_node_id = "main:5"
+	non_event_node.session_state.route.tile_index = 5
+	non_event_node.session_state.active_event.node_key = "main:5"
+	var inconsistent_first := ready_dto.duplicate(true)
+	inconsistent_first.session_state.player.stage_flags[Session.STAGE_FLAG_SEEN_EVENT_IDS] = {"market_hawker":true}
+	var unsupported_score := ready_dto.duplicate(true)
+	unsupported_score.session_state.active_event.score_awarded = true
+	unsupported_score.session_state.route.awarded_score_event_ids.erase("stop:main:30:event")
+	_expect(not SaveData.validate(wrong_mapping).ok, "wrong node/event mapping is rejected")
+	_expect(not SaveData.validate(non_event_node).ok, "non-EVENT node payload is rejected")
+	_expect(not SaveData.validate(inconsistent_first).ok, "first_visit inconsistent with seen-event state is rejected")
+	_expect(not SaveData.validate(unsupported_score).ok, "score_awarded without the corresponding score-event ID is rejected")
+
+	var repeat_dto := ready_dto.duplicate(true)
+	repeat_dto.session_state.active_event.first_visit = false
+	repeat_dto.session_state.active_event.score_awarded = false
+	repeat_dto.session_state.player.stage_flags[Session.STAGE_FLAG_SEEN_EVENT_IDS] = {"market_hawker":true}
+	_expect(SaveData.validate(repeat_dto).ok, "valid seen repeat without a new score award is accepted")
+
+	var legacy_ready := SaveData.from_session(Session.new())
+	legacy_ready.session_state.erase("active_event")
+	_expect(SaveData.validate(legacy_ready).ok, "schema-v1 legacy save without active_event remains accepted")
+
+
+func _test_challenge_score_and_hp0_migration() -> void:
+	for lap_value: int in [1, 2, 3, 4, 5, 8]:
+		var state: Dictionary = Session.new().stable_save_snapshot(0)
+		state.lap = lap_value
+		var session := Session.new()
+		_expect(session.restore_stable_snapshot(state, 0), "lap multiplier fixture restores at lap %d" % lap_value)
+		_roll_and_finish(session, 2)
+		_expect(session.score() == 2 and session.lap_score() == 2 and session.lap_multiplier_numerator() == 4, "lap %d keeps the one-space one-point rule" % lap_value)
+
+	var legacy_state: Dictionary = Session.new().stable_save_snapshot(0)
+	legacy_state.score.total = 321
+	legacy_state.score.breakdown.travel = 321
+	legacy_state.score.erase("lap_total")
+	var legacy := Session.new()
+	_expect(legacy.restore_stable_snapshot(legacy_state, 0) and legacy.score() == 321 and legacy.lap_score() == 321, "legacy score without lap_total conservatively migrates total into current lap")
+
+	var event_session := Session.new()
+	_set_main_fixture(event_session, 29, [])
+	_roll_and_finish(event_session, 1)
+	var event_state: Dictionary = event_session.stable_save_snapshot(0)
+	event_state.player.hp = 0
+	event_state.player.life = 0
+	var pending_event := Session.new()
+	_expect(pending_event.restore_stable_snapshot(event_state, 0) and pending_event.phase() == Session.PHASE_EVENT_REQUIRED, "legacy HP0 EVENT remains pending until its stable interaction completes")
+	_expect(pending_event.acknowledge_event() and pending_event.phase() == Session.PHASE_RUN_OVER and pending_event.best_score() == pending_event.score(), "HP0 EVENT acknowledgement enters RUN_OVER and updates BEST once")
+
+	var resolution_session := Session.new()
+	_set_main_fixture(resolution_session, 29, [2, 1])
+	_roll_and_finish(resolution_session, 1)
+	var resolution_state: Dictionary = resolution_session.stable_save_snapshot(0)
+	resolution_state.player.hp = 0
+	resolution_state.player.life = 0
+	var pending_resolution := Session.new()
+	_expect(pending_resolution.restore_stable_snapshot(resolution_state, 0) and pending_resolution.acknowledge_event() and pending_resolution.phase() == Session.PHASE_RESOLUTION_REQUIRED, "HP0 third-roll EVENT preserves role resolution ordering")
+	_expect(pending_resolution.acknowledge_resolution() and pending_resolution.phase() == Session.PHASE_RUN_OVER, "HP0 enters RUN_OVER only after third-roll resolution acknowledgement")
+
+
 func _test_stable_boundary_and_deep_copy_contracts() -> void:
 	_cleanup()
 	var manager: RefCounted = SaveManager.new(TEST_PATH)
@@ -442,22 +694,7 @@ func _test_tomb_loop_restore() -> void:
 	_cleanup()
 	var manager: RefCounted = SaveManager.new(TEST_PATH)
 	var session: RefCounted = Session.new()
-	_roll_and_finish(session, 6)
-	_roll_and_finish(session, 5)
-	session.start_roll(4)
-	_consume_hops(session)
-	var choice: Dictionary = session.finish_movement()
-	if choice.status == "CHOICE_REQUIRED":
-		session.choose_route(Course.ROUTE_MAIN)
-		_consume_hops(session)
-		session.finish_movement()
-	if session.phase() == Session.PHASE_RESOLUTION_REQUIRED:
-		session.acknowledge_resolution()
-	_roll_and_finish(session, 6)
-	_roll_and_finish(session, 5)
-	_roll_and_finish(session, 6)
-	if session.phase() == Session.PHASE_RESOLUTION_REQUIRED:
-		session.acknowledge_resolution()
+	_set_main_fixture(session, 65, [])
 	_roll_and_finish(session, 1)
 	var saved: Dictionary = manager.save_session(session)
 	var restored: RefCounted = Session.new()
@@ -476,6 +713,30 @@ func _test_old_save_is_separate_and_load_is_idempotent() -> void:
 	var restored_b: RefCounted = Session.new(StringName(data.stage_id), StringName(data.character_id))
 	_expect(restored_a.restore_stable_snapshot(data.session_state, 1000) and restored_b.restore_stable_snapshot(data.session_state, 2000), "the same stable save can be loaded repeatedly")
 	_expect(restored_a.score() == restored_b.score() and restored_a.coins() == restored_b.coins() and restored_a.visited_node_keys() == restored_b.visited_node_keys(), "repeated restore does not multiply score, coins, or visits")
+
+
+func _set_main_fixture(session: RefCounted, tile_index: int, face_values: Array) -> void:
+	var state: Dictionary = session.stable_save_snapshot(0)
+	state.route.current_node_id = "main:%d" % tile_index
+	state.route.route_id = "main"
+	state.route.tile_index = tile_index
+	state.route.visited_node_keys = ["main:%d" % tile_index]
+	state.slot.faces = face_values.duplicate()
+	state.slot.current_roll_index = face_values.size()
+	state.slot.last_role = ""
+	state.slot.last_role_resolved = false
+	state.slot.resolution_role = ""
+	state.slot.pending_role = ""
+	state.slot.pending_role_awarded = false
+	_expect(session.restore_stable_snapshot(state, 0), "save fixture restores main%d with %d faces" % [tile_index, face_values.size()])
+
+
+func _set_player_hp(session: RefCounted, hp: int) -> void:
+	var state: Dictionary = session.stable_save_snapshot(0)
+	state.player.hp = hp
+	state.player.max_hp = 3
+	state.player.life = 3
+	_expect(session.restore_stable_snapshot(state, 0), "save fixture restores HP%d/max3/LIFE3" % hp)
 
 
 func _roll_and_finish(session: RefCounted, face: int) -> Dictionary:

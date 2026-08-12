@@ -42,9 +42,7 @@ func evaluate_role() -> StringName:
 		return ROLE_TRIPLE
 	if _faces[0] == _faces[1] or _faces[0] == _faces[2] or _faces[1] == _faces[2]:
 		return ROLE_PAIR
-	var ordered := _faces.duplicate()
-	ordered.sort()
-	if ordered[1] == ordered[0] + 1 and ordered[2] == ordered[1] + 1:
+	if (_faces[1] == _faces[0] + 1 and _faces[2] == _faces[1] + 1) or (_faces[1] == _faces[0] - 1 and _faces[2] == _faces[1] - 1):
 		return ROLE_STRAIGHT
 	return ROLE_MIX
 

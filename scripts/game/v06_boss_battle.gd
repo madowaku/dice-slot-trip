@@ -10,6 +10,8 @@ const GOAL_POSITION := 20
 const SAFETY_MAX_TURNS := 11
 const WING_GATE_DISTANCE := 3
 const QUICKSAND_DISTANCE := 2
+const STRAIGHT_BONUS_DISTANCE := 3
+const TRIPLE_BONUS_DISTANCE := 5
 const ACTION_MIRROR_ROLL: StringName = &"MIRROR_ROLL"
 
 var _definition: Dictionary = {}
@@ -25,6 +27,9 @@ var _player_wing_count := 0
 var _player_sand_count := 0
 var _boss_wing_count := 0
 var _boss_sand_count := 0
+var _boss_next_move_halved := false
+var _boss_stop_turns := 0
+var _role_counts: Dictionary = {"PAIR": 0, "STRAIGHT": 0, "TRIPLE": 0}
 var _roll_set: RefCounted
 var _pending_ack := false
 var _terminal := false
@@ -37,12 +42,30 @@ func _init() -> void:
 	_load_definition()
 
 
-func configure_lap(lap: int, player_hp: int = PLAYER_MAX_HP, _carried_faces: Array = [], _run_flags: Dictionary = {}) -> bool:
+func configure_lap(lap: int, player_hp: int = PLAYER_MAX_HP, _carried_faces: Array = [], run_flags: Dictionary = {}) -> bool:
 	if lap < 1 or player_hp < 0 or player_hp > PLAYER_MAX_HP or _turn != 1 or _pending_ack or _terminal or not _definition_valid():
 		return false
 	_lap = lap
 	_player_hp = player_hp
+	_player_position = clampi(int(run_flags.get("player_head_start", 0)), 0, goal_position())
+	_boss_next_move_halved = bool(run_flags.get("boss_next_move_halved", false))
+	_boss_stop_turns = maxi(int(run_flags.get("boss_stop_turns", 0)), 0)
 	_roll_set = V06RollSetScript.new()
+	return true
+
+
+func apply_pre_race_support(action_id: String) -> bool:
+	if _turn != 1 or _pending_ack or _terminal or not _player_roll_history.is_empty() or not faces().is_empty():
+		return false
+	match action_id:
+		"boss_shield":
+			_boss_next_move_halved = true
+		"boss_head_start":
+			_player_position = mini(_player_position + 3, goal_position())
+		"boss_sabotage":
+			_boss_stop_turns = maxi(_boss_stop_turns, 1)
+		_:
+			return false
 	return true
 
 
@@ -101,6 +124,9 @@ func snapshot() -> Dictionary:
 		"player_sand_count": _player_sand_count,
 		"boss_wing_count": _boss_wing_count,
 		"boss_sand_count": _boss_sand_count,
+		"boss_next_move_halved": _boss_next_move_halved,
+		"boss_stop_turns": _boss_stop_turns,
+		"role_counts": _role_counts.duplicate(true),
 		"pending_ack": _pending_ack,
 		"victory": _terminal and _winner == "player",
 		"defeat": _terminal and _winner == "boss",
@@ -127,6 +153,9 @@ func restore_snapshot(data: Dictionary) -> bool:
 	var player_sand_count := int(data.get("player_sand_count", 0))
 	var boss_wing_count := int(data.get("boss_wing_count", 0))
 	var boss_sand_count := int(data.get("boss_sand_count", 0))
+	var boss_next_move_halved := bool(data.get("boss_next_move_halved", false))
+	var boss_stop_turns := int(data.get("boss_stop_turns", 0))
+	var role_counts_value: Variant = data.get("role_counts", {})
 	var pending_ack := bool(data.get("pending_ack", false))
 	var terminal := bool(data.get("terminal", false))
 	var winner := str(data.get("winner", ""))
@@ -140,7 +169,7 @@ func restore_snapshot(data: Dictionary) -> bool:
 		return false
 	if terminal != (winner in ["player", "boss"]) or (not terminal and not winner.is_empty()):
 		return false
-	if [player_wing_count, player_sand_count, boss_wing_count, boss_sand_count].min() < 0:
+	if [player_wing_count, player_sand_count, boss_wing_count, boss_sand_count, boss_stop_turns].min() < 0 or not role_counts_value is Dictionary:
 		return false
 	var restored_set: RefCounted = V06RollSetScript.new()
 	if not restored_set.restore_faces(faces_value as Array):
@@ -170,6 +199,11 @@ func restore_snapshot(data: Dictionary) -> bool:
 	_player_sand_count = player_sand_count
 	_boss_wing_count = boss_wing_count
 	_boss_sand_count = boss_sand_count
+	_boss_next_move_halved = boss_next_move_halved
+	_boss_stop_turns = boss_stop_turns
+	_role_counts = {"PAIR": 0, "STRAIGHT": 0, "TRIPLE": 0}
+	for role_name: String in _role_counts.keys():
+		_role_counts[role_name] = maxi(int((role_counts_value as Dictionary).get(role_name, 0)), 0)
 	_roll_set = restored_set
 	_pending_ack = pending_ack
 	_terminal = terminal
@@ -207,8 +241,9 @@ func course_tiles(is_player: bool = true) -> Array:
 func landing_preview(player_face: int) -> Dictionary:
 	var face := clampi(player_face, 1, 6)
 	var boss_face := 7 - face
+	var boss_move := _preview_boss_move(boss_face)
 	var player_landing := mini(_player_position + face, goal_position())
-	var boss_landing := mini(_boss_position + boss_face, goal_position())
+	var boss_landing := mini(_boss_position + boss_move, goal_position())
 	var player_tile := tile_at(player_landing, true)
 	var boss_tile := tile_at(boss_landing, false)
 	var player_final := _preview_effect_position(player_landing, player_tile)
@@ -216,6 +251,7 @@ func landing_preview(player_face: int) -> Dictionary:
 	return {
 		"player_roll": face,
 		"boss_roll": boss_face,
+		"boss_move": boss_move,
 		"player_position": player_landing,
 		"boss_position": boss_landing,
 		"player_tile": player_tile,
@@ -240,24 +276,29 @@ func _preview_effect_position(position: int, tile: String) -> int:
 func _resolve_turn(committed_face: int) -> void:
 	var player_roll := clampi(committed_face, 1, 6)
 	var boss_roll := 7 - player_roll
+	var boss_move := _consume_boss_move(boss_roll)
 	var player_before := _player_position
 	var boss_before := _boss_position
 	_player_roll_history.append(player_roll)
 	_boss_roll_history.append(boss_roll)
-	var role: StringName = &""
+	_roll_set.append_face(player_roll)
+	var completed_faces: Array[int] = _roll_set.faces()
+	var role: StringName = _roll_set.evaluate_role()
 	_player_position = mini(_player_position + player_roll, goal_position())
-	_boss_position = mini(_boss_position + boss_roll, goal_position())
+	_boss_position = mini(_boss_position + boss_move, goal_position())
 	var player_base_after := _player_position
 	var boss_base_after := _boss_position
-	var winner := _arrival_winner(player_before, boss_before, player_roll, boss_roll)
 	var player_tile := tile_at(_player_position, true)
-	var boss_tile := tile_at(_boss_position, false)
+	var boss_tile := tile_at(_boss_position, false) if boss_move > 0 else "NORMAL"
 	var player_effect := ""
 	var boss_effect := ""
-	if winner.is_empty():
-		player_effect = _apply_landing_effect(true, player_tile)
+	player_effect = _apply_landing_effect(true, player_tile)
+	if boss_move > 0:
 		boss_effect = _apply_landing_effect(false, boss_tile)
-		winner = _effect_winner()
+	var player_effect_position_after := _player_position
+	var boss_effect_position_after := _boss_position
+	var role_bonus := _apply_role(role)
+	var winner := _effect_winner()
 	if winner.is_empty() and _player_roll_history.size() >= int(_definition.get("safety_max_turns", SAFETY_MAX_TURNS)):
 		winner = "player" if _player_position >= _boss_position else "boss"
 	_terminal = not winner.is_empty()
@@ -267,24 +308,28 @@ func _resolve_turn(committed_face: int) -> void:
 	if _terminal:
 		if _player_roll_history.size() >= int(_definition.get("safety_max_turns", SAFETY_MAX_TURNS)) and _player_position < goal_position() and _boss_position < goal_position():
 			win_reason = "SAFETY_LIMIT_POSITION"
+		elif role_bonus > 0:
+			win_reason = "SLOT_ROLE_GOAL"
 		elif player_effect == "WING_GATE" or boss_effect == "WING_GATE":
 			win_reason = "WING_GATE_GOAL"
 		else:
 			win_reason = "BASE_MOVE_GOAL"
 	_last_result = {
 		"turn": _turn,
-		"faces": faces(),
+		"faces": completed_faces,
 		"role": role,
 		"player_roll": player_roll,
 		"boss_roll": boss_roll,
 		"player_move": player_roll,
-		"boss_move": boss_roll,
+		"boss_move": boss_move,
 		"player_modifier_used": 0,
 		"boss_modifier_used": 0,
 		"player_position_before": player_before,
 		"boss_position_before": boss_before,
 		"player_base_position_after": player_base_after,
 		"boss_base_position_after": boss_base_after,
+		"player_effect_position_after": player_effect_position_after,
+		"boss_effect_position_after": boss_effect_position_after,
 		"player_position_after": _player_position,
 		"boss_position_after": _boss_position,
 		"turn_count": _player_roll_history.size(),
@@ -302,6 +347,13 @@ func _resolve_turn(committed_face: int) -> void:
 		"boss_effect": boss_effect,
 		"player_effect_delta": _effect_delta(player_effect),
 		"boss_effect_delta": _effect_delta(boss_effect),
+		"role_bonus": role_bonus,
+		"role_effect": _role_effect_name(role),
+		"boss_move_halved": boss_move > 0 and boss_move < boss_roll,
+		"boss_move_stopped": boss_move == 0,
+		"boss_next_move_halved": _boss_next_move_halved,
+		"boss_stop_turns": _boss_stop_turns,
+		"role_counts": _role_counts.duplicate(true),
 		"player_hp_before": _player_hp,
 		"player_hp_after": _player_hp,
 		"boss_hp_before": _boss_hp,
@@ -316,6 +368,51 @@ func _resolve_turn(committed_face: int) -> void:
 		"winner": _winner,
 		"win_reason": win_reason,
 	}
+	if _roll_set.is_complete():
+		_roll_set.reset_after_resolution()
+
+
+func _preview_boss_move(boss_roll: int) -> int:
+	if _boss_stop_turns > 0:
+		return 0
+	if _boss_next_move_halved:
+		return ceili(float(boss_roll) * 0.5)
+	return boss_roll
+
+
+func _consume_boss_move(boss_roll: int) -> int:
+	if _boss_stop_turns > 0:
+		_boss_stop_turns -= 1
+		return 0
+	if _boss_next_move_halved:
+		_boss_next_move_halved = false
+		return ceili(float(boss_roll) * 0.5)
+	return boss_roll
+
+
+func _apply_role(role: StringName) -> int:
+	match role:
+		V06RollSetScript.ROLE_PAIR:
+			_boss_next_move_halved = true
+			_role_counts.PAIR += 1
+		V06RollSetScript.ROLE_STRAIGHT:
+			_player_position = mini(_player_position + STRAIGHT_BONUS_DISTANCE, goal_position())
+			_role_counts.STRAIGHT += 1
+			return STRAIGHT_BONUS_DISTANCE
+		V06RollSetScript.ROLE_TRIPLE:
+			_player_position = mini(_player_position + TRIPLE_BONUS_DISTANCE, goal_position())
+			_boss_stop_turns += 1
+			_role_counts.TRIPLE += 1
+			return TRIPLE_BONUS_DISTANCE
+	return 0
+
+
+func _role_effect_name(role: StringName) -> String:
+	match role:
+		V06RollSetScript.ROLE_PAIR: return "SHIELD"
+		V06RollSetScript.ROLE_STRAIGHT: return "ACCELERATE"
+		V06RollSetScript.ROLE_TRIPLE: return "FINISHER"
+		_: return ""
 
 
 func _arrival_winner(player_before: int, boss_before: int, player_move: int, boss_move: int) -> String:

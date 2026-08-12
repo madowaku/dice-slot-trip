@@ -18,13 +18,14 @@ config/features=PackedStringArray("4.7")
 
 GameState="*res://autoload/game_state.gd"
 SaveManager="*res://autoload/save_manager.gd"
+BgmManager="*res://autoload/bgm_manager.gd"
 
 [display]
 
 window/size/viewport_width=720
 window/size/viewport_height=1280
 window/size/window_width_override=360
-window/size/window_height_override=640
+window/size/window_height_override=800
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1

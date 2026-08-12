@@ -150,7 +150,7 @@ func _read_candidate(path: String) -> Dictionary:
 		return {"exists": true, "valid": false, "status": STATUS_CORRUPT, "data": {}}
 	var parsed: Variant = parser.data
 	var validation := V06SessionSaveDataScript.validate(parsed)
-	return {"exists": true, "valid": bool(validation.get("ok", false)), "status": str(validation.get("status", STATUS_CORRUPT)), "data": parsed if bool(validation.get("ok", false)) else {}, "error": str(validation.get("error", ""))}
+	return {"exists": true, "valid": bool(validation.get("ok", false)), "status": str(validation.get("status", STATUS_CORRUPT)), "data": validation.get("data", {}) if bool(validation.get("ok", false)) else {}, "error": str(validation.get("error", ""))}
 
 
 func _cleanup_temp() -> void:

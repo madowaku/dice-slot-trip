@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: production game UI asset for a Godot mobile boss-victory overlay
+Input images: Image 1 is the exact UI material-and-ornament style reference; Image 2 is the Cairo world, palette, and finish-quality reference. Use them as style references only; do not edit or reproduce their composition.
+Primary request: create one centered Egyptian heart roulette wheel with exactly six equal radial wedge compartments. The six blank compartments will receive live numeric labels in code. Put one large faceted rose-quartz heart gem in the center. No pointer.
+Scene/backdrop: perfectly flat solid #00ff00 chroma-key background for local background removal.
+Style/medium: polished hand-painted 3D mobile-game UI asset; ornate but chunky and readable at small size; deep teal cracked leather, aged gold/brass, warm ivory separator lines, restrained coral-pink heart glow; same premium visual language as Image 1 and the warm Cairo craft detail of Image 2.
+Composition/framing: square, perfectly front-on and symmetrical, no perspective tilt; wheel fills about 84% of the canvas; all edges fully visible with generous even padding; six compartments are visually unmistakable and evenly divided; center gem occupies no more than 28% of wheel diameter.
+Lighting/mood: warm celebratory gold rim light, restrained magical glow contained inside the asset.
+Materials/textures: engraved brass, teal leather/enamel, carved Egyptian geometric details, rose-quartz heart.
+Constraints: exactly six wedges; one central heart only; no text, no numbers, no letters, no symbols, no dice, no characters, no scene background, no casino red-and-black styling, no watermark. The background must be one uniform #00ff00 with no shadows, gradients, texture, floor plane, reflections, or lighting variation. Keep the wheel fully separated from the background with crisp edges. Do not use #00ff00 anywhere in the wheel. No cast shadow, no contact shadow, no reflection outside the wheel.

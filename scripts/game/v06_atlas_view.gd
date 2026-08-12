@@ -24,7 +24,7 @@ const DISTRICT_SCENERY_TEXTURES: Dictionary = {
 	&"DUNES": preload("res://assets/art/v14/cairo_districts/dunes.png"),
 }
 const DISTRICT_IDS: Array[StringName] = [&"MARKET", &"PYRAMID", &"OASIS", &"RUINS", &"DUNES"]
-const DISTRICT_START_TILES: Array[int] = [0, 12, 24, 35, 46]
+const DISTRICT_START_TILES: Array[int] = [0, 18, 36, 54, 72]
 const DISTRICT_TRANSITION_TILES := 3.0
 
 const ROUTE_STYLE_MAIN: StringName = &"main_teal_solid"
@@ -46,6 +46,8 @@ const OVERVIEW_ZOOM := 0.28
 const OVERVIEW_DETAIL_ZOOM := 0.52
 const OVERVIEW_CENTER := Vector2(520.0, 60.0)
 const OVERVIEW_TAP_DRAG_THRESHOLD := 18.0
+const OVERVIEW_VISUAL_MARGIN_WORLD := 96.0
+const OVERVIEW_EDGE_PADDING := 18.0
 const LANDING_NORMAL_SECONDS := 0.48
 const LANDING_SPECIAL_SECONDS := 0.78
 const LANDING_HOLD_SECONDS := 0.08
@@ -158,6 +160,7 @@ var _bypass_entry_play_count := 0
 var _camera_presentation_active := false
 var _camera_presentation_kind := ""
 var _comparison_route_id := ""
+var _comparison_targets: Dictionary = {}
 var _camera_presentation_play_counts := {
 	"stage_sweep": 0,
 	"branch_context": 0,
@@ -224,7 +227,7 @@ func set_route_position(route_position: Dictionary, immediate := false) -> bool:
 		return false
 	_current_position = route_position.duplicate(true)
 	_cat_world = world_position_for(_current_position)
-	_camera_target_world = world_position_for(_current_position) if _overview_mode and _overview_detail_mode else _camera_focus_for(_current_position)
+	_camera_target_world = _clamp_overview_camera(world_position_for(_current_position)) if _overview_mode and _overview_detail_mode else _camera_focus_for(_current_position)
 	if immediate or _camera_world == Vector2.ZERO:
 		_camera_world = _camera_target_world
 	if _course.is_loop_route(str(_current_position.route_id)):
@@ -239,10 +242,10 @@ func set_overview_mode(enabled: bool) -> void:
 	_overview_mode = enabled
 	_overview_detail_mode = false
 	_overview_pointer_active = false
-	mouse_filter = Control.MOUSE_FILTER_PASS if enabled else Control.MOUSE_FILTER_IGNORE
+	mouse_filter = Control.MOUSE_FILTER_STOP if enabled else Control.MOUSE_FILTER_IGNORE
 	if enabled:
 		_world_zoom = OVERVIEW_ZOOM
-		_camera_target_world = OVERVIEW_CENTER
+		_camera_target_world = _clamp_overview_camera(OVERVIEW_CENTER)
 		_camera_world = _camera_target_world
 	else:
 		_world_zoom = 0.72
@@ -260,20 +263,20 @@ func toggle_overview_zoom() -> bool:
 		return false
 	_overview_detail_mode = not _overview_detail_mode
 	_world_zoom = OVERVIEW_DETAIL_ZOOM if _overview_detail_mode else OVERVIEW_ZOOM
-	_camera_target_world = world_position_for(_current_position) if _overview_detail_mode else OVERVIEW_CENTER
+	_camera_target_world = _clamp_overview_camera(world_position_for(_current_position) if _overview_detail_mode else OVERVIEW_CENTER)
 	_camera_world = _camera_target_world
 	queue_redraw()
 	return true
 
 
 func pan_overview_vertical(screen_delta_y: float) -> bool:
-	if not _overview_mode or not _overview_detail_mode or _camera_presentation_active:
+	return pan_overview(Vector2(0.0, screen_delta_y))
+
+
+func pan_overview(screen_delta: Vector2) -> bool:
+	if not _overview_mode or _camera_presentation_active:
 		return false
-	_camera_world.y = clampf(
-		_camera_world.y - screen_delta_y / maxf(_world_zoom, 0.01),
-		_overview_world_y_bounds().x,
-		_overview_world_y_bounds().y
-	)
+	_camera_world = _clamp_overview_camera(_camera_world - screen_delta / maxf(_world_zoom, 0.01))
 	_camera_target_world = _camera_world
 	queue_redraw()
 	return true
@@ -286,8 +289,15 @@ func overview_interaction_receipt() -> Dictionary:
 		"zoom": _world_zoom,
 		"camera_world": _camera_world,
 		"current_world": world_position_for(_current_position),
-		"vertical_drag_enabled": _overview_mode and _overview_detail_mode,
+		"vertical_drag_enabled": _overview_mode,
+		"two_axis_drag_enabled": _overview_mode,
+		"camera_bounds": _overview_camera_bounds(),
+		"content_bounds": _overview_content_bounds(),
 	}
+
+
+func overview_screen_position_for(route_position: Dictionary) -> Vector2:
+	return _to_screen(world_position_for(route_position))
 
 
 func _begin_overview_pointer(position: Vector2) -> void:
@@ -300,10 +310,8 @@ func _update_overview_pointer(position: Vector2, relative: Vector2) -> void:
 	if not _overview_pointer_active:
 		return
 	_overview_pointer_travel = maxf(_overview_pointer_travel, _overview_pointer_origin.distance_to(position))
-	# Keep horizontal gestures available to surrounding UI; this map only owns
-	# deliberate vertical movement while its detail view is open.
-	if absf(relative.y) > absf(relative.x):
-		pan_overview_vertical(relative.y)
+	if _overview_pointer_travel > OVERVIEW_TAP_DRAG_THRESHOLD:
+		pan_overview(relative)
 
 
 func _finish_overview_pointer(position: Vector2) -> void:
@@ -315,14 +323,49 @@ func _finish_overview_pointer(position: Vector2) -> void:
 		toggle_overview_zoom()
 
 
-func _overview_world_y_bounds() -> Vector2:
-	var minimum := INF
-	var maximum := -INF
+func _overview_content_bounds() -> Rect2:
+	var minimum := Vector2(INF, INF)
+	var maximum := Vector2(-INF, -INF)
 	for route_points: Array in _route_points.values():
 		for point: Vector2 in route_points:
-			minimum = minf(minimum, point.y)
-			maximum = maxf(maximum, point.y)
-	return Vector2(minimum, maximum) if minimum <= maximum else Vector2.ZERO
+			minimum.x = minf(minimum.x, point.x)
+			minimum.y = minf(minimum.y, point.y)
+			maximum.x = maxf(maximum.x, point.x)
+			maximum.y = maxf(maximum.y, point.y)
+	if minimum.x > maximum.x or minimum.y > maximum.y:
+		return Rect2()
+	var margin := Vector2.ONE * OVERVIEW_VISUAL_MARGIN_WORLD
+	return Rect2(minimum - margin, maximum - minimum + margin * 2.0)
+
+
+func _overview_focus() -> Vector2:
+	return Vector2(size.x * 0.43, size.y * 0.56)
+
+
+func _overview_camera_bounds() -> Rect2:
+	var content := _overview_content_bounds()
+	if content.size == Vector2.ZERO:
+		return Rect2(_camera_world, Vector2.ZERO)
+	var zoom := maxf(_world_zoom, 0.01)
+	var focus := _overview_focus()
+	var viewport_extent := Vector2(maxf(size.x, 1.0), maxf(size.y, 1.0))
+	var padding := Vector2.ONE * OVERVIEW_EDGE_PADDING
+	var minimum_camera := content.position + (focus - padding) / zoom
+	var maximum_camera := content.end - (viewport_extent - padding - focus) / zoom
+	for axis: int in range(2):
+		if minimum_camera[axis] > maximum_camera[axis]:
+			var centered := content.get_center()[axis] - (viewport_extent[axis] * 0.5 - focus[axis]) / zoom
+			minimum_camera[axis] = centered
+			maximum_camera[axis] = centered
+	return Rect2(minimum_camera, maximum_camera - minimum_camera)
+
+
+func _clamp_overview_camera(candidate: Vector2) -> Vector2:
+	var bounds := _overview_camera_bounds()
+	return Vector2(
+		clampf(candidate.x, bounds.position.x, bounds.end.x),
+		clampf(candidate.y, bounds.position.y, bounds.end.y)
+	)
 
 
 func play_stage_overview_sweep(keep_overview := false) -> void:
@@ -369,7 +412,7 @@ func play_branch_context(route_id: String) -> void:
 	await _play_context_preview("branch_context", center, 0.50)
 
 
-func show_branch_comparison(route_id: String) -> bool:
+func show_branch_comparison(route_id: String, targets: Dictionary = {}) -> bool:
 	var definition := _bypass_definition(route_id)
 	if definition.is_empty():
 		return false
@@ -383,6 +426,7 @@ func show_branch_comparison(route_id: String) -> bool:
 		center += point / float(maxi(branch_points.size(), 1)) * 0.30
 	center /= 1.30
 	_comparison_route_id = route_id
+	_comparison_targets = targets.duplicate(true)
 	_overview_mode = true
 	_overview_detail_mode = false
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -391,6 +435,10 @@ func show_branch_comparison(route_id: String) -> bool:
 	_camera_target_world = center
 	queue_redraw()
 	return true
+
+
+func comparison_target_receipt() -> Dictionary:
+	return _comparison_targets.duplicate(true)
 
 
 func play_loop_return_context(route_position: Dictionary) -> void:
@@ -455,6 +503,7 @@ func _set_camera_frame(zoom: float, center: Vector2) -> void:
 
 func _restore_local_camera() -> void:
 	_comparison_route_id = ""
+	_comparison_targets.clear()
 	_overview_mode = false
 	_overview_detail_mode = false
 	_overview_pointer_active = false
@@ -1034,7 +1083,7 @@ func _set_landing_progress(value: float) -> void:
 func _landing_result_for_kind(kind: String) -> String:
 	match kind:
 		"COIN": return "+2"
-		"REST": return "+HP"
+		"REST": return "♥ +1"
 		"RISK": return "-1"
 		"ITEM": return "GET"
 		"EVENT": return "?"
@@ -1147,7 +1196,7 @@ func tile_visual_spec(kind: String) -> Dictionary:
 	match kind:
 		"NORMAL": return {"shape_id": &"rounded_square", "icon_id": &"imagegen_footprints", "base_color": KIND_NORMAL, "priority": 6}
 		"COIN": return {"shape_id": &"circle", "icon_id": &"kenney_tokens_stack", "base_color": KIND_COIN, "priority": 3}
-		"REST": return {"shape_id": &"leaf", "icon_id": &"kenney_campfire", "base_color": KIND_REST, "priority": 2}
+		"REST": return {"shape_id": &"leaf", "icon_id": &"heart", "base_color": KIND_REST, "priority": 2}
 		"RISK": return {"shape_id": &"triangle", "icon_id": &"kenney_skull", "base_color": KIND_RISK, "priority": 1}
 		"ITEM": return {"shape_id": &"box", "icon_id": &"kenney_pouch", "base_color": KIND_ITEM, "priority": 5}
 		"EVENT": return {"shape_id": &"hex", "icon_id": &"kenney_book_open", "base_color": KIND_EVENT, "priority": 5}
@@ -1347,6 +1396,7 @@ func exit_emphasis_receipt() -> Dictionary:
 		"active": _course.is_loop_route(route_id) and _exit_steps > 0,
 		"route_id": route_id,
 		"exit_index": _course.loop_exit_index(route_id) if _course.is_loop_route(route_id) else -1,
+		"exit_indices": _course.loop_exit_indices(route_id) if _course.is_loop_route(route_id) else [],
 		"steps": displayed_exit_steps(),
 		"wrap_count": _loop_wrap_count,
 		"rescue_threshold": _loop_rescue_threshold,
@@ -1369,18 +1419,8 @@ func _build_route_points() -> void:
 		var column := tile_index % 8
 		var visual_column := column if row % 2 == 0 else 7 - column
 		main.append(Vector2(100.0 + visual_column * 120.0, 1040.0 - row * 280.0))
-	var bazaar: Array[Vector2] = [
-		Vector2(760.0, 700.0),
-		Vector2(860.0, 620.0),
-		Vector2(750.0, 530.0),
-	]
-	var sirocco: Array[Vector2] = [
-		Vector2(40.0, -105.0),
-		Vector2(-90.0, -155.0),
-		Vector2(-145.0, -235.0),
-		Vector2(-80.0, -315.0),
-		Vector2(65.0, -345.0),
-	]
+	var bazaar := _build_bypass_points(main[32], main[41], 4, 150.0)
+	var sirocco := _build_bypass_points(main[71], main[83], 5, -170.0)
 	var oasis: Array[Vector2] = []
 	var oasis_center := Vector2(-180.0, 210.0)
 	for tile_index: int in range(8):
@@ -1760,7 +1800,7 @@ func _draw_flat_atlas_texture() -> void:
 
 
 static func district_scenery_state_for_main_position(tile_position: float) -> Dictionary:
-	var position := clampf(tile_position, 0.0, 57.0)
+	var position := clampf(tile_position, 0.0, 89.0)
 	var district_index := 0
 	for index: int in range(DISTRICT_START_TILES.size()):
 		if position >= float(DISTRICT_START_TILES[index]):
@@ -1768,7 +1808,7 @@ static func district_scenery_state_for_main_position(tile_position: float) -> Di
 		else:
 			break
 	var start_tile := float(DISTRICT_START_TILES[district_index])
-	var end_tile := 58.0 if district_index == DISTRICT_START_TILES.size() - 1 else float(DISTRICT_START_TILES[district_index + 1])
+	var end_tile := 90.0 if district_index == DISTRICT_START_TILES.size() - 1 else float(DISTRICT_START_TILES[district_index + 1])
 	var span := maxf(1.0, end_tile - start_tile - 1.0)
 	var local_progress := clampf((position - start_tile) / span, 0.0, 1.0)
 	var has_next := district_index < DISTRICT_IDS.size() - 1
@@ -1779,6 +1819,16 @@ static func district_scenery_state_for_main_position(tile_position: float) -> Di
 		"local_progress": local_progress,
 		"transition": transition,
 	}
+
+
+func _build_bypass_points(from: Vector2, to: Vector2, point_count: int, side_offset: float) -> Array[Vector2]:
+	var points: Array[Vector2] = []
+	var axis := to - from
+	var normal := Vector2(-axis.y, axis.x).normalized()
+	for index: int in range(point_count):
+		var progress := float(index + 1) / float(point_count + 1)
+		points.append(from.lerp(to, progress) + normal * sin(progress * PI) * side_offset)
+	return points
 
 
 func _visual_main_tile_position() -> float:
@@ -1911,6 +1961,7 @@ func _draw_route_graph() -> void:
 		for tile_index: int in range(points.size()):
 			var is_local := _overview_mode or prominent_keys.has(_position_key(route_id, tile_index)) or branch_keys.has(_position_key(route_id, tile_index))
 			_draw_route_tile(route_id, tile_index, _to_screen(points[tile_index]), is_local)
+	_draw_comparison_targets()
 	if _overview_mode:
 		for bypass_definition: Dictionary in _bypass_definitions():
 			var route_id := str(bypass_definition.route_id)
@@ -1961,7 +2012,7 @@ func _draw_route_tile(route_id: String, tile_index: int, screen_position: Vector
 	if screen_position.x < -80.0 or screen_position.x > size.x + 80.0 or screen_position.y < -80.0 or screen_position.y > size.y + 80.0:
 		return
 	var is_current := route_id == str(_current_position.route_id) and tile_index == int(_current_position.tile_index)
-	var is_active_exit: bool = _course.is_loop_route(str(_current_position.get("route_id", ""))) and route_id == str(_current_position.get("route_id", "")) and tile_index == _course.loop_exit_index(route_id)
+	var is_active_exit: bool = _course.is_loop_route(str(_current_position.get("route_id", ""))) and route_id == str(_current_position.get("route_id", "")) and _course.is_loop_exit(route_id, tile_index)
 	var loop_preview_tile: bool = _course.is_loop_route(route_id) and _loop_preview_active()
 	if not prominent and not loop_preview_tile and not is_current:
 		return
@@ -1991,6 +2042,39 @@ func _draw_route_tile(route_id: String, tile_index: int, screen_position: Vector
 	var text_color := Color("#8a5713") if is_active_exit else (Color("#fff3d5") if is_current else (Color("#a4947e") if _carousel_tile_is_context else MUTED_INK))
 	var label_size := 10 if _overview_mode else (11 if _carousel_tile_is_context else (12 if loop_preview_tile and not prominent else 14))
 	draw_string(APP_FONT, screen_position + Vector2(-radius, radius * 0.88), label, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, label_size, text_color)
+	if is_active_exit:
+		var destination_label: String = str(_course.loop_exit_label(route_id, tile_index))
+		draw_string(APP_FONT, screen_position + Vector2(-radius * 1.35, radius * 1.46), destination_label, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.7, 10 if _overview_mode else 12, Color("#f6d477"))
+
+
+func _draw_comparison_targets() -> void:
+	if _comparison_targets.is_empty():
+		return
+	for choice_id: String in _comparison_targets:
+		var target: Variant = _comparison_targets.get(choice_id)
+		if not target is Dictionary:
+			continue
+		var position: Variant = (target as Dictionary).get("position", {})
+		if not position is Dictionary or not _is_known_position(position):
+			continue
+		var center: Vector2 = _to_screen(world_position_for(position))
+		var is_main: bool = choice_id == V06CourseModelScript.ROUTE_MAIN
+		var color: Color = Color(MAIN_TEAL if is_main else BYPASS_RUST, 0.98)
+		draw_circle(center, 27.0, Color(color, 0.18))
+		draw_arc(center, 23.0, 0.0, TAU, 40, color, 5.0, true)
+		var route_label: String = "本線" if is_main else "近道"
+		var kind_label: String = _kind_short_label(str((target as Dictionary).get("tile_kind", "NORMAL")))
+		draw_string(APP_FONT, center + Vector2(-65.0, -34.0), "%s → %s" % [route_label, kind_label], HORIZONTAL_ALIGNMENT_CENTER, 130.0, 15, Color("#fff3d5"))
+
+
+func _kind_short_label(kind: String) -> String:
+	match kind:
+		"REST": return "♥ 回復"
+		"RISK": return "⚠ 危険"
+		"COIN": return "コイン"
+		"ITEM": return "道具"
+		"EVENT": return "？"
+		_: return "旅路"
 
 
 func _draw_tile_kind_badge(center: Vector2, tile_radius: float, kind: String, is_current: bool) -> void:
@@ -2000,7 +2084,7 @@ func _draw_tile_kind_badge(center: Vector2, tile_radius: float, kind: String, is
 	var outline := Color("#f8eccf") if is_current else Color("#514538")
 	_draw_kind_shape(center, badge_radius, StringName(spec.shape_id), fill, outline)
 	var icon_id := StringName(spec.icon_id)
-	var icon_scale := 0.82 if kind == "RISK" else (0.70 if tile_kind_icon_texture(icon_id) != null else 0.58)
+	var icon_scale := 0.82 if kind == "RISK" else (0.88 if icon_id == &"heart" else (0.70 if tile_kind_icon_texture(icon_id) != null else 0.58))
 	_draw_kind_icon(center, badge_radius * icon_scale, icon_id, Color("#fff0ca") if kind in ["RISK", "START", "BOSS_GATE"] else Color("#41372e"))
 
 
@@ -2103,7 +2187,8 @@ func tile_kind_icon_texture(icon_id: StringName) -> Texture2D:
 
 func uses_production_tile_kind_icons() -> bool:
 	for kind: String in ["NORMAL", "COIN", "REST", "RISK", "ITEM", "EVENT"]:
-		if tile_kind_icon_texture(StringName(tile_visual_spec(kind).icon_id)) == null:
+		var icon_id := StringName(tile_visual_spec(kind).icon_id)
+		if tile_kind_icon_texture(icon_id) == null and icon_id != &"heart":
 			return false
 	return true
 
@@ -2111,6 +2196,8 @@ func uses_production_tile_kind_icons() -> bool:
 func tile_kind_glyph_opaque_bound_at_360(kind: String, tile_radius := CAROUSEL_TILE_RADIUS) -> float:
 	var icon_id := StringName(tile_visual_spec(kind).icon_id)
 	var texture := tile_kind_icon_texture(icon_id)
+	if icon_id == &"heart":
+		return kind_badge_radius_for_tile(tile_radius) * 0.88 * 0.78
 	if texture == null:
 		return 0.0
 	var used := texture.get_image().get_used_rect()
@@ -2240,7 +2327,7 @@ func _draw_dashed_segment(from: Vector2, to: Vector2, color: Color, width: float
 
 func _to_screen(world: Vector2) -> Vector2:
 	var route_id := str(_current_position.get("route_id", ""))
-	var focus := Vector2(size.x * 0.50, size.y * 0.60) if not _overview_mode and _course.is_loop_route(route_id) else Vector2(size.x * 0.43, size.y * 0.56)
+	var focus := Vector2(size.x * 0.50, size.y * 0.60) if not _overview_mode and _course.is_loop_route(route_id) else _overview_focus()
 	return (world - _camera_world) * _world_zoom + focus
 
 

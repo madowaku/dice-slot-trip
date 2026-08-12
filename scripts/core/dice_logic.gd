@@ -13,14 +13,12 @@ const FIVE_OF_A_KIND: StringName = &"FIVE_OF_A_KIND"
 static func evaluate(values: Array[int]) -> Dictionary:
 	if values.size() != 3:
 		return {"main": MAIN_NONE, "support": MAIN_NONE, "labels": []}
-	var sorted: Array[int] = values.duplicate()
-	sorted.sort()
 	var main: StringName = MAIN_NONE
-	if sorted[0] == sorted[2]:
+	if values[0] == values[1] and values[1] == values[2]:
 		main = TRIPLE
-	elif sorted[1] == sorted[0] + 1 and sorted[2] == sorted[1] + 1:
+	elif (values[1] == values[0] + 1 and values[2] == values[1] + 1) or (values[1] == values[0] - 1 and values[2] == values[1] - 1):
 		main = STRAIGHT
-	elif sorted[0] == sorted[1] or sorted[1] == sorted[2]:
+	elif values[0] == values[1] or values[0] == values[2] or values[1] == values[2]:
 		main = PAIR
 	var support: StringName = MAIN_NONE
 	if values.all(func(value: int) -> bool: return value % 2 == 1):

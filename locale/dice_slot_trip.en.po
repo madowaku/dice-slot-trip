@@ -19,19 +19,19 @@ msgid "TILE_HELP_COIN_TITLE"
 msgstr "COINS FOUND"
 
 msgid "TILE_HELP_COIN_BODY"
-msgstr "Gain coins that count toward missions and your score."
+msgstr "Gain a coin. Spend coins on items and boss support."
 
 msgid "TILE_HELP_REST_TITLE"
 msgstr "TAKE A REST"
 
 msgid "TILE_HELP_REST_BODY"
-msgstr "Rest by the water and recover lost HP."
+msgstr "♥ Recover 1 heart."
 
 msgid "TILE_HELP_RISK_TITLE"
 msgstr "DANGER ZONE"
 
 msgid "TILE_HELP_RISK_BODY"
-msgstr "A risky tile may deal damage or slow your next move. Shortcuts have a price."
+msgstr "⚠ Lose 1 heart. Shortcuts alternate RISK and REST."
 
 msgid "TILE_HELP_WARP_TITLE"
 msgstr "WARP POINT"
@@ -41,6 +41,15 @@ msgstr "An entrance to another route. In a ring, it can lead you toward the exit
 
 msgid "TILE_HELP_TAP_TO_CLOSE"
 msgstr "Tap anywhere to continue"
+
+msgid "THREE_ROLL_ONBOARDING_TITLE"
+msgstr "ROLL, STOP, COMPLETE A SET"
+
+msgid "THREE_ROLL_ONBOARDING_BODY"
+msgstr "Tap again while the die rolls. It stops on the face you see.\nMove that many spaces: 1 space = 1 point!\n\nPAIR: two matching faces → SKILL +1\nSTRAIGHT: three consecutive faces → SKILL +2\nTRIPLE: three matching faces → SKILL READY\nMIX: anything else → COIN +1\n\nIn the boss race they become Shield, Boost, and Finisher."
+
+msgid "THREE_ROLL_ONBOARDING_CTA"
+msgstr "GOT IT — START THE JOURNEY"
 
 msgid "TRAVEL_MENU_BUTTON"
 msgstr "MENU"
@@ -79,7 +88,7 @@ msgid "DEFEAT_TITLE"
 msgstr "SPHINX WINS"
 
 msgid "VICTORY_SCORE"
-msgstr "SCORE %s"
+msgstr "SPACES TRAVELLED %s"
 
 msgid "VICTORY_MISSIONS"
 msgstr "MISSION %d / %d"
@@ -89,3 +98,32 @@ msgstr "ALL MISSIONS COMPLETE"
 
 msgid "VICTORY_NEXT"
 msgstr "NEXT JOURNEY"
+
+msgid "EVENT_MARKET_HAWKER_TITLE"
+msgstr "MARKET HAWKER"
+msgid "EVENT_MARKET_HAWKER_FIRST"
+msgstr "A lively market hawker calls out, holding something bright in the sun."
+msgid "EVENT_MARKET_HAWKER_REPEAT"
+msgstr "The familiar hawker spots you and waves just as cheerfully as before."
+msgid "EVENT_NILE_TAILWIND_TITLE"
+msgstr "NILE TAILWIND"
+msgid "EVENT_NILE_TAILWIND_FIRST"
+msgstr "A welcome tailwind fills the sail and carries your spirits along the Nile."
+msgid "EVENT_NILE_TAILWIND_REPEAT"
+msgstr "Once again, the Nile wind fills the sail and lightens your step."
+msgid "EVENT_RUIN_WHISPER_TITLE"
+msgstr "WHISPERING RUINS"
+msgid "EVENT_RUIN_WHISPER_FIRST"
+msgstr "Blue light unfurls from the ruin wall, whispering a secret of the hourglass."
+msgid "EVENT_RUIN_WHISPER_REPEAT"
+msgstr "The blue light stirs again, carrying a whisper you remember."
+msgid "EVENT_FERRY_OFFER_TITLE"
+msgstr "FERRY OFFER"
+msgid "EVENT_FERRY_OFFER_FIRST"
+msgstr "A cheerful crocodile boatman invites you aboard his Nile ferry."
+msgid "EVENT_FERRY_OFFER_REPEAT"
+msgstr "The familiar boatman waves cheerfully from his ferry once again."
+msgid "EVENT_DISCOVERY_SCORE"
+msgstr "FIRST DISCOVERY!"
+msgid "EVENT_CONTINUE_CTA"
+msgstr "CONTINUE JOURNEY"

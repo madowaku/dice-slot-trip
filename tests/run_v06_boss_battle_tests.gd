@@ -9,7 +9,7 @@ func _init() -> void:
 	_test_mirror_rolls_and_asymmetric_preview()
 	_test_immediate_lane_effects()
 	_test_player_victory_and_boss_victory()
-	_test_boss_race_has_no_roll_slot()
+	_test_boss_race_slot_roles()
 	_test_exact_arrival_tie()
 	_test_snapshot_restore_and_rejections()
 	print("V06_BOSS_BATTLE_TESTS failures=%d" % failures)
@@ -62,25 +62,53 @@ func _test_player_victory_and_boss_victory() -> void:
 		player_finish = player.roll_face(6).result
 		if not player.snapshot().terminal:
 			_expect(player.acknowledge_round(), "high-roll path turn %d acknowledges" % (index + 1))
-	_expect(player_finish.victory and player_finish.winner == "player" and player.snapshot().terminal, "four high rolls win the 20-space race")
-	_expect(player_finish.turn_count == 4 and player_finish.boss_stamp == "cairo_sphinx_win", "terminal result exposes Sphinx record fields")
+		else:
+			break
+	_expect(player_finish.victory and player_finish.winner == "player" and player.snapshot().terminal, "high rolls and TRIPLE finish the 20-space race")
+	_expect(player_finish.turn_count <= 4 and player_finish.boss_stamp == "cairo_sphinx_win", "terminal result exposes Sphinx record fields")
 	_expect(not player.roll_face(6).ok and player.acknowledge_round(), "terminal race blocks rolls and accepts one result acknowledgment")
 	_expect(player.snapshot().terminal and not player.snapshot().pending_ack, "terminal result remains stable after acknowledgment")
 	var sphinx: RefCounted = V06BossBattleScript.new()
 	var sphinx_finish: Dictionary = {}
-	for index: int in range(4):
+	for index: int in range(11):
 		sphinx_finish = sphinx.roll_face(1).result
 		if not sphinx.snapshot().terminal:
 			_expect(sphinx.acknowledge_round(), "low-roll path turn %d acknowledges" % (index + 1))
-	_expect(sphinx_finish.defeat and sphinx_finish.winner == "boss" and sphinx.snapshot().terminal, "four low rolls record a Sphinx victory")
+		else:
+			break
+	_expect(sphinx_finish.defeat and sphinx_finish.winner == "boss" and sphinx.snapshot().terminal, "low rolls still let the Sphinx win despite recurring shields")
 
 
-func _test_boss_race_has_no_roll_slot() -> void:
+func _test_boss_race_slot_roles() -> void:
 	var battle: RefCounted = V06BossBattleScript.new()
 	_expect(battle.configure_lap(2, 2, [4, 4]), "boss race accepts carried HP context")
-	_expect(battle.faces().is_empty() and battle.snapshot().course_length == 20, "boss race starts a 20-space course without 3ROLL SLOT carry")
-	var turn: Dictionary = battle.roll_face(4).result
-	_expect(turn.role == &"" and battle.faces().is_empty(), "boss roll does not fill or evaluate 3ROLL SLOT")
+	_expect(battle.faces().is_empty() and battle.snapshot().course_length == 20, "boss race starts a fresh 3ROLL SLOT without travel carry")
+	for face: int in [2, 2]:
+		var partial: Dictionary = battle.roll_face(face).result
+		_expect(partial.role == &"" and battle.faces().size() > 0 and battle.acknowledge_round(), "boss roll fills the active slot before resolution")
+	var pair: Dictionary = battle.roll_face(3).result
+	_expect(pair.role == &"PAIR" and pair.role_effect == "SHIELD" and battle.faces().is_empty() and pair.boss_next_move_halved, "PAIR resolves to a shield then resets the three slots")
+	battle.acknowledge_round()
+	var shielded: Dictionary = battle.roll_face(1).result
+	_expect(shielded.boss_roll == 6 and shielded.boss_move == 3 and shielded.boss_move_halved, "PAIR halves the next Sphinx movement, rounded up")
+	var straight: RefCounted = V06BossBattleScript.new()
+	for face: int in [3, 4]:
+		straight.roll_face(face); straight.acknowledge_round()
+	var straight_result: Dictionary = straight.roll_face(5).result
+	_expect(straight_result.role == &"STRAIGHT" and straight_result.role_bonus == 3 and straight_result.role_effect == "ACCELERATE", "STRAIGHT adds three player spaces")
+	var shuffled: RefCounted = V06BossBattleScript.new()
+	for face: int in [1, 3]:
+		shuffled.roll_face(face); shuffled.acknowledge_round()
+	var shuffled_result: Dictionary = shuffled.roll_face(2).result
+	_expect(shuffled_result.role == &"MIX", "shuffled consecutive faces do not count as STRAIGHT")
+	var triple: RefCounted = V06BossBattleScript.new()
+	for face: int in [2, 2]:
+		triple.roll_face(face); triple.acknowledge_round()
+	var triple_result: Dictionary = triple.roll_face(2).result
+	_expect(triple_result.role == &"TRIPLE" and triple_result.role_bonus == 5 and triple_result.boss_stop_turns == 1, "TRIPLE adds five spaces and arms a one-turn stop")
+	triple.acknowledge_round()
+	var stopped: Dictionary = triple.roll_face(4).result
+	_expect(stopped.boss_roll == 3 and stopped.boss_move == 0 and stopped.boss_move_stopped, "TRIPLE stops the next Sphinx movement")
 
 
 func battle_courses_contain_rest(battle: RefCounted) -> bool:
@@ -108,7 +136,7 @@ func _test_snapshot_restore_and_rejections() -> void:
 	_expect(not restored_pending.roll_face(2).ok and restored_pending.acknowledge_round(), "restored result requires acknowledgment before another roll")
 	var ready_snapshot: Dictionary = restored_pending.snapshot()
 	var restored_ready: RefCounted = V06BossBattleScript.new()
-	_expect(restored_ready.restore_snapshot(ready_snapshot) and restored_ready.faces().is_empty(), "between-turn checkpoint preserves positions without a boss SLOT")
+	_expect(restored_ready.restore_snapshot(ready_snapshot) and restored_ready.faces() == [4], "between-turn checkpoint preserves the boss SLOT")
 	var corrupt: Dictionary = ready_snapshot.duplicate(true)
 	corrupt.boss_roll_history[0] = 4
 	_expect(not V06BossBattleScript.new().restore_snapshot(corrupt), "non-mirror history is rejected")

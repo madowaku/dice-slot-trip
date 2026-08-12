@@ -12,10 +12,8 @@ const SAND_EDGE := Color("#e69352")
 const GOAL_FILL := Color(0.34, 0.22, 0.05, 0.94)
 const CELL_SIZE := Vector2(178.0, 66.0)
 const CELL_STEP := 78.0
-const VIEW_BOTTOM_MARGIN := 30.0
-const CAMERA_SCROLL_SPACES := 2.0
-const CAMERA_PLAYER_FOLLOW_TOP := 620.0
-const CAMERA_PLAYER_FOLLOW_BOTTOM := 725.0
+const VIEW_BOTTOM_MARGIN := 92.0
+const CAMERA_PLAYER_ANCHOR_Y := 650.0
 const EDGE_MARKER_HEIGHT := 42.0
 const BOSS_MARKER_TEXTURE: Texture2D = preload("res://assets/art/v06/boss/sleepy-sphinx.png")
 
@@ -82,25 +80,23 @@ func set_camera_position(value: float) -> void:
 
 
 func snapped_camera_for(focus_position: float) -> float:
-	var target := camera_position
 	var focus := clampf(focus_position, 0.0, float(course_length))
-	var projected_y := size.y - VIEW_BOTTOM_MARGIN - (focus - target) * CELL_STEP
-	while projected_y < CAMERA_PLAYER_FOLLOW_TOP and target < float(course_length):
-		target += CAMERA_SCROLL_SPACES
-		projected_y = size.y - VIEW_BOTTOM_MARGIN - (focus - target) * CELL_STEP
-	while projected_y > CAMERA_PLAYER_FOLLOW_BOTTOM and target > 0.0:
-		target -= CAMERA_SCROLL_SPACES
-		projected_y = size.y - VIEW_BOTTOM_MARGIN - (focus - target) * CELL_STEP
+	# START is an authored reference frame. Never derive it from a viewport that
+	# may still be settling, otherwise both racers can begin below the camera.
+	if focus <= 0.01:
+		return 0.0
+	# The overlay can ask for its entry camera before its full-rect anchors have
+	# received a real height. A zero-height viewport used to turn START into a
+	# mid-course camera target and leave the Sphinx permanently below the frame.
+	if size.y <= VIEW_BOTTOM_MARGIN:
+		return clampf(focus, 0.0, maxf(float(course_length) - 4.0, 0.0))
+	var visible_offset := (size.y - VIEW_BOTTOM_MARGIN - CAMERA_PLAYER_ANCHOR_Y) / CELL_STEP
+	var target := focus - visible_offset
 	return clampf(target, 0.0, maxf(float(course_length) - 4.0, 0.0))
 
 
 func next_camera_scroll_target(focus_position: float) -> float:
-	var focus_y := lane_point(focus_position, true).y
-	if focus_y < CAMERA_PLAYER_FOLLOW_TOP:
-		return clampf(camera_position + CAMERA_SCROLL_SPACES, 0.0, maxf(float(course_length) - 4.0, 0.0))
-	if focus_y > CAMERA_PLAYER_FOLLOW_BOTTOM:
-		return clampf(camera_position - CAMERA_SCROLL_SPACES, 0.0, maxf(float(course_length) - 4.0, 0.0))
-	return camera_position
+	return snapped_camera_for(focus_position)
 
 
 func _draw() -> void:

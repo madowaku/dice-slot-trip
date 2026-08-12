@@ -1,0 +1,17 @@
+DICE SLOT TRIP - Cairo BGM sources
+
+そよ風とお散歩
+Composer: マニーラ
+Source: https://dova-s.jp/bgm/detail/14761
+
+太陽の絨毯、砂漠の彼方
+Composer: Addpico
+Source: https://dova-s.jp/bgm/detail/20880
+
+砂丘の風
+Composer: かずち
+Source: https://dova-s.jp/bgm/detail/3505
+
+Provided by DOVA-SYNDROME. Use is subject to the DOVA-SYNDROME license,
+site terms, and any conditions specified by each composer.
+License: https://dova-s.jp/_contents/license/

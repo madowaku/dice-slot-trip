@@ -26,26 +26,27 @@ func _init() -> void:
 func _test_data_contract() -> void:
 	var course: RefCounted = Course.new()
 	_expect(course.load_file(Session.COURSE_PATH), "tile effect course data validates")
-	_expect(course.effect_for_position({"route_id":"main","tile_index":2}).amount == 2, "main COIN amount is data-driven")
-	_expect(course.effect_for_position({"route_id":"bypass_bazaar_alley","tile_index":0}).kind == "coin_loss", "Bazaar RISK declares coin loss")
+	_expect(course.effect_for_position({"route_id":"main","tile_index":4}).amount == 2, "main COIN amount follows the fixed course contract")
+	_expect(course.effect_for_position({"route_id":"bypass_bazaar_alley","tile_index":0}).kind == "hp_damage", "Bazaar shortcut starts with one-heart RISK")
+	_expect(course.tile_kind_for_position({"route_id":"bypass_bazaar_alley","tile_index":1}) == "REST", "Bazaar shortcut alternates into REST")
 	_expect(course.effect_for_position({"route_id":"bypass_sirocco","tile_index":0}).kind == "hp_damage", "desert_01 declares HP damage")
-	_expect(course.effect_for_position({"route_id":"bypass_sirocco","tile_index":3}).kind == "next_move", "desert_04 declares next-move loss")
+	_expect(course.tile_kind_for_position({"route_id":"bypass_sirocco","tile_index":3}) == "REST", "Sirocco shortcut alternates into REST at desert_04")
 	_expect(course.effect_for_position({"route_id":"loop_tomb_ring","tile_index":1}).kind == "hp_damage", "tomb RISK declares HP damage")
-	_expect(course.effect_for_position({"route_id":"loop_tomb_ring","tile_index":4}).kind == "next_move", "second represented tomb RISK declares next-move loss")
+	_expect(course.tile_kind_for_position({"route_id":"loop_tomb_ring","tile_index":4}) == "EXIT_GATE" and course.effect_for_position({"route_id":"loop_tomb_ring","tile_index":4}).is_empty(), "second tomb hazard is replaced by the alternate EXIT")
 	_expect(course.effect_for_position({"route_id":"loop_tomb_ring","tile_index":7}).amount == 3, "represented tomb COIN declares three coins")
-	for index: int in [21, 29, 37, 51, 55]:
+	for index: int in [17, 29, 34, 41, 52, 62, 74, 87]:
 		_expect(course.effect_for_position({"route_id":"main","tile_index":index}).kind == "hp_damage", "main RISK %d uses the HP-damage default" % index)
 
 
 func _test_coin_once_and_restore() -> void:
-	var session := _session_at("main", 1)
+	var session := _session_at("main", 3)
 	_roll_and_finish(session, 1)
 	_expect(session.coins() == 2 and session.current_tile_kind() == "NORMAL" and session.last_tile_effect_result().text == "COIN +2", "COIN grants two and becomes consumed")
 	var saved: Dictionary = session.stable_save_snapshot()
 	var restored: RefCounted = Session.new()
 	_expect(restored.restore_stable_snapshot(saved) and restored.coins() == 2, "COIN state restores without replay")
 	var revisit_state: Dictionary = restored.stable_save_snapshot()
-	_set_position(revisit_state, "main", 1)
+	_set_position(revisit_state, "main", 3)
 	var revisit: RefCounted = Session.new()
 	_expect(revisit.restore_stable_snapshot(revisit_state), "consumed COIN revisit setup restores")
 	_roll_and_finish(revisit, 1)
@@ -53,69 +54,55 @@ func _test_coin_once_and_restore() -> void:
 
 
 func _test_rest_repeat_and_cap() -> void:
-	var session := _session_at("main", 6, 1)
+	var session := _session_at("main", 10, 1)
 	_roll_and_finish(session, 1)
 	_expect(session.player_hp() == 2 and session.last_tile_effect_result().text == "HP +1", "REST heals one")
 	var repeat_state: Dictionary = session.stable_save_snapshot()
-	_set_position(repeat_state, "main", 6)
+	_set_position(repeat_state, "main", 10)
 	var repeat: RefCounted = Session.new()
 	repeat.restore_stable_snapshot(repeat_state)
 	_roll_and_finish(repeat, 1)
 	_expect(repeat.player_hp() == 3, "REST heals again on a separate landing")
-	var full := _session_at("main", 6, 3)
+	var full := _session_at("main", 10, 3)
 	_roll_and_finish(full, 1)
 	_expect(full.player_hp() == 3 and full.last_tile_effect_result().text == "HP FULL", "REST caps at maximum HP")
 
 
 func _test_hp_risk_and_floor() -> void:
-	var session := _session_at("main", 20, 1)
+	var session := _session_at("main", 16, 1)
 	_roll_and_finish(session, 1)
-	_expect(session.player_hp() == 0 and session.last_tile_effect_result().text == "DAMAGE -1", "HP RISK reaches zero safely")
-	var again_state: Dictionary = session.stable_save_snapshot()
-	_expect(session.enter_boss(0) and session.phase() == Session.PHASE_BOSS_ROLL_READY and session.start_roll(2, 1).ok, "HP zero can enter the existing boss flow without a new game-over rule")
-	_set_position(again_state, "main", 20)
-	var again: RefCounted = Session.new()
-	again.restore_stable_snapshot(again_state)
-	_roll_and_finish(again, 1)
-	_expect(again.player_hp() == 0 and again.phase() != Session.PHASE_ERROR, "HP RISK never goes below zero or blocks travel")
+	_expect(session.player_hp() == 3 and session.life() == 2 and session.last_tile_effect_result().text == "DAMAGE -1", "HP0 consumes one LIFE and revives at HP3")
+	var game_over := _session_at("main", 16, 1, 0, 0)
+	_roll_and_finish(game_over, 1)
+	_expect(game_over.player_hp() == 0 and game_over.life() == 0 and game_over.phase() == Session.PHASE_RUN_OVER and not game_over.start_roll(1).ok, "LIFE0 HP0 enters RUN_OVER and blocks further travel")
 
 
 func _test_bypass_coin_loss() -> void:
-	var session := _choice_session("main", 11, 1, 5)
+	var session := _choice_session("main", 32, 1, 5)
 	_expect(session.choose_route(Course.ROUTE_BYPASS_BAZAAR).ok, "Bazaar route choice starts")
 	_consume_hops(session)
 	session.finish_movement()
-	_expect(session.position() == {"route_id":"bypass_bazaar_alley","tile_index":0} and session.coins() == 3 and session.last_tile_effect_result().text == "COIN -2", "Bazaar coin loss uses its declared amount")
-	var empty := _choice_session("main", 11, 1, 0)
-	empty.choose_route(Course.ROUTE_BYPASS_BAZAAR)
-	_consume_hops(empty)
-	empty.finish_movement()
-	_expect(empty.coins() == 0, "coin loss never creates debt")
-	var short := _choice_session("main", 11, 1, 1)
-	short.choose_route(Course.ROUTE_BYPASS_BAZAAR)
-	_consume_hops(short)
-	short.finish_movement()
-	_expect(short.coins() == 0 and short.last_tile_effect_result().text == "COIN -1" and short.last_tile_effect_result().amount == 2, "coin-loss feedback reports the actual loss while retaining the configured amount")
+	_expect(session.position() == {"route_id":"bypass_bazaar_alley","tile_index":0} and session.player_hp() == 2 and session.coins() == 5 and session.last_tile_effect_result().text == "DAMAGE -1", "Bazaar RISK costs one heart and never hides a coin penalty")
+	_roll_and_finish(session, 1)
+	_expect(session.position() == {"route_id":"bypass_bazaar_alley","tile_index":1} and session.player_hp() == 3 and session.last_tile_effect_result().text == "HP +1", "Bazaar REST immediately offers one-heart recovery")
+	_roll_and_finish(session, 1)
+	_expect(session.position() == {"route_id":"bypass_bazaar_alley","tile_index":2} and session.player_hp() == 2, "Bazaar shortcut finishes with the alternating RISK")
 
 
 func _test_next_move_penalty_and_slot_face() -> void:
-	var desert_hp := _choice_session("main", 34, 1, 0)
+	var desert_hp := _choice_session("main", 71, 1, 0)
 	desert_hp.choose_route(Course.ROUTE_BYPASS_SIROCCO)
 	_consume_hops(desert_hp)
 	desert_hp.finish_movement()
 	_expect(desert_hp.player_hp() == 2 and desert_hp.next_basic_move_penalty() == 0, "desert_01 applies HP damage rather than movement loss")
-	var session := _session_at(Course.ROUTE_BYPASS_SIROCCO, 2)
+	var session := _session_at(Course.ROUTE_BYPASS_SIROCCO, 2, 2)
 	_roll_and_finish(session, 1)
-	_expect(session.next_basic_move_penalty() == 1, "Sirocco RISK arms one next-move penalty")
+	_expect(session.position() == {"route_id":"bypass_sirocco","tile_index":3} and session.player_hp() == 3 and session.next_basic_move_penalty() == 0, "Sirocco REST heals one without a hidden movement penalty")
 	var saved: Dictionary = session.stable_save_snapshot()
 	var restored: RefCounted = Session.new()
-	_expect(restored.restore_stable_snapshot(saved) and restored.next_basic_move_penalty() == 1, "pending movement penalty survives restore")
-	_roll_and_finish(restored, 2)
-	_expect(restored.position() == {"route_id":"bypass_sirocco","tile_index":4} and restored.faces() == [1, 2] and restored.next_basic_move_penalty() == 0, "penalty moves one space, preserves face two, and is consumed")
-	var minimum := _session_at(Course.ROUTE_BYPASS_SIROCCO, 2)
-	_roll_and_finish(minimum, 1)
-	_roll_and_finish(minimum, 1)
-	_expect(minimum.position() == {"route_id":"bypass_sirocco","tile_index":4} and minimum.faces() == [1, 1], "movement penalty keeps a face-one move at one")
+	_expect(restored.restore_stable_snapshot(saved) and restored.player_hp() == 3 and restored.next_basic_move_penalty() == 0, "Sirocco REST result survives restore")
+	_roll_and_finish(restored, 1)
+	_expect(restored.position() == {"route_id":"bypass_sirocco","tile_index":4} and restored.player_hp() == 2 and restored.faces() == [1, 1], "next Sirocco space alternates back to one-heart RISK")
 
 
 func _test_loop_effects() -> void:
@@ -125,9 +112,9 @@ func _test_loop_effects() -> void:
 	var oasis_rest := _session_at(Course.ROUTE_LOOP_OASIS, 3, 2)
 	_roll_and_finish(oasis_rest, 1)
 	_expect(oasis_rest.player_hp() == 3 and not ("loop_oasis_ring:4" in oasis_rest.consumed_reward_node_keys()), "oasis REST remains reusable")
-	var tomb_risk := _session_at(Course.ROUTE_LOOP_TOMB, 2, 3)
-	_roll_and_finish(tomb_risk, 2)
-	_expect(tomb_risk.player_hp() == 3 and tomb_risk.next_basic_move_penalty() == 1, "represented tomb_06 RISK applies next-move loss")
+	var tomb_exit := _session_at(Course.ROUTE_LOOP_TOMB, 2, 3)
+	_roll_and_finish(tomb_exit, 2)
+	_expect(tomb_exit.player_hp() == 3 and tomb_exit.position() == {"route_id":"main", "tile_index":76} and tomb_exit.next_basic_move_penalty() == 0, "alternate tomb EXIT returns safely to main76")
 	var tomb_coin := _session_at(Course.ROUTE_LOOP_TOMB, 6)
 	_roll_and_finish(tomb_coin, 1)
 	_expect(tomb_coin.coins() == 3 and tomb_coin.last_tile_effect_result().text == "COIN +3", "represented tomb COIN grants three once")
@@ -141,7 +128,7 @@ func _test_loop_effects() -> void:
 
 
 func _test_resolution_id_contract() -> void:
-	var session := _session_at("main", 20, 3)
+	var session := _session_at("main", 16, 3)
 	_roll_and_finish(session, 1)
 	var first_ids: Dictionary = session.stage_flags().get(Session.STAGE_FLAG_RESOLVED_TILE_EFFECT_IDS, {})
 	var first_count := first_ids.size()
@@ -173,24 +160,20 @@ func _test_resolution_id_contract() -> void:
 
 
 func _test_hp_zero_boss_restore() -> void:
-	var session := _session_at("main", 20, 1)
+	var session := _session_at("main", 16, 1, 0, 0)
 	_roll_and_finish(session, 1)
-	_expect(session.player_hp() == 0 and session.enter_boss(0), "HP zero enters the existing boss screen")
+	_expect(session.player_hp() == 0 and session.phase() == Session.PHASE_RUN_OVER and session.best_score() == session.score(), "HP zero records GAME OVER and BEST at the stable boundary")
 	var dto: Dictionary = SaveData.from_session(session)
-	_expect(SaveData.validate(dto).ok, "HP-zero boss start is DTO-valid")
+	_expect(SaveData.validate(dto).ok and not dto.session_state.boss_entered, "bossless HP-zero RUN_OVER is DTO-valid")
 	var restored: RefCounted = Session.new()
-	_expect(restored.restore_stable_snapshot(dto.session_state, 10) and restored.phase() == Session.PHASE_BOSS_ROLL_READY and restored.player_hp() == 0, "HP-zero boss start restores without healing")
-	_expect(restored.start_roll(6, 11).ok and restored.phase() == Session.PHASE_BOSS_ROUND_RESULT, "HP-zero boss accepts a complete mirror-race turn")
-	_expect(restored.acknowledge_boss_round(), "HP-zero first boss turn acknowledges")
-	for now: int in [12, 13, 14]:
-		_expect(restored.start_roll(6, now).ok, "HP-zero high mirror roll %d resolves" % now)
-		if restored.phase() != Session.PHASE_BOSS_FINISHED:
-			_expect(restored.acknowledge_boss_round(), "HP-zero high mirror roll %d acknowledges" % now)
-	_expect(restored.boss_result().victory, "HP does not replace the position-based mirror-race result")
-	_expect(restored.acknowledge_boss_round() and restored.phase() == Session.PHASE_LAP_RESULT and restored.player_hp() == 0, "HP-zero race result completes without healing or RUN_OVER")
-	var terminal_dto: Dictionary = SaveData.from_session(restored)
-	var terminal: RefCounted = Session.new()
-	_expect(SaveData.validate(terminal_dto).ok and terminal.restore_stable_snapshot(terminal_dto.session_state, 20) and terminal.phase() == Session.PHASE_LAP_RESULT, "HP-zero terminal race result saves and restores")
+	_expect(restored.restore_stable_snapshot(dto.session_state, 10) and restored.phase() == Session.PHASE_RUN_OVER and restored.player_hp() == 0 and restored.boss_snapshot().is_empty(), "bossless RUN_OVER restores without healing or award replay")
+	var legacy_boss := Session.new()
+	_expect(legacy_boss.enter_boss(0), "legacy HP-zero boss normalization fixture enters boss while healthy")
+	var legacy_state: Dictionary = legacy_boss.stable_save_snapshot(1)
+	legacy_state.player.hp = 0
+	legacy_state.player.life = 0
+	var normalized := Session.new()
+	_expect(normalized.restore_stable_snapshot(legacy_state, 2) and normalized.phase() == Session.PHASE_RUN_OVER and normalized.boss_snapshot().is_empty(), "legacy HP0 boss phase normalizes to bossless RUN_OVER without replay")
 
 
 func _test_stage_flag_compatibility() -> void:
@@ -208,17 +191,18 @@ func _test_stage_flag_compatibility() -> void:
 
 
 func _test_warp_destination_only() -> void:
-	var session := _session_at("main", 9, 3)
+	var session := _session_at("main", 23, 3)
 	_roll_and_finish(session, 1)
 	_expect(session.position() == {"route_id":"loop_oasis_ring","tile_index":3} and session.player_hp() == 3 and session.last_tile_effect_result().is_empty(), "warp resolves only its final LOOP_ENTRY destination")
 
 
-func _session_at(route_id: String, tile_index: int, hp := 3, coins := 0) -> RefCounted:
+func _session_at(route_id: String, tile_index: int, hp := 3, coins := 0, life := 3) -> RefCounted:
 	var session: RefCounted = Session.new()
 	var state: Dictionary = session.stable_save_snapshot()
 	_set_position(state, route_id, tile_index)
 	state.player.hp = hp
 	state.player.coins = coins
+	state.player.life = life
 	if route_id == Course.ROUTE_LOOP_OASIS:
 		state.route.active_warp_gate_id = "W1"
 	elif route_id == Course.ROUTE_LOOP_TOMB:
@@ -236,7 +220,7 @@ func _choice_session(route_id: String, tile_index: int, pending_face: int, coins
 	state.route.pending_remaining_steps = pending_face
 	state.route.available_route_ids = ["main"]
 	state.player.coins = coins
-	_expect(SaveData.validate({"schema_version":SaveData.SCHEMA_VERSION,"app_version":"v0.8","saved_at":"","saved_at_unix":0,"stage_id":"cairo_hourglass","character_id":"relaxed","session_state":state,"pending_transaction":null}).ok, "choice effect fixture is DTO-valid")
+	_expect(SaveData.validate({"schema_version":SaveData.SCHEMA_VERSION,"course_version":SaveData.COURSE_VERSION,"app_version":"v0.8","saved_at":"","saved_at_unix":0,"stage_id":"cairo_hourglass","character_id":"relaxed","session_state":state,"pending_transaction":null}).ok, "choice effect fixture is DTO-valid")
 	_expect(session.restore_stable_snapshot(state), "choice effect fixture restores")
 	return session
 

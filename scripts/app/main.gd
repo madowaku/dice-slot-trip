@@ -40,12 +40,14 @@ const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
 const PopupBookTransitionScript = preload("res://scripts/game/popup_book_transition.gd")
 const V06PlayScreenScene: PackedScene = preload("res://scenes/app/V06PlayScreen.tscn")
 const V06SessionSaveManagerScript = preload("res://scripts/game/v06_session_save_manager.gd")
+const V06TravelEncyclopediaViewScript = preload("res://scripts/ui/v06_travel_encyclopedia_view.gd")
 const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 const UiThemeNamesScript = preload("res://scripts/ui/ui_theme_names.gd")
 const ReleasePolicyScript = preload("res://scripts/ui/release_policy.gd")
 const MOBILE_THEME: Theme = preload("res://assets/ui/theme_mobile.tres")
 const CAIRO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/cairo-board.png")
 const TITLE_HERO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/title-hero.png")
+const TITLE_BACKING_MATTE: Texture2D = preload("res://assets/art/ui/title/title-backing-matte-v2.png")
 const WORLD_MAP_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/world-travel-map.png")
 const CAIRO_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/cairo-city-card.png")
 const KYOTO_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/kyoto-city-card.png")
@@ -242,6 +244,7 @@ var character_cards: Dictionary = {}
 var character_detail_label: Label
 var character_start_button: Button
 var character_transition_locked := false
+var _v06_exit_transition_pending := false
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED and turn_phase != TurnPhase.PAUSED and turn_phase != TurnPhase.READY:
@@ -271,6 +274,7 @@ func _ready() -> void:
 	ui_audio_player.name = "UIAudioPlayer"
 	ui_audio_player.bus = &"Master"
 	add_child(ui_audio_player)
+	get_node("/root/BgmManager").call("set_master_volume", GameState.master_volume)
 	v06_save_manager = V06SessionSaveManagerScript.new()
 	match OS.get_environment("DICE_QA_SCREEN"):
 		"stage": show_stage_select()
@@ -283,6 +287,8 @@ func _ready() -> void:
 		"v06": show_v06_game()
 		"font": show_font_qa()
 		_: show_title()
+	if OS.get_environment("DICE_QA_V06_STAGE_EXIT") == "1":
+		call_deferred("_qa_v06_stage_exit")
 	if OS.get_environment("DICE_QA_EARLY_STOP") == "1":
 		call_deferred("_qa_early_stop")
 	elif OS.get_environment("DICE_QA_ONE_DIE") == "1":
@@ -416,16 +422,17 @@ func _clear() -> void:
 	root_stack = null
 	dice_audio = null
 
-func _make_page(background_texture: Texture2D = CAIRO_BACKGROUND, art_alpha: float = 0.72, veil_alpha: float = 0.20) -> VBoxContainer:
+func _make_page(background_texture: Texture2D = CAIRO_BACKGROUND, art_alpha: float = 0.72, veil_alpha: float = 0.20, art_stretch_mode := TextureRect.STRETCH_KEEP_ASPECT_COVERED) -> VBoxContainer:
 	_clear()
 	var background := ColorRect.new()
 	background.color = BG
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
 	var artwork := TextureRect.new()
+	artwork.name = "PageArtwork"
 	artwork.texture = background_texture
 	artwork.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	artwork.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	artwork.stretch_mode = art_stretch_mode
 	artwork.modulate = Color(1.0, 1.0, 1.0, art_alpha)
 	artwork.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(artwork)
@@ -445,25 +452,118 @@ func _make_page(background_texture: Texture2D = CAIRO_BACKGROUND, art_alpha: flo
 	margin.add_child(root_stack)
 	return root_stack
 
-func _make_title_page() -> VBoxContainer:
-	# Hero art already carries logo and world mood. Insert soft bottom washes
-	# under the interactive margin so painted CTAs are covered without blocking input.
-	var page := _make_page(TITLE_HERO_BACKGROUND, 1.0, 0.0)
-	var margin_index := get_child_count() - 1
-	for entry: Dictionary in [
-		{"top": 0.48, "color": Color(0.96, 0.89, 0.74, 0.18)},
-		{"top": 0.62, "color": Color(0.94, 0.86, 0.70, 0.42)},
-		{"top": 0.74, "color": Color(0.93, 0.84, 0.66, 0.72)},
-	]:
-		var wash := ColorRect.new()
-		wash.color = entry.color
-		wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		wash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		wash.anchor_top = float(entry.top)
-		add_child(wash)
-		move_child(wash, margin_index)
-		margin_index += 1
-	return page
+func _make_title_page() -> Control:
+	_clear()
+	# The generated matte only owns extra-tall-phone breathing room. The original
+	# authored illustration remains a single, uncropped foreground poster, so its
+	# logo and painted controls can never drift apart.
+	var matte := TextureRect.new()
+	matte.name = "TitleBackingMatte"
+	matte.texture = TITLE_BACKING_MATTE
+	matte.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	matte.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	matte.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(matte)
+
+	var poster_shadow := Panel.new()
+	poster_shadow.name = "TitlePosterShadow"
+	poster_shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var shadow_style := StyleBoxFlat.new()
+	shadow_style.bg_color = Color("#3e2818")
+	shadow_style.shadow_color = Color(0.10, 0.06, 0.03, 0.48)
+	shadow_style.shadow_size = 18
+	shadow_style.border_width_left = 2
+	shadow_style.border_width_top = 2
+	shadow_style.border_width_right = 2
+	shadow_style.border_width_bottom = 2
+	shadow_style.border_color = Color("#b98b43")
+	poster_shadow.add_theme_stylebox_override("panel", shadow_style)
+	add_child(poster_shadow)
+
+	var artwork := TextureRect.new()
+	artwork.name = "TitleHeroPoster"
+	artwork.texture = TITLE_HERO_BACKGROUND
+	artwork.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	artwork.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	artwork.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	artwork.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(artwork)
+
+	var hit_layer := Control.new()
+	hit_layer.name = "TitleArtHitLayer"
+	hit_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hit_layer.resized.connect(_layout_title_art_layer.bind(hit_layer))
+	add_child(hit_layer)
+	_layout_title_art_layer.call_deferred(hit_layer)
+	return hit_layer
+
+
+static func title_art_rect_for_viewport(view_size: Vector2) -> Rect2:
+	var source_size := Vector2(TITLE_HERO_BACKGROUND.get_width(), TITLE_HERO_BACKGROUND.get_height())
+	if view_size.x <= 0.0 or view_size.y <= 0.0 or source_size.x <= 0.0 or source_size.y <= 0.0:
+		return Rect2(Vector2.ZERO, view_size)
+	var scale_factor := minf(view_size.x / source_size.x, view_size.y / source_size.y)
+	var fitted_size := source_size * scale_factor
+	return Rect2((view_size - fitted_size) * 0.5, fitted_size)
+
+
+func _layout_title_art_layer(hit_layer: Control) -> void:
+	if not is_instance_valid(hit_layer):
+		return
+	var art_rect := title_art_rect_for_viewport(hit_layer.size)
+	var poster_shadow := get_node_or_null("TitlePosterShadow") as Control
+	if is_instance_valid(poster_shadow):
+		poster_shadow.position = art_rect.position - Vector2(2.0, 2.0)
+		poster_shadow.size = art_rect.size + Vector2(4.0, 4.0)
+	var source_size := Vector2(TITLE_HERO_BACKGROUND.get_width(), TITLE_HERO_BACKGROUND.get_height())
+	for child: Node in hit_layer.get_children():
+		if not child is Button or not child.has_meta("title_source_rect"):
+			continue
+		var source_rect: Rect2 = child.get_meta("title_source_rect")
+		var button := child as Button
+		button.position = art_rect.position + Vector2(source_rect.position.x / source_size.x, source_rect.position.y / source_size.y) * art_rect.size
+		button.size = Vector2(source_rect.size.x / source_size.x, source_rect.size.y / source_size.y) * art_rect.size
+
+
+func _title_art_button(hit_layer: Control, accessible_text: String, source_rect: Rect2, action: Callable, disabled: bool = false) -> Button:
+	var button := Button.new()
+	button.name = accessible_text
+	button.text = accessible_text
+	button.tooltip_text = accessible_text
+	button.flat = true
+	button.disabled = disabled
+	button.focus_mode = Control.FOCUS_ALL
+	button.set_meta("title_source_rect", source_rect)
+	for state: String in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_disabled_color"]:
+		button.add_theme_color_override(state, Color(1.0, 1.0, 1.0, 0.0))
+	button.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	var hover := StyleBoxFlat.new()
+	hover.bg_color = Color(1.0, 0.94, 0.72, 0.12)
+	hover.corner_radius_top_left = 28
+	hover.corner_radius_top_right = 28
+	hover.corner_radius_bottom_left = 28
+	hover.corner_radius_bottom_right = 28
+	button.add_theme_stylebox_override("hover", hover)
+	var pressed := hover.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(0.10, 0.52, 0.55, 0.20)
+	button.add_theme_stylebox_override("pressed", pressed)
+	var focus := hover.duplicate() as StyleBoxFlat
+	focus.bg_color = Color(1.0, 0.94, 0.72, 0.05)
+	focus.border_width_left = 3
+	focus.border_width_top = 3
+	focus.border_width_right = 3
+	focus.border_width_bottom = 3
+	focus.border_color = Color("#e2bd68")
+	button.add_theme_stylebox_override("focus", focus)
+	var disabled_style := hover.duplicate() as StyleBoxFlat
+	disabled_style.bg_color = Color(0.20, 0.16, 0.12, 0.20)
+	button.add_theme_stylebox_override("disabled", disabled_style)
+	if action.is_valid():
+		button.pressed.connect(func() -> void: _play_ui_click(accessible_text == "はじめから"))
+		button.pressed.connect(action)
+	hit_layer.add_child(button)
+	_layout_title_art_layer(hit_layer)
+	return button
 
 func _make_world_page() -> VBoxContainer:
 	_clear()
@@ -671,7 +771,7 @@ func _button(text: String, action: Callable, primary: bool = false) -> Button:
 
 func _play_ui_click(primary: bool = false) -> void:
 	if not is_instance_valid(ui_audio_player): return
-	var level := clampf(GameState.master_volume * GameState.se_volume, 0.0, 1.0)
+	var level := clampf(GameState.se_volume, 0.0, 1.0)
 	if level <= 0.0: return
 	ui_audio_player.stream = UI_CONFIRM_STREAM if primary else UI_CLICK_STREAM
 	ui_audio_player.volume_db = -18.0 + linear_to_db(level)
@@ -718,49 +818,27 @@ func _spacer(height: float) -> Control:
 	return spacer
 
 func show_title() -> void:
-	var page := _make_title_page()
-	page.add_theme_constant_override("separation", UiTokensScript.GAP_S)
-	# Hero art already presents the wordmark. Keep code-side copy minimal so the
-	# painted logo remains the first impression, and put all actions in the
-	# lower third for thumb reach.
-	page.add_child(_spacer(0))
-	var actions := PanelContainer.new()
-	actions.add_theme_stylebox_override("panel", _premium_panel(Color(0.97, 0.90, 0.74, 0.94), Color("#a57a3a"), 24))
-	var actions_box := VBoxContainer.new()
-	actions_box.add_theme_constant_override("separation", UiTokensScript.GAP_S)
-	actions.add_child(actions_box)
-	var sub := _body("World Journey Board Game", UiTokensScript.FONT_CAPTION)
-	sub.add_theme_color_override("font_color", MUTED)
-	actions_box.add_child(sub)
-	actions_box.add_child(_button("はじめから", show_stage_select, true))
-	var continue_button := _button("つづきから", _continue_v06_game)
-	continue_button.disabled = not _v06_save_manager().has_valid_save()
-	actions_box.add_child(continue_button)
-	var utility := HBoxContainer.new()
-	utility.add_theme_constant_override("separation", UiTokensScript.GAP_S)
-	# Emoji glyphs are not included in the bundled game font and render as tofu
-	# on some Android devices. ASCII section labels keep these utilities distinct
-	# without relying on a platform fallback font.
-	var book := _button("BOOK  図鑑", show_encyclopedia)
-	var settings := _button("SOUND  設定", _show_settings_modal)
-	book.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	settings.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	utility.add_child(book)
-	utility.add_child(settings)
-	actions_box.add_child(utility)
-	page.add_child(actions)
+	get_node("/root/BgmManager").call("stop")
+	var hit_layer := _make_title_page()
+	# These source-space rectangles sit exactly over the painted controls. Since
+	# the complete poster and hit layer share one fitted art rect, every aspect
+	# ratio keeps the visible UI and actual touch targets locked together.
+	_title_art_button(hit_layer, "はじめから", Rect2(274, 1117, 397, 126), show_stage_select)
+	_title_art_button(hit_layer, "つづきから", Rect2(278, 1257, 392, 126), _continue_v06_game, not _v06_save_manager().has_valid_save())
+	_title_art_button(hit_layer, "図鑑", Rect2(228, 1379, 240, 126), show_encyclopedia)
+	_title_art_button(hit_layer, "設定", Rect2(476, 1379, 240, 126), _show_settings_modal)
 
 func _show_settings_modal() -> void:
 	var modal := _make_modal()
 	var content: VBoxContainer = modal.content
 	content.add_child(_title("音の設定", 34))
-	var master_label := _body("全体音量 %d%%" % roundi(GameState.master_volume * 100.0), UiTokensScript.FONT_CAPTION)
+	var master_label := _body("BGM音量 %d%%" % roundi(GameState.master_volume * 100.0), UiTokensScript.FONT_CAPTION)
 	var master_slider := HSlider.new(); master_slider.min_value = 0; master_slider.max_value = 100; master_slider.step = 1; master_slider.value = GameState.master_volume * 100.0; master_slider.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
-	master_slider.value_changed.connect(func(value: float) -> void: GameState.master_volume = value / 100.0; master_label.text = "全体音量 %d%%" % roundi(value); if is_instance_valid(dice_audio): dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted))
+	master_slider.value_changed.connect(func(value: float) -> void: GameState.master_volume = value / 100.0; master_label.text = "BGM音量 %d%%" % roundi(value); get_node("/root/BgmManager").call("set_master_volume", GameState.master_volume))
 	content.add_child(master_label); content.add_child(master_slider)
 	var se_label := _body("SE音量 %d%%" % roundi(GameState.se_volume * 100.0), UiTokensScript.FONT_CAPTION)
 	var se_slider := HSlider.new(); se_slider.min_value = 0; se_slider.max_value = 100; se_slider.step = 1; se_slider.value = GameState.se_volume * 100.0; se_slider.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
-	se_slider.value_changed.connect(func(value: float) -> void: GameState.se_volume = value / 100.0; se_label.text = "SE音量 %d%%" % roundi(value); if is_instance_valid(dice_audio): dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted))
+	se_slider.value_changed.connect(func(value: float) -> void: GameState.se_volume = value / 100.0; se_label.text = "SE音量 %d%%" % roundi(value); if is_instance_valid(dice_audio): dice_audio.set_levels(1.0, GameState.se_volume, GameState.dice_se_muted))
 	content.add_child(se_label); content.add_child(se_slider)
 	var dice_mute := CheckButton.new(); dice_mute.text = "ダイスSEをミュート"; dice_mute.button_pressed = GameState.dice_se_muted; dice_mute.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
 	dice_mute.toggled.connect(func(value: bool) -> void: GameState.dice_se_muted = value; if is_instance_valid(dice_audio): dice_audio.set_muted(value))
@@ -774,6 +852,8 @@ func _show_settings_modal() -> void:
 	SaveManager.save_now(); _close_modal(modal.layer)
 
 func show_stage_select() -> void:
+	_v06_exit_transition_pending = false
+	get_node("/root/BgmManager").call("play_stage_select")
 	stage_preview_id = STAGE_CAIRO
 	_render_stage_select()
 
@@ -1090,6 +1170,7 @@ func _continue_v06_game() -> void:
 
 
 func show_v06_game(stage_id: StringName = &"", character_id: StringName = &"", resume_data: Dictionary = {}) -> void:
+	_v06_exit_transition_pending = false
 	var resolved_stage_id: StringName = stage_id
 	if String(resolved_stage_id).is_empty():
 		resolved_stage_id = GameState.selected_stage_id
@@ -1110,17 +1191,54 @@ func show_v06_game(stage_id: StringName = &"", character_id: StringName = &"", r
 	screen.configure_start_context(resolved_stage_id, resolved_character_id)
 	screen.configure_save_manager(_v06_save_manager())
 	screen.configure_resume_data(resume_data)
-	screen.connect("back_requested", Callable(self, "show_stage_select"))
+	screen.connect("back_requested", Callable(self, "_on_v06_back_requested"))
 	screen.connect("resume_failed", Callable(self, "show_title"))
 	screen.connect("postcard_unlocked", Callable(self, "_on_postcard_unlocked"))
 	add_child(screen)
 
 
-func _on_postcard_unlocked(postcard_id: String) -> void:
-	if postcard_id.is_empty() or postcard_id in GameState.registered_postcards:
+func _on_v06_back_requested() -> void:
+	if _v06_exit_transition_pending:
 		return
-	GameState.registered_postcards.append(postcard_id)
-	SaveManager.save_now()
+	_v06_exit_transition_pending = true
+	# Rebuilding the parent UI inside the child's pressed signal can leave the
+	# input dispatch walking nodes already queued for deletion on mobile.
+	call_deferred("show_stage_select")
+
+
+func _qa_v06_stage_exit() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var play_screen := get_node_or_null("V06PlayScreen") as Control
+	if play_screen == null:
+		print("QA_V06_STAGE_EXIT passed=false reason=no_play_screen")
+		get_tree().quit(1)
+		return
+	(play_screen.get_node("%BackButton") as Button).pressed.emit()
+	await get_tree().process_frame
+	(play_screen.get_node("%TravelMenuExitButton") as Button).pressed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var stage_cta_found := false
+	for button: Button in find_children("*", "Button", true, false):
+		if button.text == "探検猫で出発":
+			stage_cta_found = true
+			break
+	var passed := not is_instance_valid(play_screen) and stage_cta_found
+	print("QA_V06_STAGE_EXIT passed=%s stage_cta=%s" % [passed, stage_cta_found])
+	get_tree().quit(0 if passed else 1)
+
+
+func _on_postcard_unlocked(postcard_id: String) -> void:
+	if postcard_id.is_empty():
+		return
+	var changed := false
+	if postcard_id not in GameState.registered_postcards:
+		GameState.registered_postcards.append(postcard_id)
+		changed = true
+	changed = GameState.register_travel_card("memory:%s" % postcard_id) or changed
+	if changed:
+		SaveManager.save_now()
 
 func show_game() -> void:
 	var page := _make_page()
@@ -1128,7 +1246,7 @@ func show_game() -> void:
 	dice_audio = DiceAudioControllerScript.new()
 	dice_audio.name = "DiceAudioController"
 	add_child(dice_audio)
-	dice_audio.set_levels(GameState.master_volume, GameState.se_volume, GameState.dice_se_muted)
+	dice_audio.set_levels(1.0, GameState.se_volume, GameState.dice_se_muted)
 	page.add_theme_constant_override("separation", 10)
 	# Always-visible essentials: coin, place name, compact progress. Dense
 	# lap/clean detail lives in rolls_label so the map can own the screen.
@@ -3060,84 +3178,16 @@ func _prepare_next_boss_after_join() -> Dictionary:
 	return obtained
 
 func show_encyclopedia() -> void:
-	var page := _make_page()
-	page.add_child(_title("旅の図鑑", 44))
-	page.add_child(_body("旅で手に入れた便りと、砂漠で知り合った相手たち。", 20))
-	var scroll := ScrollContainer.new()
-	scroll.name = "TravelEncyclopediaScroll"
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	page.add_child(scroll)
-	var content := VBoxContainer.new()
-	content.name = "TravelEncyclopediaContent"
-	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	content.add_theme_constant_override("separation", 14)
-	scroll.add_child(content)
-	content.add_child(_title("POSTCARDS", 28))
-	var postcard_count := _known_postcard_count()
-	content.add_child(_body("旅の便り　%d / 2" % postcard_count, 18))
-	var postcard_flow := HFlowContainer.new()
-	postcard_flow.name = "PostcardGallery"
-	postcard_flow.add_theme_constant_override("h_separation", 12)
-	postcard_flow.add_theme_constant_override("v_separation", 12)
-	content.add_child(postcard_flow)
-	for definition: Dictionary in [
-		{"id":"cairo_journey_complete","title":"砂時計のカイロ","caption":"眠そうなスフィンクスとゴールを越えた旅の記念。"},
-		{"id":"cairo_spice_market_complete","title":"香辛料市場の一日","caption":"市場の発展を最後まで見届けた記録。"},
-	]:
-		_add_postcard_book_card(postcard_flow, definition, str(definition.id) in GameState.registered_postcards)
-	var section_gap := Control.new()
-	section_gap.custom_minimum_size.y = 18
-	content.add_child(section_gap)
-	var friends_heading := _title("TRAVEL FRIENDS", 28)
-	friends_heading.custom_minimum_size.y = 48
-	friends_heading.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	content.add_child(friends_heading)
-	var friends_intro := _body("旅の途中で、少しずつ知り合った相手たち。", 18)
-	friends_intro.custom_minimum_size.y = 42
-	friends_intro.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	content.add_child(friends_intro)
-	var definitions := boss_definitions if not boss_definitions.is_empty() else BossSystemScript.definitions()
-	var registered_definitions: Dictionary = {}
-	# Every joined individual is its own card, including later individuals sharing a definition.
-	for found: Dictionary in GameState.encyclopedia:
-		registered_definitions[str(found.get("definition_id", ""))] = true
-		var found_card := PanelContainer.new()
-		found_card.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.89, 0.73, 0.96), Color("#a47a3c"), 14))
-		var found_row := HBoxContainer.new()
-		found_row.add_theme_constant_override("separation", 12)
-		found_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var portrait := TextureRect.new()
-		portrait.texture = SPHINX_TEXTURE
-		portrait.custom_minimum_size = Vector2(104, 96)
-		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		found_row.add_child(portrait)
-		var found_copy := _body("%s　%s\n出会い %d回　図鑑 No.%d\n%s" % [str(found.get("name", "")), str(found.get("personality", "")), int(found.get("encounters", 0)), int(found.get("registration_order", 0)), str(found.get("memo", ""))], 20)
-		found_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		found_copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		found_copy.custom_minimum_size.x = 0
-		found_row.add_child(found_copy)
-		found_card.add_child(found_row)
-		content.add_child(found_card)
-	# Definitions never joined yet remain discoverable as silhouettes.
-	for definition: Dictionary in definitions:
-		if registered_definitions.has(str(definition.get("id", ""))):
-			continue
-		var card := VBoxContainer.new()
-		card.add_theme_constant_override("separation", 4)
-		var silhouette := TextureRect.new()
-		silhouette.texture = SPHINX_TEXTURE
-		silhouette.custom_minimum_size = Vector2(0, 90)
-		silhouette.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		silhouette.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		silhouette.modulate = Color(0.34, 0.30, 0.25, 0.94)
-		card.add_child(silhouette)
-		card.add_child(_body("？？？　未登録\n砂の向こうに、まだ知らない気配がある。", 21))
-		content.add_child(card)
-	page.add_child(_button("もどる", show_title))
+	_make_page()
+	var encyclopedia: Control = V06TravelEncyclopediaViewScript.new()
+	encyclopedia.name = "TravelEncyclopediaView"
+	encyclopedia.close_requested.connect(_on_title_encyclopedia_closed)
+	add_child(encyclopedia)
+	encyclopedia.open(GameState.discovered_travel_card_ids(), "タイトルへ", GameState.encyclopedia)
+
+
+func _on_title_encyclopedia_closed() -> void:
+	call_deferred("show_title")
 
 
 func _known_postcard_count() -> int:
@@ -3726,6 +3776,8 @@ func _debug_next_boss() -> void:
 
 func _debug_reset_encyclopedia() -> void:
 	GameState.encyclopedia.clear()
+	GameState.travel_card_ids.clear()
+	GameState.registered_postcards.clear()
 	_refresh_hud()
 
 func _toggle_debug() -> void:

@@ -48,20 +48,23 @@ func _run() -> void:
 	await process_frame
 	var session: RefCounted = screen.session_for_test()
 	_expect(session.enter_boss(0), "victory fixture enters the boss")
-	for timestamp: int in [1, 2, 3]:
+	for timestamp: int in [1, 2, 3, 4]:
+		if session.phase() == SessionScript.PHASE_BOSS_FINISHED:
+			break
 		session.start_roll(6, timestamp)
-		session.acknowledge_boss_round()
-	session.start_roll(6, 4)
+		if session.phase() != SessionScript.PHASE_BOSS_FINISHED:
+			session.acknowledge_boss_round()
 	screen.call("_cancel_motion", session.position())
 	screen.call("_refresh_ui")
 	var score_copy := screen.get_node("%BossFinishScoreLabel") as Label
 	var mission_copy := screen.get_node("%BossFinishMissionLabel") as Label
 	var kicker := screen.get_node("%BossFinishKickerLabel") as Label
 	_expect(session.phase() == SessionScript.PHASE_BOSS_FINISHED, "victory fixture reaches the dedicated finish phase")
-	_expect(kicker.visible and kicker.text == "JOURNEY COMPLETE", "victory presentation opens with a compact journey-complete kicker")
-	_expect(score_copy.visible and score_copy.text.begins_with("SCORE "), "victory presentation gives score the second visual tier")
-	_expect(mission_copy.visible and mission_copy.text.begins_with("MISSION"), "victory presentation reports mission completion at a glance")
-	_expect((screen.get_node("%NextLapButton") as Button).text == "次の旅へ", "victory action clearly continues the endless-lap journey")
+	_expect(kicker.visible and kicker.text == "旅のゴール！", "victory presentation opens with a compact journey-complete kicker")
+	_expect(score_copy.visible and score_copy.text.begins_with("旅したマス"), "victory presentation gives travelled distance the second visual tier")
+	_expect(mission_copy.visible and mission_copy.text.begins_with("ミッション"), "victory presentation reports mission completion at a glance")
+	var perfect_receipt: Dictionary = (screen.get_node("%HeartRoulettePanel") as Object).call("visual_receipt")
+	_expect((screen.get_node("%NextLapButton") as Button).text == "次の旅へ" and bool(perfect_receipt.get("visible", false)) and not bool(perfect_receipt.get("wheel_visible", true)) and str(perfect_receipt.get("title", "")) == "PERFECT!" and str(perfect_receipt.get("hint", "")) == "HP FULL", "HP3 victory skips the wheel and keeps the existing next-journey action under PERFECT HP FULL")
 
 	host.queue_free()
 	feedback.queue_free()

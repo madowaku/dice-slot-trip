@@ -2,6 +2,7 @@ extends SceneTree
 
 const SessionScript = preload("res://scripts/game/v06_play_session.gd")
 const ScreenScene: PackedScene = preload("res://scenes/app/V06PlayScreen.tscn")
+const GameStateScript = preload("res://autoload/game_state.gd")
 
 var failures := 0
 
@@ -96,6 +97,7 @@ func _test_postcard_unlock_and_gallery() -> void:
 	var global_state := root.get_node("GameState")
 	var original_postcards: Array = global_state.get("registered_postcards").duplicate()
 	var original_book: Array = global_state.get("encyclopedia").duplicate(true)
+	var original_travel_cards: Array = global_state.get("travel_card_ids").duplicate()
 	var main_scene := load("res://scenes/app/Main.tscn") as PackedScene
 	var app: Control = main_scene.instantiate(); root.add_child(app)
 	await process_frame; await process_frame
@@ -103,6 +105,9 @@ func _test_postcard_unlock_and_gallery() -> void:
 	runtime_postcards.clear(); runtime_postcards.append("cairo_journey_complete")
 	var runtime_book: Array = global_state.get("encyclopedia")
 	runtime_book.clear()
+	var runtime_travel_cards: Array = global_state.get("travel_card_ids")
+	runtime_travel_cards.clear()
+	runtime_travel_cards.append_array(["item:water_canteen", "event:market_hawker", "boss:sleepy_sphinx"])
 	app.call("show_encyclopedia")
 	await process_frame; await process_frame
 	var unlocked_card := app.find_child("Postcard_cairo_journey_complete", true, false) as PanelContainer
@@ -111,10 +116,23 @@ func _test_postcard_unlock_and_gallery() -> void:
 	var locked_art := locked_card.find_child("PostcardArt", true, false) as TextureRect
 	_expect(app.find_child("TravelEncyclopediaScroll", true, false) != null and app.find_child("PostcardGallery", true, false) != null, "travel encyclopedia provides a scrollable postcard gallery")
 	_expect(unlocked_art.texture.resource_path.ends_with("cairo-journey-postcard.png") and unlocked_art.modulate.r > 0.9, "earned Cairo postcard is shown in full color")
-	_expect(locked_art.modulate.r < 0.2, "unearned postcard remains a dark collectible slot")
+	_expect(locked_art.modulate.r < 0.5 and locked_art.modulate.r < unlocked_art.modulate.r, "unearned postcard remains a visibly dim collectible slot")
+	var item_card := app.find_child("TravelCard_item_water_canteen", true, false) as PanelContainer
+	var event_card := app.find_child("TravelCard_event_market_hawker", true, false) as PanelContainer
+	var boss_card := app.find_child("TravelCard_boss_sleepy_sphinx", true, false) as PanelContainer
+	_expect(item_card != null and event_card != null and boss_card != null, "encyclopedia lists encountered item, event, and boss cards alongside journey memories")
+	(item_card.find_child("Open_TravelCard_item_water_canteen", true, false) as Button).pressed.emit()
+	await process_frame
+	_expect((app.find_child("TravelCardDetailTitle", true, false) as Label).text == "旅人の水筒" and (app.find_child("TravelCardDetailEffect", true, false) as Label).text == "♥ +1", "encountered cards open a readable effect detail")
+	var serialized: Dictionary = global_state.call("to_dictionary")
+	var restored_state := GameStateScript.new()
+	restored_state.call("apply_dictionary", serialized)
+	_expect("event:market_hawker" in restored_state.call("discovered_travel_card_ids"), "travel-card discoveries survive GameState serialization")
+	restored_state.free()
 	app.queue_free()
 	runtime_postcards.assign(original_postcards)
 	runtime_book.assign(original_book)
+	runtime_travel_cards.assign(original_travel_cards)
 	await process_frame
 
 

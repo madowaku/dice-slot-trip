@@ -19,19 +19,19 @@ msgid "TILE_HELP_COIN_TITLE"
 msgstr "コインを発見"
 
 msgid "TILE_HELP_COIN_BODY"
-msgstr "コインを獲得する。ミッションやスコアにもつながる。"
+msgstr "コインを獲得。アイテムやボス戦の支援に使える。"
 
 msgid "TILE_HELP_REST_TITLE"
 msgstr "ひとやすみ"
 
 msgid "TILE_HELP_REST_BODY"
-msgstr "水辺で休み、失ったHPを回復する。"
+msgstr "♥ ハートを1回復する。"
 
 msgid "TILE_HELP_RISK_TITLE"
 msgstr "危険地帯"
 
 msgid "TILE_HELP_RISK_BODY"
-msgstr "ダメージや移動低下が起こる危険なマス。近道には代償がある。"
+msgstr "⚠ ハートが1減る。近道はRISKとRESTが交互に並ぶ。"
 
 msgid "TILE_HELP_WARP_TITLE"
 msgstr "ワープ地点"
@@ -41,6 +41,15 @@ msgstr "別ルートへ移動する入口。円環では出口へ向かう道を
 
 msgid "TILE_HELP_TAP_TO_CLOSE"
 msgstr "画面をタップして旅を続ける"
+
+msgid "THREE_ROLL_ONBOARDING_TITLE"
+msgstr "振って止めて、3投で役をつくる"
+
+msgid "THREE_ROLL_ONBOARDING_BODY"
+msgstr "回転中にもう一度タップ。見えている出目で止まる。\nその数だけ進み、1マス = 1ポイント！\n\nPAIR：同じ数字が2つ → SKILL +1\nSTRAIGHT：連続した3つ → SKILL +2\nTRIPLE：同じ数字が3つ → SKILL READY\nMIX：そのほか → COIN +1\n\nボス戦では、盾・加速・必殺になる。"
+
+msgid "THREE_ROLL_ONBOARDING_CTA"
+msgstr "わかった！ 旅を始める"
 
 msgid "TRAVEL_MENU_BUTTON"
 msgstr "メニュー"
@@ -67,25 +76,54 @@ msgid "LOOP_RESCUE_TOAST"
 msgstr "砂時計の導きで、3周目の出口から本線へ戻った"
 
 msgid "VICTORY_KICKER"
-msgstr "JOURNEY COMPLETE"
+msgstr "旅のゴール！"
 
 msgid "DEFEAT_KICKER"
-msgstr "JOURNEY RECORD"
+msgstr "レース終了"
 
 msgid "VICTORY_TITLE"
-msgstr "旅路踏破"
+msgstr "スフィンクスに勝った！"
 
 msgid "DEFEAT_TITLE"
-msgstr "スフィンクス勝利"
+msgstr "あと一歩！"
 
 msgid "VICTORY_SCORE"
-msgstr "SCORE %s"
+msgstr "旅したマス %s"
 
 msgid "VICTORY_MISSIONS"
-msgstr "MISSION %d / %d"
+msgstr "ミッション達成 %d / %d"
 
 msgid "VICTORY_ALL_MISSIONS"
-msgstr "ALL MISSIONS COMPLETE"
+msgstr "ミッション全達成！"
 
 msgid "VICTORY_NEXT"
 msgstr "次の旅へ"
+
+msgid "EVENT_MARKET_HAWKER_TITLE"
+msgstr "市場の呼び込み"
+msgid "EVENT_MARKET_HAWKER_FIRST"
+msgstr "市場の呼び込みが、きらめく品を掲げて元気よく声をかけてきた。"
+msgid "EVENT_MARKET_HAWKER_REPEAT"
+msgstr "顔なじみの呼び込みが、今日もにぎやかに手を振っている。"
+msgid "EVENT_NILE_TAILWIND_TITLE"
+msgstr "ナイルの追い風"
+msgid "EVENT_NILE_TAILWIND_FIRST"
+msgstr "ナイルの帆が大きくふくらみ、心地よい追い風が旅人を包んだ。"
+msgid "EVENT_NILE_TAILWIND_REPEAT"
+msgstr "今日もナイルの風が帆を押し、旅の足取りを軽くした。"
+msgid "EVENT_RUIN_WHISPER_TITLE"
+msgstr "遺跡のささやき"
+msgid "EVENT_RUIN_WHISPER_FIRST"
+msgstr "遺跡の壁画から青い光がほどけ、砂時計の秘密をそっとささやいた。"
+msgid "EVENT_RUIN_WHISPER_REPEAT"
+msgstr "青い光がふたたび揺れ、聞き覚えのあるささやきが響いた。"
+msgid "EVENT_FERRY_OFFER_TITLE"
+msgstr "渡し船の客引き"
+msgid "EVENT_FERRY_OFFER_FIRST"
+msgstr "ワニの船頭が、ナイルを渡る舟へ陽気に招いてきた。"
+msgid "EVENT_FERRY_OFFER_REPEAT"
+msgstr "顔なじみの船頭が、舟の上からまた陽気に手を振っている。"
+msgid "EVENT_DISCOVERY_SCORE"
+msgstr "初めて発見！"
+msgid "EVENT_CONTINUE_CTA"
+msgstr "旅を続ける"

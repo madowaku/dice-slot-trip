@@ -8,9 +8,9 @@ const VIEWPORT_SIZE := Vector2i(640, 280)
 const COMPACT_VIEWPORT_SIZE := Vector2i(320, 320)
 const DIE_BASE_Y := 0.82
 const SETTLE_DURATION := 0.18
-const ROLL_X_SPEED := 5.3
-const ROLL_Y_SPEED := 7.6
-const ROLL_Z_SPEED := 4.1
+const ROLL_FACE_STEP_SECONDS := 0.12
+const ROLL_FACE_HOLD_RATIO := 0.54
+const ROLL_LIFT_HEIGHT := 0.10
 const IVORY := Color("#fff6e4")
 const IVORY_EDGE := Color("#e8d2a8")
 const PIP_COLOR := Color("#2d241c")
@@ -26,6 +26,7 @@ var die_states: Array[int] = []
 var face_values: Array[int] = []
 var settle_elapsed: Array[float] = []
 var roll_elapsed: Array[float] = []
+var roll_clock_external: Array[bool] = []
 var base_positions: Array[Vector3] = []
 var settle_start_positions: Array[Vector3] = []
 var settle_start_orientations: Array[Quaternion] = []
@@ -134,7 +135,7 @@ func _build_die(index: int) -> void:
 	for pip_index: int in range(pip_transforms.size()): multi.set_instance_transform(pip_index, pip_transforms[pip_index])
 	var pip_material := StandardMaterial3D.new(); pip_material.albedo_color = Color("#120d08") if high_contrast_pips else PIP_COLOR; pip_material.roughness = 0.78
 	pips.multimesh = multi; pips.material_override = pip_material; die.add_child(pips)
-	dice_roots.append(die); die_states.append(DieState.READY); face_values.append(1); settle_elapsed.append(SETTLE_DURATION); roll_elapsed.append(0.0); base_positions.append(Vector3.ZERO); settle_start_positions.append(Vector3.ZERO); settle_start_orientations.append(Quaternion.IDENTITY)
+	dice_roots.append(die); die_states.append(DieState.READY); face_values.append(1); settle_elapsed.append(SETTLE_DURATION); roll_elapsed.append(0.0); roll_clock_external.append(false); base_positions.append(Vector3.ZERO); settle_start_positions.append(Vector3.ZERO); settle_start_orientations.append(Quaternion.IDENTITY)
 
 func _collect_face_pips(transforms: Array[Transform3D], value: int, normal: Vector3, horizontal: Vector3, vertical: Vector3) -> void:
 	var patterns: Array = [[], [Vector2.ZERO], [Vector2(-1, -1), Vector2(1, 1)], [Vector2(-1, -1), Vector2.ZERO, Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2.ZERO, Vector2(-1, 1), Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 0), Vector2(1, 0), Vector2(-1, 1), Vector2(1, 1)]]
@@ -176,12 +177,38 @@ static func top_face_for_orientation(orientation: Quaternion) -> int:
 			best_face = face
 	return best_face
 
+static func rolling_face_for_elapsed(elapsed: float) -> int:
+	var phase := maxf(elapsed, 0.0) / ROLL_FACE_STEP_SECONDS
+	var step := floori(phase)
+	var local := phase - float(step)
+	var current_face := posmod(step, 6) + 1
+	if local <= ROLL_FACE_HOLD_RATIO:
+		return current_face
+	var transition := (local - ROLL_FACE_HOLD_RATIO) / (1.0 - ROLL_FACE_HOLD_RATIO)
+	return current_face if transition < 0.5 else (current_face % 6) + 1
+
 static func rolling_orientation(elapsed: float, dice_index: int = 0) -> Quaternion:
-	var phase := maxf(elapsed, 0.0) + float(dice_index) * 0.037
-	var around_x := Quaternion(Vector3.RIGHT, phase * ROLL_X_SPEED)
-	var around_z := Quaternion(Vector3.BACK, phase * ROLL_Z_SPEED)
-	var around_y := Quaternion(Vector3.UP, phase * ROLL_Y_SPEED)
-	return (around_y * around_z * around_x).normalized()
+	# Hold each face long enough to read, then turn cleanly to the next one.
+	# This deterministic carousel makes timing legible without three-axis wobble.
+	var shifted_elapsed := maxf(elapsed, 0.0) + float(dice_index) * ROLL_FACE_STEP_SECONDS * 0.18
+	var phase := shifted_elapsed / ROLL_FACE_STEP_SECONDS
+	var step := floori(phase)
+	var local := phase - float(step)
+	var current_face := posmod(step, 6) + 1
+	var next_face := (current_face % 6) + 1
+	if local <= ROLL_FACE_HOLD_RATIO:
+		return orientation_quaternion_for_face(current_face)
+	var transition := clampf((local - ROLL_FACE_HOLD_RATIO) / (1.0 - ROLL_FACE_HOLD_RATIO), 0.0, 1.0)
+	var eased := transition * transition * (3.0 - 2.0 * transition)
+	return orientation_quaternion_for_face(current_face).slerp(orientation_quaternion_for_face(next_face), eased).normalized()
+
+static func rolling_lift_for_elapsed(elapsed: float, dice_index: int = 0) -> float:
+	var shifted_elapsed := maxf(elapsed, 0.0) + float(dice_index) * ROLL_FACE_STEP_SECONDS * 0.18
+	var local := fmod(shifted_elapsed, ROLL_FACE_STEP_SECONDS) / ROLL_FACE_STEP_SECONDS
+	if local <= ROLL_FACE_HOLD_RATIO:
+		return 0.0
+	var transition := clampf((local - ROLL_FACE_HOLD_RATIO) / (1.0 - ROLL_FACE_HOLD_RATIO), 0.0, 1.0)
+	return sin(transition * PI) * ROLL_LIFT_HEIGHT
 
 static func layout_for_count(count: int) -> Array[Vector3]:
 	match clampi(count, 1, 5):
@@ -212,16 +239,24 @@ func present(values: Array[int], rolling: bool, locked_count: int) -> void:
 		var new_value := clampi(values[index], 1, 6)
 		face_values[index] = new_value
 		if rolling and index >= locked_count:
-			if die_states[index] != DieState.ROLLING: roll_elapsed[index] = 0.0
+			if die_states[index] != DieState.ROLLING:
+				roll_elapsed[index] = 0.0
+				roll_clock_external[index] = false
 			die_states[index] = DieState.ROLLING
 		elif die_states[index] == DieState.ROLLING:
-			die_states[index] = DieState.SETTLING; settle_elapsed[index] = 0.0; settle_start_positions[index] = die.position; settle_start_orientations[index] = die.quaternion
+			die_states[index] = DieState.SETTLING; settle_elapsed[index] = 0.0; settle_start_positions[index] = die.position; settle_start_orientations[index] = die.quaternion; roll_clock_external[index] = false
 		elif not rolling and die_states[index] != DieState.SETTLING:
 			die_states[index] = DieState.READY
 		cube_materials[index].emission_enabled = index == next_lock_index
 		cube_materials[index].emission = GOLD
 		cube_materials[index].emission_energy_multiplier = 0.17 if index == next_lock_index else 0.0
 	queue_redraw()
+
+func sync_rolling_elapsed(elapsed: float) -> void:
+	for index: int in range(active_count):
+		if die_states[index] == DieState.ROLLING:
+			roll_elapsed[index] = maxf(elapsed, 0.0)
+			roll_clock_external[index] = true
 
 
 func flip_to_face(value: int) -> void:
@@ -241,12 +276,11 @@ func _process(delta: float) -> void:
 		var die := dice_roots[index]
 		match die_states[index]:
 			DieState.ROLLING:
-				roll_elapsed[index] += delta
+				if not roll_clock_external[index]:
+					roll_elapsed[index] += delta
 				var roll_time := roll_elapsed[index]
 				die.quaternion = rolling_orientation(roll_time, index)
-				var throw_progress := clampf(roll_elapsed[index] / (0.78 + float(index) * 0.035), 0.0, 1.0)
-				var residual_roll := Vector3(sin(animation_time * 7.0 + index) * 0.08, absf(sin(animation_time * 9.0 + index * 0.8)) * 0.12, 0)
-				die.position = base_positions[index] + throw_offset(throw_progress, index) + residual_roll * (1.0 - throw_progress * 0.7)
+				die.position = base_positions[index] + Vector3(0.0, rolling_lift_for_elapsed(roll_time, index), 0.0)
 			DieState.SETTLING:
 				settle_elapsed[index] += delta
 				var t := clampf(settle_elapsed[index] / SETTLE_DURATION, 0.0, 1.0)
@@ -259,7 +293,11 @@ func _process(delta: float) -> void:
 				die.position = base_positions[index]
 		var highlighted := index == next_lock_index
 		var base_scale := 1.58 if compact_single else (1.48 if active_count == 1 else 1.24)
-		die.scale = Vector3.ONE * (base_scale + 0.07 if highlighted else base_scale)
+		var settle_pop := 0.0
+		if die_states[index] == DieState.SETTLING:
+			var settle_ratio := clampf(settle_elapsed[index] / SETTLE_DURATION, 0.0, 1.0)
+			settle_pop = sin(settle_ratio * PI) * 0.055
+		die.scale = Vector3.ONE * ((base_scale + 0.07 if highlighted else base_scale) + settle_pop)
 
 func state_name(index: int) -> String:
 	if index < 0 or index >= die_states.size(): return "HIDDEN"

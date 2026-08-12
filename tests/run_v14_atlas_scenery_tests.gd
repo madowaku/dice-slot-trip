@@ -1,18 +1,21 @@
 extends SceneTree
 
 const AtlasScript = preload("res://scripts/game/v06_atlas_view.gd")
+const CourseScript = preload("res://scripts/game/v06_course_model.gd")
 
 var failures := 0
 
 func _init() -> void:
 	_expect_state(0.0, &"MARKET", &"PYRAMID", 0.0)
-	_expect_state(11.0, &"MARKET", &"PYRAMID", 1.0)
-	_expect_state(12.0, &"PYRAMID", &"OASIS", 0.0)
-	_expect_state(23.0, &"PYRAMID", &"OASIS", 1.0)
-	_expect_state(24.0, &"OASIS", &"RUINS", 0.0)
-	_expect_state(35.0, &"RUINS", &"DUNES", 0.0)
-	_expect_state(46.0, &"DUNES", &"DUNES", 0.0)
-	_expect_state(57.0, &"DUNES", &"DUNES", 0.0)
+	_expect_state(17.0, &"MARKET", &"PYRAMID", 1.0)
+	_expect_state(18.0, &"PYRAMID", &"OASIS", 0.0)
+	_expect_state(35.0, &"PYRAMID", &"OASIS", 1.0)
+	_expect_state(36.0, &"OASIS", &"RUINS", 0.0)
+	_expect_state(54.0, &"RUINS", &"DUNES", 0.0)
+	_expect_state(72.0, &"DUNES", &"DUNES", 0.0)
+	_expect_state(89.0, &"DUNES", &"DUNES", 0.0)
+	_expect(AtlasScript.DISTRICT_START_TILES == [0, 18, 36, 54, 72], "90-tile atlas uses five equal 18-tile districts")
+	_expect_bypass_connections()
 	for district_id: StringName in AtlasScript.DISTRICT_IDS:
 		var texture := AtlasScript.DISTRICT_SCENERY_TEXTURES.get(district_id) as Texture2D
 		_expect(texture != null and texture.get_size().x > texture.get_size().y, "%s atlas scenery is a loaded landscape texture" % district_id)
@@ -43,4 +46,22 @@ func _expect_loop_state(loop_name: StringName, expected_static: bool) -> void:
 	var second := atlas._active_scenery_state()
 	_expect(bool(first.get("background_static", false)) == expected_static, "%s loop marks scenery static" % loop_name)
 	_expect(is_equal_approx(float(first.get("local_progress", -1.0)), float(second.get("local_progress", -2.0))), "%s loop keeps scenery position fixed" % loop_name)
+	atlas.free()
+
+func _expect_bypass_connections() -> void:
+	var atlas := AtlasScript.new()
+	atlas._course = CourseScript.new()
+	_expect(atlas._course.load_file("res://data/stages/v06_cairo_course.json"), "atlas connectivity fixture loads the canonical course")
+	atlas._definition = atlas._course.definition()
+	atlas._build_route_points()
+	for contract: Dictionary in [
+		{"route":"bypass_bazaar_alley", "fork":32, "rejoin":41, "count":4},
+		{"route":"bypass_sirocco", "fork":71, "rejoin":83, "count":5},
+	]:
+		var points: Array = atlas._route_points[contract.route]
+		var fork_point: Vector2 = atlas._route_points["main"][contract.fork]
+		var rejoin_point: Vector2 = atlas._route_points["main"][contract.rejoin]
+		_expect(points.size() == contract.count, "%s keeps its approved branch point count" % contract.route)
+		_expect(fork_point.distance_to(points.front()) < fork_point.distance_to(rejoin_point), "%s first point connects geographically to fork%d" % [contract.route, contract.fork])
+		_expect(rejoin_point.distance_to(points.back()) < fork_point.distance_to(rejoin_point), "%s last point connects geographically to rejoin%d" % [contract.route, contract.rejoin])
 	atlas.free()

@@ -1,0 +1,1111 @@
+# Goal Maker v2 state.yaml
+# Board truth lives here. goal.md is the editable charter; notes/ holds long receipts only.
+
+version: 2
+
+goal:
+  title: "DICE SLOT TRIP 新90マップ・HP/LIFE再設計"
+  slug: "dice-slot-trip-90-map-life-rework"
+  kind: specific
+  tranche: "Map the current topology, survival/save model, roulette, skill UI, and tests; resolve structural conflicts; implement and verify the first safe slice; audit readiness to continue."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Map the exact current implementation and migration risks for the 90-map, HP/LIFE, recovery roulette, EVENT, and skill changes."
+    inputs:
+      - "C:/Users/hiro/Downloads/DICE SLOT TRIP 改善実装指示.md"
+      - "data/stages/v06_cairo_course.json"
+      - "scripts/game/v06_course_model.gd"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "scripts/game/v06_session_save_manager.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests"
+    constraints:
+      - "Read-only."
+      - "Do not edit implementation files."
+      - "Protect existing dirty and untracked work."
+      - "Identify exact route/warp/bypass arithmetic and save migration detection, not just file names."
+    expected_output:
+      - "Current route topology and proposed final 90-map connections"
+      - "HP/max_hp/game-over/emergency-revive call graph"
+      - "Save schema and legacy migration plan"
+      - "Roulette and skill UI ownership"
+      - "Verification commands and likely stale tests"
+      - "Structural conflicts or owner decisions"
+    receipt:
+      result: done
+      note: "notes/T001-impact-map.md"
+      summary: "Mapped route/save/survival/UI ownership; fork proposals are valid, but 90-map and schema migration must be atomic."
+      evidence:
+        - "data/stages/v06_cairo_course.json"
+        - "scripts/game/v06_course_model.gd"
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "scripts/app/v06_play_screen.gd"
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Review T001 and choose the first safe implementation slice, including final topology and migration invariants."
+    inputs:
+      - "T001 receipt"
+      - "docs/goals/dice-slot-trip-90-map-life-rework/goal.md"
+    constraints:
+      - "Do not implement."
+      - "Preserve the user's explicit behavior while resolving arithmetic or migration conflicts conservatively."
+      - "Prefer a slice with strong automated verification and no temporary broken save format."
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Final route/warp/bypass connection recommendation"
+      - "Deferred tasks"
+    receipt:
+      result: done
+      decision: "Approve one atomic core slice: 90-map topology, HP3/LIFE3 rules, recovery roulette, and schema2/course migration. Keep both proposed forks; move W5 from rejoin83 to84 and make83 REST."
+      next_allowed_task: T003
+      blocked_tasks:
+        - T004
+        - T005
+        - T999
+      topology:
+        - "fork32 -> main41, 9:5, saved4"
+        - "fork71 -> main83 REST, 12:6, saved6"
+        - "W1 24 oasis3 return29; W2 47 oasis5 return60"
+        - "W3 66 tomb3 fallback70; W4 73 tomb5 fallback76; W5 84 gold2 fallback88"
+        - "tomb primary EXIT0 -> main88; alternate EXIT4 -> main76"
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "Implement the frozen core slice: 90-node topology and atlas, HP max3/LIFE3 revival and LIFE0 game over, remove coin revive, completed-lap 10-step LIFE bonus, recovery-only roulette with HP3 perfect skip, schema2/course-version legacy58 migration, and directly affected tests."
+    allowed_files:
+      - "data/stages/v06_cairo_course.json"
+      - "scripts/game/v06_course_model.gd"
+      - "scripts/game/v06_atlas_view.gd"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "scripts/game/v06_session_save_manager.gd"
+      - "scripts/ui/v06_heart_roulette_view.gd"
+      - "tests/run_v06_course_model_tests.gd"
+      - "tests/run_v06_loop_rescue_tests.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_tile_effect_tests.gd"
+      - "tests/run_v06_coin_economy_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+    verify:
+      - "Godot run_v06_course_model_tests.gd"
+      - "Godot run_v06_loop_rescue_tests.gd"
+      - "Godot run_v06_play_session_tests.gd"
+      - "Godot run_v06_tile_effect_tests.gd"
+      - "Godot run_v06_coin_economy_tests.gd"
+      - "Godot run_v06_save_tests.gd"
+      - "Godot run_v06_play_screen_tests.gd"
+      - "Godot run_v06_boss_play_screen_tests.gd"
+      - "Godot run_tests.gd"
+      - "git diff --check for allowed files"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Existing dirty hunks cannot be distinguished and preserved."
+      - "Implementation keeps W5 on rejoin83 or changes approved counts/pacing."
+      - "Migration changes cumulative SCORE, BEST, LAP, durable discoveries/onboarding, stage, or character, or can add score twice."
+      - "Schema2 can contain max_hp other than3, life outside0..3, legacy roulette outcomes, or active coin revive."
+      - "Legacy terminal victory cannot remain next-lap capable inside scope."
+      - "A targeted verification fails twice for the same cause."
+    receipt:
+      result: blocked
+      summary: "Partial core implementation landed and course tests pass, but session/save suites retain 57 stale 58-map/legacy-roulette expectations; repeated same-cause failures triggered stop_if."
+      changed_files:
+        - "data/stages/v06_cairo_course.json"
+        - "scripts/game/v06_course_model.gd"
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "scripts/game/v06_session_save_manager.gd"
+        - "scripts/ui/v06_heart_roulette_view.gd"
+        - "tests/run_v06_course_model_tests.gd"
+      commands:
+        - cmd: "Godot run_v06_course_model_tests.gd"
+          status: pass
+        - cmd: "Godot run_v06_play_session_tests.gd"
+          status: fail_stale_expectations
+        - cmd: "Godot run_v06_save_tests.gd"
+          status: fail_stale_expectations
+        - cmd: "Godot editor parse/import"
+          status: pass
+        - cmd: "git diff --check allowed files"
+          status: pass
+      blocker: "Systematic migration of stale session/save fixtures needs a newly judged bounded Worker task."
+
+  - id: T006
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Review T003 partial diff and failing session/save suites; decide a bounded recovery Worker task that can finish core verification without hiding real regressions."
+    inputs:
+      - "T003 receipt"
+      - "Current allowed-file diff"
+      - "run_v06_play_session_tests failure output"
+      - "run_v06_save_tests failure output"
+    constraints:
+      - "Read-only."
+      - "Do not weaken assertions merely to make tests green."
+      - "Distinguish stale fixtures from real implementation defects."
+    expected_output:
+      - "Recovery decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+    receipt:
+      result: done
+      decision: "Authorize corrective T007, not tests-only cleanup. Repair exact product contract, migration, and atlas first; then migrate fixtures with assertions mapped to the approved behavior."
+      next_allowed_task: T007
+      defects:
+        - "Partial JSON special indices do not match the approved sets."
+        - "JSON lacks course_version."
+        - "Atlas still clamps57/end58 and has a three-point first branch."
+        - "Legacy migration forces HP3 and discards terminal pending-roulette exception."
+
+  - id: T007
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "Recover the core slice: enforce exact approved 90-map JSON/model/atlas contract, repair schema1 migration and schema2 invariants, migrate affected fixtures without weakening them, and run all targeted plus full tests."
+    allowed_files:
+      - "data/stages/v06_cairo_course.json"
+      - "scripts/game/v06_course_model.gd"
+      - "scripts/game/v06_atlas_view.gd"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "tests/run_v06_course_model_tests.gd"
+      - "tests/run_v06_loop_rescue_tests.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_tile_effect_tests.gd"
+      - "tests/run_v06_coin_economy_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+    verify:
+      - "Godot run_v06_course_model_tests.gd"
+      - "Godot run_v06_loop_rescue_tests.gd"
+      - "Godot run_v06_play_session_tests.gd"
+      - "Godot run_v06_tile_effect_tests.gd"
+      - "Godot run_v06_coin_economy_tests.gd"
+      - "Godot run_v06_save_tests.gd"
+      - "Godot run_v06_play_screen_tests.gd"
+      - "Godot run_v06_boss_play_screen_tests.gd"
+      - "Godot run_tests.gd"
+      - "git diff --check for all allowed files"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Existing dirty hunks cannot be distinguished and preserved."
+      - "A test is removed or weakened without mapping to the approved contract."
+      - "Exact special-index sets, fork/warp/EXIT topology, or course_version differ from the T006 receipt."
+      - "Migration cannot preserve totals, BEST/records, lap, stage/character, or durable flags idempotently."
+      - "Terminal legacy victory cannot retain next-lap capability with recovery-pending/PERFECT split."
+      - "A targeted suite has the same non-fixture core failure twice or requires files outside scope."
+    receipt:
+      result: blocked
+      summary: "Production contract and most fixture migrations are repaired, but boss screen verification exposed a recovery-roulette display-order defect owned by an out-of-scope file."
+      passed:
+        - "run_v06_course_model_tests.gd"
+        - "run_v06_save_tests.gd"
+        - "run_v06_tile_effect_tests.gd"
+        - "run_v06_coin_economy_tests.gd"
+      pending_recheck:
+        - "run_v06_loop_rescue_tests.gd"
+        - "run_v06_play_session_tests.gd"
+        - "run_v06_play_screen_tests.gd"
+      failed:
+        - "run_v06_boss_play_screen_tests.gd: one recovery-roulette clockwise option-order mismatch"
+      blocker: "The session contract is [+1,+2,+1,FULL,+1,+2], but scripts/app/v06_play_screen.gd renders [+1,FULL,+2,+1,+1,+2]; that owner file is outside T007 allowed_files."
+
+  - id: T008
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit the single out-of-scope roulette display-order defect from T007 and define the smallest safe recovery Worker slice that completes core verification."
+    inputs:
+      - "T007 receipt"
+      - "scripts/app/v06_play_screen.gd recovery roulette mapping"
+      - "scripts/ui/v06_heart_roulette_view.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+    constraints:
+      - "Read-only."
+      - "Do not weaken the approved clockwise recovery contract."
+      - "Preserve all T007 production and fixture work."
+    expected_output:
+      - "Root-cause confirmation"
+      - "Minimal Worker allowed_files"
+      - "Verification commands"
+      - "Stop conditions"
+    receipt:
+      result: done
+      decision: "The session and roulette view are correct; the old play-screen permutation must become identity so clockwise display and STOP selection share the approved order."
+      root_cause: "HEART_ROULETTE_VISUAL_SLOT_ORDER [0,3,1,4,2,5] maps the new logical values to the observed wrong order."
+      next_allowed_task: T009
+
+  - id: T009
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Change the play-screen recovery-roulette visual slot mapping to identity order, preserve all T007 work, then rerun every targeted suite and the full suite."
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+    verify:
+      - "Godot run_v06_boss_play_screen_tests.gd"
+      - "Godot run_v06_loop_rescue_tests.gd"
+      - "Godot run_v06_play_session_tests.gd"
+      - "Godot run_v06_play_screen_tests.gd"
+      - "Godot run_v06_course_model_tests.gd"
+      - "Godot run_v06_save_tests.gd"
+      - "Godot run_v06_tile_effect_tests.gd"
+      - "Godot run_v06_coin_economy_tests.gd"
+      - "Godot run_tests.gd"
+      - "git diff --check -- scripts/app/v06_play_screen.gd"
+    stop_if:
+      - "Any file other than scripts/app/v06_play_screen.gd needs modification."
+      - "The existing dirty hunk around the constant cannot be preserved with a one-line change."
+      - "The approved clockwise contract changes or the mapping is not identity."
+      - "A test needs weakening, reordering, or deletion."
+      - "Boss-screen fails twice for another cause, or recheck/full-suite fallout requires files outside scope."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd: HEART_ROULETTE_VISUAL_SLOT_ORDER changed to identity [0,1,2,3,4,5]"
+      summary: "Replaced the stale roulette permutation with identity order and verified display/STOP semantics."
+      commands:
+        - cmd: "All T009 targeted suites and tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check -- scripts/app/v06_play_screen.gd"
+          status: pass
+      verification:
+        - "boss play screen: pass"
+        - "loop rescue: pass"
+        - "play session: pass"
+        - "play screen: pass"
+        - "course model: pass"
+        - "save: pass"
+        - "tile effect: pass"
+        - "coin economy: pass"
+        - "full suite: pass, failures=0"
+        - "diff check: pass"
+      remaining_blockers: []
+
+  - id: T010
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit the recovered core slice after T007/T009: verify the frozen 90-map, HP/LIFE, roulette, and save-migration contract against the diff and passing tests, then decide whether UI scouting may start."
+    inputs:
+      - "T006, T007, T008, and T009 receipts"
+      - "Current core diff"
+      - "Passing targeted and full-suite results"
+    constraints:
+      - "Read-only."
+      - "Do not implement or broaden into UI work."
+      - "Reject readiness if a required core invariant lacks implementation or test evidence."
+    expected_output:
+      - "ready_for_T004 | corrective_task_required"
+      - "Invariant evidence"
+      - "Missing evidence or next task"
+    receipt:
+      result: done
+      decision: corrective_task_required
+      confirmed:
+        - "Frozen 90-map JSON/model topology and course_version"
+        - "HP3/LIFE3 revival, LIFE0 game over, coin revive removal, capped 10-lap award"
+        - "Recovery roulette contract and identity play-screen mapping"
+      defects:
+        - "Atlas district starts and branch geography still encode the 58-map layout."
+        - "Legacy terminal victory migrates to main0 instead of main89."
+        - "Legacy ordinary migration retains lap-local score details."
+        - "Legacy resolved roulette can be converted to pending and rewarded again."
+        - "Schema2 resolved roulette arithmetic validation and explicit legacy/LIFE tests are incomplete."
+      next_allowed_task: T011
+
+  - id: T011
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Finish only the remaining core gaps: correct 90-map atlas districts/branch geography, repair ordinary and terminal schema1 migration including resolved-roulette idempotence, tighten schema2 roulette arithmetic, and add the missing invariant tests."
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "tests/run_v06_course_model_tests.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v14_atlas_scenery_tests.gd"
+    verify:
+      - "Godot run_v06_course_model_tests.gd"
+      - "Godot run_v06_play_session_tests.gd"
+      - "Godot run_v06_save_tests.gd"
+      - "Godot run_v06_play_screen_tests.gd"
+      - "Godot run_v14_atlas_scenery_tests.gd"
+      - "Godot run_v06_loop_rescue_tests.gd"
+      - "Godot run_v06_tile_effect_tests.gd"
+      - "Godot run_v06_coin_economy_tests.gd"
+      - "Godot run_v06_boss_play_screen_tests.gd"
+      - "Godot run_tests.gd; failures=0"
+      - "git diff --check for all allowed_files"
+    stop_if:
+      - "Frozen topology/course_version must change."
+      - "Migration changes cumulative score, BEST, lap, records, durable flags, stage, or character."
+      - "Legacy resolved roulette cannot be distinguished safely from unresolved state."
+      - "Terminal migration cannot remain next-lap capable at main89."
+      - "Atlas repair needs scene/app/UI files."
+      - "An assertion must be removed or weakened."
+      - "The same non-fixture core failure occurs twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "tests/run_v06_course_model_tests.gd"
+        - "tests/run_v06_play_session_tests.gd"
+        - "tests/run_v06_save_tests.gd"
+        - "tests/run_v14_atlas_scenery_tests.gd"
+      summary: "Completed 90-map atlas geography, safe ordinary/terminal legacy migration, resolved-roulette idempotence and arithmetic validation, plus the missing core invariant tests."
+      commands:
+        - cmd: "All nine T011 targeted suites and tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check for T011 allowed files"
+          status: pass
+      verification:
+        - "All nine targeted suites: pass"
+        - "Full suite: pass, failures=0"
+        - "Allowed-file diff check: pass"
+      remaining_blockers: []
+
+  - id: T012
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Re-audit the corrected core after T011 and decide whether T004 UI scouting is now safe to activate."
+    inputs:
+      - "T010 and T011 receipts"
+      - "Current core diff"
+      - "Passing targeted/full verification"
+    constraints:
+      - "Read-only."
+      - "Require implementation and independent test evidence for every frozen core invariant."
+    expected_output:
+      - "ready_for_T004 | corrective_task_required"
+      - "Core invariant evidence"
+      - "Any remaining blockers"
+    receipt:
+      result: done
+      decision: corrective_task_required
+      confirmed: "All frozen topology, atlas, LIFE, roulette, and migration behavior is implemented and covered except the final save-boundary strictness/evidence below."
+      defect: "Schema2 accepts non-integer max_hp values coercible to3."
+      missing_evidence: "Genuine non-START legacy transient reset, explicit pending terminal migration, ordinary/terminal idempotence, manager normalized-data path, and schema2 negative bounds."
+      next_allowed_task: T013
+
+  - id: T013
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Close the save boundary only: require integer max_hp exactly3 and add independent legacy transient-reset, terminal pending/PERFECT/resolved, idempotence, manager normalized-load, and schema2 negative-bound tests."
+    allowed_files:
+      - "scripts/game/v06_session_save_data.gd"
+      - "tests/run_v06_save_tests.gd"
+    verify:
+      - "Godot run_v06_save_tests.gd"
+      - "Godot run_v06_play_session_tests.gd"
+      - "Godot run_v06_course_model_tests.gd"
+      - "Godot run_v06_loop_rescue_tests.gd"
+      - "Godot run_v06_tile_effect_tests.gd"
+      - "Godot run_v06_coin_economy_tests.gd"
+      - "Godot run_v06_play_screen_tests.gd"
+      - "Godot run_v06_boss_play_screen_tests.gd"
+      - "Godot run_v14_atlas_scenery_tests.gd"
+      - "Godot run_tests.gd; failures=0"
+      - "git diff --check for the two allowed files"
+    stop_if:
+      - "Any file outside the two allowed files is required."
+      - "Topology, atlas, session, or roulette display must change."
+      - "Migration changes preserved cumulative/durable values."
+      - "Legacy resolved roulette becomes pending again."
+      - "An assertion must be removed or weakened."
+      - "The same non-fixture core failure occurs twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_session_save_data.gd"
+        - "tests/run_v06_save_tests.gd"
+      summary: "Closed strict schema2 HP/LIFE bounds and added genuine legacy reset, terminal roulette, idempotence, and normalized-manager-load evidence."
+      commands:
+        - cmd: "All T013 targeted suites and tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check for T013 allowed files"
+          status: pass
+      verification:
+        - "All targeted suites: pass"
+        - "Full suite: pass, failures=0"
+        - "Two-file diff check: pass"
+      remaining_blockers: []
+
+  - id: T014
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Final core readiness audit after T013; decide whether the frozen core slice is verified and T004 UI scouting may begin."
+    inputs:
+      - "T012 and T013 receipts"
+      - "Current core diff and all verification receipts"
+    constraints:
+      - "Read-only."
+      - "Do not reopen proven requirements without concrete contradictory evidence."
+      - "Require no unresolved core defect before T004."
+    expected_output:
+      - "ready_for_T004 | corrective_task_required"
+      - "Concise evidence matrix"
+      - "Remaining blocker, if any"
+    receipt:
+      result: done
+      decision: ready_for_T004
+      evidence: "Exact topology/atlas, HP-LIFE, roulette, schema2, schema1 ordinary/terminal, and current full verification all pass."
+      remaining_blocker: null
+
+  - id: T004
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "After the first slice, map the remaining UI and visual QA work for LIFE HUD, revival feedback, EVENT prices, skill discovery, and recovery roulette."
+    inputs:
+      - "T014 core-readiness receipt"
+      - "Current implementation screenshots and tests"
+    constraints:
+      - "Read-only."
+      - "Keep the central map clear at all required viewports."
+    expected_output:
+      - "Remaining bounded Worker tasks"
+      - "Required visual states and screenshots"
+      - "Asset reuse recommendation"
+    receipt:
+      result: done
+      summary: "Mapped five sequential UI slices. Recommend explorer cat plus '復活 ×3' without increasing HUD height; then EVENT, skill, roulette, and native viewport QA."
+      evidence:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/ui/v06_heart_roulette_view.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_boss_play_screen_tests.gd"
+      sequence:
+        - "UI-SURVIVAL"
+        - "UI-EVENT"
+        - "UI-SKILL"
+        - "UI-ROULETTE"
+        - "UI-VISUAL-QA"
+      critical_findings:
+        - "Remove stale coin-revive caption/button references."
+        - "Play-screen EVENT indices are stale and must become [30,43,61,77]."
+        - "Skill buttons are a one-row HBox and first-READY discovery does not exist."
+        - "HP3 victory currently hides roulette without PERFECT presentation."
+        - "Native normal-map 720x1600 and 360x640 capture fixtures are missing."
+
+  - id: T005
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Sequence the remaining required implementation tasks after T004 without broadening scope."
+    inputs:
+      - "T014 core-readiness receipt"
+      - "T004 receipt"
+    constraints:
+      - "Do not implement."
+      - "Every Worker task must have disjoint or explicitly sequenced allowed_files and verification."
+    expected_output:
+      - "Ordered task sequence"
+      - "Worker scopes"
+      - "Verification gates"
+    receipt:
+      result: done
+      decision: "Freeze five sequential UI Workers: SURVIVAL, EVENT, SKILL, ROULETTE, VISUAL-QA."
+      next_allowed_task: T015
+      ready_boundary: "READY discovery appears after role copy and before movement; after EVENT dismiss when applicable; BOSS_GATE defers without marking seen."
+
+  - id: T015
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Add explorer-cat LIFE HUD '復活 ×N' inside the fixed HUD row, transient revival and 10-lap stamps, and remove all obsolete coin-revive UI/copy without changing core rewards."
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tall_phone_layout_tests.gd"
+    verify:
+      - "Godot run_v06_play_screen_tests.gd"
+      - "Godot run_v06_boss_play_screen_tests.gd"
+      - "Godot run_tall_phone_layout_tests.gd"
+      - "Godot run_v06_play_session_tests.gd"
+      - "Godot run_v06_tile_effect_tests.gd"
+      - "Godot run_v06_coin_economy_tests.gd"
+      - "Godot run_tests.gd; failures=0"
+      - "git diff --check for allowed files"
+    stop_if:
+      - "HUD height exceeds104px or the atlas/playfield shrinks."
+      - "A new cat asset, emoji font, or core reward change is required."
+      - "LIFE3 milestone grants any additional reward."
+      - "Removing obsolete emergency UI requires session/save changes."
+      - "Dirty hunks cannot be preserved or an out-of-scope layout must change."
+    receipt:
+      result: done
+      summary: "Added compact explorer-cat '復活 ×N' HUD, revival/10-lap stamps, and removed obsolete coin-revive UI/copy without changing core rewards or HUD height."
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_tall_phone_layout_tests.gd"
+      commands:
+        - cmd: "All T015 targeted suites and tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check for T015 allowed files"
+          status: pass
+      verification:
+        - "All T015 targeted suites: pass"
+        - "Full suite: pass, failures=0"
+        - "Allowed-file diff check: pass"
+
+  - id: T016
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Update EVENT prefetch indices and paid-price affordance while guaranteeing a visible enabled free CTA."
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_coin_economy_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+    verify:
+      - "Godot run_v06_play_screen_tests.gd"
+      - "Godot run_v06_coin_economy_tests.gd"
+      - "Godot run_v06_save_tests.gd"
+      - "Godot run_v06_play_session_tests.gd"
+      - "Godot run_v06_course_model_tests.gd"
+      - "Godot run_tests.gd; failures=0"
+      - "git diff --check for allowed files"
+    stop_if:
+      - "EVENT indices differ from [30,43,61,77]."
+      - "The free CTA becomes hidden or disabled, or paid CTA is the only exit."
+      - "Event price/effect/session mapping or third-roll stable ordering must change."
+      - "T015 HUD/stamps must be reverted."
+    receipt:
+      result: done
+      summary: "Updated exact EVENT prefetch indices and coin-price affordance while guaranteeing an enabled focused free CTA."
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      commands:
+        - cmd: "All T016 targeted suites and tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check for T016 allowed files"
+          status: pass
+      verification:
+        - "All T016 targeted suites: pass"
+        - "Full suite: pass, failures=0"
+        - "Allowed-file diff check: pass"
+
+  - id: T017
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Implement the 3x2 READY selector, direct armed-result copy, and deferred first-READY discovery with durable seen state."
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_tall_phone_layout_tests.gd"
+    verify:
+      - "Godot run_v06_play_screen_tests.gd"
+      - "Godot run_v06_play_session_tests.gd"
+      - "Godot run_v06_save_tests.gd"
+      - "Godot run_tall_phone_layout_tests.gd"
+      - "Godot run_v06_coin_economy_tests.gd"
+      - "Godot run_v06_boss_play_screen_tests.gd"
+      - "Godot run_tests.gd; failures=0"
+      - "git diff --check for allowed files"
+    stop_if:
+      - "Skill charge/arm/consume core semantics must change."
+      - "Seen is saved before CTA, or discovery repeats after save/retry/next-lap."
+      - "Discovery overlaps EVENT or appears before EVENT dismissal."
+      - "BOSS_GATE consumes the discovery seen state."
+      - "Buttons remain one row or below96 design px."
+      - "T015/T016 changes must be reverted."
+    receipt:
+      result: done
+      summary: "Implemented a 3x2 READY selector, direct armed-face confirmation, and CTA-confirmed first-READY discovery with save/retry/next-lap persistence and EVENT/BOSS ordering."
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_play_session_tests.gd"
+        - "tests/run_v06_save_tests.gd"
+      commands:
+        - cmd: "All T017 targeted suites and tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check for T017 allowed files"
+          status: pass
+      verification:
+        - "All T017 targeted suites: pass"
+        - "Full suite: pass, failures=0"
+        - "Allowed-file diff check: pass"
+
+  - id: T018
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Polish recovery roulette copy and add HP3 PERFECT/HP FULL presentation without changing wheel semantics."
+    visual_target: "C:/Users/hiro/.codex/generated_images/019fe6e7-9da8-7713-bdbc-1b9ccb01c52d/exec-044571f7-0675-4aa0-9706-96c7a2d65675.png"
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/ui/v06_heart_roulette_view.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_v06_feedback_tests.gd"
+    verify:
+      - "Godot run_v06_boss_play_screen_tests.gd"
+      - "Godot run_v06_feedback_tests.gd"
+      - "Godot run_v06_play_session_tests.gd"
+      - "Godot run_v06_save_tests.gd"
+      - "Godot run_v06_play_screen_tests.gd"
+      - "Godot run_tests.gd; failures=0"
+      - "git diff --check for allowed files"
+    stop_if:
+      - "Clockwise [+1,+2,+1,FULL,+1,+2], identity mapping, or STOP identity changes."
+      - "Goal-gap speed, result retention, or next-lap transition must change."
+      - "HP3 PERFECT shows a wheel or defeat shows roulette."
+      - "Session/save core or T015-T017 must change."
+    receipt:
+      result: blocked
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "scripts/ui/v06_heart_roulette_view.gd"
+        - "tests/run_v06_boss_play_screen_tests.gd"
+        - "tests/run_v06_feedback_tests.gd"
+      summary: "Recovery and PERFECT UI implementation passes targeted behavior tests, but the required same-state 944x1664 implementation capture timed out twice and no visual comparison artifact exists."
+      commands:
+        - cmd: "run_v06_boss_play_screen_tests.gd"
+          status: pass
+        - cmd: "run_v06_feedback_tests.gd"
+          status: pass
+        - cmd: "Legacy capture harness at120s and240s"
+          status: timeout_no_png
+      passed:
+        - "run_v06_boss_play_screen_tests.gd"
+        - "run_v06_feedback_tests.gd"
+      blocker: "Existing DICE_QA_V06_BOSS_CAPTURE_PATH harness timed out at120s and240s before writing the implementation PNG."
+      pending:
+        - "Visual source/implementation comparison"
+        - "Remaining targeted/full suites"
+        - "Diff check"
+      recovery: "Completed by T022/T024: native comparison evidence, full verification, and visual QA passed."
+
+  - id: T020
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit T018's capture timeout and define the smallest safe recovery path that preserves the implemented roulette UI and fulfills image-to-code visual comparison before final QA."
+    inputs:
+      - "T018 receipt and current diff"
+      - "Existing boss capture harness"
+      - "T019 native capture plan"
+      - "Selected ImageGen visual target"
+    constraints:
+      - "Read-only."
+      - "Do not waive source-versus-implementation visual comparison."
+      - "Do not change approved roulette semantics."
+    expected_output:
+      - "Recovery decision"
+      - "Minimal allowed files and commands"
+      - "Whether T018 may be completed through T019 or needs a separate Worker"
+    receipt:
+      result: done
+      decision: "Recover T018 inside T019. Freeze roulette production semantics, finish non-capture verification first, then use an independent root-viewport recorder for native visual evidence."
+      evidence:
+        - "T018 behavior suites pass without capture mode."
+        - "The old boss capture harness timed out before PNG output and need not be modified."
+        - "ImageGen source is 941x1672; native implementation target is944x1664; only comparison montage may normalize size."
+      next_allowed_task: T019
+
+  - id: T019
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Finish T018 non-capture verification, then record and inspect independent native evidence for roulette and all new 90-map/LIFE UI states at944x1664,720x1280,720x1600,and360x640."
+    allowed_files:
+      - "tests/record_v06_90_life_ui.gd"
+      - "tests/record_v06_90_life_ui.gd.uid"
+      - "artifacts/90-map-life-ui-qa/**"
+      - "docs/goals/dice-slot-trip-90-map-life-rework/notes/T019-visual-qa.md"
+    forbidden_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/ui/v06_heart_roulette_view.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_v06_feedback_tests.gd"
+      - "session/save/core files"
+    verify:
+      - "Unset capture environment and run boss, feedback, session, save, play-screen, and full suites."
+      - "Diff/trailing-whitespace checks for frozen T018 files and new recorder/note."
+      - "Recorder directly constructs states without invoking the boss suite."
+      - "Native roulette pending PNG is944x1664; normal states are native720x1280,720x1600,and360x640."
+      - "Save source941x1672, implementation944x1664, and annotated comparison montage."
+      - "Visual note evaluates hierarchy, overlap, readability, STOP, wheel order, retained result, and HP3 PERFECT."
+    required_visual_states:
+      - "normal LIFE HUD at all three required viewports"
+      - "revival feedback"
+      - "LIFE-full 10-lap stamp"
+      - "EVENT paid price plus enabled free CTA"
+      - "first-READY discovery"
+      - "3x2 READY selector"
+      - "roulette pending and retained result"
+      - "HP3 PERFECT/HP FULL without wheel"
+    stop_if:
+      - "The same real regression repeats twice in T018/full verification."
+      - "Capture requires the old boss harness or any forbidden production/test edit."
+      - "Roulette order, identity, speed, result retention, or next-lap semantics change."
+      - "Native PNG dimensions differ or only resized evidence can be produced."
+      - "Visual comparison reveals a production-level overlap or missing control."
+    receipt:
+      result: blocked
+      changed_files:
+        - "tests/record_v06_90_life_ui.gd (new, incomplete)"
+      summary: "All non-capture verification passes, but the independent root-viewport recorder timed out twice at native720x1280 and produced no PNG under headless invocation."
+      commands:
+        - cmd: "Boss, feedback, session, save, play-screen, and full suites with capture env unset"
+          status: pass
+        - cmd: "Independent root-viewport native720x1280 capture, frame_post_draw path"
+          status: timeout_no_png
+        - cmd: "Independent root-viewport native720x1280 capture, force_draw/force_sync path"
+          status: timeout_no_png
+      blocker: "Current headless renderer invocation never yields a raster; a different native renderer/invocation is required without editing frozen production files."
+      recovery: "Completed through T022/T024 using real Windows OpenGL native capture and final visual QA."
+
+  - id: T021
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Diagnose the repeated no-raster headless capture failure and define a safe native-renderer invocation or recorder recovery without changing frozen product UI."
+    inputs:
+      - "T019 receipt and incomplete recorder"
+      - "Godot renderer/project settings"
+      - "Existing successful screenshot scripts or artifacts"
+    constraints:
+      - "Read-only."
+      - "Do not waive native PNG or visual comparison requirements."
+      - "Do not change T018 production or existing behavior tests."
+    expected_output:
+      - "Root cause hypothesis with evidence"
+      - "Exact recovery Worker allowed files and invocation"
+      - "Stop conditions"
+    receipt:
+      result: done
+      decision: "Use a non-headless Windows OpenGL3/gl_compatibility root viewport; headless display is dummy-only and cannot provide the required raster."
+      root_cause: "Renderer mismatch: both root-texture readback paths time out because --headless does not create the real OpenGL window surface used by past successful captures."
+      next_allowed_task: T022
+
+  - id: T022
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Run the incomplete recorder through a real Windows OpenGL root viewport, correct only recorder sizing/readback if needed, then complete the native state matrix, ImageGen comparison montage, and visual QA note."
+    allowed_files:
+      - "tests/record_v06_90_life_ui.gd"
+      - "tests/record_v06_90_life_ui.gd.uid"
+      - "artifacts/90-map-life-ui-qa/**"
+      - "docs/goals/dice-slot-trip-90-map-life-rework/notes/T019-visual-qa.md"
+    forbidden_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/ui/v06_heart_roulette_view.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_feedback_tests.gd"
+      - "session/save/core files"
+    verify:
+      - "First run the unedited normal720x1280 smoke with Windows display, opengl3, gl_compatibility, no headless, and60s timeout."
+      - "If only size/scale is wrong, add bounded borderless window sizing, logical content scale, readback retries, and raster validation in recorder only."
+      - "Capture all twelve required matrix rows with exact native PNG headers and non-empty pixel sanity."
+      - "Preserve ImageGen source941x1672 with the frozen SHA256 and create an annotated comparison montage; only montage may resize."
+      - "Write the full visual QA note and run trailing-whitespace/scoped diff checks."
+    stop_if:
+      - "The first non-headless OpenGL smoke also times out or produces no PNG."
+      - "A bounded capture leaves a Godot process alive."
+      - "One recorder-only size correction cannot produce the exact physical size."
+      - "Raster is empty/black/transparent or renderer is dummy."
+      - "Any frozen production/test change or semantic change is required."
+      - "Visual inspection finds a production-level overlap, missing CTA, wrong wheel order, or incorrect PERFECT state."
+    receipt:
+      result: blocked
+      changed_files:
+        - "tests/record_v06_90_life_ui.gd"
+        - "artifacts/90-map-life-ui-qa/** (twelve native PNGs plus ImageGen source copy)"
+      summary: "Real Windows OpenGL capture succeeded for all twelve native rows, but visual inspection found a production-level skill-selector CTA overlap."
+      commands:
+        - cmd: "Normal720x1280 OpenGL smoke"
+          status: pass_4.3s_native720x1280
+        - cmd: "Remaining eleven native state captures"
+          status: pass_exact_headers
+        - cmd: "ImageGen source copy and SHA256 verification"
+          status: pass
+      blocker: "skill_selector-720x1280.png visibly overlays foreground '閉じる' with background 'サイコロを振ろう' in the same teal CTA."
+      recovery: "T024 suppressed the backing operation message while utility is open, recaptured native720x1280, and passed all visual checks."
+
+  - id: T023
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit the captured skill-selector CTA overlap and define the smallest production correction plus recapture verification."
+    inputs:
+      - "artifacts/90-map-life-ui-qa/skill_selector-720x1280.png"
+      - "T017 skill implementation diff"
+      - "Utility overlay/backing CTA visibility code and tests"
+    constraints:
+      - "Read-only."
+      - "Preserve the approved3x2 selector, armed-copy behavior, discovery timing, and all roulette work."
+    expected_output:
+      - "Exact root cause"
+      - "Minimal Worker allowed files and tests"
+      - "Recapture requirements"
+    receipt:
+      result: done
+      decision: "Hide both operation MessageBand and MessageLabel while UtilityOverlay is open; preserve their text/generation and restore through the existing close refresh."
+      root_cause: "Opening READY utility triggers a normal READY operation-message refresh, placing the root message band behind and inside the modal close CTA."
+      next_allowed_task: T024
+
+  - id: T024
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Suppress operation messages only while UtilityOverlay is visible, restore them on close, add regression tests, recapture the selector, and finish comparison montages plus the T019 visual QA note."
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "artifacts/90-map-life-ui-qa/skill_selector-720x1280.png"
+      - "artifacts/90-map-life-ui-qa/skill-selector-before-after.png"
+      - "artifacts/90-map-life-ui-qa/roulette-source-vs-implementation.png"
+      - "docs/goals/dice-slot-trip-90-map-life-rework/notes/T019-visual-qa.md"
+    forbidden_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/game/**"
+      - "scripts/ui/v06_heart_roulette_view.gd"
+      - "tests/record_v06_90_life_ui.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_v06_feedback_tests.gd"
+      - "existing non-selector native PNGs"
+    verify:
+      - "Utility ITEM/SKILL hides both operation nodes, direct show calls stay hidden, and close restores READY text/input."
+      - "Existing3x2, six96px faces, armed result, explicit close, and discovery assertions remain."
+      - "Run play-screen, session, save, boss, feedback, tall-phone, and full suites; failures=0."
+      - "Recapture selector native720x1280 through Windows OpenGL and prove the overlap is gone."
+      - "Create before/after and roulette source-vs-implementation montages, inspect all twelve states, and finish the visual QA note."
+      - "Scoped diff checks pass."
+    stop_if:
+      - "Scene, panel geometry, z-index, or button theme must change."
+      - "Selector, armed-copy, explicit-close, discovery, timed message, or roulette semantics change."
+      - "Normal/closed utility leaves the operation message hidden."
+      - "Native recapture fails or another production-level overlap/missing CTA appears."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "artifacts/90-map-life-ui-qa/skill_selector-720x1280.png"
+        - "artifacts/90-map-life-ui-qa/skill-selector-before-after.png"
+        - "artifacts/90-map-life-ui-qa/roulette-source-vs-implementation.png"
+        - "docs/goals/dice-slot-trip-90-map-life-rework/notes/T019-visual-qa.md"
+      summary: "Suppressed the backing operation message only while UtilityOverlay is open, restored it on close, recaptured the corrected selector, completed montages, and passed visual QA."
+      commands:
+        - cmd: "Play-screen, session, save, boss, feedback, tall-phone, and full suites"
+          status: pass_failures0
+        - cmd: "Windows OpenGL native720x1280 selector recapture"
+          status: pass
+        - cmd: "Scoped git diff --check"
+          status: pass
+      visual_qa: "notes/T019-visual-qa.md — final result: passed"
+      remaining_blockers: []
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit whether the completed tranche satisfies the improvement brief and is safe to continue."
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current dirty diff"
+      - "Rendered viewport evidence and visual QA note"
+    constraints:
+      - "Read-only."
+      - "Reject completion if any explicit requirement or required handoff evidence remains missing."
+      - "Check Product Design image-to-code requirement for a project-root design-qa.md before final handoff."
+    expected_output:
+      - "complete | not_complete"
+      - "Requirement-by-requirement evidence"
+      - "Missing evidence or corrective next task"
+    receipt:
+      result: not_complete
+      decision: "Production behavior is sound, but completion evidence is incomplete: one stale visual-asset suite fails, revival capture is internally inconsistent, and project-root design-qa.md does not hand off the current contract."
+      passed:
+        - "Frozen core topology/atlas, HP/LIFE, migration, EVENT, SKILL, roulette, and fresh full suite"
+        - "Twelve native images and current T019 visual note, except revival-state coherence"
+      missing_evidence:
+        - "Passing visual-asset suite against exact90-map values"
+        - "Revival capture with HUD and stamp both derived from LIFE2"
+        - "Current project-root design-qa.md section superseding historical roulette outcomes"
+      next_allowed_task: T025
+
+  - id: T025
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Repair completion evidence only: migrate stale visual-asset assertions, produce a coherent live LIFE2 revival capture, update T019 QA, and add the current passed handoff to project-root design-qa.md."
+    allowed_files:
+      - "tests/run_v06_visual_asset_tests.gd"
+      - "tests/record_v06_90_life_ui.gd"
+      - "artifacts/90-map-life-ui-qa/revival-720x1280.png"
+      - "docs/goals/dice-slot-trip-90-map-life-rework/notes/T019-visual-qa.md"
+      - "design-qa.md"
+    verify:
+      - "Visual-asset, course-model, and atlas-scenery suites pass with exact frozen values and successor-order coverage."
+      - "Revival recorder restores a valid stable HP3/LIFE2 snapshot, uses production refresh/stamp, and native720x1280 capture shows matching HUD/stamp."
+      - "All core/UI targeted suites and full suite pass."
+      - "design-qa.md links current source/matrix/montages, exact wheel/LIFE/EVENT/SKILL/dimensions/results, marks the old roulette contract superseded, and ends current section with final result passed."
+      - "Scoped diff check passes."
+    stop_if:
+      - "Any production, scene, session/save, or behavior-test edit is required."
+      - "Assertions must be loosened rather than migrated to exact frozen values."
+      - "A valid HP3/LIFE2 snapshot plus production refresh cannot produce coherent capture."
+      - "Capture disagrees, hangs, is non-native, or reveals another P0/P1/P2 issue."
+      - "Any verification fails or the current handoff cannot supersede the old roulette contract unambiguously."
+    receipt:
+      result: done
+      changed_files:
+        - "tests/run_v06_visual_asset_tests.gd"
+        - "tests/record_v06_90_life_ui.gd"
+        - "artifacts/90-map-life-ui-qa/revival-720x1280.png"
+        - "docs/goals/dice-slot-trip-90-map-life-rework/notes/T019-visual-qa.md"
+        - "design-qa.md"
+      summary: "Migrated stale visual fixtures to exact90-map values, recaptured a coherent production-driven LIFE2 revival state, and added the current passed90-map/LIFE/recovery handoff while marking old roulette history superseded."
+      commands:
+        - cmd: "Visual-asset, course, atlas, all core/UI targeted suites, and tests/run_tests.gd"
+          status: pass_failures0
+        - cmd: "Windows OpenGL native720x1280 revival recapture and visual inspection"
+          status: pass
+        - cmd: "Scoped diff and design-qa contract search"
+          status: pass
+      visual_qa: "T019 note and project-root design-qa.md — final result: passed"
+      remaining_blockers: []
+
+  - id: T026
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Re-audit only the T999 evidence gaps and current board state, then decide final completion without reopening already-proved core requirements absent new contradictions."
+    inputs:
+      - "T999 and T025 receipts"
+      - "Exact T025 diff"
+      - "Corrected native revival PNG"
+      - "T019 note and project-root design-qa.md"
+      - "Fresh visual-asset and full verification"
+    constraints:
+      - "Read-only."
+      - "Return complete only if all three T999 gaps are closed and no required Worker remains."
+    expected_output:
+      - "complete | not_complete"
+      - "Closure evidence for each prior gap"
+      - "Final board/goal update instructions"
+    receipt:
+      result: complete
+      decision: complete
+      summary: "All three T999 evidence gaps are closed; no new core contradiction exists and no required Worker remains."
+      gap_closure:
+        - "Visual-asset suite uses exact90-map fixtures with strict successor/style coverage and passes."
+        - "Revival recorder uses a valid HP3/LIFE2 snapshot; native720x1280 HUD and stamp agree."
+        - "Project-root design-qa.md clearly supersedes the historical roulette and contains the current passed handoff."
+      fresh_verification:
+        - "Thirteen targeted/core/UI/visual suites: pass, failures=0"
+        - "tests/run_tests.gd: pass, failures=0"
+        - "Native visual matrix and corrected revival: pass"
+        - "Scoped diff check: pass"
+        - "Goal-state checker before completion: pass"
+      missing_evidence: []
+      completion_decision: complete
+
+checks:
+  dirty_fingerprint: "dirty worktree; preserve all pre-existing changes"
+  last_verification:
+    result: pass
+    task: T026
+    commands:
+      - "Thirteen fresh targeted/core/UI/visual suites: pass, failures=0"
+      - "tests/run_tests.gd: pass, failures=0"
+      - "Twelve native OpenGL UI states plus corrected selector and coherent revival: pass"
+      - "T019 note and project-root design-qa.md: final result passed"
+      - "Scoped git diff --check: pass"
+      - "Goal-state checker: pass, no errors or warnings"

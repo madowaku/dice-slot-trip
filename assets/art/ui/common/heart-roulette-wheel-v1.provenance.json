@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "asset_id": "heart-roulette-wheel-v1",
+  "runtime_path": "assets/art/ui/common/heart-roulette-wheel-v1.png",
+  "source_path": "assets/art/_source/ui-kit/heart-roulette-wheel-chroma-v1.png",
+  "prompt_path": "assets/art/_source/prompts/heart-roulette-wheel-v1.prompt.txt",
+  "generation": {
+    "provider": "OpenAI built-in ImageGen",
+    "model": "built-in ImageGen (model identifier not exposed)",
+    "generated_on": "2026-08-10",
+    "original_output_path": "C:/Users/hiro/.codex/generated_images/019fe6e7-9da8-7713-bdbc-1b9ccb01c52d/exec-6bbd1f4b-b314-4cc0-9d94-c369b5838827.png",
+    "style_references": [
+      "assets/art/ui/common/roll-button-round-v1.png",
+      "assets/art/_source/cairo/boss-sequence/cairo-boss-victory-master-v1.png"
+    ]
+  },
+  "source": {
+    "sha256": "3a49dc5f880949037f96d183ab9bc19b276df550f0065bc33247bab7c90fd003",
+    "bytes": 2561909,
+    "width": 1254,
+    "height": 1254,
+    "mode": "RGB"
+  },
+  "runtime": {
+    "sha256": "01d6f82a6dfa1af25f37975cbaaebe1b31bea610418cbbd3cf66a1f233e4d7b6",
+    "bytes": 2452151,
+    "width": 1254,
+    "height": 1254,
+    "mode": "RGBA"
+  },
+  "normalization": {
+    "method": "built-in ImageGen chroma source plus remove_chroma_key.py",
+    "key_color_sample": "#03fa06",
+    "auto_key": "border",
+    "soft_matte": true,
+    "transparent_threshold": 12,
+    "opaque_threshold": 220,
+    "despill": true,
+    "transparent_pixels": 575382,
+    "partially_transparent_pixels": 9271
+  },
+  "usage": {
+    "role": "six-result maximum-heart roulette wheel on the Cairo boss-victory screen",
+    "license": "project-owned AI-generated asset",
+    "semantic_review": {
+      "exactly_six_wedges": true,
+      "one_center_heart": true,
+      "no_text": true,
+      "no_logo": true,
+      "no_watermark": true,
+      "transparent_corners": true
+    }
+  }
+}

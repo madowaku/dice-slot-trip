@@ -1,0 +1,408 @@
+# Goal Maker v2 state.yaml
+version: 2
+
+goal:
+  title: "DICE SLOT TRIP 長距離マップ向けUX調整"
+  slug: "dice-slot-trip-long-map-ux-polish"
+  kind: specific
+  tranche: "Audit and implement the four requested long-map UX changes, verify behavior and native mobile rendering, and complete a final Judge audit."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Map the exact owners, current behavior, regression tests, and runtime evidence paths for mission targets, vertical LIFE/HP HUD, pannable full map, and boss-race start alignment."
+    inputs:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_atlas_view.gd"
+      - "scripts/app boss-race files"
+      - "tests"
+      - "artifacts and docs/reference boss captures"
+    constraints:
+      - "Read-only."
+      - "Preserve the completed90-map/LIFE/save/UI work."
+      - "Identify exact coordinates, containers, input routing, camera/start state order, and stale fixtures."
+      - "Recommend native360x640 and720x1280 evidence states."
+    expected_output:
+      - "Owner and call-flow map for all four requirements"
+      - "Current mission values and all dependent copy/tests"
+      - "HUD geometry and safe vertical-stack proposal"
+      - "Full-map pan implementation options and bounds"
+      - "Boss start root cause candidates and reproducible evidence"
+      - "Bounded Worker slices, allowed files, verify, and stop conditions"
+    receipt:
+      result: done
+      summary: "Mapped all four owners. HUD is the safest first slice; missions require legacy6/2 migration; map overview needs two-axis pan and modal input ownership; boss START+3 entry camera follows only the player and can hide the Sphinx."
+      evidence:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "scenes/app/V06PlayScreen.tscn"
+        - "scripts/app/v06_play_screen.gd"
+        - "scripts/game/v06_atlas_view.gd"
+        - "scripts/ui/v11_boss_lane_board.gd"
+        - "tests/run_v06_mission_tests.gd"
+        - "tests/run_v06_atlas_interaction_tests.gd"
+        - "tests/run_v06_boss_play_screen_tests.gd"
+      key_findings:
+        - "Mission constants/copy/save validation hardcode6/2; old saves must preserve progress and recompute completion against12/5."
+        - "A compact LIFE-over-HP VBox fits inside the existing104px HUD."
+        - "Overview pan is detail-only and vertical-only; content exceeds both viewport axes."
+        - "Pre-entry boss head-start3/0 selects a player-follow camera, unlike safe in-overlay purchase behavior."
+      recommended_sequence:
+        - "HUD vertical stack"
+        - "MISSION12/5 with legacy migration"
+        - "Boss pair-framed entry"
+        - "Full-map two-axis pan and modal routing"
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Review T001 and freeze the safest implementation sequence and exact behavior contracts for all four changes."
+    inputs:
+      - "T001 receipt"
+      - "goal.md"
+    constraints:
+      - "Read-only."
+      - "Do not broaden into unrelated HUD, map-art, or boss-race redesign."
+    expected_output:
+      - "Ordered Worker tasks"
+      - "Exact objectives and behavior contracts"
+      - "allowed_files, verify, and stop_if for the first Worker"
+      - "Required native viewport evidence"
+    receipt:
+      result: done
+      decision: "Sequence MISSION migration, HUD stack, boss paired entry, full-map two-axis pan, then consolidated native QA. Start with MISSION because its stale course-version fixture is the only fresh red baseline."
+      next_allowed_task: T003
+      frozen_contracts:
+        - "MISSION nested schema2 targets12/5; legacy schema1 accepts only6/2 and recomputes completion without reward replay."
+        - "LIFE above HP inside unchanged104px HUD."
+        - "Boss entry camera pair-frames0/0 and3/0 at START; movement camera unchanged."
+        - "Overview supports bounded two-axis drag and owns modal gestures."
+      baseline: "Mission suite has one stale missing-course_version fixture failure; save, atlas, boss, play-screen, and tall-phone suites pass."
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Implement MISSION targets12/5 with explicit legacy6/2 nested migration and restore green mission verification."
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_candidate_mission_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Fix the known fixture with exact course_version; keep SaveData strict."
+      - "Assert schema2 targets12/5 and exact legacy schema1 targets6/2 acceptance/migration."
+      - "Assert progress/ranks/IDs preservation, completion recomputation, idempotence, round-trip, and no toast/reward replay."
+      - "Assert stable IDs and rank thresholds remain exact."
+      - "Assert UI progress/completion copy fits at360 scale."
+      - "Run mission, candidate-mission, save, play-screen, play-session, feedback, tall-phone, and full suites."
+      - "Scoped diff check."
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Outer schema/course version, stable mission IDs, or rank thresholds/rewards must change."
+      - "Legacy progress/ranks cannot be preserved without replay."
+      - "A non-fixture regression repeats twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_mission_tests.gd"
+        - "tests/run_v06_candidate_mission_tests.gd"
+      summary: "Implemented nested mission schema2 targets12/5 and exact legacy6/2 migration with preserved progress/ranks/IDs and no notification/reward replay."
+      commands:
+        - cmd: "Mission, candidate-mission, save, play-screen, play-session, feedback, tall-phone, and full suites"
+          status: pass_failures0
+        - cmd: "Scoped diff check"
+          status: pass
+      remaining_blockers: []
+
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Stack LIFE above HP inside the existing104px HUD without changing behavior or playfield height."
+    allowed_files:
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_tall_phone_layout_tests.gd"
+    verify:
+      - "LifeBox and HPLabel share SurvivalStack in exact vertical order."
+      - "Both remain inside HudRow2/HudPanel at360 and720 logical layouts."
+      - "HudPanel remains104px; AtlasView remains at least450px; no row overlap."
+      - "Run play-screen, tall-phone, mission, visual-asset, and full suites."
+      - "Scoped diff check."
+    stop_if:
+      - "A production script change, HUD-height increase, MapButton resize, or atlas shrink is required."
+      - "Cat/LIFE/HP copy or survival semantics change."
+      - "Any360px clipping or overlap appears."
+    receipt:
+      result: done
+      changed_files:
+        - "scenes/app/V06PlayScreen.tscn"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_tall_phone_layout_tests.gd"
+      summary: "Added a compact SurvivalStack with LIFE above HP while preserving the104px HUD, MapButton geometry, and at least450px playfield at standard and narrow viewports."
+      commands:
+        - cmd: "Play-screen, tall-phone, mission, visual-asset, and full suites"
+          status: pass_failures0
+        - cmd: "Scoped diff check"
+          status: pass
+      remaining_blockers: []
+
+  - id: T005
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Pair-frame pre-purchased START+3 boss entry while preserving post-movement camera behavior."
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/ui/v11_boss_lane_board.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_v06_coin_economy_tests.gd"
+      - "tests/run_tall_phone_layout_tests.gd"
+    verify:
+      - "Test normal0/0 and pre-purchased3/0 entry after deferred layout settlement."
+      - "Assert camera0 and both full token footprints visible for3/0."
+      - "Assert in-overlay START+3 purchase still works."
+      - "Preserve post-movement player-follow target/timing/hold assertions."
+      - "Run boss-screen, boss-battle, coin-economy, session, tall-phone, and full suites."
+      - "Scoped diff check."
+    stop_if:
+      - "Session/battle purchase semantics or save state must change."
+      - "Post-movement camera, lane scale, race pacing, or intro CTA must change."
+      - "Both racers cannot fit at360 and720 through an entry-only camera correction."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_boss_play_screen_tests.gd"
+      summary: "Entry-only camera now keeps normal0/0 and pre-purchased3/0 racers fully visible at camera0, while preserving every post-movement camera and purchase behavior."
+      commands:
+        - cmd: "Boss-screen, boss-battle, coin-economy, session, tall-phone, and full suites"
+          status: pass_failures0
+        - cmd: "Scoped diff check"
+          status: pass
+      remaining_blockers: []
+
+  - id: T006
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Add direct bounded two-axis finger pan to the full-map overview with strict modal input ownership and close restoration."
+    allowed_files:
+      - "scripts/game/v06_atlas_view.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_atlas_interaction_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Test horizontal, vertical, and diagonal drag in wide and detail overview."
+      - "Test huge drags clamp all four bounds at narrow and standard sizes."
+      - "Test every route extent is reachable and fitting axes lock."
+      - "Test drag never toggles zoom; tap still toggles."
+      - "Test no backing roll/session mutation; close restores clock/focus/local mode/input."
+      - "Run atlas-interaction, play-screen, visual-asset, course-model, tall-phone, and full suites."
+      - "Scoped diff check."
+    stop_if:
+      - "Global input ownership or gameplay-layer mutation is required."
+      - "Any backing control receives a gesture."
+      - "A route extremity is unreachable, blank overscroll remains, or close restoration fails."
+      - "Topology, route drawing, zoom constants, or local-map controls must be redesigned."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_atlas_view.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_atlas_interaction_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      summary: "Added modal-owned thresholded two-axis pan in wide/detail overview, full topology-aware bounds with fit-axis locks, and exact close restoration without gameplay input leaks."
+      commands:
+        - cmd: "Atlas-interaction, play-screen, visual-asset, course-model, tall-phone, and full suites"
+          status: pass_failures0
+        - cmd: "Scoped diff check"
+          status: pass
+      remaining_blockers: []
+
+  - id: T007
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Produce consolidated native mobile evidence and the final visual handoff for all four requirements."
+    allowed_files:
+      - "tests/record_v06_long_map_ux.gd"
+      - "tests/record_v06_long_map_ux.gd.uid"
+      - "artifacts/long-map-ux-polish/**"
+      - "docs/goals/dice-slot-trip-long-map-ux-polish/notes/T007-visual-qa.md"
+      - "design-qa.md"
+    verify:
+      - "Capture native Windows/OpenGL360x640 and720x1280 normal HUD with0/12,0/5 and LIFE above HP."
+      - "At both sizes capture two opposite map pan bounds with close CTA visible."
+      - "At both sizes capture pre-roll boss3/0 with both racers fully visible."
+      - "Raw evidence retains native headers; montages resize copies only."
+      - "Inspect P0/P1/P2 layout, copy, map reachability/affordance, and boss framing."
+      - "Rerun union targeted suites and full suite; complete current design handoff."
+      - "Scoped diff check."
+    stop_if:
+      - "A production change is required to obtain evidence."
+      - "Capture is non-native, hangs, leaves a process, or exposes unresolved P0/P1/P2."
+    receipt:
+      result: done
+      changed_files:
+        - "tests/record_v06_long_map_ux.gd"
+        - "tests/record_v06_long_map_ux.gd.uid"
+        - "artifacts/long-map-ux-polish/**"
+        - "docs/goals/dice-slot-trip-long-map-ux-polish/notes/T007-visual-qa.md"
+        - "design-qa.md"
+      summary: "Captured eight native360x640/720x1280 production states proving MISSION12/5, LIFE-over-HP, opposite map pan bounds, and pair-framed boss3/0 start; visual QA has no P0/P1/P2."
+      commands:
+        - cmd: "Windows OpenGL independent recorder and raw PNG header/pixel/process checks"
+          status: pass
+        - cmd: "Fourteen targeted suites and tests/run_tests.gd"
+          status: pass_failures0
+        - cmd: "Scoped diff check"
+          status: pass
+      visual_qa: "notes/T007-visual-qa.md and design-qa.md — final result: passed"
+      remaining_blockers: []
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit all four requested changes against implementation, tests, and native visual evidence."
+    inputs:
+      - "All done task receipts"
+      - "Fresh verification"
+      - "Native viewport captures"
+      - "Current dirty diff"
+    constraints:
+      - "Read-only."
+      - "Reject completion while required Worker work remains."
+    expected_output:
+      - "complete | not_complete"
+      - "Requirement-by-requirement evidence"
+      - "Missing evidence or corrective next task"
+    receipt:
+      result: not_complete
+      decision: "All four functions pass, but the full-map modal leaks the backing operation message onto the parchment, contradicting the visual handoff."
+      passed:
+        - "MISSION12/5 migration"
+        - "LIFE-over-HP fixed104px HUD"
+        - "Two-axis bounded map interaction and close restoration"
+        - "Pair-framed boss3/0 entry"
+        - "Fourteen fresh suites and full suite"
+      missing_evidence:
+        - "Corrected map native captures without backing operation copy"
+        - "Coherent T007 note/design-qa handoff"
+      next_allowed_task: T008
+
+  - id: T008
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Hide backing operation messages only while MapOverlay is open, preserve message state and close restoration, recapture four map bounds, and correct the visual handoff."
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "artifacts/long-map-ux-polish/map_min-360x640.png"
+      - "artifacts/long-map-ux-polish/map_max-360x640.png"
+      - "artifacts/long-map-ux-polish/map_min-720x1280.png"
+      - "artifacts/long-map-ux-polish/map_max-720x1280.png"
+      - "artifacts/long-map-ux-polish/contact-map-bounds.png"
+      - "docs/goals/dice-slot-trip-long-map-ux-polish/notes/T007-visual-qa.md"
+      - "design-qa.md"
+    verify:
+      - "Map open/direct message hides both backing nodes while retaining text/generation."
+      - "Close restores READY copy, clock ownership, focus, die input, and session state."
+      - "Play-screen, atlas-interaction, all fourteen union suites, and full suite pass."
+      - "Recapture four exact native map-bound images and contact sheet with no operation-copy bleed or other P0/P1/P2."
+      - "Correct T007 note/design-qa and pass scoped diff check."
+    stop_if:
+      - "Scene, atlas, session/save, mission, boss camera, or pan semantics must change."
+      - "Close/utility/timed message/clock/focus/input restoration breaks."
+      - "Capture hangs, is non-native, leaves a process, or retains any P0/P1/P2."
+      - "The same unexpected suite failure repeats on clean rerun."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "artifacts/long-map-ux-polish/map_min-360x640.png"
+        - "artifacts/long-map-ux-polish/map_max-360x640.png"
+        - "artifacts/long-map-ux-polish/map_min-720x1280.png"
+        - "artifacts/long-map-ux-polish/map_max-720x1280.png"
+        - "artifacts/long-map-ux-polish/contact-map-bounds.png"
+        - "docs/goals/dice-slot-trip-long-map-ux-polish/notes/T007-visual-qa.md"
+        - "design-qa.md"
+      summary: "MapOverlay now suppresses backing operation messages while preserving their state and exact close restoration; corrected native map evidence has no visual bleed."
+      commands:
+        - cmd: "Focused play-screen/atlas plus union targeted and full suite"
+          status: pass_failures0
+        - cmd: "Four Windows OpenGL native recaptures, headers, pixel sanity, PID audit, and visual inspection"
+          status: pass_P0P1P2_none
+        - cmd: "Scoped diff check"
+          status: pass
+      remaining_blockers: []
+
+  - id: T009
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Re-audit only the corrected map visual gap and final handoff; keep already-proved functional requirements closed absent contradiction."
+    receipt:
+      result: complete
+      decision: complete
+      summary: "The sole map-overlay visual gap is closed in implementation, regression tests, four corrected native captures, and handoff docs; all four user requirements remain proven with no required Worker left."
+      evidence:
+        - "MISSION schema2 targets12/5 and exact legacy6/2 migration pass."
+        - "LIFE above hearts inside unchanged104px HUD and playfield pass."
+        - "Bounded two-axis modal map pan, no input leak, and close restoration pass."
+        - "Boss pre-purchased3/0 entry camera0 pair-framing and unchanged movement camera pass."
+        - "Corrected map raw images/contact show no operation-copy bleed; P0/P1/P2 none."
+        - "Fourteen fresh targeted runs and full suite pass; diff and board checks pass."
+      missing_evidence: []
+      completion_decision: complete
+
+checks:
+  dirty_fingerprint: "dirty worktree; preserve all existing changes"
+  last_verification:
+    result: pass
+    task: T009
+    commands:
+      - "Fourteen fresh targeted runs and full suite: pass, failures=0"
+      - "Four corrected native map bounds plus contact visual inspection: pass, P0/P1/P2 none"
+      - "Scoped diff check: pass"
+      - "Goal board checker: pass"

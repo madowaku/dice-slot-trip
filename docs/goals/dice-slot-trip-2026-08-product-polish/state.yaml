@@ -4,8 +4,8 @@ goal:
   title: "DICE SLOT TRIP 2026-08 製品化ブラッシュアップ"
   slug: "dice-slot-trip-2026-08-product-polish"
   kind: open_ended
-  tranche: "通常マップのロール／スロット操作を、状態別文言・残りスロット表示・単一タッチ入力で整理する安全な実装スライスを完了する"
-  status: done
+  tranche: "初見レビューと選択済み豪華版モックを基準に、ゲームルール・説明・スマホUI・装飾の不一致を優先順に解消する"
+  status: active
 
 rules:
   pm_owns_state: true
@@ -21,7 +21,7 @@ agents:
   worker: installed
   judge: installed
 
-active_task: null
+active_task: T099
 
 tasks:
   - id: T001
@@ -1364,11 +1364,2110 @@ tasks:
         - "scoped git diff --check: pass"
       remaining: "none"
 
+  - id: T043
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "初見レビューの指摘、選択済み豪華版モック、現行dirty差分、実装とテストを照合し、既存作業を壊さず着手できる最初の製品品質スライスを定義する。"
+    inputs:
+      - "C:/Users/hiro/Desktop/dice5.png"
+      - "C:/Users/hiro/Downloads/ChatGPT Image 2026年8月2日 10_43_50.png"
+      - "current git status and dirty diff"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_boss_battle.gd"
+      - "tests and current runtime captures"
+    constraints:
+      - "Read-only."
+      - "既存dirty/untracked差分を所有者作業として保護する。"
+      - "表示と挙動の不一致、初見理解、スマホ可読性、既存回帰を優先する。"
+      - "新規画像を候補にする場合は、正確な使用箇所と寸法を示す。"
+    expected_output:
+      - "current-state gap map"
+      - "first safe Worker objective"
+      - "allowed_files"
+      - "verification commands and visual evidence"
+      - "stop_if conditions"
+    receipt:
+      result: done
+      summary: "通常マップは回転中の次スロットへ _rolling_slot_face を表示する一方、停止時だけ新しいRNG値を確定しており、見えた数字と移動・スロット結果が不一致になり得る。現行テストは held_preview と logical_face を比較せず欠陥を通過させる。"
+      evidence:
+        - "scripts/app/v06_play_screen.gd:819-832"
+        - "tests/run_v06_play_screen_tests.gd:522-546"
+        - "tests/run_v06_tile_effect_tests.gd:73-80,178-190"
+        - "tests/run_v06_boss_play_screen_tests.gd:145-163,261-277,331-332"
+        - "C:/Users/hiro/Downloads/ChatGPT Image 2026年8月2日 10_43_50.png"
+      decision: "最初の安全・高影響スライスは通常マップの停止値整合。EVENT、HP、ボス3投はtransaction/saveまたはプロダクト判断を伴うため後続へ分離する。"
+      protected_work:
+        - "HEAD 76af8d8 と既存dirty/untracked BGM、縦長、豪華tray、title、icon、Cinzel差分を保護する。"
+      next_allowed_task: T044
+
+  - id: T044
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T043から、影響・確信度・可逆性・検証強度で最初の実装スライスを承認する。"
+    inputs:
+      - "T043 receipt"
+      - "current dirty diff"
+      - "selected visual target"
+    constraints:
+      - "Read-only."
+      - "曖昧なHP敗北設計や大規模ボス再設計は、明示契約なしにWorkerへ渡さない。"
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+    receipt:
+      result: done
+      decision: "通常マップは _rolling_slot_face をタップ時の権威値として承認する。これはプレイヤーへ明示される離散値で、独立回転する3D上面は停止中に曖昧かつrender timingへ結合すべきでない。"
+      evidence:
+        - "scripts/app/v06_play_screen.gd:818-841,1991-2016"
+        - "scripts/game/dice_presentation_3d.gd:169-184,238-258"
+        - "tests/run_v06_play_screen_tests.gd:521-545"
+      next_allowed_task: T045
+
+  - id: T045
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "通常マップの _stop_roll() で予約済みピンポイントがなければタップ時の _rolling_slot_face を確定し、既存ボス経路を保ったまま held_preview == logical_face == settled_slot を回帰テストで証明する。"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_v06_tile_effect_tests.gd"
+      - "tests/run_tests.gd"
+      - "git diff --check -- scripts/app/v06_play_screen.gd tests/run_v06_play_screen_tests.gd"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Pinpoint priority, boss stop semantics, RNG initialization, session/save behavior, 3D presentation, or protected dirty hunks would change."
+      - "The strengthened test cannot deterministically prove held_preview equals the committed logical face."
+      - "Verification fails twice for the same cause."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "tests/run_v06_play_screen_tests.gd: failures=0"
+        - "tests/run_v06_boss_play_screen_tests.gd: failures=0"
+        - "tests/run_v06_tile_effect_tests.gd: failures=0"
+        - "tests/run_tests.gd: failures=0"
+        - "scoped git diff --check: pass"
+      summary: "通常マップはピンポイント未予約時にタップ時の _rolling_slot_face を確定する。ピンポイント優先とボス挙動を保持し、held_preview == logical_face == settled_slot と遅延転写を回帰テストで固定した。"
+      next_allowed_task: T046
+
+  - id: T046
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "T045を自動テスト、同一状態スクリーンショット、360×640・360×800相当でQAする。"
+    receipt:
+      result: done
+      status: pass
+      summary: "目押し整合の自動回帰は全件成功。実OpenGL Movie Writerの9:20画面でも回転中の数値窓・3Dダイス・停止案内・豪華tray・円形主操作が同時に読め、修正はレイアウトを変えていない。別件として縦長キャプチャの最上部／最下部が端へ寄る既存表示を次タスク候補へ送る。"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "tests/run_v06_play_screen_tests.gd: failures=0"
+        - "tests/run_v06_boss_play_screen_tests.gd: failures=0"
+        - "tests/run_v06_tile_effect_tests.gd: failures=0"
+        - "tests/run_tests.gd: failures=0"
+        - "tests/run_tall_phone_layout_tests.gd: failures=0"
+        - "scoped git diff --check: pass"
+      evidence:
+        - "build/qa-stop-authority-360x800.avi (360x800, 14 frames, 30fps)"
+        - "build/qa-stop-authority-rolling-360x800.png"
+        - "build/qa-stop-authority-comparison-720x800.png"
+      next_allowed_task: T047
+
+  - id: T047
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "最初の実装スライスが初見レビューと製品化目標へ実質的に前進したか監査し、次の必須タスクを選ぶ。"
+    receipt:
+      result: done
+      decision: "停止値整合スライスはcomplete。通常マップは見えていた _rolling_slot_face を確定し、専用回帰と遅延転写を固定した。広い製品化goalはnot_complete。"
+      completion_decision: "stop_authority_slice_complete; product_polish_goal_not_complete"
+      evidence:
+        - "T045 implementation and tests"
+        - "T046 automated and Movie Writer QA"
+        - "720x1600 PAGE_INSIDE=true runtime probe"
+      rationale:
+        - "Movie Writerの端切れは論理rectと矛盾するcapture-path ambiguityで、縦長レイアウト変更の根拠にはしない。"
+        - "次の高影響かつ安全な証明対象は、初回プレイヤーの3投ループ理解。"
+      next_allowed_task: T048
+
+  - id: T048
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "初回プレイヤーが『見えた出目を止め、その数だけ進み、3投が揃うと役と報酬を判定する』流れを理解できる、ユーザー操作で閉じる初回オンボーディングの表示時点・再表示範囲・入力/時計停止・保存境界を特定し、最小Worker契約を返す。"
+    inputs:
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/game/v06_play_session.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "Existing LandingArtOverlay/tile-help flow"
+      - "Fresh start, resume, retry_run, and next_lap transitions"
+      - "Current dirty diff and selected luxury mock"
+    constraints:
+      - "Read-only."
+      - "ロール/sessionルール、save互換、boss、BGM/title/icon/font/tray差分を変更しない。"
+    expected_output:
+      - "show-once lifetime and persistence owner"
+      - "exact display/dismiss/input/clock behavior"
+      - "exact Worker allowed_files/verify/stop_if"
+      - "360x640/720x1280/720x1600 visual checks"
+    receipt:
+      result: done
+      summary: "旅／セーブ枠ごとに一度の3投オンボーディングを推奨。新規旅は全体マップを閉じた直後、旧セーブは未進行の開始地点だけに表示し、dismissalをsession stage_flagsへ保存してretry/next_lapでも保持する。"
+      decision:
+        - "LandingArtOverlayを排他的journey-card modeとして再利用し、既存SLOT_TRAY_ARTを表示する。新規scene/raster不要。"
+        - "明示CTAのみが閉じ、入力を消費してrollへ伝播させない。"
+        - "dismiss順はseen記録、close/reset、owned pauseだけresume、refresh、stable checkpoint保存。"
+      copy:
+        ja_title: "3投で旅と役をつくる"
+        ja_body: "回転中にもう一度タップして、見えている出目で止める。\nその数だけ進み、3投がそろうと役と報酬が決まる。"
+        ja_cta: "わかった・旅を始める"
+        en_title: "ROLL, STOP, MAKE A SET"
+        en_body: "Tap again while rolling to stop on the face you see.\nMove that many spaces. Three stopped faces make a role and reward."
+        en_cta: "GOT IT — START THE JOURNEY"
+      evidence:
+        - "scripts/app/v06_play_screen.gd:326-369,500-518,1646-1681,2908-3013"
+        - "scripts/game/v06_play_session.gd:155-174,344-374,521-560"
+        - "scripts/game/v06_session_save_data.gd:205-261"
+        - "scenes/app/V06PlayScreen.tscn:1106-1247"
+      next_allowed_task: T049
+
+  - id: T049
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T048から、初回3投オンボーディングのコピー、表示寿命、保存、入力、時計停止契約を承認する。"
+    receipt:
+      result: done
+      decision:
+        - "旅／セーブ枠ごとに一度を承認。seen flagはsession stage_flagsへ保存し、retry_run/next_lapで保持、新規旅だけでリセットする。"
+        - "明示CTAだけで閉じ、背景・戻る・下層Controlはdismissも発火もしない。"
+        - "既存LandingArtOverlayとSLOT_TRAY_ARTを再利用し、scene変更・新規raster・ImageGenは行わない。"
+      copy:
+        ja_title: "振って止めて、3投で役をつくる"
+        ja_body: "回転中にもう一度タップして、見えている出目で止める。\nその数だけ進み、3投がそろうと役と報酬が決まる。"
+        ja_cta: "わかった！ 旅を始める"
+        en_title: "ROLL, STOP, COMPLETE A SET"
+        en_body: "Tap again while the die is rolling to stop on the face you see.\nMove that many spaces. Three stopped faces complete a set and earn you a reward."
+        en_cta: "GOT IT — START THE JOURNEY"
+      eligibility: "未閲覧かつREADY、lap=1、roll_count=0、main:0、faces空のみ。fresh journeyはstage overview直後、legacy saveはuntouched start復元時だけ表示し、進行済み・rolling・moving・choice・resolution・bossでは表示しない。"
+      clock_and_save: "open時のpause_clock戻り値を所有し、dismissはseen記録→overlay/mode reset→owned pauseだけresume→refresh/focus→stable save。application resumeも表示中はclockを再開しない。"
+      next_allowed_task: T050
+
+  - id: T050
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "旅／セーブ枠ごとに一度の3投オンボーディングを実装する。sessionへseen flag、untouched-start判定、mark/query APIを追加し、dismiss済みflagをretry_run/next_lapで保持する。screenでは新規stage overview終了直後または対象旧セーブ復元時にLandingArtOverlayを排他的onboarding modeで開き、SLOT_TRAY_ARTと承認copyを表示する。CTAのみでdismissし、owned clock pause、全入力gate、focus復元、stable save順序を守る。"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/game/v06_play_session.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "locale/dice_slot_trip.ja.po"
+      - "locale/dice_slot_trip.en.po"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_tile_help_tests.gd"
+      - "tests/run_v06_travel_menu_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "git diff --check -- scripts/app/v06_play_screen.gd scripts/game/v06_play_session.gd tests/run_v06_play_screen_tests.gd tests/run_v06_save_tests.gd locale/dice_slot_trip.ja.po locale/dice_slot_trip.en.po"
+      - "fresh post-overview/untouched legacy open; progressed restore suppressed; exact copy/art; CTA-only; no input leak; elapsed zero; seen round-trip/retry/next-lap; new session unseen"
+    stop_if:
+      - "V06PlayScreen.tscn、save DTO/validator、GameState/profile、stage-select、boss、BGM、asset、またはallowed_files外の変更が必要。"
+      - "LandingArtOverlayのtile-help挙動を壊さず排他的modeを作れない。"
+      - "背景／戻る入力がdismissする、CTA入力がrollへ漏れる、または下層Controlが作動する。"
+      - "進行済み・rolling・moving・choice・resolution・bossのresumeで表示される。"
+      - "owned pause以外をresumeする、fresh startのclockが開始する、またはdismiss checkpointが安定保存できない。"
+      - "既存dirty/untracked hunkの整形・削除・巻き戻しが必要。"
+      - "同一原因で検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "scripts/game/v06_play_session.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_save_tests.gd"
+        - "locale/dice_slot_trip.ja.po"
+        - "locale/dice_slot_trip.en.po"
+      summary: "旅／セーブ枠ごとに一度の3投オンボーディングを実装。既存LandingArtOverlayとSLOT_TRAY_ARTを再利用し、CTA限定終了、入力遮断、owned clock pause、安定保存、retry/next-lap維持を追加した。"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "tests/run_v06_play_screen_tests.gd: pass"
+        - "tests/run_v06_save_tests.gd: pass"
+        - "tests/run_v06_tile_help_tests.gd: pass"
+        - "tests/run_v06_travel_menu_tests.gd: pass"
+        - "tests/run_v06_boss_play_screen_tests.gd: pass"
+        - "tests/run_tests.gd: pass"
+        - "scoped git diff --check: pass"
+      coverage: "fresh eligibility、exact copy/art、背景/back/die input leakなし、CTA-only、elapsed zero、save round-trip、retry/next-lap、progressed suppression、新規session unseen。restored auto-openはheadless/non-empty QA scenarioで抑止。"
+      caveat: "既存Godot ObjectDB/resource-leak shutdown warningsのみ。stop_ifなし。"
+      next_allowed_task: T051
+
+  - id: T051
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "初回3投オンボーディングを自動テストと360×640/720×1280/720×1600視覚証拠でQAする。"
+    allowed_files:
+      - "build/qa-onboarding-*"
+      - "docs/goals/dice-slot-trip-2026-08-product-polish/state.yaml"
+      - "docs/goals/dice-slot-trip-2026-08-product-polish/notes/T051-*"
+    verify:
+      - "T050 automated verification independently repeated"
+      - "Godot OpenGL Movie Writer at 360x640, 720x1280, and 720x1600"
+      - "Overlay/card/title/body/art/CTA geometry receipt at each viewport"
+      - "CTA height >=96 design px and >=48 physical px at half-scale"
+      - "Background/back/die do not dismiss or leak; CTA dismisses once without starting a roll"
+      - "Reference/current comparison for visual audit"
+    stop_if:
+      - "Product code, scene, locale, or tests require changes; return to a new Worker task."
+      - "Existing Godot editor must be stopped."
+      - "Same capture failure repeats twice."
+    receipt:
+      result: done
+      status: pass
+      note: "notes/T051-onboarding-qa.md"
+      summary: "自動回帰と実OpenGL 360x640/720x1280/720x1600 captureで、カード収まり、文字、luxury tray、CTA-only、入力遮断、時計0、dismiss後geometry不変を確認した。"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "play-screen/save/tile-help/travel-menu/boss/legacy suites: failures=0"
+        - "scoped git diff --check: pass"
+        - "Goal Maker state checker: pass"
+        - "OpenGL root viewport captures: 360x640, 720x1280, 720x1600 pass"
+      evidence:
+        - "build/qa-onboarding-360x640-card.png"
+        - "build/qa-onboarding-720x1280-card.png"
+        - "build/qa-onboarding-720x1600-card.png"
+        - "build/qa-onboarding-reference-comparison-1440x1280.png"
+      geometry: "Card 620x637; CTA 96 design px / 48 physical px at 360x640; tall viewport adds only centered breathing room; dismiss rects unchanged."
+      caveat: "Movie Writer remained 360x800 from project override, so exact-size evidence uses real OpenGL root viewport PNG. One headless readback timeout was not repeated. Existing 16:9 base Page overflow is unrelated/deferred; 720x1600 Page is fully inside."
+      next_allowed_task: T052
+
+  - id: T052
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "初回オンボーディングの完成と次の製品化必須タスクを監査する。"
+    receipt:
+      result: done
+      completion_decision: "onboarding_slice_complete; product_polish_goal_not_complete"
+      decision: "初回3投オンボーディングは受け入れ条件を満たす。製品化goalは継続し、次はEVENTマスの意味・実装欠落をScoutする。"
+      acceptance:
+        - "stage_flags save round-trip、retry_run、next_lapでseenを保持し、新規Sessionだけ未閲覧。"
+        - "READY/lap1/roll0/main:0/faces空のfresh post-overviewまたはuntouched legacy restoreだけ表示。"
+        - "CTA-only、全下層入力gate、clock ownership、application resume gate、fresh elapsed=0。"
+        - "tile-help regression pass、JA/EN copy一致、既存LandingArtOverlay/SLOT_TRAY_ART再利用、scene/new rasterなし。"
+        - "360x640/720x1280/720x1600 card capture pass、CTA 96 design/48 physical px、reference comparison整合。"
+      risks:
+        - "16:9基礎Page overflowは既存別件で、このcard sliceはblockしない。"
+        - "英語copyはsource確認済みだが実機visualは日本語のみ。"
+      next_allowed_task: T053
+
+  - id: T053
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "製品経路V06のEVENTマスが現在score付与と初回説明だけで終わる意味欠落を調査し、既存EventSystem資産を安全にV06へ統合する最小スライスを定義する。"
+    inputs:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/game/v06_course_model.gd"
+      - "data/stages/v06_cairo_course.json"
+      - "scripts/game/event_system.gd"
+      - "scripts/game/reward_resolver.gd"
+      - "scripts/app/main.gd legacy EVENT/roll_transaction flow"
+      - "V06 save DTO/manager、tile-effect/save tests、既存EVENT art/locale"
+    constraints:
+      - "Read-only。dirty/untracked workを変更しない。"
+      - "V06をGameState・legacy SaveManagerへ直接結合しない。"
+      - "landing transaction、stable checkpoint、restore idempotenceを維持する。"
+      - "既存定義・copy・画像を棚卸しする前に新しいevent contentやrewardを創作しない。"
+      - "randomness、choice、reward意味に製品判断が必要ならWorker前にJudgeへ返す。"
+    expected_output:
+      - "現行V06 EVENT no-opのcall graphとプレイヤー体験上の欠落"
+      - "再利用可能なlegacy event contentと依存関係"
+      - "V06-native phase/state/save/UIの最小候補"
+      - "resume・重複報酬・入力・時計のリスク"
+      - "Judge判断点"
+      - "Worker候補のallowed_files/verify/stop_if"
+    receipt:
+      result: done
+      summary: "V06 EVENTはmain:4/25/41/48で空effectと初回generic説明だけになり、+150発見score以外のevent体験がない。legacy EventSystem/RewardResolverは90マスdistrict、GameState、choice/extra-roll、別通貨・item・boss handoffへ依存するため直接再利用不可。"
+      proven_facts:
+        - "finish_movement -> _resolve_landing_effect(EVENT)は空dict、_award_landing_score(EVENT)だけがnodeごとに一度+150を付与する。"
+        - "現行tile_index % 4 art選択ではmain:4/25/41/48からferry/marketしか出ず、nile/ruin artは到達不能。"
+        - "stable saveはactive EVENT phaseを持たず、third-roll EVENTではRESOLUTION_REQUIREDへのreturn phaseを保つ必要がある。"
+        - "既存4枚の1024x768 EVENT artは再利用可能。legacy event copyは日本語のみで英語承認が必要。"
+      recommendation: "最初はdeterministicでresume可能なV06-native narrative cardを実装し、既存+150だけを明示報酬にする。PHASE_EVENT_REQUIRED、serialized active card/return phase、CTA-only、owned pause、generic EVENT help置換をJudgeへ諮る。legacy reward/choice/random/extra-roll/boss handoffは延期。"
+      candidate_mapping:
+        - "main:4 -> CAI-E01"
+        - "main:25 -> CAI-E08"
+        - "main:41 -> CAI-E14"
+        - "main:48 -> CAI-E10"
+      risks:
+        - "active card非永続化による表示欠落・重複"
+        - "third-roll EVENTがslot resolutionを上書き"
+        - "generic helpとの二重modal、CTA input leak、clock double-resume"
+        - "legacy RewardResolverによる不整合currency/item/state mutation"
+      evidence:
+        - "data/stages/v06_cairo_course.json:16-30"
+        - "scripts/game/v06_play_session.gd:251-307,599-764,922-1017"
+        - "scripts/app/v06_play_screen.gd:826-925,1135-1219,2922-3071"
+        - "scripts/game/v06_session_save_data.gd:9-17,47-109"
+        - "scripts/game/event_system.gd:17-101"
+        - "scripts/game/reward_resolver.gd:37-183"
+        - "data/events/cairo_m4a_events.json"
+      next_allowed_task: T054
+
+  - id: T054
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T053証拠から、最初のV06 EVENTスライスの表示内容、4node mapping、報酬、再訪、third-roll順序、phase/save/UI契約を決定し、最小Worker境界を承認する。"
+    inputs:
+      - "T053 receipt"
+      - "data/stages/v06_cairo_course.json"
+      - "data/events/cairo_m4a_events.json"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "existing EVENT art and JA/EN locale"
+      - "current protected dirty diff"
+    constraints:
+      - "Read-only。実装しない。"
+      - "GameState、legacy SaveManager、RewardResolverへV06を直接結合しない。"
+      - "reward/choice/random/extra-roll/boss handoffを根拠なく同一スライスへ混ぜない。"
+      - "既存画像を棚卸し済みのため新規raster/ImageGenは行わない。"
+      - "landing transaction、stable checkpoint、restore idempotence、third-roll resolutionを守る。"
+    expected_output:
+      - "Narrative-only +150か他rewardかの決定"
+      - "main:4/25/41/48のexact event/art/copy mapping"
+      - "first/repeatとgeneric EVENT help置換の決定"
+      - "PHASE_EVENT_REQUIRED active state/save validation/CTA/clock/input契約"
+      - "third-roll EVENTとRESOLUTION_REQUIREDの順序"
+      - "Worker objective/allowed_files/verify/stop_if"
+    receipt:
+      result: done
+      completion_decision: "T054_decision_complete; EVENT_slice_authorized_not_implemented; product_polish_goal_not_complete"
+      decision:
+        - "Narrative-only。既存node-once発見score +150だけを表示し、legacy reward/choice/randomは適用しない。"
+        - "T053のCAI-E01/E08/E14/E10案は画像と物語が不一致のため却下し、cairo_stage.yamlのnamed eventと同名画像を使う。"
+        - "EVENT着地ごとにカードを開き、旅で初回はfirst copy、再訪はrepeat copy。generic EVENT helpはruntimeで置換する。"
+        - "stable PHASE_EVENT_REQUIREDとactive_event/return_phaseを保存し、3投目はEVENT card後にRESOLUTION_REQUIREDへ戻す。"
+      exact_mapping:
+        - "main:4 -> market_hawker -> cairo-event-market-hawker.png"
+        - "main:25 -> nile_tailwind -> cairo-event-nile-tailwind.png"
+        - "main:41 -> ruin_whisper -> cairo-event-ruin-whisper.png"
+        - "main:48 -> ferry_offer -> cairo-event-ferry-offer.png"
+      copy:
+        market_hawker_ja: "市場の呼び込み｜市場の呼び込みが、きらめく品を掲げて元気よく声をかけてきた。｜顔なじみの呼び込みが、今日もにぎやかに手を振っている。"
+        market_hawker_en: "MARKET HAWKER｜A lively market hawker calls out, holding something bright in the sun.｜The familiar hawker spots you and waves just as cheerfully as before."
+        nile_tailwind_ja: "ナイルの追い風｜ナイルの帆が大きくふくらみ、心地よい追い風が旅人を包んだ。｜今日もナイルの風が帆を押し、旅の足取りを軽くした。"
+        nile_tailwind_en: "NILE TAILWIND｜A welcome tailwind fills the sail and carries your spirits along the Nile.｜Once again, the Nile wind fills the sail and lightens your step."
+        ruin_whisper_ja: "遺跡のささやき｜遺跡の壁画から青い光がほどけ、砂時計の秘密をそっとささやいた。｜青い光がふたたび揺れ、聞き覚えのあるささやきが響いた。"
+        ruin_whisper_en: "WHISPERING RUINS｜Blue light unfurls from the ruin wall, whispering a secret of the hourglass.｜The blue light stirs again, carrying a whisper you remember."
+        ferry_offer_ja: "渡し船の客引き｜ワニの船頭が、ナイルを渡る舟へ陽気に招いてきた。｜顔なじみの船頭が、舟の上からまた陽気に手を振っている。"
+        ferry_offer_en: "FERRY OFFER｜A cheerful crocodile boatman invites you aboard his Nile ferry.｜The familiar boatman waves cheerfully from his ferry once again."
+        common_ja: "発見スコア +150｜旅を続ける"
+        common_en: "DISCOVERY SCORE +150｜CONTINUE JOURNEY"
+      state_contract:
+        - "active_eventはevent_id/node_key/first_visit/score_awarded/return_phaseを持ち、schema_version=1と旧save互換を維持する。"
+        - "EVENT_REQUIREDではactive_event必須。return READYはfaces<=2、return RESOLUTION_REQUIREDはfaces=3かつrole必須。"
+        - "seen IDsはvalidated stage flagへ保存し、retry/next_lapで保持、新規旅だけでresetする。"
+        - "CTA ackでactive_eventを一度だけclearしreturn phaseへ遷移。restoreでは同じcard/reward表示を再現しscore/roleを重複させない。"
+      ui_contract:
+        - "LandingArtOverlay専用event-card mode、CTA-only、背景/back/die/map/menu/item/skillをgate。"
+        - "owned clock pauseだけをresumeし、application resumeも表示中はclockを再開しない。"
+        - "3投目EVENTはpre-movement inline roleを抑止し、CTA後に既存role表示/ackを一度だけ行う。"
+      next_allowed_task: T055
+
+  - id: T055
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "4つのV06-native narrative EVENTをexact mapping/copy、node-once +150、first/repeat、stable EVENT_REQUIRED、CTA-only overlay、owned clock、resume idempotence、third-roll EVENT→role resolution順で実装する。"
+    allowed_files:
+      - "data/stages/v06_cairo_course.json"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_tile_effect_tests.gd"
+      - "tests/run_v06_tile_help_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "locale/dice_slot_trip.ja.po"
+      - "locale/dice_slot_trip.en.po"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_tile_effect_tests.gd"
+      - "tests/run_v06_tile_help_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_travel_menu_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped git diff --check over allowed files"
+      - "Exact mapping/copy/art; +150 once; first/repeat persistence; old save compatibility; malformed EVENT_REQUIRED rejection; resume/card/CTA/clock/input contract; third-roll EVENT then role once"
+    stop_if:
+      - "GameState、legacy SaveManager/EventSystem/RewardResolver/roll_transaction結合が必要。"
+      - "choice/random/coin/item/HP/move/skill/boss handoff/golden exchange/extra diceを同時実装する必要がある。"
+      - "schema bump、required field化、pending_transactionが必要。"
+      - "scene変更、新規raster/ImageGen、allowed_files外変更が必要。"
+      - "非EVENT役順序やboss/session rulesを変える必要がある。"
+      - "360x640へapproved copy/literal artを収められない。"
+      - "protected dirty/untracked hunksの整形・削除・巻き戻しが必要。"
+      - "同一原因で検証が2回失敗する。"
+    receipt:
+      result: done
+      changed_files:
+        - "data/stages/v06_cairo_course.json"
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_session_tests.gd"
+        - "tests/run_v06_save_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "locale/dice_slot_trip.ja.po"
+        - "locale/dice_slot_trip.en.po"
+      summary: "main:4/25/41/48の固有narrative EVENT、first/repeat、node-once +150表示、validated stable EVENT_REQUIRED、CTA-only overlay、owned clock/input gate、resume idempotence、generic EVENT help置換、3投目EVENT→role順を実装した。"
+      commands:
+        - "Godot 4.7 headless editor parse: pass"
+        - "run_v06_play_session_tests.gd: failures=0"
+        - "run_v06_save_tests.gd: failures=0"
+        - "run_v06_tile_effect_tests.gd: failures=0"
+        - "run_v06_tile_help_tests.gd: failures=0"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_v06_travel_menu_tests.gd: failures=0"
+        - "run_v06_boss_play_screen_tests.gd: failures=0"
+        - "run_tests.gd: failures=0"
+        - "scoped git diff --check: pass"
+      caveat: "既知のGodot shutdown ObjectDB/resource warningとline-ending warningのみ。stop_ifなし。"
+      next_allowed_task: T056
+
+  - id: T056
+    type: pm
+    assignee: PM
+    status: blocked
+    reasoning_hint: medium
+    objective: "T055 EVENTカードを独立テストと360×640/720×1280/720×1600の実OpenGL captureでQAし、4画像/文言対応、収まり、CTA/input/clock、dismiss後HUD、reference比較を証拠化する。"
+    allowed_files:
+      - "build/qa-event-*"
+      - "docs/goals/dice-slot-trip-2026-08-product-polish/state.yaml"
+      - "docs/goals/dice-slot-trip-2026-08-product-polish/notes/T056-*"
+    verify:
+      - "T055 editor parse and required suites independently repeated"
+      - "720x1280 captures for all four EVENT cards"
+      - "360x640 and 720x1600 captures for ferry_offer"
+      - "image/title/body/reward/CTA fit and exact mapping"
+      - "1024x768 art uses aspect-fit without stretch/crop"
+      - "CTA >=96 design px and >=48 physical px at half-scale"
+      - "background/back/die/map/menu/item/skill do not dismiss or activate; CTA dismisses once"
+      - "owned clock stays paused and dismiss leaves HUD geometry stable"
+      - "selected luxury reference and 720 current comparison"
+    stop_if:
+      - "Product code, scene, locale, tests, or assets require changes; return to a new Worker task."
+      - "Existing Godot editor must be stopped."
+      - "Same capture failure repeats twice."
+    receipt:
+      result: blocked
+      summary: "T055の独立parse/required regressionは全passしたが、visual harness準備中のsource auditで、event.score_awarded=falseでもEVENT_DISCOVERY_SCOREを常時appendする契約違反を発見。T056 stop_ifに従いcapture前にWorkerへ戻す。"
+      evidence:
+        - "scripts/app/v06_play_screen.gd:3018-3022"
+        - "T054 rule: reward行は今回+150が新規付与された時だけ表示"
+        - "T055 independent editor/play-session/save/play-screen/tile-help/travel-menu/boss/legacy suites: pass"
+      next_allowed_task: T057
+
+  - id: T057
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "EVENT narrative cardの発見score行をactive_event.score_awarded=trueの時だけ表示し、falseのresume/revisitでは本文のみを表示する回帰を追加する。"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_tile_help_tests.gd"
+      - "tests/run_v06_travel_menu_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped git diff --check"
+      - "score_awarded=true includes exact localized +150 line; false omits it while keeping exact first/repeat body and CTA"
+    stop_if:
+      - "Files outside allowed_files, scene, locale, session/save schema, or event reward semantics must change."
+      - "Protected dirty hunks need reformatting, deletion, or reversal."
+      - "Same verification failure repeats twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      summary: "EVENT_DISCOVERY_SCOREをactive_event.score_awarded=true時だけappendし、falseではexact first/repeat本文とCTAを保ってscore行を省略する。"
+      commands:
+        - "Godot 4.7 editor parse: pass"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_v06_save_tests.gd: failures=0"
+        - "run_v06_tile_help_tests.gd: failures=0"
+        - "run_v06_travel_menu_tests.gd: failures=0"
+        - "run_v06_boss_play_screen_tests.gd: failures=0"
+        - "run_tests.gd: failures=0"
+        - "scoped git diff --check: pass"
+      caveat: "既知のObjectDB/resource shutdown warningとline-ending warningのみ。stop_ifなし。"
+      next_allowed_task: T058
+
+  - id: T058
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "T055/T057 EVENTカードを360×640/720×1280/720×1600の実OpenGL captureでQAし、4画像/文言、reward conditional、収まり、CTA/input/clock、dismiss後HUD、reference比較を証拠化する。"
+    allowed_files:
+      - "build/qa-event-*"
+      - "docs/goals/dice-slot-trip-2026-08-product-polish/state.yaml"
+      - "docs/goals/dice-slot-trip-2026-08-product-polish/notes/T058-*"
+    verify:
+      - "720x1280 captures for all four EVENT cards"
+      - "360x640 and 720x1600 captures for ferry_offer"
+      - "image/title/body/reward/CTA fit and exact mapping"
+      - "1024x768 art uses aspect-fit without stretch/crop"
+      - "CTA >=96 design px and >=48 physical px at half-scale"
+      - "background/back/die/map/menu/item/skill do not dismiss or activate; CTA dismisses once"
+      - "owned clock stays paused and dismiss leaves HUD geometry stable"
+      - "score_awarded=false repeat capture omits +150 line"
+      - "selected luxury reference and 720 current comparison"
+    stop_if:
+      - "Product code, scene, locale, tests, or assets require changes; return to a new Worker task."
+      - "Existing Godot editor must be stopped."
+      - "Same capture failure repeats twice."
+    receipt:
+      result: done
+      status: pass
+      note: "notes/T058-event-card-qa.md"
+      summary: "4固有EVENTを720×1280、渡し船を360×640/720×1600、非加点repeatを720×1280で実OpenGL capture。copy/art/reward conditional、aspect-fit、カード収まり、CTA 96/48px、全下層input gate、clock pause、dismiss後HUD不変を確認した。"
+      commands:
+        - "Godot 4.7 headless qa-event-record smoke: pass"
+        - "Godot 4.7 OpenGL 7 capture cases: failures=0"
+        - "ffmpeg four-card/reference/responsive comparison: pass"
+        - "QA harness trailing-whitespace scan: pass"
+        - "Goal Maker state checker: pass"
+      evidence:
+        - "build/qa-event-four-card-contact-720x1280.png"
+        - "build/qa-event-reference-comparison-1440x1280.png"
+        - "build/qa-event-ferry-360x640.png"
+        - "build/qa-event-ferry-720x1600.png"
+        - "build/qa-event-ferry-repeat-no-score-720x1280.png"
+      geometry: "Market/Nile/Ruin card 620x637; Ferry 620x599; CTA 96 design/48 physical px; 4:3 source art uses aspect-fit; tall viewport only recenters vertically."
+      caveat: "既知の16:9 base Page overflowとGodot shutdown warningのみ。EVENT card自体は対象全viewport内。"
+      next_allowed_task: T059
+
+  - id: T059
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T053-T058の実装・自動回帰・実描画を監査し、EVENT narrative sliceの完成可否と、製品化goalで次に着手すべき高影響タスクを決定する。"
+    inputs:
+      - "T053-T058 receipts"
+      - "current EVENT/session/save/UI/locale diff"
+      - "notes/T058-event-card-qa.md"
+      - "build/qa-event-* visual evidence"
+      - "selected luxury reference"
+      - "current protected dirty diff"
+    constraints:
+      - "Read-only。実装しない。"
+      - "EVENT choice/reward拡張を、今回のnarrative slice完成条件へ後付けしない。"
+      - "広いproduct-polish goalは未解決項目を証拠から評価する。"
+      - "次タスクは一つだけ、exact Scout/Judge/Worker境界で返す。"
+    expected_output:
+      - "EVENT slice complete | not_complete"
+      - "Acceptance mapping and missing evidence"
+      - "Product-polish goal complete | not_complete"
+      - "Next exact task with inputs/constraints/expected output"
+    receipt:
+      result: done
+      decision: "EVENT narrative sliceはnot_complete。描画・behavior・score suppression・CTA/input/clock・third-roll順はT054を満たすが、malformed EVENT_REQUIRED rejectが不足。"
+      completion_decision: "event_narrative_slice_not_complete; product_polish_goal_not_complete"
+      evidence:
+        - "T058 visual evidenceは全viewport、repeat/no-scoreを含めpass。"
+        - "v06_session_save_data.gdのactive_event validatorはexact node/event mappingを強制せず、first_visitとseen-event stateの整合も未検証。"
+        - "run_v06_save_tests.gdにmalformed mapping/first_visit rejection caseがない。"
+      next_allowed_task: T060
+
+  - id: T060
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "T054 save契約を完成させ、EVENT_REQUIRED payloadのevent_id/node_key exact mapping、first_visitとseen-event state、score_awardedと対応score-event記録の不整合をrejectする。"
+    inputs:
+      - "T054 contract"
+      - "scripts/game/v06_session_save_data.gd"
+      - "tests/run_v06_save_tests.gd"
+    allowed_files:
+      - "scripts/game/v06_session_save_data.gd"
+      - "tests/run_v06_save_tests.gd"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped git diff --check"
+      - "valid READY/RESOLUTION return EVENT saves accepted; wrong mapping/non-EVENT node/inconsistent first_visit/unsupported score_awarded rejected; old saves without active_event accepted"
+    stop_if:
+      - "Schema bump or files outside allowed_files are required."
+      - "Any EVENT product semantics must change."
+      - "Protected dirty/untracked work must be reformatted, deleted, or reverted."
+      - "Same verification failure repeats twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_session_save_data.gd"
+        - "tests/run_v06_save_tests.gd"
+      summary: "EVENT_REQUIRED save validationへ4つのexact node/event mapping、first_visit/seen整合、score_awarded/score-event整合を追加し、schema-v1のactive_eventなしsave互換を維持した。"
+      commands:
+        - "Godot 4.7 editor parse: pass"
+        - "run_v06_save_tests.gd: failures=0"
+        - "run_v06_play_session_tests.gd: failures=0"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_tests.gd: failures=0"
+        - "scoped git diff --check: pass"
+      caveat: "既知のbackup recovery/ObjectDB/resource shutdown warningとline-ending warningのみ。stop_ifなし。"
+      next_allowed_task: T061
+
+  - id: T061
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T053-T060を再監査し、EVENT narrative sliceの完成可否を判定する。完成なら製品化goalの残課題を初見影響・変更リスク・既存証拠で比較し、次のexact taskを一つだけ選ぶ。"
+    inputs:
+      - "T053-T060 receipts"
+      - "current EVENT/session/save/UI/locale diff"
+      - "notes/T058-event-card-qa.md"
+      - "build/qa-event-* visual evidence"
+      - "selected luxury reference"
+      - "current protected dirty diff"
+    constraints:
+      - "Read-only。実装しない。"
+      - "T059が指摘したmalformed save rejectionをT060のcode/test/evidenceへ直接照合する。"
+      - "EVENT choice/reward拡張を今回の完成条件へ後付けしない。"
+      - "次タスクは16:9 base layout、HP/敗北 semantics、boss 3-roll explanation等を比較して一つだけ返す。"
+      - "広いproduct-polish goalは未完として扱い、安全な次sliceを定義する。"
+    expected_output:
+      - "EVENT slice complete | not_complete"
+      - "Acceptance mapping and missing evidence"
+      - "Product-polish goal complete | not_complete"
+      - "Next exact task with role, inputs, constraints, expected output"
+    receipt:
+      result: done
+      decision: "EVENT narrative slice complete; product-polish goal not complete."
+      completion_decision: "event_narrative_slice_complete; product_polish_goal_not_complete"
+      acceptance_mapping:
+        - "Exact main:4/25/41/48 mapping、固有art/copy、node-once +150、first/repeatは実装・locale・T058 renderが一致。"
+        - "T060がT059唯一のgapだったwrong mapping、non-EVENT、first_visit矛盾、unsupported score_awardedをrejectし、旧schema-v1 saveを維持。"
+        - "EVENT_REQUIRED return/save、third-roll EVENT→role順、CTA-only/input/clock、360/720/tall viewportの受入証拠が揃った。"
+        - "choice/random/legacy reward拡張は今回scope外のままで完成条件を満たす。"
+      missing_evidence: []
+      evidence:
+        - "scripts/game/v06_session_save_data.gd:280"
+        - "tests/run_v06_save_tests.gd:384"
+        - "notes/T058-event-card-qa.md"
+        - "build/qa-event-four-card-contact-720x1280.png"
+        - "build/qa-event-ferry-repeat-no-score-720x1280.png"
+      rationale: "次はHP/敗北semantics。boss defeat後もLAP_RESULT/next_lapへ進みHPを持ち越す一方、RUN_OVER UI/saveはproduction遷移がなく、core run lifecycleと永続化へ直結するため、39pxの16:9 overflowや大規模boss-rule redesignより優先。"
+      next_allowed_task: T062
+
+  - id: T062
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "V06のHP zero、boss defeat、lap result、RUN_OVER、retry/next-lap、save/restore、score/PB、mission、UI semanticsを追跡し、最小で安全なdecision/implementation境界を定義する。"
+    inputs:
+      - "Current goal plus T043/T044 receipts and authoritative 2026-08 player feedback"
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_boss_battle.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "Current protected dirty diff"
+    constraints:
+      - "Read-only。board/product filesを変更しない。"
+      - "現在のuser feedbackを古いspecより優先する。"
+      - "travel HP zeroとboss-defeat HP zeroを分けて追う。"
+      - "landing/modal/save/retry順を証明する前に即RUN_OVERを仮定しない。"
+      - "score/PB、no-damage mission、既存save、boss camera、EVENT、dirty/untracked workを保護する。"
+      - "layout、raster、reward、boss-rule redesignを混ぜない。"
+    expected_output:
+      - "HP mutation and terminal-phase call graph/state table"
+      - "Current HP-zero/defeat behavior and RUN_OVER reachability proof"
+      - "Save/retry/next-lap/score/PB/mission/UI consequences"
+      - "Exact unresolved product decisions for Judge"
+      - "One candidate Worker scope with allowed_files, verify, stop_if if evidence permits"
+    receipt:
+      result: done
+      summary: "RUN_OVERは定義・save/restore・UIだけ存在しproduction assignmentがない。travel RISKはHP0でも旅を継続し、mirror raceはHPを変更せず、HP0でも通常rollして勝利可能。boss defeatもFINISHED/LAP_RESULTからNext Lapへ進む。"
+      state_table:
+        - "Travel RISK: landing中にHPを0へclampしno-damage失敗後、通常のlanding/role/gate flowを継続。terminal化なし。"
+        - "HP0 boss entry: configure_lap(lap,0)が成功しBOSS_ROLL_READY。race winnerは位置だけで決まりHPを参照しない。"
+        - "Boss victory/defeat: 両方FINISHED。clock停止、BOSS COMPLETE、finish/HP score、PB/best更新。victoryだけno-damage complete/BOSS WIN。"
+        - "FINISHED/LAP_RESULT: victory/defeat両方Next Lap。HP、best/PB、seen flagsを持ち越す。"
+        - "RUN_OVER: retry UI/save branchはあるが到達不能。next_lapはreject、retryはrun stateをreset。"
+      consequences:
+        - "travel-origin RUN_OVERを局所追加すると、現save validation/UIのboss-required前提を壊す。"
+        - "boss defeatはHP0を意味せず、現boss/player HPはposition raceのcompatibility data。"
+        - "defeatにもfinish/HP score、best/PB評価が付く現挙動は未承認のproduct semantics。"
+        - "現2026-08 feedbackはHP表示を求めるが、HP0/defeat cost/retry/PB/next-lapを定義していない。"
+      evidence:
+        - "scripts/game/v06_play_session.gd:159"
+        - "scripts/game/v06_play_session.gd:173"
+        - "scripts/game/v06_play_session.gd:357"
+        - "scripts/game/v06_play_session.gd:371"
+        - "scripts/game/v06_play_session.gd:1035"
+        - "scripts/game/v06_boss_battle.gd:40"
+        - "scripts/game/v06_session_save_data.gd:156"
+        - "scripts/app/v06_play_screen.gd:2703"
+        - "tests/run_v06_boss_play_screen_tests.gd:57"
+      ambiguity_requiring_judge:
+        - "travel HP0はlanding後run end、旅でrecoverable、boss entry時terminalのどれか。"
+        - "mirror-race defeatはHP維持/Next Lap、HP減少、強制RUN_OVERのどれか。"
+        - "defeat時のPB/best/BOSS COMPLETE/FINISH/HP bonusを付与するか。"
+        - "既存HP0 saveとsynthetic RUN_OVER saveの互換方針。"
+      next_allowed_task: T063
+
+  - id: T063
+    type: judge
+    assignee: Judge
+    status: blocked
+    reasoning_hint: high
+    objective: "T062証拠とauthoritative user feedbackを基に、travel HP0、boss defeat、RUN_OVER、score/PB、action、legacy saveのexact lifecycle contractを一つに固定し、最小Worker taskを定義する。"
+    inputs:
+      - "T062 receipt"
+      - "Current 2026-08 feedback and T043/T044 deferral"
+      - "Current V06 session/boss/save/UI/test sources"
+      - "Historical HP0 spec only as conflict evidence"
+      - "Current protected dirty diff"
+    constraints:
+      - "Read-only。実装しない。"
+      - "Current feedbackを古いspecより優先するが、定義されていないproduct behaviorを暗黙に創作しない。"
+      - "travel HP0とposition-race defeatを同一HP combatとして扱わない。"
+      - "No layout/raster/reward expansion/boss-rule redesign/schema bump。"
+      - "score/PB、mission、save、actionの全帰結を明示しないWorker taskを許可しない。"
+      - "ユーザー決定が本当に必要なら実装をblockし、質問を一つに絞る。"
+    expected_output:
+      - "Approved lifecycle contract or blocked product decision"
+      - "Travel HP0, boss defeat, RUN_OVER, score/PB, Retry/Next Lap, legacy save mapping"
+      - "Exact Worker objective/allowed_files/verify/stop_if if approved"
+    receipt:
+      result: blocked
+      decision: "HP lifecycle implementationにはowner product choiceが必要。2026-08 feedbackはHP表示を求めるが、HP0、race defeat、score/PB、recovery semanticsを定義していない。"
+      recommended_default:
+        - "travel HP0はcurrent landing/event/third-rollの既存stable completion後にbossless RUN_OVER。"
+        - "earned scoreを保持してscore BESTだけ更新し、BOSS COMPLETE/BOSS WIN/FINISH/HP bonus/time PBは付与しない。"
+        - "no-damageはfailed、actionはRetryのみ。legacy HP0 saveはpending interaction後RUN_OVERへnormalize。"
+        - "mirror-race defeatはnonlethalのままHP不変・Next Lap可・現completion score/PB互換を維持。"
+      owner_question: "推奨どおり、道中HP0だけを処理完了後RUN_OVER、mirror-race敗北を非致死のNext Lap結果にするか。"
+      consequences:
+        - "推奨: HPを意味ある資源にしつつposition-race ruleを保護。"
+        - "HP0 recoverable: 現互換だがRUN_OVERは到達不能、HPは主にscore/mission資源。"
+        - "boss defeatもlethal: race loop、reward、PB、Next Lapを大きく変更。"
+      blocked_tasks:
+        - "Owner lifecycle選択前のHP/RUN_OVER Worker実装。"
+      next_allowed_task: T064
+
+  - id: T064
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "既知の720×1280/360×640基礎Page上下overflow約39pxを、720×1600縦長挙動と既存luxury HUD/tray/tool dockを保護しながら解消できる最小responsive layout境界へ落とす。"
+    inputs:
+      - "notes/T051-onboarding-qa.md"
+      - "notes/T058-event-card-qa.md"
+      - "selected luxury reference"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "scripts/app/v06_play_screen.gd"
+      - "scripts/ui/mobile_safe_area.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "Current protected dirty diff"
+    constraints:
+      - "Read-only。実装・board編集をしない。"
+      - "360×640、720×1280、720×1600の実viewportを分けて追う。"
+      - "既存HUD/tray/dock/overlay、48px touch、atlas height、boss UI、EVENT/onboardingを保護する。"
+      - "選択済み豪華版モックをvisual targetとし、scene protected dirtyを明示する。"
+      - "新規raster/ImageGen、HP、boss-rule、reward変更を混ぜない。"
+    expected_output:
+      - "Page/container minimum-size ownership map"
+      - "Exact overflow geometry at three viewports"
+      - "Smallest safe runtime/scene decision boundary"
+      - "Candidate Worker objective/allowed_files/verify/stop_if"
+    receipt:
+      result: done
+      summary: "16:9 overflowはSafeMargin scalingやoverlayではなくPage minimum pressure。Page 1358px対SafeMargin 1248pxのためcenter配置がy=-39となり、viewport上下を各39px clip。360×640は同じlogical geometryの0.5倍、720×1600はPage (16,16) 688×1568で収まる。"
+      geometry:
+        - "720x1280: SafeMargin (16,16) 688x1248; Page (16,-39) 688x1358; HUD y=-39 h=210; ToolDock y=1201 h=118。"
+        - "360x640: physical Page (8,-19.5) 344x679; 上下19.5px clip、96 design controlsは48 physical px。"
+        - "720x1600: SafeMargin/Page (16,16) 688x1568、clipなし。"
+      ownership:
+        - "Page VBoxは8px separation、MessageBandはruntime reparent + 72px minimum。"
+        - "HudPanelはcontent/paddingでruntime 210px。"
+        - "AtlasFrame/Viewは470px minimumとvertical expansion。"
+        - "TrayPanel 252px、ToolDock 118px、controls 96/190pxがluxury/touch contract。"
+      evidence:
+        - "notes/T051-onboarding-qa.md"
+        - "notes/T058-event-card-qa.md"
+        - "scenes/app/V06PlayScreen.tscn:68"
+        - "scenes/app/V06PlayScreen.tscn:469"
+        - "scripts/app/v06_play_screen.gd:413"
+        - "tests/run_tall_phone_layout_tests.gd"
+      protected_dirty: "Scene 67、screen 341、play-screen tests 35 protected dirty lines。scene hierarchyや隣接hunkを触らない。"
+      next_allowed_task: T065
+
+  - id: T065
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T064 geometryと選択済みluxury referenceを監査し、Atlas>=470、96px controls、HUD/tray/dock寸法を保ったままdecorative spacing/paddingだけで16:9 Pageを収めるruntime-only Workerを承認またはblockする。"
+    inputs:
+      - "T064 receipt"
+      - "Current Page/HUD/Atlas/MessageBand/Tray/ToolDock implementation"
+      - "720x1280, 360x640, 720x1600 QA evidence"
+      - "Selected luxury reference"
+      - "Current protected dirty diff"
+    constraints:
+      - "Read-only。実装しない。"
+      - "AtlasView minimum/actual >=470、Button >=96 design/48 physicalを下げない。"
+      - "HUD/tray/dock/control寸法、scene hierarchy、asset、overlay semantics、boss tall offsetsを変えない。"
+      - "Materially shortening the operation band requires product approval; decorative spacing/padding only is preferred."
+      - "Runtime-only allowed filesに限定し、protected dirty hunksを保護する。"
+    expected_output:
+      - "approve | blocked"
+      - "Exact reclaim budget and target geometry"
+      - "Worker objective/allowed_files/verify/stop_if"
+    receipt:
+      result: blocked
+      decision: "全固定寸法と16px SafeMarginを維持するruntime-only profileでは110px全量を回収できない。"
+      exact_budget:
+        current_page_min: 1358
+        safe_margin_height: 1248
+        required_reclaim: 110
+        page_separations: 48
+        atlas_vertical_padding: 24
+        mission_padding_to_floor: 25
+        stage_padding_to_floor: 3
+        maximum_decorative_reclaim: 100
+        remaining_deficit: 10
+      hard_floor: "HUD 210 + Stage 54 + Mission 82 + Atlas 470 + Operation 72 + Tray 252 + Dock 118 = Page 1258。SafeMarginより10px大きい。"
+      closest_compliant_geometry: "Page (16,11) 688x1258。SafeMargin上下5px、360×640 physicalで各2.5px違反。"
+      unblock_options:
+        - "16:9時だけ72px operation bandを10px短縮する。推奨。"
+        - "SafeMargin上下を16pxから11pxへ縮小する。"
+        - "HUD/mission/tray/dock固定寸法のいずれかを変更する。"
+      blocked_tasks:
+        - "Explicit layout exception前のcompact-profile Worker。"
+      next_allowed_task: T066
+
+  - id: T066
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "OwnerからHP lifecycleと16:9 compact layoutの二つの推奨例外について決定を受け、選択された安全なWorker taskを一つだけactivateする。"
+    inputs:
+      - "T063 blocked decision and recommended HP contract"
+      - "T065 blocked decision and exact 10px layout deficit"
+    constraints:
+      - "Owner回答前にHP/RUN_OVERまたはcompact layoutを実装しない。"
+      - "推奨defaultを明示し、質問を短くする。"
+      - "回答後は一つのWorker taskだけをactiveにする。"
+    expected_output:
+      - "Owner-selected HP lifecycle"
+      - "Owner-selected 16:9 layout exception"
+      - "Next exact Worker task"
+    receipt:
+      result: done
+      owner_decision:
+        - "HPは1周内ではなくscore-attack challenge全体の寿命。最大3、challenge開始からGAME OVERまで持ち越す。"
+        - "HP0でGAME OVER。GAME OVERは正常なRUN終端で、今回の累積scoreを記録する。"
+        - "SCOREはchallenge累積。lap内scoreはlap resultで今回加算として提示し、通常HUDはSCORE/BEST/LAPを優先する。"
+        - "LAP倍率は1=x1.0、2=x1.25、3=x1.5、4=x1.75、5+=x2.0。"
+        - "RISK choice、REST 1RUN-once、boss HP penalty、HP bet、item/skill/mission拡張は基礎4本の後段。"
+      layout_decision: "16:9 operation band 10px exceptionは未回答のためT065 blockedのままdefer。"
+      next_allowed_task: T067
+
+  - id: T067
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Owner承認済みのchallenge-lifetime HP、cumulative score、lap score/result、LAP multiplierを既存V06 transaction/save/UIへ安全に接続する最初のend-to-end Worker sliceを定義する。"
+    inputs:
+      - "T062 HP/session/save/UI trace"
+      - "T063 recommended stable-boundary RUN_OVER contract"
+      - "T066 owner decision"
+      - "Current V06 session/save/screen/tests and protected dirty diff"
+    constraints:
+      - "Read-only。実装しない。"
+      - "Base four only: HP carry, HP0 GAME OVER, cumulative/lap score, fixed LAP multiplier schedule。"
+      - "RISK choice、REST depletion、boss HP penalty/retry、HP bet、new items/skills/missionsはdefer。"
+      - "Existing EVENT/onboarding/boss camera/BGM/luxury UI/tall-phone workを保護する。"
+      - "Schema bumpを避け、optional fieldsとconservative migrationを優先する。"
+      - "Score event idempotence、stable landing/event/third-roll completion、legacy save compatibilityを崩さない。"
+      - "Multiplier scope/rounding、BEST更新時点、boss defeatの暫定挙動、RUN_OVER UI ownershipを明示する。"
+    expected_output:
+      - "Exact authoritative contract for first slice"
+      - "Migration and idempotence rules"
+      - "Worker objective/allowed_files/verify/stop_if"
+      - "Deferred follow-on tasks"
+    receipt:
+      result: done
+      decision: "Owner contract is sufficient; approve one end-to-end session/save/UI lifecycle Worker slice."
+      scoring:
+        - "_score=challenge cumulative、_lap_score=current lap increment。"
+        - "全既存positive awardを_add_score seamでL1 4/4、L2 5/4、L3 6/4、L4 7/4、L5+ 8/4。"
+        - "各base awardをinteger half-up: (base*numerator+2)/4。累積totalへ再倍率しない。"
+        - "credited amountはtotal/lap total/cumulative breakdown/last awardへ入り、lap-local event IDsはNext Lapでreset。"
+      persistence:
+        - "schema v1維持、optional score.lap_totalを追加。missing legacyはlap_total=score.total。"
+        - "Next Lapはcumulative score/breakdownを保持しlap scoreと既存lap-local stateをreset。Retryは両scoreを0。"
+      best: "Score BESTはHP0 RUN_OVER遷移時だけ更新。boss terminal/Lap Resultでは更新しない。time PBは現挙動維持。"
+      hp0_boundary:
+        - "movement/landing→EVENT ack→third-roll resolution ackの既存stable interaction完了後にbossless RUN_OVER。"
+        - "HP0はboss entryより優先。clock停止、earned score保持、BEST一回更新、boss/finish/time-PB awardなし。"
+      boss: "mirror-race defeatは暫定nonlethal、HP不変、既存completion/finish awardsを倍率付きで維持、Next Lap。"
+      legacy: "HP0 READYは即RUN_OVER、pending phasesは完了後、boss/terminal phasesはaward replayなしでRUN_OVER。bossless RUN_OVERをsave/restore可。"
+      ui: "通常HUDはcumulative SCORE/BEST/LAP。Lap Resultはlap increment+cumulative。bossless RUN_OVERはGAME OVER/SCORE/BEST/LAP/lap incrementとRetryのみ。"
+      next_allowed_task: T068
+
+  - id: T068
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "Challenge-lifetime HP、cumulative/lap score、fixed LAP multiplier、schema-v1-compatible save、bossless GAME OVER UIをT067 exact contractどおりend-to-end実装する。"
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_tile_effect_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_tile_effect_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped git diff --check"
+      - "Multiplier boundaries/rounding、cumulative/lap totals、legacy migration、BEST timing、HP0 stable phases、bossless/boss-backed RUN_OVER、Retry/Next Lap、nonlethal defeat"
+    stop_if:
+      - "Schema bumpが必要。"
+      - "Scene、asset、locale、boss-battle、course data、mission rule、deferred feature変更が必要。"
+      - "HP0 normalizationがpending transactionをdiscard/replayする。"
+      - "Protected dirty hunksをcleanly preserveできない。"
+      - "同一原因でverificationが2回失敗する。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_session_tests.gd"
+        - "tests/run_v06_tile_effect_tests.gd"
+        - "tests/run_v06_save_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_boss_play_screen_tests.gd"
+      summary: "Challenge-lifetime core、save validator、bossless UI、focused coverageを実装。repeated-failure stop_ifに従い、new lap2/lap4 multiplier test expectationのGDScript numeric coercion不一致で停止。"
+      commands:
+        - "Godot editor parse: pass"
+        - "run_v06_play_session_tests.gd: pass after updates"
+        - "run_v06_boss_play_screen_tests.gd: pass"
+        - "run_v06_save_tests.gd: same two multiplier assertions failed twice"
+        - "full suite: not run"
+      blocker: "Test expectation must use explicit floor integer division matching approved half-up implementation, then all focused/full verification must finish."
+      next_allowed_task: T069
+
+  - id: T069
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "T068 recoveryとしてlap2/lap4 multiplier期待値をapproved explicit half-up integer計算へ揃え、残りfocused/full suiteを完走し、発見されたT067-contract回帰だけを修正する。"
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_tile_effect_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "all six focused T068 suites"
+      - "tests/run_tests.gd"
+      - "scoped git diff --check"
+      - "lap2/lap4 expectations use floori(float(base*numerator+2)/4.0) or exact equivalent"
+    stop_if:
+      - "Failure reveals a product semantic conflict with T067 instead of numeric expectation coercion."
+      - "Schema/scene/asset/locale/boss-battle/course/mission/deferred-feature changes are required."
+      - "Protected dirty hunks cannot be preserved."
+      - "The same recovery failure repeats twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_session_tests.gd"
+        - "tests/run_v06_tile_effect_tests.gd"
+        - "tests/run_v06_save_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_v06_boss_play_screen_tests.gd"
+      summary: "T068 recovery完了。各actual _add_score awardごとのexplicit floor half-upへ期待値を揃え、challenge cumulative/lap totals、HP0 ordering、bossless GAME OVER、save/migration、BEST timing、Retry/Next Lap、nonlethal boss defeatをend-to-end実装・検証した。"
+      commands:
+        - "Godot 4.7 editor parse: pass"
+        - "run_v06_play_session_tests.gd: failures=0"
+        - "run_v06_tile_effect_tests.gd: failures=0"
+        - "run_v06_save_tests.gd: failures=0"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_v06_boss_play_screen_tests.gd: failures=0"
+        - "run_v06_tile_help_tests.gd: failures=0"
+        - "run_tests.gd: failures=0"
+        - "scoped git diff --check: pass"
+      caveat: "既知のObjectDB/resource shutdown warningとLF→CRLF warningのみ。"
+      next_allowed_task: T070
+
+  - id: T070
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T067 contract、T068/T069 implementation、focused/full verificationを監査し、challenge-lifetime基礎4本のslice完成可否と次のexact product taskを決定する。"
+    inputs:
+      - "T067 exact contract"
+      - "T068 blocked receipt and T069 recovery receipt"
+      - "Current session/save/screen/test diff"
+      - "Independent PM parse/focused/full suite/diff-check result"
+      - "Owner HP score-attack design"
+    constraints:
+      - "Read-only。実装しない。"
+      - "Base fourだけを監査し、RISK choice/REST depletion/boss HP penalty/HP bet/item/skill/mission expansionを後付けしない。"
+      - "Pending interaction ordering、migration/idempotence、BEST timing、bossless UI/save、nonlethal defeatを直接照合する。"
+      - "Broad product-polish goalは別残課題を持つため自動completeしない。"
+    expected_output:
+      - "base-four slice complete | not_complete"
+      - "Acceptance mapping and missing evidence"
+      - "Next exact task"
+    receipt:
+      result: done
+      decision: "Base-four runtime/save behaviorはcoherentだが、Lap ResultがBESTをHP0まで更新しない契約なのに『自己ベスト更新！』と誤表示するためnot_complete。"
+      acceptance_mapping:
+        - "HP carry/HP0 bossless RUN_OVER: pass"
+        - "Cumulative/lap score and Next Lap reset: pass"
+        - "L1-L5+ per-award multiplier/rounding/idempotence: pass"
+        - "schema-v1 lap_total migration: pass"
+        - "Pending EVENT/resolution ordering: pass"
+        - "Bossless save/UI and nonlethal boss defeat: pass"
+        - "BEST session timing: pass; Lap Result copy only mismatch"
+      missing_evidence:
+        - "Positive SCORE/BEST 0のLap Resultで自己ベスト更新文が出ない回帰。"
+      next_allowed_task: T071
+
+  - id: T071
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Lap Resultからpremature BEST-update/chase文を削除し、outcome・current lap increment・cumulative SCORE・persisted BEST・breakdownだけを表示するT067 semanticsへ固定する。"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped git diff --check"
+      - "positive SCORE/BEST 0のvictory/defeat Lap Resultに自己ベスト更新！がない"
+    stop_if:
+      - "Locale、scene、session、save、product semantics変更が必要。"
+      - "Protected dirty hunksを保護できない。"
+      - "同一failureが2回繰り返す。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      summary: "Lap Resultのpremature BEST update/chase文を削除。outcome、lap increment、cumulative SCORE、persisted BEST、breakdownだけを表示し、positive SCORE/BEST0のvictory/defeatで『自己ベスト更新！』不在を固定。"
+      commands:
+        - "Godot editor parse: pass"
+        - "run_v06_boss_play_screen_tests.gd: failures=0"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_tests.gd: failures=0"
+        - "scoped git diff --check: pass"
+      caveat: "既知のObjectDB/resource shutdown warningとLF→CRLF warningのみ。"
+      next_allowed_task: T072
+
+  - id: T072
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T070唯一のblocking gapをT071が閉じたか再監査し、challenge-lifetime基礎4本sliceの完成可否を最終判定する。"
+    inputs:
+      - "T067 contract"
+      - "T069 implementation receipt"
+      - "T070 not-complete audit"
+      - "T071 recovery and independent PM verification"
+      - "Current focused diff"
+    constraints:
+      - "Read-only。実装しない。"
+      - "Deferred scopeを完成条件へ追加しない。"
+      - "Broad product-polish goalはactiveのまま次のexact taskを一つ返す。"
+    expected_output:
+      - "base-four slice complete | not_complete"
+      - "Acceptance mapping/missing evidence"
+      - "Next exact task"
+    receipt:
+      result: done
+      decision: "T071がT070唯一のgapを閉じ、T067 challenge-lifetime基礎4本sliceはcomplete。broad product-polish goalはactive。"
+      acceptance_mapping:
+        - "Max HP3 challenge carry、stable HP0 GAME OVER、boss entry prevention: complete"
+        - "Cumulative SCORE、lap increment reset/result: complete"
+        - "L1-L5+ per-award multiplier、half-up/idempotence: complete"
+        - "schema-v1 optional lap_total/migration: complete"
+        - "BEST only at HP0 RUN_OVER and truthful result copy: complete"
+        - "Landing/EVENT/third-roll ordering before RUN_OVER: complete"
+        - "Bossless save/UI、Retry-only、nonlethal boss defeat: complete"
+        - "Editor parse、focused/full suites、scoped diff-check: pass"
+      missing_evidence: []
+      completion_decision: "base_four_slice complete; broad product_polish active"
+      next_allowed_task: T073
+
+  - id: T073
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "16:9の既知10px minimum deficitについて、推奨のoperation band 72→62px compact profileを承認、別例外、またはdeferのowner decisionを得る。"
+    inputs:
+      - "T064 exact Page geometry"
+      - "T065 blocked Judge receipt"
+      - "Selected luxury reference"
+    constraints:
+      - "質問は一つ、62px operation band optionを推奨として先に提示。"
+      - "このtaskでは実装しない。"
+      - "Atlas>=470、controls>=96 design/48 physical、HUD/tray/dock、720x1600は不変。"
+      - "HP/scoring/deferred mechanicsを再オープンしない。"
+    expected_output:
+      - "One explicit owner choice"
+      - "Approvedならexact runtime-only compact-layout Worker task"
+      - "Deferredならdurable blocked receiptと別safe candidate"
+    receipt:
+      result: done
+      owner_choice: "16:9端末だけoperation bandを72pxから62pxへ短縮し、既知の上下overflowを解消するcompact profileを承認。"
+      preserved_contract:
+        - "AtlasView >=470px"
+        - "Controls >=96 design px / 48 physical px"
+        - "HUD/Tray/ToolDock dimensions unchanged"
+        - "720x1600 tall behavior unchanged"
+      next_allowed_task: T074
+
+  - id: T074
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "Logical 720×1280以下の16:9 profileだけでoperation band 72→62pxとT065 approved decorative reclaim budgetをruntime適用し、PageをSafeMargin内へ収める。720×1600 tall profileと全固定contractを維持する。"
+    inputs:
+      - "T064 exact geometry/ownership"
+      - "T065 exact 110px budget and 10px owner exception"
+      - "T073 owner approval"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_tall_phone_layout_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_tall_phone_layout_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped git diff --check"
+      - "720x1280 SafeMargin/Page=(16,16) 688x1248 and fully inside viewport"
+      - "360x640 uses same logical geometry at 0.5 scale with no physical clipping"
+      - "720x1600 remains Page=(16,16) 688x1568"
+      - "AtlasView actual/min >=470; every Button >=96 design/48 physical"
+      - "HUD/tray/dock dimensions/order, luxury assets, boss offsets, EVENT/onboarding dismiss geometry unchanged"
+    stop_if:
+      - "AtlasView below470、Button below96 design、whole-Page scaling、HUD/tray/dock dimension changeが必要。"
+      - "Scene、asset、raster/ImageGen、ui_tokens、HP/scoring、boss rules、EVENT/onboarding semantics、allowed外変更が必要。"
+      - "62px bandで38px announcementがclipする。"
+      - "Protected dirty hunksを保護できない。"
+      - "同一failureが2回繰り返す。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+        - "tests/run_tall_phone_layout_tests.gd"
+      summary: "Runtime compact reclaim/62px band、tall restoration、profile idempotence guard、responsive geometry testsを実装したが、tall-phone suiteが無出力124s timeoutを2回繰り返しstop_if。"
+      commands:
+        - "Godot editor parse: pass"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_tall_phone_layout_tests.gd: timeout twice"
+        - "scoped git diff --check: pass"
+        - "boss/full suites: not run due stop_if"
+      blocker: "Repeated tall-phone test hang requires read-only diagnosis before recovery Worker."
+      next_allowed_task: T075
+
+  - id: T075
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "T074後のrun_tall_phone_layout_tests無出力timeoutをread-onlyで再現・局所化し、resize signal/profile style application/test awaitのどこでhangするかと最小recovery境界を特定する。"
+    inputs:
+      - "T074 diff in three allowed files"
+      - "tests/run_tall_phone_layout_tests.gd"
+      - "scripts/app/v06_play_screen.gd resize/profile code"
+      - "Godot 4.7 test runner behavior"
+    constraints:
+      - "Read-only。実装・board編集しない。"
+      - "Bounded runs only;同じ120s timeoutを再度待たず、instrumentなしでcall graph/await/signalを優先。"
+      - "Protected dirty workを保護する。"
+      - "Scene/assets/tokens/product semanticsを変更候補にしない。"
+    expected_output:
+      - "Exact hang call path/root cause"
+      - "Whether product runtime or only test harness is affected"
+      - "One recovery Worker objective/allowed_files/verify/stop_if"
+    receipt:
+      result: done
+      summary: "Timeoutはharness-only。projectは720×1280 logical + canvas_items scalingだが、新testがauthored 720-wide treeを360×640 logical Controlへ直接制約し、impossible minimum layoutでprocess_frame flushが返らなかった。"
+      evidence:
+        - "project.godot canvas_items stretch"
+        - "run_v06_play_screen_tests logical720 passes"
+        - "tests/run_tall_phone_layout_tests.gd raw host.size 360x640"
+      runtime_impact: "Supported runtime resize callback hangの証拠なし。"
+      cleanup: "Timeout後CPU-spinしていたGodot process pairs 7156/15644 and 12536/5872を確認後停止。"
+      recovery: "Testだけをlogical720x1280 hostで実行し、physical360 profileはhost/control scale0.5でglobal geometryをassertする。"
+      next_allowed_task: T076
+
+  - id: T076
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "Tall-phone harnessの360×640 caseをprojectと同じlogical720×1280 + physical scale0.5へ修正し、T074 runtime実装を変更せず全verificationを完走する。"
+    allowed_files:
+      - "tests/run_tall_phone_layout_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "tests/run_tall_phone_layout_tests.gd bounded completion"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped git diff --check across T074 product/test files"
+      - "Logical message=62/separation=0; physical global rect/button/atlas floors at scale1.0/0.5"
+      - "720×1600 logical tall profile unchanged"
+    stop_if:
+      - "Product runtime file変更が必要。"
+      - "Logical720 + scale0.5でもhangする。"
+      - "Scene/assets/tokens/semantics変更が必要。"
+      - "Protected dirty hunksを保護できない。"
+      - "同一failureが2回繰り返す。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "tests/run_tall_phone_layout_tests.gd"
+      summary: "360 caseをlogical720x1280 + scale0.5/global rectへ修正したが、suiteが94s無出力timeoutしexplicit stop_if。runtime変更なし。"
+      commands:
+        - "run_tall_phone_layout_tests.gd: timeout"
+        - "scoped T074 diff-check: pass"
+      cleanup: "Timeout後のGodot process 9636/11844を確認して停止。"
+      new_evidence: "Compact helperはnormal Page geometryだけを検証するのに、_run先頭でboss_readyを設定してboss async fixtureを全compact instancesへ適用している。"
+      next_allowed_task: T077
+
+  - id: T077
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T074-T076 timeout証拠を監査し、compact geometry fixtureから不要なboss_ready async初期化を分離するtest-only recoveryを承認またはblockする。"
+    inputs:
+      - "T074/T076 receipts"
+      - "Current tall-phone test source"
+      - "run_v06_play_screen_tests compact pass"
+      - "Original tall-only boss_ready test contract"
+    constraints:
+      - "Read-only。実装しない。"
+      - "Product runtime変更を許可しない。"
+      - "Compact normal Page testsはqa scenario empty、720x1600 boss offset testだけboss_readyとする候補を評価。"
+      - "次runは外部30s boundかfirst PASS output deadlineを持つ。"
+    expected_output:
+      - "approve | blocked"
+      - "Exact test-only recovery scope/verify/stop_if"
+    receipt:
+      result: done
+      decision: "Test-only recovery approved。Compact normal-Page fixturesから不要なglobal boss_readyを分離し、original 720x1600 boss fixtureだけへ適用する。"
+      rationale: "Compact helpersはSafeMargin/Page/MessageBand/Atlas/Buttonだけをassertしboss state不要。runtime play-screen/parseはpass済みでruntime hang証拠なし。"
+      next_allowed_task: T078
+
+  - id: T078
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "Tall-phone QA scenarioを分離し、compact fixturesはempty scenario、720x1600 boss-offset fixtureだけboss_readyで実行してbounded verificationを完走する。"
+    allowed_files:
+      - "tests/run_tall_phone_layout_tests.gd"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "Tall-phone first PASS <=10s and whole suite <=30s external watchdog"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped T074 git diff --check"
+    stop_if:
+      - "First PASS >10s or suite >30s; terminate exact spawned process tree and do not rerun."
+      - "Product runtime file変更が必要。"
+      - "Original 720x1600 boss assertionsを弱める必要。"
+      - "Scene/assets/tokens/layout contract/semantics変更が必要。"
+      - "Residual processを安全に特定/停止できない。"
+      - "Protected dirty workを保護できない。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "tests/run_tall_phone_layout_tests.gd"
+      summary: "Scenario isolationをexact実装したがbounded tall suiteが10s deadline超過。exact process tree 14124/2144を停止しno rerun。runtime untouched。"
+      commands:
+        - "bounded tall-phone: timeout/terminated"
+        - "scoped T074 diff-check: pass"
+      blocker: "Live compact fixtures inside tall-phone harness remain unsuitable despite runtime play-screen compact pass。"
+      next_allowed_task: T079
+
+  - id: T079
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T074-T078証拠を監査し、compact geometry証拠をpassing run_v06_play_screen_testsへ集約し、tall-phone suiteを元の720x1600専用fixtureへ戻すrecoveryを承認またはblockする。"
+    inputs:
+      - "T074 runtime diff and passing play-screen suite"
+      - "T075-T078 timeout receipts"
+      - "Current play-screen compact assertions"
+      - "Original tall-phone 720x1600 assertions"
+      - "Project logical720/canvas scale contract"
+    constraints:
+      - "Read-only。実装しない。"
+      - "Product runtime変更を許可しない。"
+      - "360 physical proofはlogical720 geometry + project 0.5 scaling contractで構成し、live scaled screenをtall harnessへ再追加しない。"
+      - "720x1600 original boss offsets/assertionsを維持する。"
+      - "Timeoutしたcompact helper additionsだけをtestから除去する候補を評価。"
+    expected_output:
+      - "approve | blocked"
+      - "Exact recovery scope and sufficient evidence mapping"
+      - "verify/stop_if"
+    receipt:
+      result: done
+      decision: "Evidence consolidation approved。Timeout common factorのlive compact helpersをtall-phoneから除去し、passing logical720 play-screen fixtureへexact compact assertionsを集約。Tall-phoneはoriginal 720x1600 boss-onlyへ復元。"
+      sufficient_evidence:
+        - "720x1280 logical: play-screen exact SafeMargin/Page/no overflow/62px/Atlas>=470/buttons>=96。"
+        - "360x640 physical: project 720x1280 canvas_items 0.5 mappingで8px/344x624、Atlas>=235、buttons>=48。"
+        - "720x1600 logical: restored tall fixtureでPage 688x1568、separation8、band72、boss offsets。"
+      next_allowed_task: T080
+
+  - id: T080
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "Tall-phone testからT074-T078 compact helper additionsだけを除去してoriginal 720x1600 boss-only fixtureへ戻し、exact logical720 compact assertionsをexisting play-screen layout testへ集約する。"
+    allowed_files:
+      - "tests/run_tall_phone_layout_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "Restored tall-phone first PASS<=10s,total<=30s"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped T074 diff-check"
+      - "Product runtime byte-for-byte unchanged during T080"
+    stop_if:
+      - "Restored tall fixture misses deadlines; terminate exact tree/no rerun。"
+      - "Original 720x1600 assertionを弱める必要。"
+      - "Existing play-screen exact compact assertionsがfail。"
+      - "Product runtime/scene/assets/tokens/project settings変更が必要。"
+      - "Live scaled fixture再導入が必要。"
+      - "Protected dirty workを保護できない。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "tests/run_tall_phone_layout_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      summary: "Tall testをoriginal single fixtureへ戻しcompact assertionsをexisting play-screenへ集約。parse pass、他compact assertions passだがSafeMargin/Page exact rect assertionだけlocal/global formulationsで2回同一failureしstop_if。runtime untouched。"
+      commands:
+        - "Godot editor parse: pass"
+        - "run_v06_play_screen_tests.gd: exact rect failures twice"
+        - "scoped T074 diff-check: pass"
+      blocker: "Need actual headless fixture rect/transform values before choosing correct coordinate-space assertion."
+      next_allowed_task: T081
+
+  - id: T081
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Existing headless play-screen fixtureのSafeMargin/Page actual local/global rectとroot canvas transformをread-onlyで特定し、実OpenGL 720 geometryとの違いと正しいassertion space/toleranceを定義する。"
+    inputs:
+      - "T080 failing assertions"
+      - "tests/run_v06_play_screen_tests.gd fixture setup"
+      - "project.godot viewport/stretch/override settings"
+      - "Existing QA harness outputs capable of reporting Page geometry"
+    constraints:
+      - "Read-only。product/test/board編集しない。"
+      - "新規instrumentation fileを作らない。既存harness/source/outputだけを使う。"
+      - "Unbounded run禁止、residual processを残さない。"
+      - "Exact targetを証拠なしに緩和しない。"
+    expected_output:
+      - "Actual local/global/root transform values or source-proven equivalent"
+      - "Why exact assertions fail while fit/minimum passes"
+      - "One test-only recovery scope/verify/stop_if"
+    receipt:
+      result: done
+      summary: "Headless fixtureではroot ancestor配置を含むabsolute global originがproduct contractではないため、SafeMargin/Pageのabsolute get_global_rect比較だけが誤検知していた。他のcompact contractは全てpass。"
+      evidence:
+        - "Fixture host/screen logical sizeは720x1280。"
+        - "SafeMargin authored local geometryはposition(16,16), size(688,1248)。"
+        - "PageはSafeMargin childとしてlocal position(0,0), size(688,1248)でfillする契約。"
+        - "Existing headless QA reporterではget_global_rectがancestor Control placementを含み、physical 0.5 project-window scaleは含まない。"
+      recovery: "Absolute global originをassertせず、local rectを0.5px toleranceでassertし、Page/SafeMarginのglobal相対一致とsize equalityを別assertする。"
+      next_allowed_task: T082
+
+  - id: T082
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "T081 evidenceに従いcompact layoutの2つの誤検知assertionだけを正しいlocal/relative coordinate contractへ修正し、T074 verificationを完走する。"
+    allowed_files:
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "Restored tests/run_tall_phone_layout_tests.gd first PASS<=10s,total<=30s"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped T074 git diff --check"
+    stop_if:
+      - "SafeMargin local position/size or Page local position/size differs from source-proven values by more than 0.5px。"
+      - "62px, separation0, Atlas>=470, buttons>=96, no-overflow contractがregressする。"
+      - "Product runtime/scene/assets/tokens/project settings変更が必要。"
+      - "Tall fixture first PASS>10s or total>30s; exact process treeをterminateしてno rerun。"
+      - "Protected dirty workを保護できない。"
+      - "同一failureが2回繰り返す。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "tests/run_v06_play_screen_tests.gd"
+      summary: "Absolute global assertionsをlocal/relativeへ置換。Page local/relativeとminimum-fitはpassしたが、SafeMargin local(16,16)/size(688,1248)だけfailしsource/test conflictで停止。"
+      commands:
+        - "Godot editor parse: pass"
+        - "run_v06_play_screen_tests.gd: one SafeMargin local geometry failure"
+        - "scoped T074 diff-check: pass"
+      next_allowed_task: T083
+
+  - id: T083
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "Existing SafeMargin assertion messageへactual local rectを一時的に含めたbounded 1-runで値を採取し、その証拠に基づくparent-relative/size layout contractへ同じtest内で確定して全verificationを完走する。"
+    allowed_files:
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Diagnostic runは1回だけ、actual rectをreceiptへ記録"
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "Restored tests/run_tall_phone_layout_tests.gd first PASS<=10s,total<=30s"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped T074 git diff --check"
+    stop_if:
+      - "Actual SafeMargin sizeが688x1248から0.5px超で異なる、またはPageがSafeMarginをfillしない。"
+      - "62px/separation0/Atlas>=470/buttons>=96/no-overflow contractがregressする。"
+      - "Product runtime/scene/assets/tokens/settings変更が必要。"
+      - "Tall fixture first PASS>10s or total>30s; exact tree terminate/no rerun。"
+      - "Protected dirty workを保護できない。"
+      - "同一failureが2回繰り返す。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "tests/run_v06_play_screen_tests.gd"
+      observed:
+        safe_margin_position: "(16.0, 15.5)"
+        safe_margin_size: "(688.0, 1249.0)"
+        page_fill_relative: pass
+        minimum_fit: pass
+      summary: "Godot Container roundingによりvertical insetは15.5px対称、heightは1249px。T083のexact 1248 conditionalを満たさないため停止。"
+      commands:
+        - "run_v06_play_screen_tests.gd diagnostic: one expected failure"
+        - "scoped T074 diff-check: pass"
+      next_allowed_task: T084
+
+  - id: T084
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T074-T083 evidenceを監査し、Godot Containerの15.5px symmetric inset/1249px heightをno-overflow compact contractとして承認するか、product修正を要求するか判定する。"
+    inputs:
+      - "User request: 16:9 only MessageBand 72->62 and vertical overflow removal"
+      - "T074 runtime compact profile"
+      - "T080-T083 headless geometry evidence"
+      - "Scene authored 16px SafeMargin offsets"
+      - "Passing Page fill/minimum-fit/62px/Atlas>=470/buttons>=96/order assertions"
+    constraints:
+      - "Read-only。実装しない。"
+      - "1px/0.5px Godot layout roundingとactual clippingを区別する。"
+      - "720x1600 profile unchanged requirementを維持。"
+      - "Testをproduct realityより厳しく/弱くしない。"
+    expected_output:
+      - "approve | product_fix_required | blocked"
+      - "Exact final assertion contract"
+      - "Verification and stop_if"
+    receipt:
+      result: done
+      decision: approve
+      summary: "SafeMargin (16,15.5) 688x1249は720x1280内に完全収容され上下15.5px対称。Godot Container/pixel-snap roundingでありclippingではないためproduct変更不要。"
+      contract: "Screen-relative four insetsを16±0.5pxかつ左右/上下対称、SafeMargin bounds contained、Page fill/minimum-fitをassert。既存62/0/470/96/orderとtall exact contractを維持。"
+      next_allowed_task: T085
+
+  - id: T085
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "T084 approved contractでdiagnostic SafeMargin assertionをscreen-relative contained/symmetric inset assertionへ確定し、compact sliceの全verificationを完走する。"
+    allowed_files:
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "Restored tests/run_tall_phone_layout_tests.gd first PASS<=10s,total<=30s"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped T074 git diff --check"
+    stop_if:
+      - "Any SafeMargin edge leaves screen; inset outside 15.5..16.5px or loses symmetry。"
+      - "Page does not fill SafeMargin or combined minimum exceeds actual。"
+      - "62/0/470/96/order contract regresses。"
+      - "Tall exact contract changes or misses deadline; terminate exact tree/no rerun。"
+      - "Runtime/scene/assets/tokens/settings変更が必要。"
+      - "Protected dirty workを保護できない。"
+      - "同一failureが2回繰り返す。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "tests/run_v06_play_screen_tests.gd"
+      summary: "T084 screen-relative assertion実装後、editor parse/play-screen/compact contractsは全pass。Restored tall fixtureがfirst PASS 10s deadlineを超えexact PIDs 6440/10600を停止、no rerun。"
+      commands:
+        - "Godot editor parse: pass"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_tall_phone_layout_tests.gd: first-pass timeout/terminated"
+        - "scoped T074 diff-check: pass"
+      blocker: "Original 720x1600 boss_ready fixture does not reach the third process_frame after T074 resize/profile runtime hook。"
+      next_allowed_task: T086
+
+  - id: T086
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Original 720x1600 boss_ready fixtureがT074後にprocess_frameへ戻らない原因をread-onlyで特定し、runtime regressionかharness-onlyかを判定して最小recoveryを定義する。"
+    inputs:
+      - "T074 runtime resize/profile diff"
+      - "tests/run_tall_phone_layout_tests.gd original fixture"
+      - "T075-T085 timeout/process evidence"
+      - "Passing compact play-screen suite"
+    constraints:
+      - "Read-only。files/boardを編集しない。"
+      - "Unbounded run禁止。1 bounded characterization only、exact process tree cleanup。"
+      - "Protected dirty workを保護。"
+      - "Tall 720x1600 exact visual contractを弱めない。"
+    expected_output:
+      - "Root cause with source/runtime evidence"
+      - "harness-only | runtime-fix-required decision"
+      - "One minimal recovery scope/verify/stop_if"
+    receipt:
+      result: done
+      decision: runtime-fix-required
+      summary: "720x1600 boss_readyでroot Control resized→sync boss descendant reposition→minimum/layout→root resizedのfeedback loop。8sでGodot child CPU 5.03s/Responding、async/BGM waitではない。"
+      evidence:
+        - "scripts/app/v06_play_screen.gd runtime layout callbacks"
+        - "tests/run_tall_phone_layout_tests.gd original boss_ready fixture"
+        - "Bounded process tree CPU characterization"
+      cleanup: "Exact console/Godot/conhost PIDs 6736/7224/8876 terminated; remaining 0。"
+      recovery: "Root resized内のsynchronous descendant rewriteを止め、stable viewport/parent heightをsourceにdeferred/coalesced layout applicationへ変更。Initial applicationとexact tall coordinatesは維持。"
+      next_allowed_task: T087
+
+  - id: T087
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T086 runtime feedback-loop診断を監査し、T074 compact behaviorを保持した最小runtime recovery scopeを承認またはblockする。"
+    inputs:
+      - "T086 receipt and process evidence"
+      - "T074 _apply_runtime_screen_layout/_apply_tall_screen_boss_layout"
+      - "Original tall boss exact assertions"
+      - "Passing compact T085 assertions"
+    constraints:
+      - "Read-only。実装しない。"
+      - "Compact 720x1280 62/0/470/96/orderを維持。"
+      - "Tall Page 688x1568/separation8/band72/die1220/mirror1212を維持。"
+      - "Scene/assets/tokens/settings/test weakening禁止。"
+    expected_output:
+      - "approve | blocked"
+      - "Exact runtime file/symbol scope"
+      - "Verification and stop_if"
+    receipt:
+      result: done
+      decision: approve
+      summary: "Stable parent Control size helperのみを最小fixとして承認。Deferred/coalescing stateは追加しない。"
+      scope: "scripts/app/v06_play_screen.gd: add _runtime_layout_reference_size(); change only _uses_compact_phone_layout() and _boss_tall_screen_offset_y() size source。"
+      next_allowed_task: T088
+
+  - id: T088
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "T087 approved helper-only runtime recoveryでtall boss resize feedbackを断ち、compact/tall/full verificationを完走する。"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_play_screen_tests.gd failures=0"
+      - "tests/run_tall_phone_layout_tests.gd first PASS<=10s,total<=30s exact tall contract"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped T074 git diff --check"
+    stop_if:
+      - "Tall fixture misses deadline; terminate exact tree/no rerun。"
+      - "Parent size unavailable/zero in supported path。"
+      - "Compact/tall geometry regression。"
+      - "Allowed file/symbol scope expansion or test weakening required。"
+      - "Protected dirty workを保護できない。"
+      - "同一failureが2回繰り返す。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+      summary: "Parent-size helper実装後parse/play-screen pass。Tall fixtureはfirst PASS 10s超、PIDs 15656/2872停止/no rerun。Helperだけではroot resized callback loopを断てない。"
+      commands:
+        - "Godot editor parse: pass"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_tall_phone_layout_tests.gd: first-pass timeout/terminated"
+        - "scoped T074 diff-check: pass"
+      next_allowed_task: T089
+
+  - id: T089
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T088 failureを監査し、screen.resized購読をstable parent Control.resized購読へ置換する最小second recoveryを承認またはblockする。"
+    inputs:
+      - "T086/T087 diagnosis"
+      - "T088 helper implementation and timeout"
+      - "Passing compact suite"
+    constraints:
+      - "Read-only。実装しない。"
+      - "Initial _apply_runtime_screen_layout callを維持。"
+      - "Supported parent Control resizeへのruntime responsivenessを維持。"
+      - "Compact/tall exact contractsを維持。"
+      - "Tests/scenes/assets/tokens/settings変更禁止。"
+    expected_output:
+      - "approve | blocked"
+      - "Exact connection/fallback scope"
+      - "Verification/stop_if"
+    receipt:
+      result: done
+      decision: approve_with_safe_fallback
+      summary: "own resized fallbackはdirect-Viewport pathでfeedbackを再導入するためblock。Parent Control.resized、parentなしはViewport.size_changedへ接続し、screen.resizedは使用しない。"
+      scope: "scripts/app/v06_play_screen.gd _ready connection block only, retaining T088 helper changes。"
+      next_allowed_task: T090
+
+  - id: T090
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "T089 approved parent/Viewport resize signalへ切替え、self-feedbackを除去してcompact/tall/direct-root/full verificationを完走する。"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_tall_phone_layout_tests.gd first PASS<=10s,total<=30s exact tall contract"
+      - "tests/run_v06_mission_tests.gd direct-root"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped T074 git diff --check"
+    stop_if:
+      - "Any screen.resized connection remains for runtime layout。"
+      - "Parent/Viewport signal unavailable。"
+      - "Tall deadline miss; exact tree terminate/no rerun。"
+      - "Compact/tall/direct-root regression。"
+      - "Other files/symbols or test weakening required。"
+      - "Protected dirty workを保護できない。"
+      - "同一failureが2回繰り返す。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+      summary: "Parent/Viewport signal ownershipへ変更しparse/play-screen pass。Tall fixture first PASS 10s超、PIDs 6200/5688停止/no rerun。Signal ownershipだけでは解消しない。"
+      commands:
+        - "Godot editor parse: pass"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_tall_phone_layout_tests.gd: first-pass timeout/terminated"
+        - "scoped T074 diff-check: pass"
+      next_allowed_task: T091
+
+  - id: T091
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "T090後も残るtall boss_ready spinをsource/history/call-orderで特定し、duplicate initial tall applyまたはcontainer child position writeのどちらが原因か判定する。"
+    inputs:
+      - "Current _ready/_apply_runtime_screen_layout/_apply_tall_screen_boss_layout"
+      - "Git diff/history before T074 when available"
+      - "Original tall test"
+      - "T086-T090 process evidence"
+    constraints:
+      - "Read-only。編集しない。"
+      - "追加run禁止。既存evidence/source/historyのみ。"
+      - "Tall exact visual contractを弱めない。"
+    expected_output:
+      - "Exact remaining feedback/re-entry source"
+      - "One minimal recovery scope"
+      - "Verification/stop_if"
+    receipt:
+      result: done
+      summary: "Signal owner/size source修正後もcallback phaseが同期。Parent/Viewport resize解決中にPage styles/minimumとboss child positionsを書き換え、さらに_readyでtall applyをduplicate同期実行している。"
+      evidence:
+        - "scripts/app/v06_play_screen.gd _ready/runtime/tall apply call order"
+        - "tests/run_tall_phone_layout_tests.gd three-frame fixture"
+      recovery: "Runtime-only deferred/coalesced queue: resize signalはqueueへ、_readyもqueue once、sync initial/direct duplicate tall callsを除去。Deferred applyでguard clear後profile+tallを一度適用。"
+      next_allowed_task: T092
+
+  - id: T092
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T091 deferred/coalesced runtime recoveryを監査し、exact symbol scopeとframe-3/tall verificationを承認またはblockする。"
+    inputs:
+      - "T091 source decision"
+      - "T086-T090 failed minimal recoveries"
+      - "Original tall test waits 3 process frames"
+      - "Passing compact assertions"
+    constraints:
+      - "Read-only。実装しない。"
+      - "Runtime file only、test/scene/assets/tokens/settings変更禁止。"
+      - "Exact compact/tall contractsを維持。"
+    expected_output:
+      - "approve | blocked"
+      - "Exact symbols/ordering"
+      - "Verification/stop_if"
+    receipt:
+      result: done
+      decision: approve
+      summary: "Deferred/coalesced recovery承認。ただしguardはapply mutation全体でtrueを保持し、最後にclearする。Entry clearは禁止。"
+      scope: "scripts/app/v06_play_screen.gd only: queue bool/method, signal target, ready initial queue, duplicate sync calls removal, apply-end guard clear。"
+      next_allowed_task: T093
+
+  - id: T093
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "T092 exact deferred/coalesced layout queueを実装し、compact/tall/direct-root/boss/full verificationを完走する。"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_tall_phone_layout_tests.gd first PASS<=10s,total<=30s exact tall contract"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped T074 git diff --check"
+    stop_if:
+      - "Guard clears before layout mutations finish。"
+      - "Any synchronous direct apply remains in _ready/resize connection。"
+      - "Tall deadline miss; exact tree terminate/no rerun。"
+      - "Compact/tall/direct-root contract regression。"
+      - "Other files/test weakening/symbol expansion required。"
+      - "Protected dirty workを保護できない。"
+      - "同一failureが2回繰り返す。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+      summary: "Exact deferred/coalesced queue実装、parse/compact pass。Tall first PASS 10s超、PIDs 15236/3948停止/no rerun。Layout queueでも解消しないため停止点instrumentationが必要。"
+      commands:
+        - "Godot editor parse: pass"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_tall_phone_layout_tests.gd: first-pass timeout/terminated"
+        - "scoped T074 diff-check: pass"
+      next_allowed_task: T094
+
+  - id: T094
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Tall fixtureへ一時checkpoint loggingのみを追加し、screen add/_ready/各process_frameのどこで停止するか1 bounded runで特定後、instrumentationを除去してtestを元に戻す。"
+    allowed_files:
+      - "tests/run_tall_phone_layout_tests.gd"
+    verify:
+      - "Exactly one <=10s diagnostic run"
+      - "Exact process cleanup"
+      - "Instrumentation removed and scoped diff-check"
+    stop_if:
+      - "Runtime/scene/assets/tokens/settings変更が必要。"
+      - "Second diagnostic runが必要。"
+      - "Protected dirty workを保護できない。"
+    receipt:
+      result: done
+      changed_files: []
+      summary: "Checkpointはbefore first expectまで到達しfirst expect PASS。その後 `%SafeMargin` lookupがNode not found（unique_name未設定）、null.position errorでquit未到達していた。Runtime/layout spinではない。"
+      commands:
+        - "One bounded checkpoint diagnostic run"
+        - "Exact process-tree termination"
+        - "Scoped tall-test diff-check: pass"
+      process_tree: "console6272/Godot6160/conhost16088 terminated exact; residual none。"
+      cleanup: "Temporary logging removed; tall test restored pre-T094; scoped diff-check pass。"
+      next_allowed_task: T095
+
+  - id: T095
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "Tall fixtureのinvalid `%SafeMargin` lookupをdirect child pathへ1行修正し、T093 runtime recoveryを含む全verificationを完走する。"
+    allowed_files:
+      - "tests/run_tall_phone_layout_tests.gd"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_tall_phone_layout_tests.gd first PASS<=10s,total<=30s exact tall contract"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped T074 git diff --check"
+    stop_if:
+      - "Any assertion fails or tall deadline misses; exact cleanup/no repeated same failure。"
+      - "More than the one SafeMargin path line must change in tall test。"
+      - "Compact/tall/direct-root contracts regress。"
+      - "Protected dirty workを保護できない。"
+    receipt:
+      result: blocked
+      changed_files:
+        - "tests/run_tall_phone_layout_tests.gd"
+      summary: "SafeMargin direct path 1-line fix後、parse/compact pass、tall全assertions 1.6s pass。Mission direct-rootは4 assertions failで停止。"
+      mission_failures:
+        - "toast capped current value"
+        - "failed no-damage row dim/toast"
+        - "transient message parent outside Page"
+        - "root fit/atlas>=450"
+      commands:
+        - "Godot editor parse: pass"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_tall_phone_layout_tests.gd: failures=0, 1.6s"
+        - "run_v06_mission_tests.gd: 4 failures"
+        - "scoped T074 diff-check: pass"
+      next_allowed_task: T096
+
+  - id: T096
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Mission direct-root 4 failuresをread-onlyで分類し、T074/T088-T093 runtime queue由来か、既存stale expectationsか、direct-root fallback regressionかを判定する。"
+    inputs:
+      - "tests/run_v06_mission_tests.gd failure lines"
+      - "Current play-screen mission/message/layout implementation"
+      - "T060-T095 receipts/history"
+      - "git diff protected work"
+    constraints:
+      - "Read-only。run/edit禁止。"
+      - "Current compact/tall assertionsを弱めない。"
+      - "Unrelated mission semanticsをこのsliceへ取り込まない。"
+    expected_output:
+      - "Per-failure provenance"
+      - "Whether direct-root fallback successfully initialized/applied"
+      - "Final verification recommendation"
+    receipt:
+      result: done
+      summary: "Mission direct-root 4 failuresは既存のMessageBand統合後に残ったstale expectationsで、runtime queue regressionではない。"
+      decision: "All four are stale/protected expectations, not compact queue regressions。"
+      evidence:
+        - "tests/run_v06_mission_tests.gd stale toast/parent/global-y assertions"
+        - "scripts/app/v06_play_screen.gd current mission toast and MessageBand ownership"
+        - "T095 direct-root run reached all assertions and quit without spin"
+      classification:
+        - "Coin/no-damage: product intentionally hides MissionToast and routes copy through MessageBand; test still requires toast.visible。"
+        - "Message parent: product reparents MessageLabel into MessageBand/Page; test expects obsolete root/outside Page。"
+        - "Root-fit: combines obsolete outside-Page model with absolute global y in direct-Viewport fixture; compact screen-relative fit and Atlas>=470 pass independently。"
+      direct_root: "Mission run crossed process_frame, executed all assertions and quit; Viewport.size_changed fallback is operational with no crash/spin。"
+      recommendation: "Mission suite record as 4 known stale non-gating assertions; final compact gate on parse/play-screen/tall/boss/full/diff-check。Separate test-contract cleanup may follow without product changes。"
+      next_allowed_task: T097
+
+  - id: T097
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "No-edit final verificationでcompact/tall/boss/full/diff-checkを完走し、T096 stale mission assertionsを明示記録する。"
+    allowed_files: []
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_tall_phone_layout_tests.gd <=30s"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_tests.gd"
+      - "scoped T074 git diff --check"
+      - "Confirm no residual Godot process from bounded runs"
+    stop_if:
+      - "Any gating suite assertion fails or deadline misses。"
+      - "Any file edit is required。"
+      - "Residual process cannot be safely identified/cleaned。"
+      - "同一failureが2回繰り返す。"
+    receipt:
+      result: done
+      changed_files: []
+      summary: "No-edit final gating verification complete。"
+      commands:
+        - "Godot editor parse: pass"
+        - "run_v06_play_screen_tests.gd: failures=0"
+        - "run_tall_phone_layout_tests.gd: failures=0, 1.7s"
+        - "run_v06_boss_play_screen_tests.gd: failures=0"
+        - "run_tests.gd: failures=0"
+        - "scoped T074 diff-check: pass"
+        - "T097 residual Godot processes: none"
+      note: "T096 mission suite four stale assertions were not rerun and remain recorded non-gating。"
+      next_allowed_task: T098
+
+  - id: T098
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "T074-T097 compact 16:9 sliceの最終証拠を監査し、user request complete/blockedを判定する。"
+    inputs:
+      - "T074 runtime/test diff"
+      - "T084 compact rounding approval"
+      - "T093 deferred layout recovery"
+      - "T095 tall test path fix"
+      - "T096 stale mission classification"
+      - "T097 green gating verification"
+    constraints:
+      - "Read-only。実装しない。"
+      - "Broad product-polish goalはcompleteにしない。"
+      - "User request: 16:9 only band62 + vertical overflow removal; tall unchanged。"
+    expected_output:
+      - "complete | blocked"
+      - "Evidence-backed outcome and caveats"
+      - "Whether any required work remains in this slice"
+    receipt:
+      result: done
+      decision: complete
+      summary: "Userのcompact-layout slice complete。Broad product-polish goal remains active。"
+      evidence:
+        - "720x1280: band62, separation0, balanced contained 15.5-16.5px SafeMargin, Page fill/min-fit, Atlas>=470, buttons>=96, Atlas->band->tray。"
+        - "360x640: project canvas_items 0.5 mapping。"
+        - "720x1600 unchanged: SafeMargin/Page688x1568, separation8, band72, die1220, mirror1212; 1.7s pass。"
+        - "Deferred/coalesced parent/Viewport resize handling; parse/play-screen/boss/full/diff-check pass; residual none。"
+      caveat: "T096 four stale mission expectations are optional separate test-contract cleanup and do not block/reopen this slice。"
+      required_remaining_work: none
+
+  - id: T099
+    type: scout
+    assignee: Scout
+    status: active
+    reasoning_hint: medium
+    objective: "Separate follow-upとしてrun_v06_mission_tests.gdの4つのstale UI/layout assertionsをcurrent product contractへ更新するためのexact test-only scopeをread-onlyで定義する。"
+    inputs:
+      - "T096 classification"
+      - "Current mission/message UI implementation"
+      - "Passing compact/tall/full suites"
+    constraints:
+      - "Read-only。実装しない。"
+      - "Product semantics/runtime/scene/assets/tokens/settings変更禁止。"
+      - "Completed compact sliceをreopenしない。"
+    expected_output:
+      - "Exact assertion replacements"
+      - "Test-only allowed files/verify/stop_if"
+    receipt: null
+
 checks:
-  dirty_fingerprint: "main@6322e1d; large protected dirty and untracked worktree including boss v09-v12 assets and scripts/app/v06_play_screen.gd"
+  dirty_fingerprint: "main@76af8d8; protected dirty/untracked BGM, tall-phone, title, luxury tray, icon, Cinzel, menu, and stop-authority work"
   last_verification:
     result: pass
-    task: T042
+    task: T060
     commands:
       - "Godot 4.7 headless editor parse: pass"
       - "tests/run_v06_mission_tests.gd: failures=0"
@@ -1381,6 +3480,20 @@ checks:
       - "Godot OpenGL Movie Writer qa-missions-v3 360x640: 91 frames, 30fps, 3.033s"
       - "Goal Maker state checker: pass"
       - "Product Design design-qa.md: final result passed"
-      - "Goal Maker Judge T026: complete"
-      - "Goal Maker Judge T037: complete"
-      - "Goal Maker Judge T042: complete"
+      - "T045 held_preview == logical_face == settled_slot: pass"
+      - "Godot OpenGL Movie Writer 360x800: 14 frames, 30fps"
+      - "720x1600 PAGE_INSIDE=true runtime probe"
+      - "Goal Maker Judge T047: stop-authority slice complete; product-polish goal not complete"
+      - "T050 three-roll onboarding implementation: pass"
+      - "T051 OpenGL 360x640/720x1280/720x1600 onboarding capture: pass"
+      - "CTA 96 design px / 48 physical px, no input leak, clock zero, dismiss geometry stable"
+      - "Goal Maker Judge T052: onboarding slice complete; product-polish goal not complete"
+      - "T055 editor parse and all nine required suites independently repeated: pass"
+      - "T055 exact mapping/save/input/clock/third-roll EVENT automated contracts: pass"
+      - "T057 conditional EVENT score line regression: pass"
+      - "T058 OpenGL 720x1280 four-card, 360x640/720x1600 ferry, no-score repeat captures: pass"
+      - "T058 CTA 96 design/48 physical px, aspect-fit, no input leak, clock paused, dismiss geometry stable"
+      - "T060 editor parse, save/session/play-screen/full suites: pass"
+      - "T060 exact mapping, non-EVENT, first_visit, score_awarded malformed save rejection: pass"
+      - "T060 schema-v1 active_eventなしsave互換: pass"
+      - "T060 scoped git diff --check: pass"

@@ -1,0 +1,9 @@
+Use case: ui-mockup
+Asset type: full-screen mobile game title backing matte, 9:16 portrait raster
+Input image: title-hero.png is a style and palette reference only; do not reproduce its logo, characters, buttons, stamps, landmarks, or text.
+Primary request: Create a quiet premium travel-journal backing matte that can sit behind the supplied complete title illustration on extra-tall phones. It should feel like the same hand-painted vintage world-travel board-game product, but remain deliberately low-detail so the foreground poster stays dominant.
+Scene/backdrop: warm aged parchment over a subtle leather travel case surface, delicate brass corner fittings, faint teal double-line inlay, very restrained map and compass embossing only near the outer edges.
+Composition/framing: symmetrical portrait frame; calm empty central field; decoration restricted to the outer 10 percent; safe for center-cropping and aspect-cover.
+Lighting/mood: soft warm museum-display light, polished but cozy.
+Color palette: ivory parchment, warm camel brown, antique brass, restrained desaturated teal.
+Constraints: no text, no letters, no numbers, no logos, no buttons, no characters, no dice, no landmarks, no stamps, no watermark. No strong focal object. Keep the center visually quiet and evenly textured.

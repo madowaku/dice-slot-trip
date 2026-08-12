@@ -11,6 +11,7 @@ const CAIRO_CARTOGRAPHY_INK := preload("res://assets/art/v06/atlas/cairo-cartogr
 const RAISED_ROUTE_TILES := preload("res://assets/art/v06/atlas/raised-route-tiles.png")
 const GOLD_BOSS_GATE := preload("res://assets/art/v06/boss/gold-boss-gate.png")
 const LEATHER_TEXTURE := preload("res://assets/art/v07/ui/dark-walnut-leather.png")
+const HEART_ROULETTE_WHEEL := preload("res://assets/art/ui/common/heart-roulette-wheel-v1.png")
 
 var failures := 0
 
@@ -65,6 +66,13 @@ func _run() -> void:
 	_expect(Vector2i(RAISED_ROUTE_TILES.get_width(), RAISED_ROUTE_TILES.get_height()) == Vector2i(512, 128), "production raised tile strip imports")
 	_expect(Vector2i(GOLD_BOSS_GATE.get_width(), GOLD_BOSS_GATE.get_height()) == Vector2i(512, 256), "production boss gate strip imports")
 	_expect(LEATHER_TEXTURE.get_width() >= 1024 and LEATHER_TEXTURE.get_height() >= 1024, "approved tactile UI leather texture imports at production resolution")
+	_expect(Vector2i(HEART_ROULETTE_WHEEL.get_width(), HEART_ROULETTE_WHEEL.get_height()) == Vector2i(1254, 1254), "generated heart roulette wheel imports at full square production resolution")
+	var heart_wheel_provenance_path := "res://assets/art/ui/common/heart-roulette-wheel-v1.provenance.json"
+	var heart_wheel_source_path := "res://assets/art/_source/ui-kit/heart-roulette-wheel-chroma-v1.png"
+	var heart_wheel_prompt_path := "res://assets/art/_source/prompts/heart-roulette-wheel-v1.prompt.txt"
+	_expect(FileAccess.file_exists(heart_wheel_provenance_path) and FileAccess.file_exists(heart_wheel_source_path) and FileAccess.file_exists(heart_wheel_prompt_path), "heart roulette retains its ImageGen prompt, chroma source, and provenance")
+	var heart_wheel_provenance: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(heart_wheel_provenance_path))
+	_expect(FileAccess.get_sha256("res://assets/art/ui/common/heart-roulette-wheel-v1.png") == String(heart_wheel_provenance.get("runtime", {}).get("sha256", "")) and FileAccess.get_sha256(heart_wheel_source_path) == String(heart_wheel_provenance.get("source", {}).get("sha256", "")), "heart roulette runtime and source hashes match provenance")
 	var leather_provenance_path := "res://assets/art/v07/ui/dark-walnut-leather.provenance.json"
 	var leather_source_path := "res://docs/design/v07/art-source/dark-walnut-leather-imagegen-source.png"
 	_expect(FileAccess.file_exists(leather_provenance_path), "leather ImageGen provenance is packaged for audit")
@@ -77,7 +85,7 @@ func _run() -> void:
 	_expect(is_equal_approx(atlas.tile_draw_diameter_for_radius(25.0), 76.25), "local raised tile is approximately 76px wide")
 	_expect(is_equal_approx(atlas.kind_badge_radius_for_tile(25.0) * 2.0, 50.0), "local kind plate is approximately 50px wide")
 	var core_kinds := ["NORMAL", "COIN", "REST", "RISK", "ITEM", "EVENT"]
-	var expected_icon_ids := [&"imagegen_footprints", &"kenney_tokens_stack", &"kenney_campfire", &"kenney_skull", &"kenney_pouch", &"kenney_book_open"]
+	var expected_icon_ids := [&"imagegen_footprints", &"kenney_tokens_stack", &"heart", &"kenney_skull", &"kenney_pouch", &"kenney_book_open"]
 	var expected_files := ["normal-footprints.png", "coin-tokens-stack.png", "rest-campfire.png", "risk-skull.png", "item-pouch.png", "event-book-open.png"]
 	var shape_ids := {}
 	var icon_ids := {}
@@ -89,9 +97,11 @@ func _run() -> void:
 	_expect(icon_ids.size() == core_kinds.size(), "six core kinds have six distinct center icons")
 	for index: int in range(core_kinds.size()):
 		var icon_id: StringName = atlas.tile_visual_spec(core_kinds[index]).icon_id
-		var mapping_label := "approved walking-footprints mapping" if core_kinds[index] == "NORMAL" else "exact approved Kenney mapping"
-		_expect(icon_id == expected_icon_ids[index] and atlas.tile_kind_icon_texture(icon_id) != null, "%s uses its %s" % [core_kinds[index], mapping_label])
-		_expect(FileAccess.file_exists("res://assets/art/v06/tile_kind_icons/%s" % expected_files[index]), "%s normalized PNG is packaged" % core_kinds[index])
+		var mapping_label := "approved walking-footprints mapping" if core_kinds[index] == "NORMAL" else ("clear heart mapping" if core_kinds[index] == "REST" else "exact approved Kenney mapping")
+		var icon_available := icon_id == &"heart" or atlas.tile_kind_icon_texture(icon_id) != null
+		_expect(icon_id == expected_icon_ids[index] and icon_available, "%s uses its %s" % [core_kinds[index], mapping_label])
+		if core_kinds[index] != "REST":
+			_expect(FileAccess.file_exists("res://assets/art/v06/tile_kind_icons/%s" % expected_files[index]), "%s normalized PNG is packaged" % core_kinds[index])
 		var opaque_bound: float = atlas.tile_kind_glyph_opaque_bound_at_360(core_kinds[index])
 		_expect(opaque_bound >= 16.0 and opaque_bound <= 22.0, "%s opaque glyph stays readable and clear of its plate at 360" % core_kinds[index])
 	var normal_used_rect: Rect2i = atlas.tile_kind_icon_texture(&"imagegen_footprints").get_image().get_used_rect()
@@ -105,7 +115,7 @@ func _run() -> void:
 	]:
 		_expect(FileAccess.file_exists(provenance_path), "Kenney provenance file exists: %s" % provenance_path)
 	_expect(int(atlas.tile_visual_spec("RISK").priority) < int(atlas.tile_visual_spec("REST").priority), "RISK remains the first visual priority ahead of REST")
-	_expect(atlas.tile_kind_for(CourseScript.ROUTE_MAIN, 2) == "COIN" and atlas.tile_kind_for(CourseScript.ROUTE_MAIN, 7) == "REST" and atlas.tile_kind_for(CourseScript.ROUTE_MAIN, 21) == "RISK", "tile kinds come from canonical course data")
+	_expect(atlas.tile_kind_for(CourseScript.ROUTE_MAIN, 4) == "COIN" and atlas.tile_kind_for(CourseScript.ROUTE_MAIN, 11) == "REST" and atlas.tile_kind_for(CourseScript.ROUTE_MAIN, 17) == "RISK", "tile kinds come from canonical 90-map course data")
 	atlas.set_kind_preview_override(PackedStringArray(["NORMAL", "COIN", "REST", "RISK", "ITEM", "EVENT"]))
 	var preview_positions: Array[Dictionary] = atlas.prominent_positions()
 	_expect(atlas.displayed_tile_kind_for(str(preview_positions[0].route_id), int(preview_positions[0].tile_index)) == "NORMAL" and atlas.tile_kind_for(str(preview_positions[0].route_id), int(preview_positions[0].tile_index)) == "NORMAL", "QA kind strip does not mutate canonical course data")
@@ -146,8 +156,8 @@ func _run() -> void:
 
 func _test_bypass_successors(atlas: Control) -> void:
 	for contract: Array in [
-		[CourseScript.ROUTE_BYPASS_BAZAAR, 3, 19],
-		[CourseScript.ROUTE_BYPASS_SIROCCO, 5, 46],
+		[CourseScript.ROUTE_BYPASS_BAZAAR, 4, 41],
+		[CourseScript.ROUTE_BYPASS_SIROCCO, 5, 83],
 	]:
 		var route_id := str(contract[0])
 		var route_size := int(contract[1])

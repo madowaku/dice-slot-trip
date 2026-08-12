@@ -65,6 +65,9 @@ var pending_event_rewards: Array[Dictionary] = []
 var pending_boss_handoff: bool = false
 var registered_travel_notes: Array[String] = []
 var registered_postcards: Array[String] = []
+## Product travel collection. Unlike run inventory, discovered cards survive
+## retries and new journeys so the title and in-run book show the same history.
+var travel_card_ids: Array[String] = []
 var applied_resolution_ids: Array[String] = []
 var next_interaction_bonus: int = 0
 var next_move_bonus: int = 0
@@ -578,6 +581,29 @@ func begin_next_boss() -> void:
 	boss_presence = 0
 	boss_relief = 0
 
+
+func register_travel_card(card_id: String) -> bool:
+	var normalized := card_id.strip_edges()
+	if normalized.is_empty() or normalized in travel_card_ids:
+		return false
+	travel_card_ids.append(normalized)
+	return true
+
+
+func discovered_travel_card_ids() -> Array[String]:
+	var result: Array[String] = []
+	for card_id: String in travel_card_ids:
+		if not card_id.is_empty() and card_id not in result:
+			result.append(card_id)
+	for postcard_id: String in registered_postcards:
+		var memory_id := "memory:%s" % postcard_id
+		if memory_id not in result:
+			result.append(memory_id)
+	for found: Dictionary in encyclopedia:
+		if str(found.get("definition_id", "")) == "sleepy_sphinx" and "boss:sleepy_sphinx" not in result:
+			result.append("boss:sleepy_sphinx")
+	return result
+
 func to_dictionary() -> Dictionary:
 	ensure_boss_data()
 	return {
@@ -630,6 +656,7 @@ func to_dictionary() -> Dictionary:
 		"pending_boss_handoff": pending_boss_handoff,
 		"registered_travel_notes": registered_travel_notes.duplicate(),
 		"registered_postcards": registered_postcards.duplicate(),
+		"travel_card_ids": travel_card_ids.duplicate(),
 		"applied_resolution_ids": applied_resolution_ids.duplicate(),
 		"next_interaction_bonus": next_interaction_bonus,
 		"next_move_bonus": next_move_bonus,
@@ -752,6 +779,11 @@ func apply_dictionary(data: Dictionary) -> void:
 	pending_boss_handoff = bool(data.get("pending_boss_handoff", false))
 	registered_travel_notes.assign(data.get("registered_travel_notes", []))
 	registered_postcards.assign(data.get("registered_postcards", []))
+	travel_card_ids.clear()
+	for raw_card_id: Variant in data.get("travel_card_ids", []):
+		var card_id := str(raw_card_id).strip_edges()
+		if not card_id.is_empty() and card_id not in travel_card_ids:
+			travel_card_ids.append(card_id)
 	applied_resolution_ids.assign(data.get("applied_resolution_ids", []))
 	next_interaction_bonus = int(data.get("next_interaction_bonus", 0))
 	next_move_bonus = int(data.get("next_move_bonus", 0))
