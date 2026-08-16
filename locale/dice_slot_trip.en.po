@@ -46,7 +46,7 @@ msgid "THREE_ROLL_ONBOARDING_TITLE"
 msgstr "ROLL, STOP, COMPLETE A SET"
 
 msgid "THREE_ROLL_ONBOARDING_BODY"
-msgstr "Tap again while the die rolls. It stops on the face you see.\nMove that many spaces: 1 space = 1 point!\n\nPAIR: two matching faces → SKILL +1\nSTRAIGHT: three consecutive faces → SKILL +2\nTRIPLE: three matching faces → SKILL READY\nMIX: anything else → COIN +1\n\nIn the boss race they become Shield, Boost, and Finisher."
+msgstr "Tap again while the die rolls. It stops on the face you see.\nMove that many spaces: 1 space = 1 point!\n\nPAIR: two matching faces → TRIP COIN +1\nSTRAIGHT: three consecutive faces → TRIP COIN +3\nTRIPLE: three matching faces → TRIP COIN +5\nMIX: anything else → no reward\nFULL REST: SKILL +1\n\nIn the boss race they become Shield, Boost, and Finisher."
 
 msgid "THREE_ROLL_ONBOARDING_CTA"
 msgstr "GOT IT — START THE JOURNEY"

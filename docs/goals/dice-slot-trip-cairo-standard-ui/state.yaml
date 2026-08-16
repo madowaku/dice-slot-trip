@@ -1,0 +1,668 @@
+# Goal Maker v2 state.yaml
+# Board truth lives here. goal.md is the editable charter; notes/ holds long receipts only.
+
+version: 2
+
+goal:
+  title: "DICE SLOT TRIP Cairo Standard Core UI v1.0"
+  slug: "dice-slot-trip-cairo-standard-ui"
+  kind: specific
+  tranche: "Integrate the final MISSION/SLOT/ordinary-screen next-one-roll specification and implement the first safe verified slice."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Audit the current Cairo MISSION catalog/save model, SLOT reach model, MAP landing preview, ordinary HUD/layout, and regression coverage against the final integrated UI specification in four non-overlapping read-only lanes."
+    inputs:
+      - "User-supplied Cairo Standard Core UI v1.0 specification in the current conversation"
+      - "Completed docs/goals/dice-slot-trip-mission-slot-ui tranche"
+      - "Current dirty working tree"
+    constraints:
+      - "Read-only; do not edit implementation or test files."
+      - "Use concrete symbols, nodes, current behavior, and test evidence."
+      - "Each lane must return only its assigned evidence and bounded recommendations."
+    expected_output:
+      - "MISSION catalog/difficulty/round-weight/save findings"
+      - "SLOT/MISSION conflict and two-line display findings"
+      - "MAP landing candidate and route-preview findings"
+      - "ordinary HUD/360 layout and regression-risk findings"
+    receipt:
+      result: done
+      note: "notes/T001-luna-audit.md"
+      summary: "Four read-only Luna lanes audited the current mission/save model, SLOT conflict copy, authoritative course preview path, and 360x640 ordinary-screen layout. The runtime foundation is safe, but the 12-row weighted catalog, pure candidate contract, and six-distance MAP preview remain to be implemented in bounded slices."
+      evidence:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "scenes/app/V06PlayScreen.tscn"
+        - "data/stages/v06_cairo_course.json"
+        - "tests/run_v06_play_screen_tests.gd"
+  - id: T002
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "Integrate T001 into an exact first implementation slice, with pure next-one-roll candidate rules, mission selection/save compatibility, UI ownership, and explicit deferrals."
+    inputs:
+      - "T001 four-lane receipt"
+      - "Current Cairo V06 source and tests"
+      - "User-supplied final core UI specification"
+    constraints:
+      - "Do not implement."
+      - "Preserve the completed MISSION/SLOT tranche and known baseline."
+      - "Prefer a reversible vertical slice with strong 360x640 and save tests."
+    expected_output:
+      - "Adopted mission pool/weights/reward rules"
+      - "Exact candidate conflict precedence and copy contract"
+      - "Exact Worker allowed_files, verify commands, stop_if, and deferred work"
+    receipt:
+      result: done
+      note: "notes/T002-pm-integration-decision.md"
+      summary: "Fixed the first 12 stable mission rows and 8/12/18 rewards, adopted deterministic lap-bucket selection and schema-2 compatibility, and defined a pure neutral two-line candidate contract. Deferred coordinate changes and the full V06CourseModel MAP preview until their own verified slice."
+      evidence:
+        - "notes/T001-luna-audit.md"
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "data/stages/v06_cairo_course.json"
+  - id: T003
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Challenge the integrated slice and approve the smallest safe Worker task for Cairo's next-one-roll UI."
+    inputs:
+      - "T001 receipt"
+      - "T002 PM decision"
+      - "Current dirty diff and known baseline"
+    constraints:
+      - "Read-only; do not edit files."
+      - "Reject scope that silently changes SCORE, boss rewards, or incompatible SAVE semantics."
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective and allowed_files"
+      - "Verification and stop conditions"
+      - "Deferred items"
+    receipt:
+      result: done
+      decision: "Reject the broad combined catalog/hooks/candidate-UI scope. Approve only the canonical 12-row mission data, deterministic selection, and schema-2 persistence slice."
+      next_allowed_task: T004
+      summary: "The existing runtime and tests support a safe data/save slice, but live mission hooks, candidate UI, and MAP previews need separate pure contracts and evidence. The 90-tile JSON course remains authoritative; MessageBand geometry and SCORE/boss semantics stay unchanged."
+      evidence:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "data/stages/v06_cairo_course.json"
+        - "tests/run_v06_course_model_tests.gd"
+      blocked_tasks:
+        - "Broad combined catalog/hooks/candidate-UI implementation"
+        - "Live MAP mission hooks until completion events are evidenced"
+        - "SLOT/MISSION/MAP candidate resolver and renderer integration"
+        - "Full six-distance MAP preview"
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Implement only the exact 12-row mission catalog, 8/12/18 rewards, deterministic 0-99 lap-bucket selection, seeded target parameters, and schema-2 selected-mission round-trip/legacy compatibility. Preserve one-time claiming and never reroll, replay, or retroactively reward legacy saves."
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "tests/run_v06_candidate_mission_tests.gd"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+    verify:
+      - "C:\\Dev\\Tools\\Godot-4.7-stable\\Godot_v4.7-stable_win64_console.exe --headless --rendering-method gl_compatibility --editor --path . --quit"
+      - "Godot headless run_v06_candidate_mission_tests.gd"
+      - "Godot headless run_v06_mission_tests.gd"
+      - "Godot headless run_v06_save_tests.gd"
+      - "Godot headless run_v06_course_model_tests.gd"
+      - "Godot headless run_v06_play_screen_tests.gd; only the documented route-score baseline may remain red"
+      - "git diff --check -- allowed files"
+    stop_if:
+      - "Need files outside the Judge-approved allowed_files."
+      - "A new regression appears beyond the documented play-screen baseline."
+      - "Requires scripts/app, scenes, locale, data, or files outside allowed_files."
+      - "Changes SCORE semantics, normal SLOT rewards, boss rewards, Kyoto, CASINO, or MessageBand geometry."
+      - "Cannot define exact threshold boundaries or seeded parameters from available evidence."
+      - "Legacy schema-2 behavior would reroll, replay, or retroactively reward."
+      - "Any new regression appears beyond the known play-screen route-score failure."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "tests/run_v06_candidate_mission_tests.gd"
+      summary: "Implemented the exact 12-row EASY/NORMAL/HARD catalog, 8/12/18 rewards, deterministic lap-bucket selection with seeded target-face metadata, small-face counter metadata, and schema-2 selected-mission validation/round-trip while retaining legacy compatibility and one-time claiming. Live hooks and candidate UI were intentionally not included."
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "tests/run_v06_candidate_mission_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_mission_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_save_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_course_model_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_play_screen_tests.gd"
+          status: "one documented QA route-score baseline failure; all other assertions pass"
+        - cmd: "git diff --check -- allowed files"
+          status: pass
+      known_baseline:
+        - "tests/run_v06_play_screen_tests.gd: QA route scores exactly its seventeen travelled spaces while coin stays separate"
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit whether the current Cairo Standard Core UI tranche is complete and verified against the user's integrated next-one-roll outcome."
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current dirty diff"
+    constraints:
+      - "Read-only; do not edit files."
+      - "Reject completion if a required Worker remains queued or active."
+    expected_output:
+      - "complete | not_complete"
+      - "Missing evidence"
+      - "Next task if not complete"
+    receipt:
+      result: complete
+      decision: "Complete for the first safe verified data/save slice only; the broader Cairo core UI goal remains active."
+      summary: "The 12-row catalog, 8/12/18 rewards, deterministic lap-bucket selection, seeded face/per-face metadata, and schema-2 legacy-safe persistence are verified. Live hooks, neutral SLOT/MISSION/MAP candidate UI, authoritative MAP preview, and layout changes remain deferred."
+      evidence:
+        - "notes/T004-worker-receipt in this board"
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/game/v06_session_save_data.gd"
+        - "tests/run_v06_candidate_mission_tests.gd"
+        - "tests/run_v06_mission_tests.gd"
+        - "tests/run_v06_save_tests.gd"
+      missing_evidence:
+        - "Live mission event hooks"
+        - "Neutral SLOT/MISSION/MAP candidate resolver and UI"
+        - "Authoritative six-distance MAP preview"
+        - "Ordinary-screen coordinate/layout redesign"
+
+  - id: T005
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Implement the pure normal-map SLOT/MISSION candidate resolver and renderer contract: at most two neutral rows, explicit double-chance on exact overlap, no recommendation text, and quiet no-value turns. Do not add MAP candidates or change screen geometry."
+    inputs:
+      - "User-supplied integrated Cairo core UI specification"
+      - "notes/T001-luna-audit.md SLOT findings"
+      - "notes/T002-pm-integration-decision.md candidate presentation contract"
+      - "Current _normal_slot_reach and _show_slot_reach_cue implementation"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_candidate_mission_tests.gd"
+    verify:
+      - "C:\\Dev\\Tools\\Godot-4.7-stable\\Godot_v4.7-stable_win64_console.exe --headless --rendering-method gl_compatibility --editor --path . --quit"
+      - "Godot headless run_v06_play_screen_tests.gd; only the documented route-score baseline may remain red"
+      - "Godot headless run_v06_candidate_mission_tests.gd"
+      - "Godot headless run_v06_mission_tests.gd"
+      - "git diff --check -- allowed files"
+    stop_if:
+      - "Requires scripts/game, scenes, locale, data, or files outside allowed_files."
+      - "Adds MAP landing semantics, changes MessageBand geometry, or changes SCORE/coin/boss behavior."
+      - "Emits a recommendation such as おすすめ/best during a conflict."
+      - "Shows more than two guidance rows or filler copy for a no-value turn."
+      - "Any new regression appears beyond the documented play-screen route-score baseline."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      summary: "Added structured normal-map SLOT/MISSION guidance with explicit coin rewards, one-row double-chance overlap, neutral Case C mission-vs-SLOT competition, PAIR insurance within the two-row cap, and quiet no-value behavior. Existing MessageBand geometry and gameplay semantics were preserved."
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "tests/run_v06_play_screen_tests.gd"
+          status: "one documented QA route-score baseline failure; all other assertions pass"
+        - cmd: "tests/run_v06_candidate_mission_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_mission_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "git diff --check -- allowed files"
+          status: pass
+      known_baseline:
+        - "tests/run_v06_play_screen_tests.gd: QA route scores exactly its seventeen travelled spaces while coin stays separate"
+
+  - id: T006
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Add authoritative six-distance next-landing preview from V06CourseModel.advance without mutating session state, covering branches, warps, loops, effects, and boss termination; keep it domain-only until a later renderer task."
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_course_model_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "Godot headless run_v06_course_model_tests.gd"
+      - "Godot headless run_v06_play_session_tests.gd"
+      - "git diff --check -- allowed files"
+    stop_if:
+      - "Uses Atlas visual successors instead of V06CourseModel.advance."
+      - "Mutates movement, HP, inventory, flags, coins, or SCORE during preview."
+      - "Requires renderer/layout changes outside this task."
+      - "Any new route/warp/boss regression appears."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "tests/run_v06_play_session_tests.gd"
+      summary: "Added pure preview_forward_landings(6) backed by V06CourseModel.advance and current course context. The API reports position, raw/displayed tile kind, effect/deferred interaction, path/transitions, remaining steps, branch/warp/loop/boss flags, and leaves the session unchanged."
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "tests/run_v06_play_session_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_course_model_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "git diff --check -- allowed files"
+          status: pass
+
+  - id: T007
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Wire the initial 12 mission event hooks to authoritative face, SLOT, landing, ITEM, full-HP boss, and survival events, with exact once-only progress/reward semantics."
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_tile_effect_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "Godot headless run_v06_mission_tests.gd"
+      - "Godot headless run_v06_play_session_tests.gd"
+      - "Godot headless run_v06_tile_effect_tests.gd"
+      - "Godot headless run_v06_save_tests.gd"
+      - "git diff --check -- allowed files"
+    stop_if:
+      - "Requires UI, scene, data, Kyoto, CASINO, SCORE, or boss reward changes."
+      - "A hook cannot be tied to an authoritative event without replay/restore semantics."
+      - "Any new SAVE, ITEM, game-over, or boss regression appears."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "tests/run_v06_mission_tests.gd"
+      summary: "Connected all 12 active mission IDs to authoritative face, SLOT role, COIN landing, ITEM acquisition, RISK landing, survival, and full-HP boss-gate events. Added deterministic regressions and preserved normal SLOT coin rewards, boss-role guard, SCORE, and legacy behavior. RISK×6 counts only RISK landings while HP remains above zero."
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "tests/run_v06_mission_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_play_session_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_tile_effect_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_save_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "git diff --check -- allowed files"
+          status: pass
+      limitation: "RISK×6 survival is represented by excluding zero-HP RISK landings; no separate later-death failed latch was introduced."
+
+  - id: T008
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Complete the Cairo standard ordinary-screen flow without a risky coordinate rewrite: show seeded MISSION target numbers, merge pure SLOT/MISSION rows with authoritative MAP landing candidates into a maximum-two-line neutral next-one-roll navigator, and add direct 360x640 geometry assertions while preserving MessageBand placement and touch targets."
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "scenes/app/V06PlayScreen.tscn"
+      - "tests/run_v06_play_screen_tests.gd"
+      - "tests/run_v06_mission_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "Godot headless run_v06_play_screen_tests.gd; only the documented route-score baseline may remain red"
+      - "Godot headless run_v06_mission_tests.gd"
+      - "git diff --check -- allowed files"
+    stop_if:
+      - "360x640 geometry overlaps or shrinks established touch targets."
+      - "MessageBand is no longer between Atlas and TrayPanel at runtime."
+      - "Changes score, map semantics, or modal onboarding ownership."
+      - "Any new GAME OVER, ITEM, SAVE, or boss-screen regression appears."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_mission_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      summary: "Completed the ordinary Cairo flow without a coordinate rewrite: seeded face MISSION cards show the actual target number; preview_forward_landings supplies MAP mission candidates; SLOT/MISSION/MAP precedence produces ALL MATCH, double chance, neutral two-row competition, or quiet no-value guidance; runtime MessageBand and touch geometry remain intact."
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "tests/run_v06_play_screen_tests.gd"
+          status: "one documented QA route-score baseline failure; all new guidance and geometry assertions pass"
+        - cmd: "tests/run_v06_mission_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "git diff --check -- allowed files"
+          status: pass
+      known_baseline:
+        - "tests/run_v06_play_screen_tests.gd: QA route scores exactly its seventeen travelled spaces while coin stays separate"
+
+  - id: T009
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit the completed Cairo Standard Core UI tranche end-to-end against the user’s MISSION/SLOT/ordinary-screen specification, current receipts, dirty diff, and verification evidence."
+    inputs:
+      - "All T001-T008 receipts and notes"
+      - "Current working-tree diff"
+      - "User-supplied integrated Cairo core UI specification"
+    constraints:
+      - "Read-only; do not edit files."
+      - "Do not call the broader goal complete if any required next-one-roll behavior is unverified or if the known play-screen baseline changed."
+      - "SCORE, normal SLOT rewards, boss rewards, SAVE compatibility, MessageBand geometry, Kyoto, and CASINO scope must remain explicit."
+    expected_output:
+      - "complete | not_complete"
+      - "Evidence and known baseline"
+      - "Missing/deferred items"
+      - "Next task if not complete"
+    receipt:
+      result: not_complete
+      decision: "Do not complete the broader Cairo tranche yet. Core UI and economy contracts are verified, but cairo_risk6_survive completes/rewards immediately at the sixth surviving RISK landing instead of requiring lap survival."
+      evidence:
+        - "Parse: pass"
+        - "candidate mission=0; mission=0; save=0; play-session=0; tile-effect=0; course=0"
+        - "play-screen: one failure only, documented baseline"
+        - "Coin economy and boss screen tests: pass"
+        - "Normal SLOT rewards verified as PAIR=1, STRAIGHT=3, TRIPLE=5"
+        - "Boss roles use normal_slot=false and grant no normal SLOT coins"
+        - "SCORE remains travelled distance"
+        - "360x640 geometry, touch safety, two-line guidance, seeded targets, neutral competition, and quiet no-value turns pass"
+        - "SAVE, ITEM, GAME OVER, onboarding regressions, and git diff --check pass"
+        - "No Kyoto/CASINO files touched"
+      missing_or_deferred:
+        - "Risk-survival mission failed/active latch and lap-boundary completion/reward semantics"
+        - "Current dirty tree also contains adjacent locale/economy/boss/test changes; reconcile scope before final completion"
+      known_baseline:
+        - "tests/run_v06_play_screen_tests.gd: QA route scores exactly its seventeen travelled spaces while coin stays separate"
+      next_allowed_task: T010
+      blocked_tasks:
+        - "Broader goal completion until the bounded risk6-survival Worker is verified."
+      completion_decision: "Keep goal active; T009 is not_complete."
+
+  - id: T010
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Fix cairo_risk6_survive so six surviving RISK landings are only progress; completion and reward occur once at a successful lap boundary after boss victory, while death/zero-HP before that boundary latches failure. Persist pending/failed state in schema 2 and add focused regressions without changing UI, SCORE, normal SLOT rewards, boss rewards, Kyoto, or CASINO."
+    inputs:
+      - "T007 mission-hook receipt and limitation"
+      - "T009 judge receipt"
+      - "Current next_lap, _enter_run_over, _record_cairo_landing, mission_state, and SAVE validation code"
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/game/v06_session_save_data.gd"
+      - "tests/run_v06_mission_tests.gd"
+      - "tests/run_v06_play_session_tests.gd"
+      - "tests/run_v06_tile_effect_tests.gd"
+      - "tests/run_v06_save_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "Godot headless run_v06_mission_tests.gd"
+      - "Godot headless run_v06_play_session_tests.gd"
+      - "Godot headless run_v06_tile_effect_tests.gd"
+      - "Godot headless run_v06_save_tests.gd"
+      - "git diff --check -- allowed files"
+    stop_if:
+      - "Needs scripts/app, scenes, locale, data, Kyoto, CASINO, or files outside allowed_files."
+      - "Changes SCORE semantics, normal SLOT rewards, boss rewards, or ordinary-screen behavior."
+      - "RISK×6 is completed/rewarded on the sixth landing rather than at the successful lap boundary."
+      - "A failed or pending state can be replayed, rerolled, or retroactively rewarded after SAVE restore."
+      - "Any new SAVE, ITEM, GAME OVER, or boss-transition regression appears."
+    expected_output:
+      - "Risk-six progress remains active after the sixth safe RISK landing."
+      - "Successful boss-victory lap boundary grants the mission reward exactly once."
+      - "Death/zero-HP before the boundary latches failure and grants no reward."
+      - "Schema-2 save/restore preserves pending or failed state without replay."
+      - "Focused test evidence and changed-file list"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "tests/run_v06_mission_tests.gd"
+      summary: "cairo_risk6_survive now remains pending after six safe RISK landings, latches survival_failed immediately on an HP0 RISK landing or run-over boundary, finalizes the +18 reward exactly once at a successful boss-victory lap boundary, and preserves pending/failed state through schema-2 SAVE/restore."
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "tests/run_v06_mission_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_play_session_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_tile_effect_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_save_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "git diff --check -- allowed files"
+          status: pass
+
+  - id: T011
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Make the one-line ALL MATCH normal-map guidance retain the exact SLOT COIN reward while preserving the integrated precedence, neutral tone, and two-line cap. Remove the intermittent boss-screen assertion failure caused by a matching MAP mission without changing mission selection, SCORE, gameplay rewards, or layout."
+    inputs:
+      - "T008 ordinary-screen receipt"
+      - "T009 judge evidence"
+      - "Current _normal_slot_reach ALL MATCH branch and boss-screen reach contract"
+    allowed_files:
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_boss_play_screen_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "Godot headless run_v06_boss_play_screen_tests.gd"
+      - "Godot headless run_v06_play_screen_tests.gd; only the documented QA route-score baseline may remain red"
+      - "Godot headless run_v06_mission_tests.gd"
+      - "git diff --check -- allowed files"
+    stop_if:
+      - "Requires scripts/game, scenes, locale, data, Kyoto, CASINO, or files outside allowed_files."
+      - "Changes the underlying SLOT reward values, SCORE semantics, mission selection, boss rewards, or ordinary-screen geometry."
+      - "ALL MATCH emits more than one row or introduces recommendation wording."
+      - "Any new regression appears beyond the documented QA route-score baseline."
+    expected_output:
+      - "ALL MATCH contains the role's exact SLOT COIN reward in its one row."
+      - "Normal reach and boss-screen contract are stable across random selected missions."
+      - "Focused test evidence and changed-file list"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      summary: "ALL MATCH now remains a single neutral row while retaining the exact SLOT reward amount, so random MISSION overlap cannot hide the TRIP COIN value. The ordinary play-screen regression asserts the 🪙5 reward and the boss-screen reach contract remains stable."
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "tests/run_v06_boss_play_screen_tests.gd x3"
+          status: "pass; failures=0 on all three runs"
+        - cmd: "tests/run_v06_play_screen_tests.gd"
+          status: "one documented QA route-score baseline failure; all other assertions pass"
+        - cmd: "tests/run_v06_mission_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "git diff --check -- allowed files"
+          status: pass
+
+  - id: T012
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Make the final completion decision for the Cairo Standard Core UI tranche after T010 risk-survival semantics and T011 ALL MATCH reward visibility are verified."
+    inputs:
+      - "All T001-T011 receipts"
+      - "Current working-tree diff and branch/tag context"
+      - "User-supplied integrated Cairo core UI specification"
+      - "Sol-side verification: catalog/mission/save/play-session/tile/course/economy pass; boss-play-screen x3 pass; play-screen only documented QA route-score baseline remains"
+    constraints:
+      - "Read-only; do not edit files."
+      - "Complete only if no required Worker remains queued or active and all required next-one-roll contracts are evidenced."
+      - "Treat the documented QA route-score failure as baseline only if it is unchanged and isolated."
+      - "Reject completion if risk6 can reward before successful boss-victory lap boundary, if HP0 can avoid failure latching, if ALL MATCH hides SLOT reward, or if SAVE/restore replays state."
+      - "Check that SCORE remains travelled distance, normal SLOT coins remain 1/3/5, boss roles grant no normal SLOT coins, and Kyoto/CASINO are outside scope."
+      - "Check that the ordinary-screen implementation keeps the existing safe MessageBand/touch geometry and the 360x640 assertions."
+    expected_output:
+      - "complete | not_complete"
+      - "Evidence and known baseline"
+      - "Any missing/deferred work"
+      - "If complete, explicitly state whether this is the safe verified Cairo tranche rather than a broad future-stage rewrite"
+    receipt:
+      result: not_complete
+      decision: "T012 is not complete. The Cairo implementation contracts are verified, but the remaining play-screen failure is a dirty-diff test contract mismatch, not an accepted baseline."
+      evidence:
+        - "Godot 4.7 headless parse: pass"
+        - "candidate mission / mission / play-session / tile-effect / save / course / coin-economy: failures=0"
+        - "boss-play-screen: 3 runs, failures=0"
+        - "risk6: pending after six safe RISK landings; HP0/RUN_OVER failed; successful boss-victory next_lap alone grants +18 once; SAVE/restore and repeat next_lap do not replay"
+        - "1-lap/1-mission, 12 candidates EASY4/NORMAL6/HARD2, rewards8/12/18, lap weights, seeded targets, schema2 legacy-safe SAVE verified"
+        - "normal SLOT PAIR=1/STRAIGHT=3/TRIPLE=5, boss normal_slot=false, SCORE=travelled distance verified"
+        - "2-roll reach, MISSION/SLOT/MAP precedence, ALL MATCH one row with SLOT reward, max2 rows, no recommendation, quiet no-value, one-card MISSION, MessageBand/touch/360x640 assertions verified"
+        - "ITEM/REST/SKILL/GAME OVER/boss transition regressions pass; Kyoto/CASINO/data/scene unchanged"
+        - "git diff --check and Goal Maker state checker pass"
+      known_baseline:
+        decision: "not accepted as baseline"
+        evidence:
+          - "tests/run_v06_play_screen_tests.gd:740 expects snapshot.coins == 0"
+          - "The atlas_18 fixture intentionally resolves [1,1,3] first, which is PAIR under the current required +1 TRIP COIN contract"
+          - "The failure is directly caused by the stale test expectation, not by SCORE or route distance"
+      next_allowed_task: T013
+      blocked_tasks:
+        - "Final Cairo tranche completion until play-screen is green"
+      completion_decision: "Keep goal active; align QA expectation with the adopted PAIR=+1 contract, then re-audit."
+
+  - id: T013
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Align the atlas_18 QA play-screen assertion with the adopted normal SLOT economy: the fixture's initial [1,1,3] includes a PAIR and therefore must show snapshot.coins == 1 while SCORE remains exactly 17 travelled spaces. Add no gameplay changes."
+    inputs:
+      - "T012 judge receipt"
+      - "Current apply_atlas_18_qa_scenario fixture and play-screen assertion"
+      - "User-approved SLOT rewards PAIR +1 / STRAIGHT +3 / TRIPLE +5"
+    allowed_files:
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor parse"
+      - "Godot headless run_v06_play_screen_tests.gd; failures=0"
+      - "Godot headless run_v06_play_session_tests.gd"
+      - "Godot headless run_v06_mission_tests.gd"
+      - "git diff --check -- allowed file"
+    stop_if:
+      - "Requires any implementation, scene, locale, data, Kyoto, CASINO, or other test file changes."
+      - "Changes SCORE, route distance, or normal SLOT reward implementation instead of only correcting the stale expectation."
+      - "A new failure appears outside the stale coin expectation."
+    expected_output:
+      - "QA play-screen suite passes with SCORE=17, travel breakdown=17, and PAIR coin=1."
+      - "Changed-file list and focused verification evidence"
+    receipt:
+      result: done
+      changed_files:
+        - "tests/run_v06_play_screen_tests.gd"
+      summary: "Aligned the atlas_18 QA expectation with the adopted normal SLOT economy: the fixture's initial [1,1,3] resolves PAIR for +1 TRIP COIN, while SCORE and travel breakdown remain exactly 17. No gameplay code changed."
+      commands:
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "tests/run_v06_play_screen_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_play_session_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_mission_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "git diff --check -- tests/run_v06_play_screen_tests.gd"
+          status: pass
+
+  - id: T014
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Perform the final completion audit for the Cairo Standard Core UI tranche after the play-screen economy expectation is corrected."
+    inputs:
+      - "All T001-T013 receipts"
+      - "Current working-tree diff and branch/tag context"
+      - "User-supplied integrated Cairo core UI specification"
+      - "Sol-side post-T013 evidence: full focused suites including play-screen are green; boss-play-screen was green in three runs; no known baseline remains"
+    constraints:
+      - "Read-only; do not edit files."
+      - "Complete only if no Worker remains queued or active and all required contracts are evidenced."
+      - "Verify the old QA expectation mismatch is fixed without changing SCORE or reward implementation."
+      - "Verify risk6 boundary/failure/save semantics, SLOT/MISSION/MAP candidate behavior, ALL MATCH reward visibility, 360x640 safety, SAVE/ITEM/GAME OVER/boss regression, and Kyoto/CASINO scope."
+      - "Do not require a broad future-stage rewrite or CASINO implementation for this Cairo tranche."
+    expected_output:
+      - "complete | not_complete"
+      - "Evidence and any remaining baseline/deferred scope"
+      - "If complete, state that this is the safe verified Cairo tranche and list any intentionally deferred future work"
+    receipt:
+      result: complete
+      decision: "complete"
+      evidence:
+        - "T001-T013 receipts are consistent; no active or queued Worker remains."
+        - "Godot 4.7 parse and candidate_mission / mission / play_session / tile_effect / save / course_model / coin_economy all pass with failures=0."
+        - "boss_play_screen passes on three runs; T013-after play_screen passes with failures=0, SCORE/TRAVEL=17, PAIR coin=1."
+        - "One-lap/one-MISSION, canonical 12 rows EASY4/NORMAL6/HARD2, rewards8/12/18, lap weights, seeded face/per-face counters, and schema2 compatibility verified."
+        - "RISK6 is pending after six safe landings, failed on HP0/RUN_OVER, and grants +18 only once at successful boss-victory next_lap; SAVE/restore does not replay."
+        - "Normal SLOT is PAIR1/STRAIGHT3/TRIPLE5, boss uses normal_slot=false, and SCORE remains travelled distance."
+        - "MISSION/SLOT/MAP overlap, one-line ALL MATCH, two-line cap, neutral competition, no recommendation, quiet no-value, and MAP preview verified."
+        - "Featured MISSION card, seeded target, progress/reward/clear feedback, MessageBand, touch, and 360x640 geometry verified."
+        - "ITEM/REST/SKILL/GAME OVER/boss transition/SAVE regressions pass; no scene/data/Kyoto/CASINO changes in the tranche."
+        - "Goal Maker checker passes."
+      intentional_deferrals:
+        - "Broad coordinate redesign"
+        - "CASINO CHIP and Kyoto future work"
+        - "Family playtest and final real-device acceptance"
+      next_allowed_task: null
+      blocked_tasks: []
+      completion_decision: "complete"
+
+verification:
+  status: pass
+  checked_at: "2026-08-16"
+  commands:
+    - "Godot 4.7 headless editor parse"
+    - "tests/run_v06_candidate_mission_tests.gd"
+    - "tests/run_v06_mission_tests.gd"
+    - "tests/run_v06_play_session_tests.gd"
+    - "tests/run_v06_tile_effect_tests.gd"
+    - "tests/run_v06_save_tests.gd"
+    - "tests/run_v06_course_model_tests.gd"
+    - "tests/run_v06_coin_economy_tests.gd"
+    - "tests/run_v06_boss_play_screen_tests.gd x3"
+    - "tests/run_v06_play_screen_tests.gd"
+    - "git diff --check"
+  failures: []

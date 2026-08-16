@@ -21,6 +21,7 @@ func _init() -> void:
 	_test_boss_terminal()
 	_test_first_slot_boss_terminal()
 	_test_third_slot_boss_resolution_order()
+	_test_forward_landing_previews()
 	print("V06_PLAY_SESSION_TESTS failures=%d" % failures)
 	quit(1 if failures > 0 else 0)
 
@@ -32,6 +33,35 @@ func _test_session_context() -> void:
 	var fallback: RefCounted = Session.new(&"", &"")
 	_expect(fallback.stage_id() == Session.DEFAULT_STAGE_ID and fallback.character_id() == Session.DEFAULT_CHARACTER_ID, "90-space session defaults missing context to Cairo and explorer cat")
 	_expect(fallback.player_hp() == 3 and fallback.player_max_hp() == 3 and fallback.life() == 3, "new journey starts at fixed HP3 with three independent revivals")
+
+
+func _test_forward_landing_previews() -> void:
+	var session: RefCounted = Session.new()
+	var before: Dictionary = session.snapshot()
+	var ordinary: Array[Dictionary] = session.preview_forward_landings()
+	_expect(ordinary.size() == 6 and ordinary[0].position == {"route_id":"main", "tile_index":1} and ordinary[0].raw_tile_kind == "NORMAL", "forward previews expose six pure ordinary landings")
+	_expect(session.snapshot() == before, "forward previews do not mutate session state")
+	var fork_state: Dictionary = session.stable_save_snapshot(0)
+	fork_state.route.current_node_id = "main:30"
+	fork_state.route.route_id = "main"
+	fork_state.route.tile_index = 30
+	_expect(session.restore_stable_snapshot(fork_state, 0), "fork preview fixture restores")
+	var fork: Array[Dictionary] = session.preview_forward_landings()
+	_expect(fork[3].flags.branch_choice_required and fork[3].remaining_steps == 2 and fork[3].deferred_interaction == "CHOICE_REQUIRED", "fork preview preserves choice and remaining steps")
+	var warp_state: Dictionary = session.stable_save_snapshot(0)
+	warp_state.route.current_node_id = "main:23"
+	warp_state.route.route_id = "main"
+	warp_state.route.tile_index = 23
+	_expect(session.restore_stable_snapshot(warp_state, 0), "warp preview fixture restores")
+	var warp: Array[Dictionary] = session.preview_forward_landings()
+	_expect(warp[0].flags.warp_entered and warp[0].position.route_id == "loop_oasis_ring" and not warp[1].flags.warp_entered and warp[1].flags.warp_passed, "warp preview distinguishes exact stop from pass")
+	var boss_state: Dictionary = session.stable_save_snapshot(0)
+	boss_state.route.current_node_id = "main:87"
+	boss_state.route.route_id = "main"
+	boss_state.route.tile_index = 87
+	_expect(session.restore_stable_snapshot(boss_state, 0), "boss preview fixture restores")
+	var boss: Array[Dictionary] = session.preview_forward_landings()
+	_expect(boss[5].flags.boss_termination and boss[5].position.tile_index == 89 and boss[5].remaining_steps == 4, "boss preview reports terminal gate and surplus")
 
 
 func _test_life_and_completed_lap_contract() -> void:
@@ -196,33 +226,43 @@ func _test_score_and_coin_contract() -> void:
 	_expect(session.score() == 4 and session.coins() == 2 and session.score_breakdown().travel == 4, "four travelled spaces score exactly four while the COIN reward stays separate")
 	_roll_and_finish(session, 1)
 	var pair_started: Dictionary = session.start_roll(1)
-	_expect(pair_started.ok and session.pending_resolution_role() == &"PAIR" and session.score() == 5 and session.skill_gauge() == 1, "third stopped face awards PAIR skill charge without hidden score")
+	_expect(pair_started.ok and session.pending_resolution_role() == &"PAIR" and session.score() == 5 and session.skill_gauge() == 0 and session.coins() == 3, "third stopped face awards PAIR TRIP COIN without hidden score")
 	_consume_hops(session)
 	_expect(session.finish_movement().ok, "pre-awarded PAIR movement still settles once")
 	_expect(session.phase() == Session.PHASE_RESOLUTION_REQUIRED, "PAIR result follows the settled movement")
-	_expect(session.score() == 6 and session.coins() == 2 and session.resolution_role() == &"PAIR", "movement and PAIR add no hidden score")
+	_expect(session.score() == 6 and session.coins() == 3 and session.resolution_role() == &"PAIR", "movement and PAIR add no hidden score")
 	_expect(session.score_breakdown().slot == 0, "slot effects never enter the distance score")
 	_expect(session.acknowledge_resolution() and session.score() == 6, "slot acknowledgment preserves the journey distance")
 	var mix: RefCounted = Session.new()
 	_roll_and_finish(mix, 1)
 	_roll_and_finish(mix, 3)
 	_roll_and_finish(mix, 5)
-	_expect(mix.resolution_role() == &"MIX" and mix.score() == 9 and mix.coins() == 3 and mix.skill_gauge() == 0, "MIX adds one coin on top of the route COIN while score stays at nine travelled spaces")
+	_expect(mix.resolution_role() == &"MIX" and mix.score() == 9 and mix.coins() == 2 and mix.skill_gauge() == 0, "MIX has no normal role reward while score stays at nine travelled spaces")
 	var straight: RefCounted = Session.new()
 	_roll_and_finish(straight, 2)
 	_roll_and_finish(straight, 3)
 	_roll_and_finish(straight, 4)
-	_expect(straight.resolution_role() == &"STRAIGHT" and straight.score() == 9 and straight.skill_gauge() == 2, "STRAIGHT adds two skill charge while score stays at nine travelled spaces")
+	_expect(straight.resolution_role() == &"STRAIGHT" and straight.score() == 9 and straight.coins() == 3 and straight.skill_gauge() == 0, "STRAIGHT adds three TRIP COIN while score stays at nine travelled spaces")
 	var triple: RefCounted = Session.new()
 	_roll_and_finish(triple, 1)
 	_roll_and_finish(triple, 1)
 	var triple_started: Dictionary = triple.start_roll(1)
-	_expect(triple_started.ok and triple.pending_resolution_role() == &"TRIPLE" and triple.skill_gauge() == Session.SKILL_GAUGE_MAX and triple.score() == 2, "TRIPLE becomes READY without adding hidden score")
+	_expect(triple_started.ok and triple.pending_resolution_role() == &"TRIPLE" and triple.skill_gauge() == 0 and triple.coins() == 5 and triple.score() == 2, "TRIPLE awards five TRIP COIN without adding hidden score")
 	_consume_hops(triple)
 	_expect(triple.finish_movement().ok and triple.score() == 3 and triple.score_breakdown().slot == 0, "TRIPLE movement adds only its one travelled space")
 
 
 func _test_boss_victory_score() -> void:
+	var boss_reward_guard: RefCounted = Session.new()
+	boss_reward_guard.call("_set_active_mission_for_test", "cairo_coin15")
+	_expect(boss_reward_guard.enter_boss(0), "boss reward guard enters the Sphinx stage")
+	for now: int in [1, 2, 3, 4]:
+		if boss_reward_guard.phase() == Session.PHASE_BOSS_FINISHED:
+			break
+		_expect(boss_reward_guard.start_roll(6, now).ok, "boss reward guard high roll %d resolves" % now)
+		if boss_reward_guard.phase() != Session.PHASE_BOSS_FINISHED:
+			_expect(boss_reward_guard.acknowledge_boss_round(), "boss reward guard high roll %d acknowledges" % now)
+	_expect(boss_reward_guard.boss_result().victory and boss_reward_guard.role_counts().get("TRIPLE", 0) > 0 and boss_reward_guard.coins() == 0 and boss_reward_guard.mission_state().active_mission.progress == 0, "boss roles record statistics without granting normal SLOT coins or MISSION progress")
 	var session: RefCounted = Session.new()
 	_set_hp(session, 1)
 	_expect(session.enter_boss(0), "score contract can enter the Sphinx stage")

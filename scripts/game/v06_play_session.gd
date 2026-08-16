@@ -56,6 +56,11 @@ const ITEM_IDS := [ITEM_WATER_CANTEEN, ITEM_BRASS_COMPASS, ITEM_SCARAB_SEAL]
 const MISSION_SCHEMA_VERSION := 2
 const MISSION_COIN_TARGET := 12
 const MISSION_ROLE_TARGET := 5
+const MISSION_FACE_TARGET := 10
+const MISSION_FACE := 4
+const MISSION_STANDARD_REWARD := 12
+const MISSION_NO_DAMAGE_REWARD := 15
+const MISSION_SELECTION_POOL := ["cairo_face6", "cairo_pair4", "cairo_coin3", "cairo_item2", "cairo_face10", "cairo_straight4", "cairo_risk4", "cairo_coin5", "cairo_hp_full_boss", "cairo_small_faces", "cairo_triple3", "cairo_risk6_survive"]
 const COIN_COST_RISK_INSURANCE := 2
 const COIN_COST_REST_BOOST := 2
 const COIN_COST_BOSS_SHIELD := 3
@@ -125,6 +130,19 @@ var _last_mission_event: Dictionary = {}
 var _mission_ranks: Dictionary = {}
 var _mission_active_ids: Array[String] = ["cairo_coin15", "cairo_triple2", "cairo_no_damage"]
 var _mission_ring_exits := 0
+var _mission_active_id := ""
+var _mission_selection_seed := 0
+var _mission_progress := 0
+var _mission_target := 1
+var _mission_completed := false
+var _mission_reward_coins := MISSION_STANDARD_REWARD
+var _mission_reward_claimed := false
+var _mission_survival_failed := false
+var _mission_legacy_mode := false
+var _mission_target_role := ""
+var _mission_face_hits := 0
+var _mission_target_face := MISSION_FACE
+var _mission_face_counters: Dictionary = {}
 var _last_loop_rescue_triggered := false
 var _last_coin_cashout := 0
 var _heart_roulette_pending := false
@@ -151,6 +169,7 @@ var _character_id: StringName = DEFAULT_CHARACTER_ID
 func _init(stage_id: StringName = DEFAULT_STAGE_ID, character_id: StringName = DEFAULT_CHARACTER_ID) -> void:
 	_stage_id = stage_id if not String(stage_id).is_empty() else DEFAULT_STAGE_ID
 	_character_id = character_id if not String(character_id).is_empty() else DEFAULT_CHARACTER_ID
+	_mission_selection_seed = _new_mission_seed()
 	_course = V06CourseModelScript.new()
 	_course_ready = _course.load_file(COURSE_PATH)
 	_reset_run_state(false)
@@ -171,6 +190,7 @@ func retry_run() -> bool:
 	var survival_seen := has_seen_survival_onboarding()
 	var skill_ready_seen := has_seen_skill_ready_discovery()
 	var seen_event_ids := _seen_event_ids()
+	_mission_selection_seed = _new_mission_seed()
 	_reset_run_state(true)
 	_restore_seen_tile_explanations(seen_tile_explanations)
 	_stage_flags[STAGE_FLAG_SEEN_EVENT_IDS] = seen_event_ids
@@ -200,7 +220,7 @@ func start_roll(face: int, now_ms: int = -1) -> Dictionary:
 			_phase = PHASE_BOSS_FINISHED if terminal_result else PHASE_BOSS_ROUND_RESULT
 			var boss_role := StringName(str(result.get("role", "")))
 			if boss_role != &"":
-				_award_role_score(boss_role)
+				_award_role_score(boss_role, false)
 			var hp_before := _player_hp
 			# The mirror race changes position, not travel hearts. Preserve every
 			# heart earned above the race model's legacy three-heart display cap.
@@ -243,6 +263,7 @@ func start_roll(face: int, now_ms: int = -1) -> Dictionary:
 	_consume_next_move_penalty()
 	_consume_next_move_bonus()
 	_prepare_movement(result)
+	_advance_face_mission(face)
 	_prepare_pending_role_reward()
 	_roll_count += 1
 	return _event(true, "MOVEMENT_STARTED")
@@ -319,7 +340,8 @@ func finish_movement() -> Dictionary:
 			"text":"本線復帰　RISKは発動しない",
 		}
 	else:
-		_resolve_landing_effect(landing_kind)
+		var landing_effect := _resolve_landing_effect(landing_kind)
+		_record_cairo_landing(landing_kind, landing_effect)
 	var landing_score_awarded := false
 	if not exited_gate_id.is_empty():
 		_active_warp_gate_id = ""
@@ -336,6 +358,8 @@ func finish_movement() -> Dictionary:
 	elif return_phase == PHASE_RESOLUTION_REQUIRED:
 		_phase = PHASE_RESOLUTION_REQUIRED
 	elif gate and _player_hp > 0:
+		if _mission_active_id == "cairo_hp_full_boss" and _player_hp >= _player_max_hp:
+			_set_active_mission_progress(1, "boss_gate")
 		_enter_boss_internal()
 	else:
 		_phase = PHASE_READY
@@ -400,6 +424,13 @@ func acknowledge_boss_round() -> bool:
 
 func next_lap() -> bool:
 	if _phase not in [PHASE_BOSS_FINISHED, PHASE_LAP_RESULT]: return false
+	var boss_victory := bool((_battle.result() if _battle != null else {}).get("victory", false))
+	if boss_victory and _mission_active_id == "cairo_risk6_survive" and not _mission_survival_failed and not _mission_completed and _mission_progress >= _mission_target:
+		_mission_completed = true
+		if not _mission_reward_claimed:
+			_coins += _mission_reward_coins
+			_mission_reward_claimed = true
+		_emit_mission_event("risk_lap_boundary", true)
 	# Compatibility callers may skip the presentation button. Never discard a
 	# victory reward; use the first +1 segment as the safe deterministic fallback.
 	if _heart_roulette_pending:
@@ -520,7 +551,7 @@ func skill_state() -> StringName: return _skill_state
 func pinpoint_face() -> int: return clampi(int(_stage_flags.get(STAGE_FLAG_PINPOINT_FACE, 0)), 0, 6)
 func role_counts() -> Dictionary: return _role_counts.duplicate(true)
 func mission_state() -> Dictionary:
-	return {
+	var state := {
 		"schema_version": MISSION_SCHEMA_VERSION,
 		"coin_gained": _mission_coin_gained,
 		"coin_target": MISSION_COIN_TARGET,
@@ -536,19 +567,55 @@ func mission_state() -> Dictionary:
 		"active_ids": _mission_active_ids.duplicate(),
 		"ranks": _mission_ranks.duplicate(true),
 		"ring_exits": _mission_ring_exits,
+		"active_mission": _active_mission_snapshot(),
 	}
+	# Optional fields are intentionally omitted for legacy schema2 snapshots.
+	# Their absence is the compatibility marker used by restore_stable_snapshot().
+	if not _mission_legacy_mode:
+		state["active_id"] = _mission_active_id
+		state["selection_seed"] = _mission_selection_seed
+		state["progress"] = _mission_progress
+		state["target"] = _mission_target
+		state["completed"] = _mission_completed
+		state["reward_coins"] = _mission_reward_coins
+		state["reward_claimed"] = _mission_reward_claimed
+		state["survival_failed"] = _mission_survival_failed
+		state["target_face"] = _mission_target_face
+		state["face_hits"] = _mission_face_hits
+		state["face_counters"] = _mission_face_counters.duplicate(true)
+		state["legacy_mode"] = false
+		state["target_role"] = _mission_target_role
+		state["face_hits"] = _mission_face_hits
+	return state
 
 func mission_catalog() -> Array[Dictionary]:
 	return [
-		{"id":"cairo_coin15","pillar":"travel","target":MISSION_COIN_TARGET,"ranks":{"bronze":6,"silver":12,"gold":18}},
-		{"id":"cairo_triple2","pillar":"slot","target":MISSION_ROLE_TARGET,"roles":["PAIR","STRAIGHT","TRIPLE"],"ranks":{"bronze":1,"silver":2,"gold":3}},
-		{"id":"cairo_no_damage","pillar":"challenge","target":1,"ranks":{"bronze":1}},
+		{"id":"cairo_face6","pillar":"dice","kind":"dice","short_text":"指定の目を6回出す","target":6,"reward_coins":8,"icon_kind":"dice","difficulty":"EASY","parameter":"target_face"},
+		{"id":"cairo_pair4","pillar":"slot","kind":"slot","short_text":"PAIRを4回作る","target":4,"reward_coins":8,"icon_kind":"slot","difficulty":"EASY","target_role":"PAIR"},
+		{"id":"cairo_coin3","pillar":"map","kind":"map","short_text":"COINに3回着地する","target":3,"reward_coins":8,"icon_kind":"coin","difficulty":"EASY"},
+		{"id":"cairo_item2","pillar":"trip","kind":"trip","short_text":"ITEMを2回得る","target":2,"reward_coins":8,"icon_kind":"item","difficulty":"EASY"},
+		{"id":"cairo_face10","pillar":"dice","kind":"dice","short_text":"指定の目を10回出す","target":10,"reward_coins":12,"icon_kind":"dice","difficulty":"NORMAL","parameter":"target_face"},
+		{"id":"cairo_straight4","pillar":"slot","kind":"slot","short_text":"STRAIGHTを4回作る","target":4,"reward_coins":12,"icon_kind":"slot","difficulty":"NORMAL","target_role":"STRAIGHT"},
+		{"id":"cairo_risk4","pillar":"map","kind":"map","short_text":"RISKに4回着地する","target":4,"reward_coins":12,"icon_kind":"risk","difficulty":"NORMAL"},
+		{"id":"cairo_coin5","pillar":"map","kind":"map","short_text":"COINに5回着地する","target":5,"reward_coins":12,"icon_kind":"coin","difficulty":"NORMAL"},
+		{"id":"cairo_hp_full_boss","pillar":"trip","kind":"trip","short_text":"HP満タンでボスへ到達する","target":1,"reward_coins":12,"icon_kind":"shield","difficulty":"NORMAL"},
+		{"id":"cairo_small_faces","pillar":"dice","kind":"dice","short_text":"1・2・3を各4回出す","target":12,"reward_coins":12,"icon_kind":"dice","difficulty":"NORMAL","face_counters":[1,2,3]},
+		{"id":"cairo_triple3","pillar":"slot","kind":"slot","short_text":"TRIPLEを3回作る","target":3,"reward_coins":18,"icon_kind":"slot","difficulty":"HARD","target_role":"TRIPLE"},
+		{"id":"cairo_risk6_survive","pillar":"map","kind":"map","short_text":"RISKに6回着地して生き残る","target":6,"reward_coins":18,"icon_kind":"risk","difficulty":"HARD"},
+		{"id":"cairo_face","pillar":"dice","kind":"dice","short_text":"4を10回出す","description":"この周のあいだに「4」を10回出す","target":MISSION_FACE_TARGET,"target_face":MISSION_FACE,"reward_coins":MISSION_STANDARD_REWARD,"icon_kind":"dice","difficulty":"NORMAL","ranks":{"bronze":5,"silver":8,"gold":10}},
+		{"id":"cairo_coin15","pillar":"travel","kind":"trip","short_text":"コインを12枚集める","target":MISSION_COIN_TARGET,"reward_coins":MISSION_STANDARD_REWARD,"icon_kind":"coin","ranks":{"bronze":6,"silver":12,"gold":18}},
+		{"id":"cairo_role","pillar":"slot","kind":"slot","short_text":"役を5回作る","target":MISSION_ROLE_TARGET,"reward_coins":MISSION_STANDARD_REWARD,"icon_kind":"slot","roles":["PAIR","STRAIGHT","TRIPLE"],"ranks":{"bronze":1,"silver":3,"gold":5}},
+		{"id":"cairo_no_damage","pillar":"challenge","kind":"shield","short_text":"ノーダメージでボスへ行く","target":1,"reward_coins":MISSION_NO_DAMAGE_REWARD,"icon_kind":"shield","difficulty":"HARD","ranks":{"bronze":1}},
+		# Legacy IDs remain readable for old schema2 saves; they are not selected for new laps.
+		{"id":"cairo_triple2","pillar":"slot","kind":"slot","short_text":"役を5回作る","target":MISSION_ROLE_TARGET,"reward_coins":MISSION_STANDARD_REWARD,"icon_kind":"slot","roles":["PAIR","STRAIGHT","TRIPLE"],"ranks":{"bronze":1,"silver":2,"gold":3}},
 		{"id":"cairo_no_item","pillar":"travel","target":1,"locked":true,"ranks":{"bronze":1}},
 		{"id":"cairo_time_trial","pillar":"challenge","target":20,"thresholds":[30,25,20],"ranks":{"bronze":30,"silver":25,"gold":20}},
 		{"id":"cairo_ring_exit2","pillar":"travel","target":2,"ranks":{"bronze":2}},
 	]
 
 func resolve_active_missions() -> Array[String]:
+	if not _mission_legacy_mode and not _mission_active_id.is_empty():
+		return [_mission_active_id]
 	var by_pillar := {"travel":"", "slot":"", "challenge":""}
 	for id in _mission_active_ids:
 		for entry in mission_catalog():
@@ -559,6 +626,97 @@ func resolve_active_missions() -> Array[String]:
 	for pillar in ["travel", "slot", "challenge"]:
 		if not str(by_pillar[pillar]).is_empty(): result.append(str(by_pillar[pillar]))
 	return result
+
+
+func _mission_entry(id: String) -> Dictionary:
+	for entry: Dictionary in mission_catalog():
+		if str(entry.get("id", "")) == id:
+			return entry.duplicate(true)
+	return {}
+
+
+func _active_mission_snapshot() -> Dictionary:
+	var active_id := _mission_active_id
+	if _mission_legacy_mode:
+		var legacy_ids := resolve_active_missions()
+		active_id = legacy_ids[0] if not legacy_ids.is_empty() else ""
+	if active_id.is_empty():
+		return {}
+	var entry := _mission_entry(active_id)
+	if entry.is_empty():
+		return {"id": active_id, "short_text": active_id, "progress": 0, "target": 1, "completed": false, "reward_coins": 0, "legacy_mode": _mission_legacy_mode}
+	var progress := _mission_progress if not _mission_legacy_mode else _legacy_mission_progress(active_id)
+	var target := _mission_target if not _mission_legacy_mode else int(entry.get("target", 1))
+	var completed := _mission_completed if not _mission_legacy_mode else _legacy_mission_completed(active_id)
+	var short_text := str(entry.get("short_text", active_id))
+	var description := str(entry.get("description", ""))
+	var target_face_enabled := active_id in ["cairo_face", "cairo_face6", "cairo_face10"]
+	if active_id == "cairo_role" and not _mission_target_role.is_empty():
+		short_text = "%sを%d回作る" % [_mission_target_role, target]
+		description = "この周のあいだに%sを%d回作る" % [_mission_target_role, target]
+	return {
+		"id": active_id,
+		"kind": str(entry.get("kind", "trip")),
+		"short_text": short_text,
+		"description": description,
+		"progress": progress,
+		"target": target,
+		"completed": completed,
+		"reward_coins": _mission_reward_coins if not _mission_legacy_mode else int(entry.get("reward_coins", MISSION_STANDARD_REWARD)),
+		"reward_claimed": _mission_reward_claimed if not _mission_legacy_mode else false,
+		"survival_failed": _mission_survival_failed if not _mission_legacy_mode else false,
+		"legacy_mode": _mission_legacy_mode,
+		"target_face": _mission_target_face if not _mission_legacy_mode else int(entry.get("target_face", 0)),
+		"target_face_enabled": target_face_enabled,
+		"face_counters": _mission_face_counters.duplicate(true),
+		"target_role": _mission_target_role if not _mission_legacy_mode else "",
+		"icon_kind": str(entry.get("icon_kind", "trip")),
+		"difficulty": str(entry.get("difficulty", "NORMAL")),
+	}
+
+
+func _legacy_mission_progress(id: String) -> int:
+	match id:
+		"cairo_coin15": return _mission_coin_gained
+		"cairo_triple2": return _mission_role_successes
+		"cairo_no_damage": return 1 if _mission_no_damage_completed else 0
+		_: return 0
+
+
+func _legacy_mission_completed(id: String) -> bool:
+	match id:
+		"cairo_coin15": return _mission_coin_completed
+		"cairo_triple2": return _mission_role_completed
+		"cairo_no_damage": return _mission_no_damage_completed
+		_: return false
+
+
+func _set_active_mission_for_test(id: String) -> bool:
+	if _mission_entry(id).is_empty():
+		return false
+	_mission_active_id = id
+	_mission_active_ids = [id]
+	_mission_legacy_mode = false
+	_mission_progress = 0
+	_mission_face_hits = 0
+	_mission_completed = false
+	_mission_reward_claimed = false
+	_mission_survival_failed = false
+	_mission_target_role = ""
+	_mission_target_face = MISSION_FACE
+	_mission_face_counters = {}
+	var entry := _mission_entry(id)
+	_mission_target = int(entry.get("target", 1))
+	_mission_reward_coins = int(entry.get("reward_coins", MISSION_STANDARD_REWARD))
+	if entry.has("target_role"):
+		_mission_target_role = str(entry.get("target_role"))
+	if id in ["cairo_face6", "cairo_face10"]:
+		_mission_target_face = 4
+	elif id == "cairo_small_faces":
+		_mission_face_counters = {"1":0, "2":0, "3":0}
+	if id == "cairo_role":
+		_mission_target_role = "TRIPLE"
+	return true
 func last_role() -> StringName: return _last_role
 func inventory() -> Dictionary: return _inventory.duplicate(true)
 func seen_event_ids() -> Array[String]:
@@ -624,11 +782,11 @@ func use_item(item_id: String) -> Dictionary:
 
 func coin_action_catalog() -> Array[Dictionary]:
 	return [
-		{"id":"risk_insurance", "name":"RISKガード", "cost":COIN_COST_RISK_INSURANCE, "effect_text":"RISK ×0", "description":"RISK ×0", "active":bool(_stage_flags.get(STAGE_FLAG_RISK_SHIELD, false))},
-		{"id":"rest_boost", "name":"ハート強化", "cost":COIN_COST_REST_BOOST, "effect_text":"♥ +2", "description":"♥ +2", "active":bool(_stage_flags.get(STAGE_FLAG_NEXT_REST_BOOST, false))},
-		{"id":"boss_shield", "name":"ボスの盾", "cost":COIN_COST_BOSS_SHIELD, "effect_text":"BOSS ÷2", "description":"BOSS ÷2", "active":bool(_stage_flags.get(STAGE_FLAG_BOSS_SHIELD, false))},
-		{"id":"boss_head_start", "name":"先行スタート", "cost":COIN_COST_BOSS_HEAD_START, "effect_text":"START +3", "description":"START +3", "active":bool(_stage_flags.get(STAGE_FLAG_BOSS_HEAD_START, false))},
-		{"id":"boss_sabotage", "name":"ボスを止める", "cost":COIN_COST_BOSS_SABOTAGE, "effect_text":"BOSS STOP ×1", "description":"BOSS STOP ×1", "active":bool(_stage_flags.get(STAGE_FLAG_BOSS_SABOTAGE, false))},
+		{"id":"risk_insurance", "name":"RISKガード", "category":"旅の道具", "cost":COIN_COST_RISK_INSURANCE, "effect_text":"次のRISKを1回防ぐ", "description":"次のRISKを1回防ぐ", "timing":"通常マップで有効", "use_rule":"次のRISKで自動発動・1回で消費", "one_use":true, "active":bool(_stage_flags.get(STAGE_FLAG_RISK_SHIELD, false))},
+		{"id":"rest_boost", "name":"ハート強化", "category":"旅の道具", "cost":COIN_COST_REST_BOOST, "effect_text":"次のREST回復を強化する", "description":"次のREST回復を強化する", "timing":"通常マップで有効", "use_rule":"次のRESTで自動発動・1回で消費", "one_use":true, "active":bool(_stage_flags.get(STAGE_FLAG_NEXT_REST_BOOST, false))},
+		{"id":"boss_shield", "name":"ボスの盾", "category":"ボスの準備", "cost":COIN_COST_BOSS_SHIELD, "effect_text":"次のボス移動を1回半分にする", "description":"次のボス移動を1回半分にする", "timing":"次のボス戦で有効", "use_rule":"ボス戦で自動発動・1回で消費", "one_use":true, "active":bool(_stage_flags.get(STAGE_FLAG_BOSS_SHIELD, false))},
+		{"id":"boss_head_start", "name":"先行スタート", "category":"ボスの準備", "cost":COIN_COST_BOSS_HEAD_START, "effect_text":"次のボス戦を有利に始める", "description":"次のボス戦を有利に始める", "timing":"次のボス戦で有効", "use_rule":"開始時に3マス進む・1回で消費", "one_use":true, "active":bool(_stage_flags.get(STAGE_FLAG_BOSS_HEAD_START, false))},
+		{"id":"boss_sabotage", "name":"ボスを止める", "category":"ボスの準備", "cost":COIN_COST_BOSS_SABOTAGE, "effect_text":"次のボス移動を1回止める", "description":"次のボス移動を1回止める", "timing":"次のボス戦で有効", "use_rule":"ボス戦で自動発動・1回で消費", "one_use":true, "active":bool(_stage_flags.get(STAGE_FLAG_BOSS_SABOTAGE, false))},
 	]
 
 func purchase_coin_action(action_id: String) -> Dictionary:
@@ -1047,6 +1205,51 @@ func route_choice_previews() -> Dictionary:
 	return previews
 
 
+func preview_forward_landings(max_distance: int = 6) -> Array[Dictionary]:
+	var previews: Array[Dictionary] = []
+	if not _course_ready or max_distance < 1:
+		return previews
+	var limit := mini(max_distance, 6)
+	var context := _course_context().duplicate(true)
+	for distance: int in range(1, limit + 1):
+		var advanced: Dictionary = _course.advance(_position, distance, "", context)
+		var target: Dictionary = (advanced.get("position", _position) as Dictionary).duplicate(true)
+		var raw_kind := str(_course.tile_kind_for_position(target))
+		var transitions: Array = (advanced.get("transitions", []) as Array).duplicate(true)
+		var path: Array = (advanced.get("path", []) as Array).duplicate(true)
+		var event_node := _position_key(target) in ["main:30", "main:43", "main:61", "main:77"]
+		var boss := bool(advanced.get("boss_gate_reached", false)) or str(advanced.get("status", "")) == "BOSS_GATE_REACHED"
+		var entered_warp := not str(advanced.get("entered_warp_gate_id", "")).is_empty()
+		var exited_warp := not str(advanced.get("exited_warp_gate_id", "")).is_empty()
+		var passed_warp := false
+		for step: Dictionary in path:
+			if not _course.warp_gate_for_main_index(int(step.get("tile_index", -1))).is_empty():
+				passed_warp = true
+		previews.append({
+			"distance":distance,
+			"status":str(advanced.get("status", "ERROR")),
+			"ok":bool(advanced.get("ok", false)),
+			"position":target,
+			"raw_tile_kind":raw_kind,
+			"tile_kind":_displayed_tile_kind_at(target),
+			"effect":_course.effect_for_position(target),
+			"deferred_interaction":"CHOICE_REQUIRED" if str(advanced.get("error", "")) == "CHOICE_REQUIRED" else ("EVENT_REQUIRED" if event_node else ("BOSS_TERMINATION" if boss else "")),
+			"path":path,
+			"transitions":transitions,
+			"remaining_steps":int(advanced.get("remaining_steps", 0)),
+			"flags":{
+				"branch_choice_required":str(advanced.get("error", "")) == "CHOICE_REQUIRED",
+				"warp_entered":entered_warp,
+				"warp_exited":exited_warp,
+				"warp_exact_stop":entered_warp or exited_warp,
+				"warp_passed":passed_warp and not entered_warp and not exited_warp,
+				"loop_wrapped":int(advanced.get("loop_wraps", 0)) > 0,
+				"boss_termination":boss,
+			},
+		})
+	return previews
+
+
 func steps_to_loop_exit() -> int: return _course.steps_to_exit(_position) if _course_ready else -1
 func loop_wrap_count() -> int: return maxi(int(_stage_flags.get(STAGE_FLAG_ACTIVE_LOOP_WRAPS, 0)), 0)
 func loop_rescue_threshold() -> int: return V06CourseModelScript.LOOP_RESCUE_WRAP_THRESHOLD
@@ -1155,6 +1358,8 @@ func _add_score(amount: int, label: String, category: String) -> void:
 
 func _enter_run_over() -> void:
 	if _phase == PHASE_RUN_OVER: return
+	if _mission_active_id == "cairo_risk6_survive" and not _mission_completed:
+		_mission_survival_failed = true
 	_battle = null
 	_boss_transition_pending = false
 	_phase = PHASE_RUN_OVER
@@ -1248,15 +1453,22 @@ func _resolve_landing_effect(kind: String) -> Dictionary:
 		var rest_result := RestEffectModelScript.resolve(_player_hp, _player_max_hp, amount + boost)
 		var before := int(rest_result.get("before_hp", _player_hp))
 		_player_hp = int(rest_result.get("after_hp", _player_hp))
-		var coin_bonus := int(rest_result.get("coin_bonus", 0))
+		var was_full := before >= _player_max_hp
+		var coin_bonus := 0 if was_full else int(rest_result.get("coin_bonus", 0))
+		var skill_gain := 0
+		if was_full:
+			skill_gain = 1
+			_skill_gauge = mini(_skill_gauge + skill_gain, SKILL_GAUGE_MAX)
+			_skill_state = SKILL_STATE_READY if _skill_gauge >= SKILL_GAUGE_MAX else SKILL_STATE_CHARGING
 		if coin_bonus > 0:
 			_coins += coin_bonus
 			_advance_coin_mission(coin_bonus)
 		if boost > 0: _stage_flags.erase(STAGE_FLAG_NEXT_REST_BOOST)
 		result["coin_bonus"] = coin_bonus
+		result["skill_gain"] = skill_gain
 		result["hp_gain"] = _player_hp - before
-		result.applied = _player_hp != before or coin_bonus > 0
-		result.text = str(rest_result.get("text", "HP FULL"))
+		result.applied = _player_hp != before or coin_bonus > 0 or skill_gain > 0
+		result.text = "HP FULL  SKILL +%d" % skill_gain if was_full else str(rest_result.get("text", "HP +1"))
 	elif kind == "ITEM":
 		if not _consumed_reward_node_keys.has(node_key):
 			var item_id: String = str(ITEM_IDS[posmod(int(_position.get("tile_index", 0)), ITEM_IDS.size())])
@@ -1306,6 +1518,24 @@ func _resolved_tile_effect_ids() -> Dictionary:
 	var value: Variant = _stage_flags.get(STAGE_FLAG_RESOLVED_TILE_EFFECT_IDS, {})
 	return (value as Dictionary).duplicate(true) if value is Dictionary else {}
 
+func _record_cairo_landing(kind: String, effect: Dictionary) -> void:
+	if _mission_legacy_mode or _mission_completed:
+		return
+	if kind == "COIN" and _mission_active_id in ["cairo_coin3", "cairo_coin5"]:
+		_set_active_mission_progress(_mission_progress + 1, "coin_landing")
+	elif kind == "ITEM" and _mission_active_id == "cairo_item2" and effect.has("item_id"):
+		_set_active_mission_progress(_mission_progress + 1, "item")
+	elif kind == "RISK" and _mission_active_id == "cairo_risk4":
+		_set_active_mission_progress(_mission_progress + 1, "risk_landing")
+	elif kind == "RISK" and _mission_active_id == "cairo_risk6_survive":
+		if _mission_survival_failed:
+			return
+		if _player_hp <= 0:
+			_mission_survival_failed = true
+			_emit_mission_event("risk_landing", false)
+			return
+		_set_active_mission_progress(_mission_progress + 1, "risk_landing")
+
 
 func _default_effect_kind(tile_kind: String) -> String:
 	match tile_kind:
@@ -1342,23 +1572,32 @@ func _item_name(item_id: String) -> String:
 	return item_id
 
 
-func _award_role_score(role: StringName) -> void:
+func _award_role_score(role: StringName, normal_slot: bool = true) -> void:
 	if role == &"":
 		return
 	_record_role(role)
-	if role in [V06RollSetScript.ROLE_PAIR, V06RollSetScript.ROLE_STRAIGHT, V06RollSetScript.ROLE_TRIPLE]:
-		_advance_role_mission()
-	match role:
-		V06RollSetScript.ROLE_TRIPLE:
-			_skill_gauge = SKILL_GAUGE_MAX
-		V06RollSetScript.ROLE_PAIR:
-			_skill_gauge = mini(_skill_gauge + 1, SKILL_GAUGE_MAX)
-		V06RollSetScript.ROLE_STRAIGHT:
-			_skill_gauge = mini(_skill_gauge + 2, SKILL_GAUGE_MAX)
-		_:
-			_coins += 1
-			_advance_coin_mission(1)
+	var role_qualifies := role in [V06RollSetScript.ROLE_PAIR, V06RollSetScript.ROLE_STRAIGHT, V06RollSetScript.ROLE_TRIPLE]
+	if normal_slot and role_qualifies and (not _mission_legacy_mode and _mission_active_id == "cairo_role") and not _mission_target_role.is_empty():
+		role_qualifies = String(role) == _mission_target_role
+	if normal_slot and role_qualifies:
+		if not _mission_legacy_mode and _mission_active_id in ["cairo_pair4", "cairo_straight4", "cairo_triple3"]:
+			if String(role) == _mission_target_role:
+				_set_active_mission_progress(_mission_progress + 1, "role")
+		else:
+			_advance_role_mission()
+	var coin_reward := _normal_role_coin_reward(role)
+	if normal_slot and coin_reward > 0:
+		_coins += coin_reward
+		_advance_coin_mission(coin_reward)
 	_skill_state = SKILL_STATE_READY if _skill_gauge >= SKILL_GAUGE_MAX else SKILL_STATE_CHARGING
+
+
+func _normal_role_coin_reward(role: StringName) -> int:
+	match role:
+		V06RollSetScript.ROLE_PAIR: return 1
+		V06RollSetScript.ROLE_STRAIGHT: return 3
+		V06RollSetScript.ROLE_TRIPLE: return 5
+		_: return 0
 
 
 func _record_role(role: StringName) -> void:
@@ -1380,12 +1619,52 @@ func _reset_missions() -> void:
 	_last_mission_event.clear()
 	_mission_ranks = {}
 	_mission_ring_exits = 0
+	_mission_selection_seed = maxi(absi(hash("%d:%d" % [_mission_selection_seed, _lap])), 1)
+	_mission_active_id = mission_selection_for_lap(_lap, _mission_selection_seed).get("id", MISSION_SELECTION_POOL[0])
+	_mission_active_ids = [_mission_active_id]
+	var entry := _mission_entry(_mission_active_id)
+	_mission_progress = 0
+	_mission_face_hits = 0
+	_mission_target = int(entry.get("target", 1))
+	_mission_completed = false
+	_mission_reward_coins = int(entry.get("reward_coins", MISSION_STANDARD_REWARD))
+	_mission_reward_claimed = false
+	_mission_legacy_mode = false
+	_mission_target_role = ""
+	if _mission_active_id == "cairo_role":
+		_mission_target_role = ["PAIR", "STRAIGHT", "TRIPLE"][posmod(_mission_selection_seed, 3)]
+	elif entry.has("target_role"):
+		_mission_target_role = str(entry.get("target_role"))
+	if entry.has("parameter") and entry.get("parameter") == "target_face":
+		_mission_target_face = 1 + posmod(absi(hash("face:%d:%d" % [_mission_selection_seed, _lap])), 6)
+	elif _mission_active_id == "cairo_small_faces":
+		_mission_face_counters = {"1":0, "2":0, "3":0}
+
+func mission_selection_for_lap(lap: int, seed: int) -> Dictionary:
+	var draw := posmod(absi(hash("difficulty:%d:%d" % [seed, lap])), 100)
+	var difficulty := "EASY" if lap <= 2 and draw < 70 else ("NORMAL" if lap <= 2 else ("EASY" if lap <= 5 and draw < 35 else ("NORMAL" if lap <= 5 and draw < 90 else ("EASY" if draw < 20 else ("NORMAL" if draw < 80 else "HARD")))))
+	var rows: Array[String] = []
+	for entry: Dictionary in mission_catalog():
+		if str(entry.get("difficulty", "")) == difficulty and str(entry.get("id", "")) in MISSION_SELECTION_POOL: rows.append(str(entry.get("id")))
+	var row_draw := posmod(absi(hash("row:%d:%d" % [seed, lap])), 100)
+	return {"difficulty": difficulty, "draw": draw, "row_draw": row_draw, "id": rows[posmod(row_draw, rows.size())] if not rows.is_empty() else MISSION_SELECTION_POOL[0]}
+
+
+func _new_mission_seed() -> int:
+	var generator := RandomNumberGenerator.new()
+	generator.randomize()
+	return maxi(generator.randi(), 1)
 
 
 func _advance_coin_mission(amount: int) -> void:
 	if amount <= 0:
 		return
+	if not _mission_legacy_mode and _mission_active_id != "cairo_coin15":
+		return
 	_mission_coin_gained += amount
+	if not _mission_legacy_mode:
+		_set_active_mission_progress(_mission_coin_gained, "coin")
+		return
 	_update_mission_rank("cairo_coin15", _mission_coin_gained)
 	if not _mission_coin_completed and _mission_coin_gained >= MISSION_COIN_TARGET:
 		_mission_coin_completed = true
@@ -1395,7 +1674,12 @@ func _advance_coin_mission(amount: int) -> void:
 
 
 func _advance_role_mission() -> void:
+	if not _mission_legacy_mode and _mission_active_id != "cairo_role":
+		return
 	_mission_role_successes += 1
+	if not _mission_legacy_mode:
+		_set_active_mission_progress(_mission_role_successes, "role")
+		return
 	_update_mission_rank("cairo_triple2", _mission_role_successes)
 	if not _mission_role_completed and _mission_role_successes >= MISSION_ROLE_TARGET:
 		_mission_role_completed = true
@@ -1405,6 +1689,8 @@ func _advance_role_mission() -> void:
 
 
 func _fail_no_damage_mission() -> void:
+	if not _mission_legacy_mode and _mission_active_id != "cairo_no_damage":
+		return
 	if not _mission_no_damage_active or _mission_no_damage_completed:
 		return
 	_mission_no_damage_active = false
@@ -1412,11 +1698,49 @@ func _fail_no_damage_mission() -> void:
 
 
 func _complete_no_damage_mission() -> void:
+	if not _mission_legacy_mode and _mission_active_id != "cairo_no_damage":
+		return
 	if not _mission_no_damage_active or _mission_no_damage_completed:
 		return
 	_mission_no_damage_completed = true
+	if not _mission_legacy_mode:
+		_set_active_mission_progress(1, "no_damage")
+		return
 	_update_mission_rank("cairo_no_damage", 1)
 	_emit_mission_event("no_damage", true)
+
+func _advance_face_mission(face: int) -> void:
+	if _mission_legacy_mode:
+		return
+	if _mission_active_id == "cairo_face" and face == MISSION_FACE:
+		_mission_face_hits += 1
+		_set_active_mission_progress(_mission_face_hits, "dice")
+	elif _mission_active_id in ["cairo_face6", "cairo_face10"] and face == _mission_target_face:
+		_mission_face_hits += 1
+		_set_active_mission_progress(_mission_face_hits, "dice")
+	elif _mission_active_id == "cairo_small_faces" and face in [1, 2, 3]:
+		var key := str(face)
+		_mission_face_counters[key] = mini(int(_mission_face_counters.get(key, 0)) + 1, 4)
+		_set_active_mission_progress(_mission_face_counters["1"] + _mission_face_counters["2"] + _mission_face_counters["3"], "dice")
+
+
+func _set_active_mission_progress(value: int, event_kind: String) -> void:
+	if _mission_active_id == "cairo_risk6_survive" and _mission_survival_failed:
+		return
+	_mission_progress = mini(maxi(value, 0), _mission_target)
+	if _mission_active_id == "cairo_risk6_survive":
+		_emit_mission_event(event_kind, false)
+		return
+	if _mission_completed:
+		return
+	if _mission_progress >= _mission_target:
+		_mission_completed = true
+		if not _mission_reward_claimed:
+			_coins += _mission_reward_coins
+			_mission_reward_claimed = true
+		_emit_mission_event(event_kind, true)
+	else:
+		_emit_mission_event(event_kind, false)
 
 
 func _emit_mission_event(kind: String, completed: bool) -> void:
@@ -1458,6 +1782,32 @@ func _restore_missions(value: Variant, player: Dictionary, roles: Dictionary, ph
 			if _mission_no_damage_completed: _mission_ranks["cairo_no_damage"] = 1
 		_mission_event_serial = 0 if legacy_missions else maxi(int(saved.get("event_serial", 0)), 0)
 		_last_mission_event = {} if legacy_missions else (saved.get("last_event", {}) as Dictionary).duplicate(true)
+		_mission_legacy_mode = saved_schema != MISSION_SCHEMA_VERSION or not saved.has("active_id") or bool(saved.get("legacy_mode", false))
+		if not _mission_legacy_mode:
+			_mission_active_id = str(saved.get("active_id", ""))
+			_mission_selection_seed = int(saved.get("selection_seed", 0))
+			_mission_progress = maxi(int(saved.get("progress", 0)), 0)
+			_mission_target = maxi(int(saved.get("target", 1)), 1)
+			_mission_completed = bool(saved.get("completed", false))
+			_mission_reward_coins = maxi(int(saved.get("reward_coins", 12)), 0)
+			_mission_reward_claimed = bool(saved.get("reward_claimed", false))
+			_mission_survival_failed = bool(saved.get("survival_failed", false))
+			_mission_target_role = str(saved.get("target_role", ""))
+			_mission_face_hits = maxi(int(saved.get("face_hits", _mission_progress)), 0)
+			_mission_target_face = clampi(int(saved.get("target_face", MISSION_FACE)), 1, 6)
+			_mission_face_counters = (saved.get("face_counters", {}) as Dictionary).duplicate(true)
+			_mission_active_ids = [_mission_active_id]
+		else:
+			_mission_active_id = ""
+			_mission_selection_seed = 0
+			_mission_progress = 0
+			_mission_target = 1
+			_mission_completed = false
+			_mission_reward_coins = MISSION_STANDARD_REWARD
+			_mission_reward_claimed = false
+			_mission_survival_failed = false
+			_mission_target_role = ""
+			_mission_face_hits = 0
 	else:
 		_mission_coin_gained = maxi(int(player.get("coins", 0)), 0)
 		_mission_role_successes = maxi(int(roles.get("PAIR", 0)), 0) + maxi(int(roles.get("STRAIGHT", 0)), 0) + maxi(int(roles.get("TRIPLE", 0)), 0)
@@ -1472,6 +1822,15 @@ func _restore_missions(value: Variant, player: Dictionary, roles: Dictionary, ph
 		if _mission_no_damage_completed: _mission_ranks["cairo_no_damage"] = 1
 		_mission_event_serial = 0
 		_last_mission_event.clear()
+		_mission_active_id = ""
+		_mission_active_ids = []
+		_mission_legacy_mode = true
+		_mission_progress = 0
+		_mission_target = 1
+		_mission_completed = false
+		_mission_reward_claimed = false
+		_mission_survival_failed = false
+		_mission_face_hits = 0
 
 
 func _prepare_pending_role_reward() -> void:

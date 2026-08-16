@@ -150,7 +150,7 @@ func _test_screen_contract() -> void:
 	var host := Control.new(); host.size = Vector2(720, 1280); root.add_child(host)
 	var screen: Control = ScreenScene.instantiate(); host.add_child(screen)
 	await process_frame; await process_frame
-	for name: String in ["TimeLabel", "BossOverlay", "BossArenaBackdrop", "BossArenaBackdropNext", "BossHud", "BossYouProgressLabel", "BossSphinxProgressLabel", "BossCoinButton", "BossPauseButton", "BossStartRulePanel", "BossStartButton", "BossQuickRulePanel", "MirrorPanel", "BossDicePresentation", "BossDiceOwnerLabel", "BossLaneBoard", "GoldenGateSprite", "BossPlayerTargetLabel", "BossSphinxTargetLabel", "PlayerFootMarker", "BossFootMarker", "BossFinishDim", "BossFinishSummaryLabel", "HeartRoulettePanel", "HeartRouletteWheel", "HeartRouletteCurrentLabel", "BossPauseOverlay", "BossResumeButton", "BossImage", "BossActionLabel", "BossResultLabel", "BossRoundAckButton", "NextLapButton", "RetryButton", "BossBackButton"]:
+	for name: String in ["TimeLabel", "BossOverlay", "BossArenaBackdrop", "BossArenaBackdropNext", "BossHud", "BossYouProgressLabel", "BossSphinxProgressLabel", "BossCoinButton", "BossPauseButton", "BossStartRuleDismissLayer", "BossStartRulePanel", "BossStartButton", "BossQuickRulePanel", "MirrorPanel", "BossDicePresentation", "BossDiceOwnerLabel", "BossLaneBoard", "GoldenGateSprite", "BossPlayerTargetLabel", "BossSphinxTargetLabel", "PlayerFootMarker", "BossFootMarker", "BossFinishDim", "BossFinishSummaryLabel", "HeartRoulettePanel", "HeartRouletteWheel", "HeartRouletteCurrentLabel", "BossPauseOverlay", "BossResumeButton", "BossImage", "BossActionLabel", "BossResultLabel", "BossRoundAckButton", "NextLapButton", "RetryButton", "BossBackButton"]:
 		_expect(screen.get_node_or_null("%%%s" % name) != null, "named boss UI node %s exists" % name)
 	var boss_image := screen.get_node("%BossImage") as TextureRect
 	var vignette := screen.get_node("%NightVignette") as TextureRect
@@ -200,6 +200,8 @@ func _test_screen_contract() -> void:
 	_expect(not hud.visible and not stage_band.visible and not tool_dock.visible and boss_hud.visible, "boss race replaces the normal stage chrome with the minimal boss HUD")
 	_expect((screen.get_node("%BossYouProgressLabel") as Label).text == "0 / 20" and (screen.get_node("%BossSphinxProgressLabel") as Label).text == "0 / 20", "minimal boss HUD exposes only both 20-space race counters")
 	_expect((screen.get_node("%BossStartRulePanel") as Control).visible and not (screen.get_node("%MirrorPanel") as Control).visible, "black mirror-rule panel appears only at the race start")
+	var boss_start_rule_dismiss_layer := screen.get_node("%BossStartRuleDismissLayer") as Control
+	_expect(boss_start_rule_dismiss_layer.visible and boss_start_rule_dismiss_layer.mouse_filter == Control.MOUSE_FILTER_STOP and (screen.get_node("%BossStartRulePanel") as Control).z_index > boss_start_rule_dismiss_layer.z_index and (screen.get_node("%BossStartRulePanel") as Control).get_global_rect().position.y >= 260.0, "first boss explanation sits below the HUD with a full-screen outside-tap dismiss layer")
 	var boss_start_button := screen.get_node("%BossStartButton") as Button
 	_expect((screen.get_node("%BossActionLabel") as Label).get_theme_font_size("font_size") >= 24 and boss_start_button.text == "レースを始める" and boss_start_button.custom_minimum_size.y >= 96.0, "first boss explanation ends with one explicit touch-sized start action")
 	_expect((screen.get_node("%BossStartRulePanel") as Control).get_global_rect().encloses(boss_start_button.get_global_rect()), "rule explanation and its start action stay inside the boss modal")
@@ -207,13 +209,24 @@ func _test_screen_contract() -> void:
 	_expect(die_button.disabled, "start explanation blocks ROLL input")
 	screen.call("_on_die_pressed")
 	_expect(session.faces().is_empty(), "start explanation does not mutate the slot")
+	var outside_tap := InputEventScreenTouch.new()
+	outside_tap.position = Vector2(12.0, 1160.0)
+	outside_tap.pressed = true
+	boss_start_rule_dismiss_layer.gui_input.emit(outside_tap)
+	await process_frame
+	_expect(not (screen.get_node("%BossStartRulePanel") as Control).visible and not boss_start_rule_dismiss_layer.visible and not die_button.disabled and not bool(screen.get("_boss_intro_active")), "outside tap closes the Cairo boss explanation and enables READY input")
+	screen.set("_boss_intro_complete", false)
+	screen.set("_boss_intro_active", false)
+	screen.call("_refresh_boss_panel")
+	await process_frame
+	_expect((screen.get_node("%BossStartRulePanel") as Control).visible and boss_start_rule_dismiss_layer.visible, "boss explanation can be reopened after an outside-tap dismissal")
 	boss_start_button.pressed.emit()
 	await process_frame
 	_expect(not (screen.get_node("%BossStartRulePanel") as Control).visible and not die_button.disabled and not bool(screen.get("_boss_intro_active")), "Start closes the explanation and enables READY input")
 	var boss_coin_button := screen.get_node("%BossCoinButton") as Button
 	_expect(boss_coin_button.visible and not boss_coin_button.disabled and boss_coin_button.text.contains("支援"), "boss HUD exposes coin support before the first roll")
 	boss_coin_button.pressed.emit(); await process_frame
-	_expect((screen.get_node("%UtilityOverlay") as Control).visible and str(screen.get("_utility_mode")) == "boss_coin" and (screen.get_node("%UtilityDetail") as Label).text.contains("最初の投球前"), "boss support button opens the three pre-race coin choices")
+	_expect((screen.get_node("%UtilityOverlay") as Control).visible and str(screen.get("_utility_mode")) == "boss_coin" and (screen.get_node("%UtilityDetail") as Label).text.contains("次のボス戦で有効"), "boss support button opens the three pre-race coin choices")
 	(screen.get_node("%UtilityCloseButton") as Button).pressed.emit(); await process_frame
 	screen.call("_start_roll"); await process_frame
 	var preview_face := int((screen.get_node("%PlayerRollValue") as Label).text)
@@ -346,7 +359,7 @@ func _test_screen_contract() -> void:
 	var descending_values: Array[int] = [3, 2]
 	var descending_reach: Dictionary = screen.call("_boss_slot_reach", descending_values)
 	_expect(descending_reach.role == "STRAIGHT" and descending_reach.targets == [1], "a descending pair announces only its ordered STRAIGHT target")
-	_expect(normal_triple_reach.role == "TRIPLE" and str(normal_triple_reach.hint).contains("SKILL READY") and normal_straight_reach.role == "STRAIGHT" and str(normal_straight_reach.hint).contains("SKILL +2"), "normal map reuses reach detection and previews the exact skill effect")
+	_expect(normal_triple_reach.role == "TRIPLE" and str(normal_triple_reach.hint).contains("COIN +5") and normal_straight_reach.role == "STRAIGHT" and str(normal_straight_reach.hint).contains("COIN +3"), "normal map reuses reach detection and previews the exact coin reward")
 	screen.call("_show_boss_reach_cue", triple_reach)
 	await process_frame
 	var reach_band := screen.get_node("%MessageBand") as Control

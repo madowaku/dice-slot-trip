@@ -65,7 +65,7 @@ func _test_rest_repeat_and_cap() -> void:
 	_expect(repeat.player_hp() == 3, "REST heals again on a separate landing")
 	var full := _session_at("main", 10, 3)
 	_roll_and_finish(full, 1)
-	_expect(full.player_hp() == 3 and full.coins() == 1 and full.last_tile_effect_result().text == "HP FULL  COIN +1", "full REST grants one coin instead of going quiet")
+	_expect(full.player_hp() == 3 and full.coins() == 0 and full.skill_gauge() == 1 and full.last_tile_effect_result().text == "HP FULL  SKILL +1", "full REST charges one SKILL instead of granting a SLOT-like coin")
 
 
 func _test_hp_risk_and_floor() -> void:
@@ -124,7 +124,7 @@ func _test_loop_effects() -> void:
 	mix_state.slot.current_roll_index = 2
 	_expect(mix_coin.restore_stable_snapshot(mix_state), "MIX plus tomb COIN fixture restores")
 	_roll_and_finish(mix_coin, 1)
-	_expect(mix_coin.coins() == 4 and mix_coin.resolution_role() == &"MIX", "MIX plus one and tomb COIN plus three total four exactly once")
+	_expect(mix_coin.coins() == 3 and mix_coin.resolution_role() == &"MIX", "MIX has no normal role reward while tomb COIN still grants three exactly once")
 
 
 func _test_resolution_id_contract() -> void:

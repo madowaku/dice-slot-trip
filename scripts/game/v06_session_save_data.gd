@@ -273,6 +273,28 @@ static func _validate_missions(value: Variant) -> Dictionary:
 			if not _integer(rank) or int(rank) < 0 or int(rank) > 3: return _invalid(STATUS_CORRUPT, "missions rank invalid")
 	if missions.has("ring_exits") and (not _integer(missions.get("ring_exits")) or int(missions.get("ring_exits")) < 0):
 		return _invalid(STATUS_CORRUPT, "missions ring exits invalid")
+	if missions.has("active_id"):
+		if not missions.get("active_id") is String or str(missions.get("active_id", "")).is_empty():
+			return _invalid(STATUS_CORRUPT, "missions active_id invalid")
+		for key: String in ["selection_seed", "progress", "target", "reward_coins", "face_hits"]:
+			if missions.has(key) and (not _integer(missions.get(key)) or int(missions.get(key)) < 0):
+				return _invalid(STATUS_CORRUPT, "missions.%s is invalid" % key)
+		for key: String in ["completed", "reward_claimed", "legacy_mode", "survival_failed"]:
+			if missions.has(key) and not missions.get(key) is bool:
+				return _invalid(STATUS_CORRUPT, "missions.%s is invalid" % key)
+		if missions.has("target_role") and not missions.get("target_role") is String:
+			return _invalid(STATUS_CORRUPT, "missions target_role is invalid")
+		var active_id := str(missions.get("active_id", ""))
+		if active_id in ["cairo_face6", "cairo_face10"]:
+			if not missions.has("target_face") or not _integer(missions.get("target_face")) or int(missions.get("target_face")) < 1 or int(missions.get("target_face")) > 6:
+				return _invalid(STATUS_CORRUPT, "selected face mission target_face is invalid")
+		if active_id == "cairo_small_faces" and missions.has("face_counters"):
+			var counters: Variant = missions.get("face_counters")
+			if not counters is Dictionary:
+				return _invalid(STATUS_CORRUPT, "selected small-face counters are invalid")
+			for face: String in ["1", "2", "3"]:
+				if not counters.has(face) or not _integer(counters.get(face)) or int(counters.get(face)) < 0:
+					return _invalid(STATUS_CORRUPT, "selected small-face counters are invalid")
 	return {"ok": true, "status": STATUS_VALID}
 
 
@@ -295,6 +317,8 @@ static func _normalize_nested_missions(state: Dictionary) -> Dictionary:
 	migrated["role_target"] = MISSION_ROLE_TARGET
 	migrated["coin_completed"] = int(migrated.get("coin_gained", 0)) >= MISSION_COIN_TARGET
 	migrated["role_completed"] = int(migrated.get("role_successes", 0)) >= MISSION_ROLE_TARGET
+	for key: String in ["active_id", "selection_seed", "progress", "target", "completed", "reward_coins", "reward_claimed", "legacy_mode", "target_role", "face_hits", "active_mission"]:
+		migrated.erase(key)
 	migrated["event_serial"] = 0
 	migrated["last_event"] = {}
 	state["missions"] = migrated

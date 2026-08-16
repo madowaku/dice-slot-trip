@@ -46,7 +46,7 @@ msgid "THREE_ROLL_ONBOARDING_TITLE"
 msgstr "振って止めて、3投で役をつくる"
 
 msgid "THREE_ROLL_ONBOARDING_BODY"
-msgstr "回転中にもう一度タップ。見えている出目で止まる。\nその数だけ進み、1マス = 1ポイント！\n\nPAIR：同じ数字が2つ → SKILL +1\nSTRAIGHT：連続した3つ → SKILL +2\nTRIPLE：同じ数字が3つ → SKILL READY\nMIX：そのほか → COIN +1\n\nボス戦では、盾・加速・必殺になる。"
+msgstr "回転中にもう一度タップ。見えている出目で止まる。\nその数だけ進み、1マス = 1ポイント！\n\nPAIR：同じ数字が2つ → TRIP COIN +1\nSTRAIGHT：連続した3つ → TRIP COIN +3\nTRIPLE：同じ数字が3つ → TRIP COIN +5\nMIX：そのほか → 報酬なし\n満タンREST：SKILL +1\n\nボス戦では、盾・加速・必殺になる。"
 
 msgid "THREE_ROLL_ONBOARDING_CTA"
 msgstr "わかった！ 旅を始める"

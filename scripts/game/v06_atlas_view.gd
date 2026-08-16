@@ -1537,7 +1537,7 @@ func _draw_portal_transfer() -> void:
 
 
 func _draw_map_dice_shadow() -> void:
-	var shadow_center := Vector2(size.x * 0.45, size.y * 0.80)
+	var shadow_center := Vector2(size.x * 0.45, size.y * 0.82)
 	draw_set_transform(shadow_center, 0.0, Vector2(1.75, 0.46))
 	draw_circle(Vector2.ZERO, 32.0, Color(0.20, 0.13, 0.08, 0.18))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -1625,7 +1625,7 @@ func _card_route_slot_position(slot_index: float) -> Vector2:
 	var card_size := _card_route_card_size()
 	var margin := clampf(size.x * 0.05, 18.0, 34.0)
 	var gap := (size.x - margin * 2.0 - card_size.x * 7.0) / 6.0
-	return Vector2(margin + card_size.x * 0.5 + slot_index * (card_size.x + gap), size.y * 0.48)
+	return Vector2(margin + card_size.x * 0.5 + slot_index * (card_size.x + gap), size.y * 0.55)
 
 
 func _card_route_label_font_size(label: String, is_current: bool) -> int:

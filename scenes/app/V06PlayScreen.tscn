@@ -375,7 +375,7 @@ vertical_alignment = 1
 
 [node name="MissionBand" type="PanelContainer" parent="SafeMargin/Page"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 82)
+custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 
 [node name="MissionStrip" type="HBoxContainer" parent="SafeMargin/Page/MissionBand"]
@@ -384,9 +384,9 @@ theme_override_constants/separation = 4
 
 [node name="MissionHeader" type="Label" parent="SafeMargin/Page/MissionBand/MissionStrip"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(116, 0)
+custom_minimum_size = Vector2(128, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 24
 text = "MISSION"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -403,28 +403,28 @@ theme_override_constants/separation = 4
 
 [node name="MissionShieldIcon" type="TextureRect" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionNoDamageCell/Content"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(44, 44)
+custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
 texture = ExtResource("18_mission_shield")
 expand_mode = 1
 stretch_mode = 5
 
 [node name="Copy" type="VBoxContainer" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionNoDamageCell/Content"]
-custom_minimum_size = Vector2(76, 0)
+custom_minimum_size = Vector2(88, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 0
 
 [node name="Caption" type="Label" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionNoDamageCell/Content/Copy"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 20
 text = "無傷"
 vertical_alignment = 1
 
 [node name="MissionNoDamageLabel" type="Label" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionNoDamageCell/Content/Copy"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 22
 text = "継続中"
 vertical_alignment = 1
 
@@ -440,28 +440,28 @@ theme_override_constants/separation = 4
 
 [node name="MissionCoinIcon" type="TextureRect" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionCoinCell/Content"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(44, 44)
+custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
 texture = ExtResource("11_coin")
 expand_mode = 1
 stretch_mode = 5
 
 [node name="Copy" type="VBoxContainer" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionCoinCell/Content"]
-custom_minimum_size = Vector2(76, 0)
+custom_minimum_size = Vector2(88, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 0
 
 [node name="Caption" type="Label" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionCoinCell/Content/Copy"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 20
 text = "コイン"
 vertical_alignment = 1
 
 [node name="MissionCoinLabel" type="Label" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionCoinCell/Content/Copy"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 22
 text = "0/15"
 vertical_alignment = 1
 
@@ -477,40 +477,40 @@ theme_override_constants/separation = 4
 
 [node name="MissionRoleIcon" type="TextureRect" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionRoleCell/Content"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(44, 44)
+custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
 texture = ExtResource("19_mission_die")
 expand_mode = 1
 stretch_mode = 5
 
 [node name="Copy" type="VBoxContainer" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionRoleCell/Content"]
-custom_minimum_size = Vector2(76, 0)
+custom_minimum_size = Vector2(88, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 0
 
 [node name="Caption" type="Label" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionRoleCell/Content/Copy"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 20
 text = "役成立"
 vertical_alignment = 1
 
 [node name="MissionRoleLabel" type="Label" parent="SafeMargin/Page/MissionBand/MissionStrip/MissionRoleCell/Content/Copy"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 22
 text = "0/2"
 vertical_alignment = 1
 
 [node name="AtlasFrame" type="PanelContainer" parent="SafeMargin/Page"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 470)
+custom_minimum_size = Vector2(0, 450)
 layout_mode = 2
 size_flags_vertical = 3
 
 [node name="AtlasView" type="Control" parent="SafeMargin/Page/AtlasFrame"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 470)
+custom_minimum_size = Vector2(0, 450)
 layout_mode = 2
 mouse_filter = 2
 script = ExtResource("2_atlas")
@@ -559,7 +559,7 @@ stretch_mode = 5
 [node name="TrayPanel" type="PanelContainer" parent="SafeMargin/Page"]
 unique_name_in_owner = true
 z_index = 20
-custom_minimum_size = Vector2(0, 252)
+custom_minimum_size = Vector2(0, 224)
 layout_mode = 2
 
 [node name="TrayContent" type="VBoxContainer" parent="SafeMargin/Page/TrayPanel"]
@@ -1709,6 +1709,18 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
+[node name="BossStartRuleDismissLayer" type="Control" parent="BossOverlay/Center"]
+unique_name_in_owner = true
+visible = false
+z_index = 26
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
 [node name="BossPanel" type="PanelContainer" parent="BossOverlay/Center"]
 unique_name_in_owner = true
 layout_mode = 1
@@ -2189,12 +2201,12 @@ vertical_alignment = 1
 
 [node name="BossStartRulePanel" type="PanelContainer" parent="BossOverlay/Center"]
 unique_name_in_owner = true
-z_index = 8
+z_index = 27
 layout_mode = 0
 offset_left = 54.0
-offset_top = 232.0
+offset_top = 264.0
 offset_right = 666.0
-offset_bottom = 842.0
+offset_bottom = 874.0
 
 [node name="Content" type="VBoxContainer" parent="BossOverlay/Center/BossStartRulePanel"]
 layout_mode = 2

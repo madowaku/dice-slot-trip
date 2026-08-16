@@ -79,7 +79,7 @@ func _test_half_scale_survival_stack() -> void:
 	var map_button := screen.get_node("%MapButton") as Control
 	_expect(screen.size == Vector2(720, 1280) and root.size == Vector2i(360, 640), "360 physical viewport preserves the720 logical HUD layout")
 	_expect(hud_row2.get_global_rect().encloses(survival_stack.get_global_rect()) and hud_panel.get_global_rect().encloses(life_box.get_global_rect()) and hud_panel.get_global_rect().encloses(hp_label.get_global_rect()) and life_box.get_global_rect().end.y <= hp_label.get_global_rect().position.y + 1.0, "360-scale HUD contains LIFE above HP without clipping")
-	_expect(is_equal_approx(hud_panel.custom_minimum_size.y, 104.0) and map_button.custom_minimum_size == Vector2(80, 96) and atlas.size.y >= 450.0, "360-scale survival stack preserves fixed104px contract, map action geometry, and playfield")
+	_expect(is_equal_approx(hud_panel.custom_minimum_size.y, 104.0) and map_button.custom_minimum_size == Vector2(80, 96) and atlas.size.y >= 440.0, "360-scale survival stack preserves fixed104px contract, map action geometry, and playfield")
 	host.queue_free()
 	await process_frame
 	root.size = original_size

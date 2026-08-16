@@ -80,15 +80,15 @@ const BOSS_CAMERA_SCROLL_SECONDS := 0.62
 const BOSS_CAMERA_HOLD_SECONDS := 0.12
 const BOSS_BACKDROP_FADE_SECONDS := 0.28
 const NORMAL_DICE_ROLL_SPEED_SCALE := 0.92
-const BOSS_DICE_ROLL_SPEED_SCALE := 1.08
+const BOSS_DICE_ROLL_SPEED_SCALE := 1.16
 const BOSS_DICE_LAP_SPEED_STEP := 0.035
-const BOSS_DICE_MAX_SPEED_SCALE := 1.255
+const BOSS_DICE_MAX_SPEED_SCALE := 1.30
 const HEART_ROULETTE_FAST_STEP_SECONDS := 0.105
 const HEART_ROULETTE_SLOW_STEP_SECONDS := 0.215
 const HEART_ROULETTE_SLOW_MARGIN_SPACES := 10.0
 const HEART_ROULETTE_VISUAL_SLOT_ORDER: Array[int] = [0, 1, 2, 3, 4, 5]
 const INLINE_SLOT_RESULT_SECONDS := 0.46
-const DICE_ANCHOR_NORMAL := Vector2(0.45, 0.80)
+const DICE_ANCHOR_NORMAL := Vector2(0.45, 0.82)
 const DICE_ANCHOR_LOOP := Vector2(0.88, 0.82)
 const ROLL_BUTTON_ATLAS_CELL := Vector2(941.0, 418.0)
 const SLOT_RESULT_GLOW := Color(1.45, 1.42, 1.30, 1.0)
@@ -193,6 +193,7 @@ const SLOT_RESULT_STRONG_GLOW := Color(1.75, 1.68, 1.42, 1.0)
 @onready var boss_back_button: Button = %BossBackButton
 @onready var boss_panel: PanelContainer = %BossPanel
 @onready var boss_start_rule_panel: PanelContainer = %BossStartRulePanel
+@onready var boss_start_rule_dismiss_layer: Control = %BossStartRuleDismissLayer
 @onready var boss_start_button: Button = %BossStartButton
 @onready var boss_quick_rule_panel: PanelContainer = %BossQuickRulePanel
 @onready var mirror_panel: PanelContainer = %MirrorPanel
@@ -256,6 +257,10 @@ const SLOT_RESULT_STRONG_GLOW := Color(1.75, 1.68, 1.42, 1.0)
 @onready var mission_no_damage_label: Label = %MissionNoDamageLabel
 @onready var mission_coin_label: Label = %MissionCoinLabel
 @onready var mission_role_label: Label = %MissionRoleLabel
+@onready var mission_no_damage_caption: Label = $SafeMargin/Page/MissionBand/MissionStrip/MissionNoDamageCell/Content/Copy/Caption
+@onready var mission_shield_icon: TextureRect = %MissionShieldIcon
+@onready var mission_coin_icon: TextureRect = %MissionCoinIcon
+@onready var mission_role_icon: TextureRect = %MissionRoleIcon
 @onready var mission_no_damage_cell: PanelContainer = %MissionNoDamageCell
 @onready var mission_coin_cell: PanelContainer = %MissionCoinCell
 @onready var mission_role_cell: PanelContainer = %MissionRoleCell
@@ -302,6 +307,7 @@ var _three_roll_onboarding_open := false
 var _three_roll_onboarding_clock_paused := false
 var _onboarding_kind := ""
 var _skill_ready_discovery_open := false
+var _skill_ready_button_pulse_tween: Tween
 var _event_card_open := false
 var _event_card_clock_paused := false
 var _low_hp_warning_open := false
@@ -331,6 +337,7 @@ var _boss_camera_tween: Tween
 var _boss_pictogram_anchors: Dictionary = {}
 var _mission_seen_event_serial := 0
 var _mission_toast_generation := 0
+var _mission_shield_texture: Texture2D
 var _operation_message_generation := 0
 var _operation_message_override_active := false
 var _roll_cancel_tip_seen := false
@@ -445,6 +452,7 @@ func _configure_generated_art() -> void:
 	_roll_button_ornament_atlas.atlas = ROLL_BUTTON_ORNAMENTS
 	roll_button_ornament.texture = ROLL_BUTTON_ROUND_ART
 	roll_button_ornament.self_modulate = Color.WHITE
+	_mission_shield_texture = mission_shield_icon.texture
 	back_button.text = V06LocalizationScript.text(&"TRAVEL_MENU_BUTTON")
 	travel_menu_title.text = V06LocalizationScript.text(&"TRAVEL_MENU_TITLE")
 	travel_menu_detail.text = V06LocalizationScript.text(&"TRAVEL_MENU_DETAIL")
@@ -504,7 +512,7 @@ func _apply_runtime_screen_layout() -> void:
 		_phone_layout_profile_initialized = true
 		_compact_phone_layout_active = compact
 		(%Page as VBoxContainer).add_theme_constant_override("separation", 0 if compact else 8)
-		message_band.custom_minimum_size.y = 62.0 if compact else 72.0
+		message_band.custom_minimum_size.y = 72.0
 		_apply_compact_panel_padding(%StageBand as PanelContainer)
 		_apply_compact_panel_padding(%MissionBand as PanelContainer)
 		_apply_compact_panel_padding(%AtlasFrame as PanelContainer)
@@ -829,6 +837,7 @@ func _wire_controls() -> void:
 	boss_back_button.pressed.connect(_leave_stage_requested)
 	boss_start_button.pressed.connect(_dismiss_boss_intro)
 	boss_start_rule_panel.gui_input.connect(_on_boss_intro_gui_input)
+	boss_start_rule_dismiss_layer.gui_input.connect(_on_boss_intro_gui_input)
 	boss_quick_rule_panel.gui_input.connect(_on_boss_intro_gui_input)
 	landing_art_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	for child: Node in landing_art_overlay.find_children("*", "Control", true, false):
@@ -1969,7 +1978,7 @@ func _refresh_skill_utility(status_text := "") -> void:
 	elif ready:
 		utility_detail.text = "READY!\n\n止めたい出目をタップ"
 	else:
-		utility_detail.text = "CHARGE  %d/%d\n\nPAIR +1  /  STRAIGHT +2\nTRIPLE → READY" % [_session.skill_gauge(), V06PlaySessionScript.SKILL_GAUGE_MAX]
+		utility_detail.text = "CHARGE  %d/%d\n\n満タンRESTでSKILL +1\nSLOT成立報酬はTRIP COIN" % [_session.skill_gauge(), V06PlaySessionScript.SKILL_GAUGE_MAX]
 	if not status_text.is_empty():
 		utility_detail.text += "\n%s" % status_text
 	for index: int in range(pinpoint_face_buttons.size()):
@@ -1987,18 +1996,39 @@ func _refresh_coin_utility(status_text := "") -> void:
 	var entry: Dictionary = _utility_entries[_utility_index]
 	var cost := int(entry.get("cost", 0))
 	var active := bool(entry.get("active", false))
-	utility_title.text = str(entry.get("name", "コイン支援"))
+	var action_id := str(entry.get("id", ""))
+	var category := str(entry.get("category", "コイン支援"))
+	var state_copy := "未所持"
+	if active:
+		if action_id.begins_with("boss_"):
+			state_copy = "このボス戦で発動" if _utility_mode == "boss_coin" else "次のボス戦で発動"
+		else:
+			state_copy = "所持中"
+	elif _session.coins() < cost:
+		state_copy = "コイン不足"
+	utility_title.text = "コインショップ"
 	utility_card_art.texture = DISCOVERY_ARTS[0]
-	var timing_copy := "\n最初の投球前だけ" if _utility_mode == "boss_coin" else ""
-	utility_detail.text = "%s\n\nコイン %d / 必要 %d%s%s" % [
-		str(entry.get("description", "")), _session.coins(), cost,
-		timing_copy,
+	utility_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	utility_detail.text = "%s｜%s\n%s\n%s\n%s\n所持TRIP COIN：%d　価格：%d\n状態：%s%s" % [
+		category,
+		str(entry.get("name", "コイン支援")),
+		str(entry.get("description", "")),
+		str(entry.get("timing", "")),
+		str(entry.get("use_rule", "1回だけ使えます")),
+		_session.coins(),
+		cost,
+		state_copy,
 		"\n%s" % status_text if not status_text.is_empty() else "",
 	]
-	utility_page_label.text = "%d / %d" % [_utility_index + 1, _utility_entries.size()]
+	utility_page_label.text = "%s　%d / %d" % [category, _utility_index + 1, _utility_entries.size()]
 	utility_previous_button.disabled = _utility_entries.size() <= 1
 	utility_next_button.disabled = _utility_entries.size() <= 1
-	utility_action_button.text = "準備済み" if active else "コイン%dで使う" % cost
+	if active:
+		utility_action_button.text = "すでに所持しています"
+	elif _session.coins() < cost:
+		utility_action_button.text = "コインが足りません"
+	else:
+		utility_action_button.text = "コイン%dで買う" % cost
 	utility_action_button.disabled = active or _session.coins() < cost
 
 
@@ -2301,23 +2331,67 @@ func _refresh_mission_band() -> void:
 	if _session == null or not is_instance_valid(mission_band):
 		return
 	var missions: Dictionary = _session.mission_state()
+	var active_id := str(missions.get("active_id", ""))
 	var gold := Color("#9a6613")
 	var active := Color("#342314")
 	var failed := Color("#756b5f")
 	var mission_style := _panel_style(Color("#f2dfb9"), Color("#946f3d"), 10, 2)
 	if _uses_compact_phone_layout():
+		mission_style.content_margin_left = 6
+		mission_style.content_margin_right = 6
 		mission_style.content_margin_top = 0
 		mission_style.content_margin_bottom = 0
 	mission_band.add_theme_stylebox_override("panel", mission_style)
 	mission_header.add_theme_color_override("font_color", Color("#69451e"))
 	for cell: PanelContainer in [mission_no_damage_cell, mission_coin_cell, mission_role_cell]:
 		cell.add_theme_stylebox_override("panel", _panel_style(Color("#ead3a5"), Color("#b28a50"), 7, 1))
+	var active_mission: Dictionary = missions.get("active_mission", {})
+	if not active_mission.is_empty():
+		# Keep one large featured card. The existing Cairo textures are reused so
+		# this remains a common stage pattern without a scene asset fork.
+		mission_no_damage_cell.show()
+		mission_coin_cell.hide()
+		mission_role_cell.hide()
+		mission_header.text = "MISSION"
+		var mission_kind := str(active_mission.get("kind", "trip"))
+		if mission_kind in ["coin", "trip"]:
+			mission_shield_icon.texture = mission_coin_icon.texture
+		elif mission_kind in ["dice", "slot"]:
+			mission_shield_icon.texture = mission_role_icon.texture
+		else:
+			mission_shield_icon.texture = _mission_shield_texture
+		var progress := int(active_mission.get("progress", 0))
+		var target := maxi(int(active_mission.get("target", 1)), 1)
+		var mission_copy := str(active_mission.get("short_text", active_id))
+		if mission_kind == "dice" and bool(active_mission.get("target_face_enabled", false)):
+			mission_copy = "DICE %dを%d回出す" % [int(active_mission.get("target_face", 0)), target if active_mission.has("target") else 1]
+		var reward := int(active_mission.get("reward_coins", 0))
+		mission_no_damage_caption.text = "%s　COIN × %d" % [mission_copy, reward]
+		var completed := bool(active_mission.get("completed", false))
+		var legacy := bool(active_mission.get("legacy_mode", false))
+		var failed_no_damage := mission_kind == "shield" and not bool(missions.get("no_damage_active", true)) and not completed
+		if completed:
+			mission_no_damage_label.text = "✓ CLEAR!　獲得 COIN +%d" % reward
+			mission_no_damage_label.add_theme_color_override("font_color", gold)
+		elif failed_no_damage:
+			mission_no_damage_label.text = "失敗　今周は終了"
+			mission_no_damage_label.add_theme_color_override("font_color", failed)
+		else:
+			mission_no_damage_label.text = "進捗 %d/%d　%s%s" % [progress, target, _mission_progress_dots(progress, target), "　旧仕様" if legacy else ""]
+			mission_no_damage_label.add_theme_color_override("font_color", active)
+		var serial := int(missions.get("event_serial", 0))
+		if serial > _mission_seen_event_serial:
+			_mission_seen_event_serial = serial
+			_show_mission_toast(missions.get("last_event", {}) as Dictionary)
+		return
+	# Defensive fallback for a malformed/very old state: retain the old rows
+	# rather than leaving the band blank.
 	var no_damage_completed := bool(missions.get("no_damage_completed", false))
 	var no_damage_active := bool(missions.get("no_damage_active", true))
 	mission_no_damage_label.text = "✓ 達成" if no_damage_completed else ("継続中" if no_damage_active else "失敗")
 	mission_no_damage_label.add_theme_color_override("font_color", gold if no_damage_completed else (active if no_damage_active else failed))
 	var coin_completed := bool(missions.get("coin_completed", false))
-	mission_coin_label.text = "✓ 12獲得" if coin_completed else "獲得%d/12" % mini(int(missions.get("coin_gained", 0)), V06PlaySessionScript.MISSION_COIN_TARGET)
+	mission_coin_label.text = "✓ COIN +12" if coin_completed else "COIN %d/12" % mini(int(missions.get("coin_gained", 0)), V06PlaySessionScript.MISSION_COIN_TARGET)
 	mission_coin_label.add_theme_color_override("font_color", gold if coin_completed else active)
 	var role_completed := bool(missions.get("role_completed", false))
 	mission_role_label.text = "✓ 達成" if role_completed else "%d/5" % mini(int(missions.get("role_successes", 0)), V06PlaySessionScript.MISSION_ROLE_TARGET)
@@ -2326,6 +2400,12 @@ func _refresh_mission_band() -> void:
 	if serial > _mission_seen_event_serial:
 		_mission_seen_event_serial = serial
 		_show_mission_toast(missions.get("last_event", {}) as Dictionary)
+
+
+func _mission_progress_dots(progress: int, target: int) -> String:
+	var total := maxi(target, 1)
+	var filled := clampi(progress, 0, total)
+	return "●".repeat(filled) + "○".repeat(total - filled)
 
 
 func _show_mission_toast(event: Dictionary) -> void:
@@ -2340,18 +2420,20 @@ func _show_mission_toast(event: Dictionary) -> void:
 	else:
 		_emit_feedback(V06FeedbackControllerScript.EVENT_REWARD)
 	var missions: Dictionary = _session.mission_state()
-	var target_cell: PanelContainer = null
-	match kind:
-		"coin":
-			mission_toast_label.text = "MISSION COMPLETE　コイン獲得 12/12" if completed else "MISSION　コイン獲得 %d/12" % mini(int(missions.get("coin_gained", 0)), V06PlaySessionScript.MISSION_COIN_TARGET)
-			target_cell = mission_coin_cell
-		"role":
-			mission_toast_label.text = "MISSION COMPLETE　役成立 5/5" if completed else "MISSION　役成立 %d/5" % mini(int(missions.get("role_successes", 0)), V06PlaySessionScript.MISSION_ROLE_TARGET)
-			target_cell = mission_role_cell
-		"no_damage":
-			mission_toast_label.text = "MISSION COMPLETE　無傷 達成" if completed else "MISSION FAILED　無傷 失敗"
-			target_cell = mission_no_damage_cell
-		_: return
+	var active_mission: Dictionary = missions.get("active_mission", {})
+	if active_mission.is_empty():
+		return
+	var target_cell: PanelContainer = mission_no_damage_cell
+	var short_text := str(active_mission.get("short_text", "MISSION"))
+	var progress := int(active_mission.get("progress", 0))
+	var target := maxi(int(active_mission.get("target", 1)), 1)
+	var reward := int(active_mission.get("reward_coins", 0))
+	if completed:
+		mission_toast_label.text = "MISSION CLEAR!　%s\nCOIN +%d" % [short_text, reward]
+	elif kind == "no_damage":
+		mission_toast_label.text = "MISSION FAILED　%s" % short_text
+	else:
+		mission_toast_label.text = "MISSION　%s　%d/%d" % [short_text, progress, target]
 	mission_toast.hide()
 	_show_operation_message(mission_toast_label.text, 1.2, 25)
 	_flash_mission_cell(target_cell, completed)
@@ -2424,7 +2506,7 @@ func _set_boss_chrome_active(active: bool) -> void:
 		die_hero_art.hide()
 	else:
 		_apply_normal_tray_styles()
-		tray_panel.custom_minimum_size.y = 252.0
+		tray_panel.custom_minimum_size.y = 224.0
 		roll_row.custom_minimum_size.y = 190.0
 		roll_row.alignment = BoxContainer.ALIGNMENT_CENTER
 		action_column.custom_minimum_size = Vector2(190.0, 190.0)
@@ -2495,7 +2577,7 @@ func _boss_slot_reach(values: Array[int]) -> Dictionary:
 	var first := values[0]
 	var second := values[1]
 	if first == second:
-		return {"role": "TRIPLE", "targets": [first], "hint": "同じ %d が出れば必殺！　+5マス＆ボス1回休み" % first}
+		return {"role": "TRIPLE", "targets": [first], "hint": "同じ %d が出れば必殺！　+5マス＆ボス1回休み" % first, "boss": true}
 	var targets: Array[int] = []
 	var step := second - first
 	if absi(step) == 1:
@@ -2507,19 +2589,101 @@ func _boss_slot_reach(values: Array[int]) -> Dictionary:
 	var target_labels := PackedStringArray()
 	for target: int in targets:
 		target_labels.append(str(target))
-	return {"role": "STRAIGHT", "targets": targets, "hint": "%s が出れば加速！　さらに3マス" % "/".join(target_labels)}
+	return {"role": "STRAIGHT", "targets": targets, "hint": "%s が出れば加速！　さらに3マス" % "/".join(target_labels), "boss": true}
 
 
 func _normal_slot_reach(values: Array[int]) -> Dictionary:
-	var reach := _boss_slot_reach(values)
-	if reach.is_empty():
+	if values.size() != 2 or _session == null:
 		return {}
-	var role := str(reach.get("role", ""))
-	var targets: Array = reach.get("targets", [])
+	var first := values[0]
+	var second := values[1]
+	var role := "PAIR"
+	var targets: Array[int] = [first, second]
+	var fallback_targets: Array[int] = []
+	if first == second:
+		role = "TRIPLE"
+		targets = [first]
+	else:
+		var step := second - first
+		if absi(step) == 1:
+			var candidate := second + step
+			if candidate >= 1 and candidate <= 6:
+				role = "STRAIGHT"
+				targets = [candidate]
+				fallback_targets = [first, second]
+		else:
+			var map_only_rows := _normal_map_mission_rows(_session.mission_state().get("active_mission", {}), 0)
+			if map_only_rows.is_empty():
+				return {}
+			return {"role": "", "targets": [], "fallback_targets": [], "rows": map_only_rows.slice(0, 2), "hint": "\n".join(map_only_rows.slice(0, 2)), "coin_reward": 0, "mission_overlap": false, "boss": false}
+	var mission: Dictionary = _session.mission_state() if _session != null else {}
+	var active_mission: Dictionary = mission.get("active_mission", {})
+	var overlap := false
+	var fallback_overlap := false
+	var mission_face := 0
+	var mission_role := ""
+	var mission_is_target_face := bool(active_mission.get("target_face_enabled", false))
+	if mission_is_target_face:
+		mission_face = int(active_mission.get("target_face", 0))
+		overlap = mission_face in targets
+		fallback_overlap = not overlap and mission_face in fallback_targets
+	elif str(active_mission.get("kind", "")) == "slot":
+		mission_role = str(active_mission.get("target_role", ""))
+		overlap = mission_role == role
 	var labels := PackedStringArray()
-	for target: Variant in targets: labels.append(str(target))
-	reach["hint"] = ("同じ %s でTRIPLE！　SKILL READY" % labels[0]) if role == "TRIPLE" else ("%s でSTRAIGHT！　SKILL +2" % "/".join(labels))
-	return reach
+	for target: int in targets: labels.append(str(target))
+	var reward := 5 if role == "TRIPLE" else (3 if role == "STRAIGHT" else 1)
+	var slot_row := "SLOT %s → %s　COIN +%d" % ["/".join(labels), role, reward]
+	var rows: Array[String] = []
+	var map_rows: Array[String] = _normal_map_mission_rows(active_mission, mission_face)
+	var slot_line := slot_row
+	if overlap:
+		var mission_target := str(mission_face) if mission_face > 0 else mission_role
+		rows.append("MISSION %s → ダブルチャンス　%s　COIN +%d" % [mission_target, role, reward])
+	elif fallback_overlap:
+		rows.append(slot_row)
+		rows.append("MISSION %d → PAIR　COIN +1" % mission_face)
+	elif not fallback_targets.is_empty():
+		rows.append(slot_row)
+		if mission_is_target_face and mission_face > 0:
+			rows.append("DICE %d → MISSION %d/%d" % [mission_face, int(active_mission.get("progress", 0)), maxi(int(active_mission.get("target", 1)), 1)])
+		else:
+			var fallback_labels := PackedStringArray()
+			for fallback_target: int in fallback_targets:
+				fallback_labels.append(str(fallback_target))
+			rows.append("SLOT %s → PAIR　COIN +1" % "/".join(fallback_labels))
+	# Explicit precedence: ALL MATCH, MISSION+SLOT, MISSION+MAP, SLOT+MAP.
+	if overlap and not map_rows.is_empty():
+		rows = ["ALL MATCH　MISSION + %s + MAP　COIN +%d" % [role, reward]]
+	elif overlap or fallback_overlap:
+		pass
+	elif not map_rows.is_empty():
+		rows = [slot_line]
+		rows.append_array(map_rows)
+	elif rows.is_empty():
+		rows = [slot_line]
+	rows = rows.slice(0, 2)
+	var hint := "\n".join(rows)
+	return {"role": role, "targets": targets, "fallback_targets": fallback_targets, "rows": rows, "hint": hint, "coin_reward": reward, "mission_overlap": overlap or fallback_overlap, "boss": false}
+
+
+func _normal_map_mission_rows(active_mission: Dictionary, mission_face: int = 0) -> Array[String]:
+	if _session == null:
+		return []
+	var wanted := str(active_mission.get("short_text", ""))
+	var previews: Array[Dictionary] = _session.preview_forward_landings()
+	var rows: Array[String] = []
+	for preview: Dictionary in previews:
+		var kind := str(preview.get("raw_tile_kind", preview.get("tile_kind", "")))
+		var mission_map_match := str(active_mission.get("kind", "")) == "map" and wanted.to_upper().contains(kind)
+		var dice_map_match := bool(active_mission.get("target_face_enabled", false)) and mission_face > 0 and int(preview.get("distance", 0)) == mission_face and kind in ["COIN", "RISK", "ITEM"]
+		if kind.is_empty() or not mission_map_match and not dice_map_match:
+			continue
+		var distance := int(preview.get("distance", 0))
+		rows.append("%s +%d → %s MISSION" % [kind, distance, kind])
+		if rows.size() >= 2:
+			break
+	return rows
 
 
 func _show_boss_reach_cue(reach: Dictionary) -> void:
@@ -2528,14 +2692,18 @@ func _show_boss_reach_cue(reach: Dictionary) -> void:
 
 func _show_slot_reach_cue(reach: Dictionary) -> void:
 	var role := str(reach.get("role", ""))
-	var signature := "%s:%s" % [role, str(reach.get("targets", []))]
+	var signature := "%s:%s:%s" % [role, str(reach.get("targets", [])), str(reach.get("fallback_targets", []))]
 	role_label.hide()
 	role_reward_label.hide()
 	_slot_reach_message_active = true
 	message_band.show()
 	message_label.show()
-	message_label.text = "%sリーチ！　%s" % [role, str(reach.get("hint", ""))]
-	message_label.add_theme_font_size_override("font_size", 27)
+	if bool(reach.get("boss", false)):
+		message_label.text = "%sリーチ！　%s" % [role, str(reach.get("hint", ""))]
+		message_label.add_theme_font_size_override("font_size", 27)
+	else:
+		message_label.text = str(reach.get("hint", ""))
+		message_label.add_theme_font_size_override("font_size", 26)
 	if signature == _boss_reach_signature:
 		return
 	_boss_reach_signature = signature
@@ -2798,13 +2966,13 @@ func _position_pair_link(first: int, second: int) -> void:
 func _inline_role_reward(role: String) -> String:
 	match role:
 		"PAIR":
-			return "SKILL +1"
-		"STRAIGHT":
-			return "SKILL +2"
-		"TRIPLE":
-			return "SKILL READY"
-		_:
 			return "COIN +1"
+		"STRAIGHT":
+			return "COIN +3"
+		"TRIPLE":
+			return "COIN +5"
+		_:
+			return "報酬なし"
 
 
 func inline_slot_result_spec(role: String, values: Array[int]) -> Dictionary:
@@ -3233,6 +3401,7 @@ func _refresh_boss_panel() -> void:
 	var boss: Dictionary = _session.boss_snapshot()
 	var phase: StringName = _session.phase()
 	if boss.is_empty():
+		boss_start_rule_dismiss_layer.hide()
 		if phase == V06PlaySessionScript.PHASE_RUN_OVER:
 			race_stage.hide()
 			boss_start_rule_panel.hide()
@@ -3288,6 +3457,7 @@ func _refresh_boss_panel() -> void:
 	boss_pause_button.text = "PAUSE"
 	race_stage.visible = not terminal_result and not finish_presented
 	boss_start_rule_panel.visible = detailed_intro
+	boss_start_rule_dismiss_layer.visible = detailed_intro
 	boss_quick_rule_panel.visible = intro_visible and not detailed_intro
 	boss_action_label.visible = detailed_intro
 	mirror_panel.visible = _boss_mirror_values_visible and not intro_visible and not terminal_result and not finish_presented
@@ -3859,10 +4029,10 @@ func _show_skill_ready_discovery_if_eligible(motion_generation: int) -> bool:
 	_three_roll_onboarding_clock_paused = _session.pause_clock(Time.get_ticks_msec())
 	landing_art.texture = SKILL_PINPOINT_ART
 	landing_art_panel.custom_minimum_size.y = 620.0
-	landing_art_caption.custom_minimum_size.y = 110.0
+	landing_art_caption.custom_minimum_size.y = 140.0
 	landing_art_title.text = "SKILL READY!"
-	landing_art_caption.text = "次のサイコロの 出目を選べる！"
-	landing_art_prompt.text = "出目を選ぶ"
+	landing_art_caption.text = "次のサイコロの出目を選べる！\n説明を閉じたら、画面下の「スキル READY」から使えます。"
+	landing_art_prompt.text = "わかった（下のスキル READYから使う）"
 	landing_paid_action_button.hide()
 	landing_discovery_thumb.hide()
 	landing_art_overlay.show()
@@ -3886,8 +4056,29 @@ func _dismiss_skill_ready_discovery() -> void:
 		_session.resume_clock(Time.get_ticks_msec())
 	_three_roll_onboarding_clock_paused = false
 	_refresh_ui()
+	_show_operation_message("画面下の「スキル READY」から出目を選ぶ", 2.8, 30)
+	_pulse_skill_ready_button()
 	die_button.grab_focus()
 	_save_stable_checkpoint()
+
+
+func _pulse_skill_ready_button() -> void:
+	if not is_instance_valid(skill_tool_button):
+		return
+	if is_instance_valid(_skill_ready_button_pulse_tween):
+		_skill_ready_button_pulse_tween.kill()
+	skill_tool_button.self_modulate = Color("#fff0a0")
+	var tween := create_tween()
+	_skill_ready_button_pulse_tween = tween
+	tween.set_loops(3)
+	tween.tween_property(skill_tool_button, "self_modulate", Color.WHITE, 0.26)
+	tween.tween_interval(0.10)
+	tween.tween_property(skill_tool_button, "self_modulate", Color("#fff0a0"), 0.26)
+	tween.finished.connect(func() -> void:
+		if is_instance_valid(skill_tool_button):
+			skill_tool_button.self_modulate = Color.WHITE
+		_skill_ready_button_pulse_tween = null
+	)
 
 
 func _dismiss_three_roll_onboarding() -> void:
@@ -4065,14 +4256,11 @@ func _configure_boss_finish_copy(result: Dictionary, victory: bool) -> void:
 	boss_result_label.text = V06LocalizationScript.text(&"VICTORY_TITLE") if victory else V06LocalizationScript.text(&"DEFEAT_TITLE")
 	boss_finish_score_label.text = "旅したマス  %s" % _format_score(int(_session.score()))
 	var missions: Dictionary = _session.mission_state()
-	var completed := 0
-	for key: String in ["no_damage_completed", "coin_completed", "role_completed"]:
-		if bool(missions.get(key, false)):
-			completed += 1
-	if completed >= 3:
-		boss_finish_mission_label.text = V06LocalizationScript.text(&"VICTORY_ALL_MISSIONS")
+	var active_mission: Dictionary = missions.get("active_mission", {})
+	if bool(active_mission.get("completed", false)):
+		boss_finish_mission_label.text = "MISSION CLEAR　報酬 COIN +%d" % int(active_mission.get("reward_coins", 0))
 	else:
-		boss_finish_mission_label.text = V06LocalizationScript.text(&"VICTORY_MISSIONS") % [completed, 3]
+		boss_finish_mission_label.text = "MISSION　%s　%d/%d" % [str(active_mission.get("short_text", "未達成")), int(active_mission.get("progress", 0)), maxi(int(active_mission.get("target", 1)), 1)]
 	boss_finish_summary_label.text = _boss_finish_summary(result)
 	_refresh_heart_roulette_copy(victory)
 

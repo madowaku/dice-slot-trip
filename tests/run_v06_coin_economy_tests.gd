@@ -7,6 +7,7 @@ var failures := 0
 
 
 func _init() -> void:
+	_test_coin_catalog_copy()
 	_test_wallet_actions_and_mission_progress()
 	_test_rest_boost()
 	_test_free_shortcut()
@@ -19,6 +20,20 @@ func _init() -> void:
 	_test_loop_return_risk_is_safe()
 	print("V06_COIN_ECONOMY_TESTS failures=%d" % failures)
 	quit(1 if failures > 0 else 0)
+
+
+func _test_coin_catalog_copy() -> void:
+	var catalog: Array = Session.new().coin_action_catalog()
+	_expect(catalog.size() == 5, "coin shop keeps exactly five existing actions")
+	_expect([catalog[0].id, catalog[1].id, catalog[2].id, catalog[3].id, catalog[4].id] == ["risk_insurance", "rest_boost", "boss_shield", "boss_head_start", "boss_sabotage"], "coin shop keeps stable action IDs")
+	_expect([catalog[0].cost, catalog[1].cost, catalog[2].cost, catalog[3].cost, catalog[4].cost] == [2, 2, 3, 4, 5], "coin shop keeps existing prices")
+	_expect(catalog[0].category == "旅の道具" and catalog[1].category == "旅の道具" and catalog[2].category == "ボスの準備" and catalog[4].category == "ボスの準備", "coin shop labels travel and boss categories")
+	_expect(catalog[0].description == "次のRISKを1回防ぐ" and catalog[1].description == "次のREST回復を強化する", "travel tools use natural Japanese effects")
+	_expect(catalog[2].description == "次のボス移動を1回半分にする" and catalog[3].description == "次のボス戦を有利に始める" and catalog[4].description == "次のボス移動を1回止める", "boss preparation uses natural Japanese effects")
+	var all_explain_timing_and_use := true
+	for entry: Dictionary in catalog:
+		all_explain_timing_and_use = all_explain_timing_and_use and not str(entry.get("timing", "")).is_empty() and not str(entry.get("use_rule", "")).is_empty() and bool(entry.get("one_use", false))
+	_expect(all_explain_timing_and_use, "every coin action explains timing and one-use behavior")
 
 
 func _test_wallet_actions_and_mission_progress() -> void:
@@ -86,6 +101,7 @@ func _test_emergency_revive() -> void:
 
 func _test_coin_cashout() -> void:
 	var session := _ready_session(8)
+	session.call("_set_active_mission_for_test", "cairo_face")
 	var score_before: int = session.score()
 	_expect(session.enter_boss(100), "cashout fixture enters boss")
 	for face: int in [6, 6, 6]:

@@ -125,7 +125,7 @@ func _test_stable_slot_sizes_and_states() -> void:
 	_roll_and_finish(ready_skill, 1)
 	ready_skill.acknowledge_resolution()
 	var ready_skill_save: Dictionary = manager.save_session(ready_skill)
-	_expect(ready_skill_save.ok and ready_skill_save.data.session_state.player.skill_state == "READY" and ready_skill_save.data.session_state.player.skill_gauge == 3, "READY skill state survives a stable checkpoint")
+	_expect(ready_skill_save.ok and ready_skill_save.data.session_state.player.skill_state == "CHARGING" and ready_skill_save.data.session_state.player.skill_gauge == 0 and ready_skill_save.data.session_state.player.coins >= 5, "SLOT coin reward state survives a stable checkpoint")
 
 	var boss: RefCounted = Session.new()
 	_expect(boss.enter_boss(0), "boss-ready state is enterable for save testing")

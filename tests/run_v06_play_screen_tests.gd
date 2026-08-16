@@ -63,6 +63,7 @@ func _run() -> void:
 			(qa_screen.get_node("%AtlasView") as Control).set_kind_preview_override(PackedStringArray(["NORMAL", "COIN", "REST", "RISK", "ITEM", "EVENT"]))
 		match OS.get_environment("DICE_QA_V06_UTILITY_CAPTURE"):
 			"item": qa_screen.call("_on_item_tool_pressed")
+			"coin": qa_screen.call("_on_coin_tool_pressed")
 			"skill": qa_screen.call("_on_skill_tool_pressed")
 		if OS.get_environment("DICE_QA_V06_MAP_CAPTURE") == "1":
 			qa_screen.call("_on_map_pressed")
@@ -152,7 +153,7 @@ func _test_dice_roll_pacing_contract() -> void:
 	var normal_face_seconds := DiceScript.ROLL_FACE_STEP_SECONDS / ScreenScript.NORMAL_DICE_ROLL_SPEED_SCALE
 	var boss_face_seconds := DiceScript.ROLL_FACE_STEP_SECONDS / ScreenScript.BOSS_DICE_ROLL_SPEED_SCALE
 	_expect(normal_elapsed < elapsed and boss_elapsed > elapsed, "normal dice turns slightly slower while the boss-race die turns slightly faster")
-	_expect(normal_face_seconds > DiceScript.ROLL_FACE_STEP_SECONDS and boss_face_seconds < DiceScript.ROLL_FACE_STEP_SECONDS and normal_face_seconds < 0.14 and boss_face_seconds > 0.10, "both dice pace changes stay subtle and readable")
+	_expect(normal_face_seconds > DiceScript.ROLL_FACE_STEP_SECONDS and boss_face_seconds < DiceScript.ROLL_FACE_STEP_SECONDS and normal_face_seconds < 0.14 and boss_face_seconds > 0.10 and ScreenScript.BOSS_DICE_ROLL_SPEED_SCALE >= 1.16, "both dice pace changes stay subtle and readable while lap-one boss speed stays brisk")
 	_expect(boss_lap_three_elapsed > boss_elapsed and ScreenScript.boss_dice_speed_scale_for_lap(99) == ScreenScript.BOSS_DICE_MAX_SPEED_SCALE, "boss die accelerates a little each lap and stops at its readability cap")
 	var close_roulette_step: float = ScreenScript.heart_roulette_step_seconds_for_margin(1)
 	var wide_roulette_step: float = ScreenScript.heart_roulette_step_seconds_for_margin(10)
@@ -177,7 +178,7 @@ func _test_hud_copy_contract(screen: Control) -> void:
 	_expect(screen.call("_open_three_roll_onboarding_if_eligible"), "untouched journey opens the three-roll onboarding")
 	_expect(bool(screen.get("_three_roll_onboarding_open")) and landing_art.texture.resource_path.ends_with("slot-tray-luxury-v1.png"), "onboarding uses the shared overlay and luxury slot tray art")
 	var onboarding_copy := (screen.get_node("%LandingArtCaption") as Label).text
-	_expect((screen.get_node("%LandingArtTitle") as Label).text == "振って止めて、3投で役をつくる" and onboarding_copy.contains("1マス = 1ポイント") and onboarding_copy.contains("PAIR：同じ数字が2つ → SKILL +1") and onboarding_copy.contains("STRAIGHT：連続した3つ → SKILL +2") and onboarding_copy.contains("TRIPLE：同じ数字が3つ → SKILL READY") and onboarding_copy.contains("MIX：そのほか → COIN +1") and onboarding_copy.contains("盾・加速・必殺") and landing_prompt.text == "わかった！ 旅を始める", "onboarding explains distance scoring and every slot effect on both maps and boss races")
+	_expect((screen.get_node("%LandingArtTitle") as Label).text == "振って止めて、3投で役をつくる" and onboarding_copy.contains("1マス = 1ポイント") and onboarding_copy.contains("PAIR：同じ数字が2つ → TRIP COIN +1") and onboarding_copy.contains("STRAIGHT：連続した3つ → TRIP COIN +3") and onboarding_copy.contains("TRIPLE：同じ数字が3つ → TRIP COIN +5") and onboarding_copy.contains("MIX：そのほか → 報酬なし") and onboarding_copy.contains("満タンREST：SKILL +1") and onboarding_copy.contains("盾・加速・必殺") and landing_prompt.text == "わかった！ 旅を始める", "onboarding explains distance scoring, coin role rewards, and the REST skill charge")
 	var elapsed_before: int = int(onboarding_session.elapsed_ms(Time.get_ticks_msec()))
 	screen.call("_on_landing_art_gui_input", InputEventMouseButton.new())
 	screen.call("_request_back")
@@ -185,11 +186,67 @@ func _test_hud_copy_contract(screen: Control) -> void:
 	_expect(bool(screen.get("_three_roll_onboarding_open")) and not bool(screen.get("_rolling")) and onboarding_session.elapsed_ms(Time.get_ticks_msec()) == elapsed_before, "background, back, and die input neither dismiss nor leak through the onboarding")
 	landing_prompt.pressed.emit()
 	_expect(not bool(screen.get("_three_roll_onboarding_open")) and onboarding_session.has_seen_three_roll_onboarding() and not screen.call("_open_three_roll_onboarding_if_eligible"), "only the CTA dismisses and the seen journey does not reopen")
+	session.call("_set_active_mission_for_test", "cairo_face")
 	var reach_values: Array[int] = [2, 3]
 	var normal_reach: Dictionary = screen.call("_normal_slot_reach", reach_values)
 	screen.call("_show_slot_reach_cue", normal_reach)
 	await process_frame
-	_expect(message.visible and message.text.contains("STRAIGHTリーチ！") and message.get_theme_font_size("font_size") >= 27 and not message.get_global_rect().intersects((screen.get_node("%TrayPanel") as Control).get_global_rect()), "normal-map reach copy uses the existing message band between map and slot frame")
+	var insurance_values: Array[int] = [4, 5]
+	var insurance_reach: Dictionary = screen.call("_normal_slot_reach", insurance_values)
+	_expect(message.visible and message.text.contains("STRAIGHT") and message.get_theme_font_size("font_size") >= 26 and message.text.split("\n").size() <= 2 and not message.get_global_rect().intersects((screen.get_node("%TrayPanel") as Control).get_global_rect()), "normal-map reach copy uses the enlarged message band with target and coin reward")
+	_expect(insurance_reach.mission_overlap and insurance_reach.rows.size() == 2 and insurance_reach.rows[0] == "SLOT 6 → STRAIGHT　COIN +3" and insurance_reach.rows[1] == "MISSION 4 → PAIR　COIN +1" and not insurance_reach.hint.contains("おすすめ") and not insurance_reach.hint.contains("best"), "straight reach keeps useful mission insurance as two neutral value-bearing rows")
+	session.call("_set_active_mission_for_test", "cairo_face6")
+	_set_session_main(session, 1, [2, 3])
+	var case_c_face := int((session.mission_state().get("active_mission", {}) as Dictionary).get("target_face", 0))
+	var case_c: Dictionary = {}
+	for pair in [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6]]:
+		var pair_values: Array[int] = []
+		pair_values.append(int(pair[0]))
+		pair_values.append(int(pair[1]))
+		var candidate_case: Dictionary = screen.call("_normal_slot_reach", pair_values)
+		if candidate_case.rows.size() == 2 and str(candidate_case.rows[1]).begins_with("DICE %d → MISSION " % case_c_face):
+			case_c = candidate_case
+			break
+	_expect(case_c.size() > 0 and case_c.rows[1].contains("/"), "case C shows a neutral mission progress row even when its face is not a SLOT candidate")
+	var exact_face := int((session.mission_state().get("active_mission", {}) as Dictionary).get("target_face", 1))
+	var exact_values: Array[int] = []
+	exact_values.append(exact_face)
+	exact_values.append(exact_face)
+	var exact_reach: Dictionary = screen.call("_normal_slot_reach", exact_values)
+	_expect(exact_reach.rows.size() == 1 and exact_reach.rows[0].contains("MISSION %d → ダブルチャンス　TRIPLE　COIN +5" % exact_face) and exact_reach.mission_overlap, "exact mission and SLOT overlap collapses into one stronger double-chance row")
+	var all_match := {}
+	for tile_index: int in range(90):
+		_set_session_main(session, tile_index, [exact_face, exact_face])
+		var previews: Array[Dictionary] = session.preview_forward_landings()
+		for preview: Dictionary in previews:
+			if int(preview.get("distance", 0)) == exact_face and str(preview.get("raw_tile_kind", "")) in ["COIN", "RISK", "ITEM"]:
+				var all_match_values: Array[int] = []
+				all_match_values.append(exact_face)
+				all_match_values.append(exact_face)
+				all_match = screen.call("_normal_slot_reach", all_match_values)
+				break
+		if not all_match.is_empty():
+			break
+	_expect(not all_match.is_empty() and all_match.rows.size() == 1 and str(all_match.rows[0]).contains("ALL MATCH") and str(all_match.rows[0]).contains("COIN +5"), "dice target plus matching SLOT and previewed special MAP collapses to one ALL MATCH row with the exact SLOT reward")
+	session.call("_set_active_mission_for_test", "cairo_coin3")
+	var map_merge := {}
+	for tile_index: int in range(90):
+		_set_session_main(session, tile_index, [1, 2])
+		var map_values: Array[int] = []
+		map_values.append(1)
+		map_values.append(2)
+		var map_reach: Dictionary = screen.call("_normal_slot_reach", map_values)
+		if map_reach.rows.size() == 2 and str(map_reach.rows[1]).contains("MISSION"):
+			map_merge = map_reach
+			break
+	_expect(not map_merge.is_empty() and map_merge.rows.size() == 2 and not str(map_merge.hint).contains("おすすめ"), "previewed MAP mission merges with SLOT as two neutral rows")
+	session.call("_set_active_mission_for_test", "cairo_role")
+	_set_session_main(session, 1, [2, 4])
+	var quiet_values: Array[int] = []
+	quiet_values.append(2)
+	quiet_values.append(4)
+	var quiet_reach: Dictionary = screen.call("_normal_slot_reach", quiet_values)
+	_expect(quiet_reach.is_empty(), "ordinary no-value turn stays quiet")
 	screen.set("_slot_reach_message_active", false)
 	screen.call("_refresh_ui")
 	screen.call("_show_low_hp_warning", -1)
@@ -294,14 +351,14 @@ func _test_layout_and_touch(screen: Control) -> void:
 		touch_ok = touch_ok and button.custom_minimum_size.y >= UiTokensScript.TOUCH_MIN
 	_expect(touch_ok, "every screen and overlay button meets the touch minimum")
 	var atlas := screen.get_node("%AtlasView") as Control
-	_expect(atlas.custom_minimum_size.y >= 470.0 and atlas.size.y >= 470.0, "compact profile preserves at least 470px of actual and minimum atlas height")
+	_expect(atlas.custom_minimum_size.y >= 450.0 and atlas.size.y >= 450.0, "compact profile preserves at least 450px of actual and minimum atlas height")
 	var message_band := screen.get_node("%MessageBand") as Control
 	var tray_panel := screen.get_node("%TrayPanel") as Control
 	var hud_panel := screen.get_node("%HudPanel") as Control
 	var stage_band := screen.get_node("%StageBand") as Control
 	var mission_band := screen.get_node("%MissionBand") as Control
 	_expect(hud_panel.get_global_rect().end.y <= stage_band.get_global_rect().position.y + 1.0 and stage_band.get_global_rect().end.y <= mission_band.get_global_rect().position.y + 1.0 and mission_band.get_global_rect().end.y <= atlas.get_global_rect().position.y + 1.0, "HUD rows remain ordered without overlap above the unchanged atlas")
-	_expect(is_equal_approx(message_band.custom_minimum_size.y, 62.0) and (page as VBoxContainer).get_theme_constant("separation") == 0, "compact 16:9 profile uses zero decorative gaps and the approved 62px operation band")
+	_expect(is_equal_approx(message_band.custom_minimum_size.y, 72.0) and (page as VBoxContainer).get_theme_constant("separation") == 0, "compact 16:9 profile uses zero decorative gaps and the enlarged 72px operation band")
 	var primary_buttons_ok := true
 	for button_path: String in ["%DieButton", "%ItemToolButton", "%SkillToolButton", "%BackButton"]:
 		var primary_button := screen.get_node(button_path) as Button
@@ -315,7 +372,7 @@ func _test_layout_and_touch(screen: Control) -> void:
 	var tray := screen.get_node("%TrayPanel") as Control
 	var atlas_rect := atlas.get_global_rect()
 	var die_rect := map_die.get_global_rect()
-	var safe_rect := Rect2(atlas_rect.position + Vector2(atlas_rect.size.x * 0.32, atlas_rect.size.y * 0.62), Vector2(atlas_rect.size.x * 0.36, atlas_rect.size.y * 0.36))
+	var safe_rect := Rect2(atlas_rect.position + Vector2(atlas_rect.size.x * 0.32, atlas_rect.size.y * 0.60), Vector2(atlas_rect.size.x * 0.36, atlas_rect.size.y * 0.40))
 	map_die.scale = Vector2.ONE * 1.08
 	var rolling_die_rect := map_die.get_global_rect()
 	map_die.scale = Vector2.ONE
@@ -347,6 +404,14 @@ func _test_utility_cards(screen: Control) -> void:
 	screen.call("_show_operation_message", "UTILITY DIRECT MESSAGE", 0.0, 26)
 	_expect(message_label.text == "UTILITY DIRECT MESSAGE" and not message_band.visible and not message_label.visible, "direct operation messages update their state but remain hidden behind an open utility")
 	screen.call("_on_utility_closed")
+	screen.call("_on_coin_tool_pressed")
+	var coin_detail := screen.get_node("%UtilityDetail") as Label
+	var coin_page := screen.get_node("%UtilityPageLabel") as Label
+	var coin_action := screen.get_node("%UtilityActionButton") as Button
+	_expect(overlay.visible and (screen.get_node("%UtilityTitle") as Label).text == "コインショップ" and coin_detail.text.contains("旅の道具｜RISKガード") and coin_detail.text.contains("次のRISKを1回防ぐ") and coin_detail.text.contains("通常マップで有効") and coin_detail.text.contains("所持TRIP COIN：0") and coin_detail.text.contains("価格：2") and coin_detail.text.contains("状態：コイン不足"), "COIN button opens a natural-language shop card with category, timing, balance, price, and state")
+	_expect(coin_page.text.begins_with("旅の道具") and coin_action.text == "コインが足りません" and coin_action.disabled, "coin shop page and disabled purchase action explain the current category and shortage")
+	_expect((screen.get_node("%UtilityPanel") as Control).get_global_rect().encloses(coin_detail.get_global_rect()) and coin_detail.get_line_count() <= 8, "coin shop copy stays inside the existing compact card without layout restructuring")
+	screen.call("_on_utility_closed")
 	screen.call("_on_skill_tool_pressed")
 	var face_grid := screen.get_node("%PinpointFaceRow") as GridContainer
 	var face_buttons: Array[Node] = face_grid.get_children()
@@ -365,9 +430,9 @@ func _test_utility_cards(screen: Control) -> void:
 	ready_state.player.skill_state = "READY"
 	_expect(session.restore_stable_snapshot(ready_state, 0), "skill discovery fixture restores READY")
 	screen.call("_show_skill_ready_discovery_if_eligible", -1)
-	_expect(overlay.visible == false and (screen.get_node("%LandingArtOverlay") as Control).visible and (screen.get_node("%LandingArtTitle") as Label).text == "SKILL READY!" and (screen.get_node("%LandingArtCaption") as Label).text == "次のサイコロの 出目を選べる！" and not session.has_seen_skill_ready_discovery(), "first READY discovery uses pinpoint art and remains unseen before its CTA")
+	_expect(overlay.visible == false and (screen.get_node("%LandingArtOverlay") as Control).visible and (screen.get_node("%LandingArtTitle") as Label).text == "SKILL READY!" and (screen.get_node("%LandingArtCaption") as Label).text.contains("画面下の「スキル READY」から使えます") and (screen.get_node("%LandingArtPrompt") as Button).text.contains("下のスキル READY") and not session.has_seen_skill_ready_discovery(), "first READY discovery explains that the skill is used from the bottom READY button")
 	screen.call("_on_landing_art_prompt_pressed")
-	_expect(session.has_seen_skill_ready_discovery() and not (screen.get_node("%LandingArtOverlay") as Control).visible, "skill discovery CTA alone marks durable seen state and closes the overlay")
+	_expect(session.has_seen_skill_ready_discovery() and not (screen.get_node("%LandingArtOverlay") as Control).visible and (screen.get_node("%MessageLabel") as Label).text.contains("画面下の「スキル READY」") and (screen.get_node("%SkillToolButton") as Button).self_modulate != Color.WHITE, "skill discovery CTA closes the overlay, points to the bottom READY button, and pulses it")
 
 
 func _test_atlas_contract(screen: Control) -> void:
@@ -564,9 +629,9 @@ func _test_inline_slot_result_flow(screen: Control) -> void:
 	await create_timer(0.20).timeout
 	_expect(session.phase() == SessionScript.PHASE_MOVING and session.pending_resolution_role() == &"MIX", "third stopped face resolves MIX before cat movement")
 	_expect(session.position() == position_before and session.visual_position() == position_before, "cat and logical route remain still during inline slot result")
-	_expect((typed_screen.get_node("%RoleLabel") as Label).text == "MIX！" and (typed_screen.get_node("%RoleRewardLabel") as Label).visible and (typed_screen.get_node("%RoleRewardLabel") as Label).text == "COIN +1", "slot panel presents the exact role effect without a modal")
+	_expect((typed_screen.get_node("%RoleLabel") as Label).text == "MIX！" and (typed_screen.get_node("%RoleRewardLabel") as Label).visible and (typed_screen.get_node("%RoleRewardLabel") as Label).text == "報酬なし", "slot panel presents the no-reward MIX result without a modal")
 	_expect(not (typed_screen.get_node("%TrayStatusLabel") as Label).visible, "inline result keeps the slot header hidden")
-	_expect(not (typed_screen.get_node("%ResolutionOverlay") as Control).visible and session.score() == 5 and session.coins() == 1, "MIX coin is awarded while score remains travelled distance and the modal stays hidden")
+	_expect(not (typed_screen.get_node("%ResolutionOverlay") as Control).visible and session.score() == 5 and session.coins() == 0, "MIX has no normal role reward while score remains travelled distance and the modal stays hidden")
 	var victory_lap_result := str(typed_screen.call("_score_result_text", true))
 	var defeat_lap_result := str(typed_screen.call("_score_result_text", false))
 	_expect(session.score() > 0 and session.best_score() == 0 and victory_lap_result.contains("スフィンクスに勝利！") and victory_lap_result.contains("この旅 5マス") and victory_lap_result.contains("合計 5マス") and victory_lap_result.contains("BEST 0マス") and not victory_lap_result.contains("自己ベスト更新！"), "victory result explains the travelled-space total without a premature BEST claim")
@@ -575,10 +640,10 @@ func _test_inline_slot_result_flow(screen: Control) -> void:
 	var pair_spec: Dictionary = typed_screen.inline_slot_result_spec("PAIR", [4, 1, 4])
 	var straight_spec: Dictionary = typed_screen.inline_slot_result_spec("STRAIGHT", [2, 3, 4])
 	var triple_spec: Dictionary = typed_screen.inline_slot_result_spec("TRIPLE", [6, 6, 6])
-	_expect(mix_spec.effect == "soft_flash" and mix_spec.reward == "COIN +1", "MIX uses the quiet all-slot flash and exact coin reward")
-	_expect(pair_spec.effect == "pair_link" and pair_spec.indices == [0, 2] and pair_spec.reward == "SKILL +1", "PAIR connects only the matching slots and shows its exact effect")
-	_expect(straight_spec.effect == "left_to_right" and straight_spec.reward == "SKILL +2", "STRAIGHT flows from left to right and shows its exact effect")
-	_expect(triple_spec.effect == "strong_flash" and triple_spec.reward.contains("READY"), "TRIPLE strengthens the flash without extending its duration")
+	_expect(mix_spec.effect == "soft_flash" and mix_spec.reward == "報酬なし", "MIX uses the quiet all-slot flash and makes its no-reward result explicit")
+	_expect(pair_spec.effect == "pair_link" and pair_spec.indices == [0, 2] and pair_spec.reward == "COIN +1", "PAIR connects only the matching slots and shows its coin reward")
+	_expect(straight_spec.effect == "left_to_right" and straight_spec.reward == "COIN +3", "STRAIGHT flows from left to right and shows its coin reward")
+	_expect(triple_spec.effect == "strong_flash" and triple_spec.reward == "COIN +5", "TRIPLE strengthens the flash and shows its coin reward")
 	_expect(is_equal_approx(float(mix_spec.duration), float(pair_spec.duration)) and is_equal_approx(float(pair_spec.duration), float(straight_spec.duration)) and is_equal_approx(float(straight_spec.duration), float(triple_spec.duration)), "all four roles keep the same short result duration")
 	await create_timer(3.4).timeout
 	_expect(session.phase() == SessionScript.PHASE_READY and session.faces().is_empty() and session.position() != position_before, "inline result auto-acknowledges after movement and accepts the next roll")
@@ -672,7 +737,7 @@ func _test_qa_state(screen: Control) -> void:
 	_expect((screen.get_node("%LapLabel") as Label).visible and (screen.get_node("%LapLabel") as Label).text == "4" and not (screen.get_node("%LapLabel") as Label).text.contains("/"), "QA lap 4 renders as the unbounded value-only integer")
 	_expect(not (screen.get_node("%PBLabel") as Label).visible, "QA normal-travel HUD keeps PB hidden")
 	_expect((screen.get_node("%HPLabel") as Label).text == "♥♥♡", "QA HUD shows two of three HP")
-	_expect(snapshot.score == 17 and snapshot.coins == 0 and int(snapshot.score_breakdown.travel) == 17, "QA route scores exactly its seventeen travelled spaces while coin stays separate")
+	_expect(snapshot.score == 17 and snapshot.coins == 1 and int(snapshot.score_breakdown.travel) == 17, "QA PAIR coin remains separate from travel score")
 	_expect((screen.get_node("%ProgressLabel") as Label).text == "18/90", "QA HUD shows data-driven 18/90")
 	_expect((screen.get_node("%Slot0") as Label).text == "6" and (screen.get_node("%Slot1") as Label).text == "6" and (screen.get_node("%Slot2") as Label).text == "—", "QA tray shows [6][6][_]")
 	_expect((screen.get_node("%DieButton") as Button).text == "振る" and not (screen.get_node("%DieButton") as Button).disabled, "QA tray has exactly one ready roll action")

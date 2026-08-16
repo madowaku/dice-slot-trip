@@ -1,0 +1,201 @@
+# Goal Maker v2 state.yaml
+# Board truth lives here. goal.md is the editable charter; notes/ holds long receipts only.
+
+version: 2
+
+goal:
+  title: "DICE SLOT TRIP Cairo Core Game Improvements"
+  slug: "dice-slot-trip-cairo-core-game"
+  kind: specific
+  tranche: "Run four parallel read-only audits, integrate the Phase 1 specification, implement and verify the first coin-screen improvement slice."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Collect four parallel Luna audits for current code, mobile UI/UX, coin economy, and regression/test risks."
+    inputs:
+      - "Cairo implementation and tests"
+      - "C:\\Users\\hiro\\Desktop\\コイン画面UIワイヤー案v1.0.md"
+      - "User-proposed MISSION/SLOT/SKILL/TRIP COIN/CASINO CHIP/BOSS rules"
+    constraints:
+      - "Read-only; do not edit files."
+      - "Use concrete file, symbol, and test evidence."
+      - "Avoid overlapping the four audit lanes."
+    expected_output:
+      - "A: current implementation map"
+      - "B: 360x640 UI/UX diagnosis"
+      - "C: quantitative coin economy estimate"
+      - "D: regression risks and test design"
+    receipt:
+      result: done
+      note: "notes/T001-luna-audit.md"
+      summary: "Four Luna lanes mapped the active Cairo runtime, 360x640 comprehension failures, 90-space coin economy, and save/regression risks."
+      evidence:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "data/stages/v06_cairo_course.json"
+        - "tests/run_v06_coin_economy_tests.gd"
+        - "tests/run_v06_save_tests.gd"
+  - id: T002
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "Sol integrates Luna findings into the requested nine-part Phase 1 decision report and drafts an exact candidate specification."
+    inputs:
+      - "T001 receipt and audit notes"
+    constraints:
+      - "Separate observed current behavior from recommendations."
+      - "Do not implement yet."
+      - "Call out uncertainty in economy estimates."
+    expected_output:
+      - "現行仕様"
+      - "発見した問題"
+      - "採用する新仕様"
+      - "採用しない案"
+      - "COIN経済の推奨数値"
+      - "UI変更案"
+      - "セーブ互換方針"
+      - "実装順"
+      - "テスト項目"
+    receipt:
+      result: done
+      note: "notes/T002-phase1-decision.md"
+      summary: "Sol resolved the active Cairo source of truth, adopted one random mission per lap, replacement slot rewards 1/2/3, REST-based skill charge, 5:1 CHIP cashout, and a Cairo-first coin UI sequence."
+      evidence:
+        - "notes/T001-luna-audit.md"
+        - "C:\\Users\\hiro\\Desktop\\コイン画面UIワイヤー案v1.0.md"
+  - id: T003
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Challenge the integrated specification and select the first safe coin-screen implementation slice."
+    inputs:
+      - "T002 receipt"
+      - "Attached coin-screen wire specification"
+    constraints:
+      - "Do not implement."
+      - "Prefer a small reviewable slice with strong verification."
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Deferred changes"
+    receipt:
+      result: done
+      decision: "Approve a bounded Cairo V06 coin-UI copy/state slice; defer layout restructuring and all economy, mission, REST, SAVE, and CHIP behavior changes."
+      next_allowed_task: T004
+      evidence:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_coin_economy_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Update the existing Cairo V06 coin utility so all five actions show natural Japanese effect text, category, timing, one-use semantics, owned coins, price, and explicit state while preserving all purchase behavior."
+    allowed_files:
+      - "scripts/game/v06_play_session.gd"
+      - "scripts/app/v06_play_screen.gd"
+      - "tests/run_v06_coin_economy_tests.gd"
+      - "tests/run_v06_play_screen_tests.gd"
+    verify:
+      - "git diff --check -- scripts/game/v06_play_session.gd scripts/app/v06_play_screen.gd tests/run_v06_coin_economy_tests.gd tests/run_v06_play_screen_tests.gd"
+      - "Godot run_v06_coin_economy_tests.gd"
+      - "Godot run_v06_play_session_tests.gd"
+      - "Godot run_v06_play_screen_tests.gd with no new failure beyond baseline"
+      - "360x640 compact layout contract"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Scene/layout restructuring is required to fit the copy."
+      - "Any economy, mission, SAVE, boss, phase, price, flag, or purchase behavior must change."
+      - "Verification introduces a new failure or changes the known baseline red."
+      - "Wording or effect timing is ambiguous."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/v06_play_session.gd"
+        - "scripts/app/v06_play_screen.gd"
+        - "tests/run_v06_coin_economy_tests.gd"
+        - "tests/run_v06_play_screen_tests.gd"
+      commands:
+        - cmd: "git diff --check on four allowed files"
+          status: pass
+        - cmd: "Godot 4.7 headless editor parse"
+          status: pass
+        - cmd: "tests/run_v06_coin_economy_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_play_session_tests.gd"
+          status: "pass; failures=0"
+        - cmd: "tests/run_v06_play_screen_tests.gd"
+          status: "new coin UI and compact layout assertions pass; one pre-existing QA route-score failure remains"
+        - cmd: "headless coin shop image capture"
+          status: "blocked by known render wait; process terminated without output artifact"
+      summary: "Cairo's existing one-card coin utility now explains all five products in natural Japanese with category, timing, one-use behavior, TRIP COIN balance, price, state, and actionable button copy without changing purchase semantics or layout files."
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit whether the implemented slice satisfies this tranche and the user-requested Phase 1 direction."
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "Reject completion if required Worker work is still queued or active."
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt:
+      result: complete
+      decision: complete
+      summary: "The approved Cairo V06 coin-UI copy/state slice is complete and the tranche may close."
+      evidence:
+        - "T004 changed exactly its four allowed files."
+        - "All five products expose natural Japanese effect, category, timing, one-use rule, price, balance, and state."
+        - "No scene, economy, mission, SAVE, boss, price, phase, flag, or purchase behavior changed."
+        - "diff-check and editor parse pass; coin economy and play-session failures=0."
+        - "New coin UI and compact-layout assertions pass; the single documented QA route-score baseline failure remains."
+      missing_evidence:
+        - "No rendered 360x640 screenshot because headless capture hung; compact layout contract passed."
+      next_task: "Start a separate tranche for two-tab layout, MISSION/economy changes, REST/SKILL, CHIP cashout, or screenshot-capture recovery."
+
+checks:
+  dirty_fingerprint: "coin-ui-copy-state-slice plus goal board"
+  last_verification:
+    result: pass_with_known_baseline_failure
+    task: T004
+    commands:
+      - "diff-check: pass"
+      - "editor parse: pass"
+      - "coin economy: failures=0"
+      - "play session: failures=0"
+      - "play screen: one unchanged baseline failure; new assertions pass"
