@@ -98,6 +98,11 @@ const KIND_BOSS := Color("#b78a36")
 const CURRENT_RING_COLOR := Color("#f8d48c")
 const CURRENT_RING_ACCENT := Color("#2f9090")
 const CURRENT_RING_WIDTH := 3.4
+const BOSS_BADGE_WINE := Color("#341b24")
+const BOSS_BADGE_WINE_LIGHT := Color("#6d2d3a")
+const BOSS_BADGE_GOLD := Color("#f7d36c")
+const BOSS_BADGE_GOLD_LIGHT := Color("#fff0b0")
+const BOSS_BADGE_RED := Color("#be4c48")
 
 var _course: RefCounted
 var _definition: Dictionary = {}
@@ -1635,13 +1640,14 @@ func _draw_card_tile(route_position: Dictionary, center: Vector2, is_current: bo
 	var route_id := str(route_position.get("route_id", ""))
 	var tile_index := int(route_position.get("tile_index", 0))
 	var kind := displayed_tile_kind_for(route_id, tile_index)
+	var is_boss := kind == "BOSS_GATE"
 	var spec := tile_visual_spec(kind)
 	var fill: Color = spec.base_color
 	if kind == "NORMAL":
 		fill = Color("#f0dfbb")
 	elif kind == "RISK":
 		fill = Color("#f2c4aa")
-	elif kind == "BOSS_GATE":
+	elif is_boss:
 		fill = Color("#f4d788")
 	if is_current:
 		fill = Color("#3b8e8e")
@@ -1655,8 +1661,11 @@ func _draw_card_tile(route_position: Dictionary, center: Vector2, is_current: bo
 	draw_string(APP_FONT, card_rect.position + Vector2(0.0, 34.0), step_label, HORIZONTAL_ALIGNMENT_CENTER, card_rect.size.x, label_font_size, number_color)
 	var badge_center := Vector2(card_rect.get_center().x, card_rect.position.y + card_rect.size.y * (0.42 if is_current else 0.49))
 	var badge_radius := minf(card_rect.size.x * 0.34, 29.0)
-	_draw_kind_shape(badge_center, badge_radius, StringName(spec.shape_id), fill.darkened(0.16) if is_current else fill.darkened(0.06), Color("#fff0ca") if is_current else Color("#5c4933"))
-	_draw_kind_icon(badge_center, badge_radius * (0.72 if kind == "RISK" else 0.62), StringName(spec.icon_id), Color("#fff0ca") if is_current else Color("#51402e"))
+	if is_boss:
+		_draw_boss_emblem(badge_center, minf(badge_radius * 1.18, card_size.x * 0.40), true)
+	else:
+		_draw_kind_shape(badge_center, badge_radius, StringName(spec.shape_id), fill.darkened(0.16) if is_current else fill.darkened(0.06), Color("#fff0ca") if is_current else Color("#5c4933"))
+		_draw_kind_icon(badge_center, badge_radius * (0.72 if kind == "RISK" else 0.62), StringName(spec.icon_id), Color("#fff0ca") if is_current else Color("#51402e"))
 
 
 func _card_kind_hint(kind: String) -> String:
@@ -2078,6 +2087,10 @@ func _kind_short_label(kind: String) -> String:
 
 
 func _draw_tile_kind_badge(center: Vector2, tile_radius: float, kind: String, is_current: bool) -> void:
+	if kind == "BOSS_GATE":
+		var boss_radius := maxf(kind_badge_radius_for_tile(tile_radius) * 1.42, 12.0 if _overview_mode else 28.0)
+		_draw_boss_emblem(center, boss_radius, false)
+		return
 	var spec := tile_visual_spec(kind)
 	var badge_radius := kind_badge_radius_for_tile(tile_radius)
 	var fill: Color = spec.base_color
@@ -2306,11 +2319,51 @@ func _draw_exit_badge(center: Vector2, steps: int) -> void:
 func _draw_boss_gate(center: Vector2) -> void:
 	if center.x < -100.0 or center.x > size.x + 100.0 or center.y < -140.0 or center.y > size.y + 100.0:
 		return
-	var gate_scale := 0.48 if not _overview_mode else 0.24
+	# The gate is the largest map landmark, while the wine-and-gold crown badge
+	# above it provides a second, language-independent signal that this is the
+	# boss destination rather than an ordinary structural tile.
+	var gate_scale := 0.60 if not _overview_mode else 0.32
 	var gate_size := BOSS_GATE_CELL_SIZE * gate_scale
 	var gate_anchor := BOSS_GATE_ANCHOR * gate_scale
 	var gate_source := Rect2(Vector2(float(boss_gate_cell()) * BOSS_GATE_CELL_SIZE.x, 0.0), BOSS_GATE_CELL_SIZE)
+	var badge_center := center - Vector2(0.0, gate_size.y * 1.12)
+	draw_circle(badge_center, gate_size.x * 0.29, Color(0.20, 0.07, 0.08, 0.26))
+	_draw_boss_emblem(badge_center, gate_size.x * 0.19, true)
 	draw_texture_rect_region(GOLD_BOSS_GATE, Rect2(center - gate_anchor, gate_size), gate_source)
+
+
+func _draw_boss_emblem(center: Vector2, radius: float, show_label: bool) -> void:
+	var safe_radius := maxf(radius, 1.0)
+	draw_circle(center, safe_radius * 1.18, Color(0.16, 0.07, 0.08, 0.30))
+	draw_circle(center, safe_radius * 1.08, BOSS_BADGE_WINE)
+	draw_arc(center, safe_radius * 1.08, 0.0, TAU, 40, BOSS_BADGE_GOLD, maxf(1.8, safe_radius * 0.10), true)
+	draw_arc(center, safe_radius * 0.91, 0.0, TAU, 40, BOSS_BADGE_RED, maxf(1.3, safe_radius * 0.06), true)
+	for angle: float in [-PI * 0.5, -PI * 0.25, 0.0, PI * 0.25, PI * 0.5]:
+		var ray_from := center + Vector2(cos(angle), sin(angle)) * safe_radius * 1.18
+		var ray_to := center + Vector2(cos(angle), sin(angle)) * safe_radius * 1.34
+		draw_line(ray_from, ray_to, Color(BOSS_BADGE_GOLD, 0.82), maxf(1.2, safe_radius * 0.08), true)
+	var crown_top := center - Vector2(0.0, safe_radius * 0.56)
+	var crown := PackedVector2Array([
+		crown_top + Vector2(-safe_radius * 0.72, safe_radius * 0.82),
+		crown_top + Vector2(-safe_radius * 0.57, -safe_radius * 0.02),
+		crown_top + Vector2(-safe_radius * 0.12, safe_radius * 0.42),
+		crown_top + Vector2(0.0, -safe_radius * 0.20),
+		crown_top + Vector2(safe_radius * 0.25, safe_radius * 0.38),
+		crown_top + Vector2(safe_radius * 0.70, -safe_radius * 0.08),
+		crown_top + Vector2(safe_radius * 0.57, safe_radius * 0.82),
+	])
+	draw_colored_polygon(crown, BOSS_BADGE_GOLD)
+	var crown_outline := crown.duplicate()
+	crown_outline.append(crown_outline[0])
+	draw_polyline(crown_outline, BOSS_BADGE_GOLD_LIGHT, maxf(1.2, safe_radius * 0.055), true)
+	var band := Rect2(center + Vector2(-safe_radius * 0.72, safe_radius * 0.18), Vector2(safe_radius * 1.44, safe_radius * 0.26))
+	draw_rect(band, BOSS_BADGE_GOLD_LIGHT)
+	draw_rect(band, BOSS_BADGE_WINE_LIGHT, false, maxf(1.0, safe_radius * 0.04))
+	draw_circle(center + Vector2(0.0, -safe_radius * 0.03), safe_radius * 0.13, BOSS_BADGE_RED)
+	draw_circle(center + Vector2(-safe_radius * 0.04, -safe_radius * 0.07), safe_radius * 0.045, BOSS_BADGE_GOLD_LIGHT)
+	if show_label:
+		var font_size := 10 if safe_radius < 22.0 else 13
+		draw_string(APP_FONT, center + Vector2(-safe_radius * 0.80, safe_radius * 1.47), "BOSS", HORIZONTAL_ALIGNMENT_CENTER, safe_radius * 1.60, font_size, BOSS_BADGE_GOLD_LIGHT)
 
 
 func _draw_dashed_segment(from: Vector2, to: Vector2, color: Color, width: float, dash_length: float) -> void:

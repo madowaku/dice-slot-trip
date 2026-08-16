@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "boss_id": "white_fox_seal",
+  "display_name": "碁盤守・白狐",
+  "game_type": "seal_board",
+  "board_size": 5,
+  "max_turns": 12,
+  "coin_reroll_cost": 3,
+  "coin_reroll_limit": 2,
+  "offerings_per_prayer": 2,
+  "max_prayers": 2,
+  "seals": [
+    {"id": "S0", "x": 1, "y": 1, "required": 1},
+    {"id": "S1", "x": 2, "y": 1, "required": 2},
+    {"id": "S2", "x": 3, "y": 1, "required": 3},
+    {"id": "S3", "x": 3, "y": 2, "required": 5},
+    {"id": "S4", "x": 3, "y": 3, "required": 1},
+    {"id": "S5", "x": 2, "y": 3, "required": 2},
+    {"id": "S6", "x": 1, "y": 3, "required": 3},
+    {"id": "S7", "x": 1, "y": 2, "required": 4}
+  ]
+}

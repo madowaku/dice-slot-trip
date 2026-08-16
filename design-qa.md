@@ -43,6 +43,123 @@ final result: passed
 
 ---
 
+# Design QA — Amazon/Kyoto Survival HUD and HP3 Boss Contract
+
+- Amazon normal HUD: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/amazon-kyoto/amazon-survival-hud.png`
+- Amazon RISK state: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/amazon-kyoto/amazon-risk-heart.png`
+- Amazon LIFE revival state: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/amazon-kyoto/amazon-revival-heart.png`
+- Kyoto normal HUD: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/amazon-kyoto/kyoto-survival-hud.png`
+
+The shared Amazon/Kyoto cockpit is readable at 720×1280: the Explorer Cat icon and `復活 ×N` are separated from a three-heart line, while empty hearts remain visible as `♡`. The RISK capture reads `♥♥♡`; the revival capture reads `復活 ×2` with `♥♥♥`. The local map, six-space forecast, antique die, 3-slot tray, round roll button, and four-tool dock remain inside the viewport without overlap.
+
+The stage model tests exercise four consecutive RISK landings for each stage: HP3/LIFE3 → HP2/LIFE3 → HP1/LIFE3 → HP3/LIFE2 → HP2/LIFE2, plus legacy HP6 save clamping. Kyoto's Fox Fire boss view and battle wrapper use the same HP3 cap. Full-health boss victories use `PERFECT! / HP FULL`; wounded victories retain the recovery-only roulette.
+
+Verification: `AMAZON_KYOTO_TESTS passed=true`, `FOX_FIRE_SIX_ROUTES_TESTS failures=0`, `TALL_PHONE_LAYOUT_TESTS failures=0`, `V06_PLAY_SESSION_TESTS failures=0`, `V06_PLAY_SCREEN_TESTS failures=0`, and `DICE_SLOT_TRIP_TESTS failures=0`.
+
+final result: passed
+
+---
+
+# Design QA — Kyoto Boss / 狐火六路陣
+
+- Source visual truth: `C:/Dev/Projects/dice-slot-trip-main-verify/docs/design/fox-fire-six-routes-target-v1.png` (941×1672 ImageGen target)
+- Implementation captures: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-six-routes/kyoto-boss-720x1280-final.png`, `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-six-routes/kyoto-boss-tutorial-720x1280.png`, `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-six-routes/kyoto-boss-input-720x1280-final.png`, and `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-six-routes/kyoto-boss-input-360x640-final.png`
+- Viewport/state: Windows OpenGL compatibility renderer at native 720×1280 and 360×640; READY and PATH_INPUT states.
+- Asset provenance: `C:/Dev/Projects/dice-slot-trip-main-verify/art_source/fox_fire_six_routes/README.md`
+- Slice 6 marker asset: `C:/Dev/Projects/dice-slot-trip-main-verify/assets/art/bosses/kyoto/fox-fire-special-tiles.png`
+- Implementation record: `C:/Dev/Projects/dice-slot-trip-main-verify/docs/design/fox-fire-six-routes-implementation.md`
+
+## Findings
+
+No actionable P0/P1/P2 issues remain for the approved Slice 1–9 contract. The generated Kyoto board keeps the dominant six-by-six playfield, fox guardian, fixed A/B/C/D torii, three-roll slot tray, gold active-route trails, white-fire preview/blockers, and full-width touch targets aligned to the same bilinear board geometry. Lv6 adds restrained Sakura/Bamboo markers and a modal purification choice without changing the board footprint. The compact 360×640 capture preserves the hierarchy without clipping or overlap.
+
+## Required fidelity surfaces and interaction checks
+
+- State machine: INTRO/PRE_BATTLE → ROLL_SLOT → PATH_INPUT → CAT_MOVING → FOX_ACTION → TURN_END, with immediate third-seal victory and no fox action on victory. The three-card tutorial is captured separately and remains a blocking first-entry surface.
+- Touch targets: every board cell uses a 78px design-space rect; the 360×640 capture confirms the logical 720px board remains tappable at half scale.
+- Feedback: roll result, remaining steps, PAIR/TRIPLE role copy, undo/confirm affordances, white-fire preview, MISS, seal banner, fox action, and victory/defeat result overlay are all state-owned.
+- Feedback: roll result, remaining steps, PAIR/TRIPLE role copy, undo/confirm affordances, white-fire preview, MISS, seal banner, fox action, line-cut warning, Sakura purification, city-block bonus, and victory/defeat result overlay are all state-owned.
+- Runtime checks: focused FOX_FIRE_SIX_ROUTES suite (including Slice4–9 rules), UI smoke suite, Amazon/Kyoto integration suite, full legacy suite, and tall-phone suite pass with zero failures; editor parse and native captures exit cleanly.
+
+## Comparison history
+
+1. ImageGen target established the portrait hierarchy and six-route board geometry.
+2. First native READY capture exposed the shared Button disabled style painting opaque ivory cells over the board.
+3. The view now overrides the disabled cell style with a transparent board-aligned style; the recaptured READY and PATH_INPUT states show the authored board unobstructed while legal cells retain gold focus rings.
+4. Native 720×1280 and 360×640 captures confirm the same hierarchy and interaction layer across the target sizes.
+
+final result: passed
+
+---
+
+# Design QA — Amazon and Kyoto Mobile Product UI
+
+- Native evidence: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/amazon-kyoto/amazon-ui-product-final.png`, `kyoto-ui-product.png`, `amazon-overview-product.png`, `amazon-menu-product.png`, and `kyoto-rolled-product-final.png`.
+- Viewport: Windows OpenGL compatibility renderer at 720×1280.
+
+The normal screens retain the Cairo cockpit hierarchy while keeping a slightly taller scenic map. HUD labels, LIFE/HP, mission progress, current position, route preview, and touch controls remain legible without shrinking the core controls. Colored semantic medals make route types readable over both the bright jungle and dark Kyoto backgrounds. The compact die does not obscure the seven-space route preview, and the enlarged three-roll values align with the artwork windows.
+
+The full-map overlay contains the full course, colored route semantics, explorer marker, uninterrupted close CTA, and a skippable slow zoom/pan presentation. The pause menu contains BGM, SE, encyclopedia, continue, and stage-selection actions with large touch targets. Amazon/Kyoto stage-model tests, the Cairo 90-space session regression suite, and the full shared suite pass with zero failures. P0: none. P1: none. P2: none.
+
+final result: passed
+
+## Cairo-aligned Amazon/Kyoto normal-map pass (2026-08-12)
+
+- Reference: `C:\Users\hiro\Desktop\cairo.jpg`.
+- Verified native 720x1280 captures: `artifacts/amazon-kyoto/amazon-map-new2.png`, `kyoto-map-new.png`, `kyoto-overview.png`, and `kyoto-item-new.png`.
+- The normal shell now keeps the Cairo order and touch-sized controls: HUD, stage band, MISSION, scenic map, local `現在地 +1〜+6` strip, message band, three slots, roll button, and item/coin/skill/menu dock.
+- First entry opens the Amazon/Kyoto full-map overlay and the HUD map button reopens it. Stage palettes are rainforest teal for Amazon and indigo/vermillion for Kyoto.
+- Kyoto item/event art is generated and wired into both preview and modal flows.
+- Kyoto stage selection, normal map, and White Fox captures use the supplied BGM tracks through `BgmManager` (`古都、路地裏にて.mp3` / `雅なフィールド.mp3` / `お稲荷様.mp3`).
+
+Verification:
+
+- `Godot_v4.7-stable_win64_console.exe --headless --editor --path . --quit` — pass.
+- `tests/run_amazon_kyoto_stage_tests.gd` — `AMAZON_KYOTO_TESTS passed=true`.
+- `tests/run_v06_play_session_tests.gd` — `V06_PLAY_SESSION_TESTS failures=0`.
+- `tests/run_tests.gd` — `DICE_SLOT_TRIP_TESTS failures=0`.
+- Stage-selection QA — `QA_JOURNEY_STAGE_SELECT passed=true preview=true bgm_preview=true start=true bgm_map=true back=true`.
+
+## Shared cockpit proportion pass (2026-08-13)
+
+- Compared against `C:\Users\hiro\Desktop\cairo2.jpg` and `C:\Users\hiro\Desktop\dice7.jpg`.
+- Normal map height was reduced from the scenic-first ~55–60% composition to ~44–47%; the combined message/tray/tool area now occupies ~27% and matches Cairo's interaction emphasis.
+- Native 720×1280 evidence: `artifacts/amazon-kyoto/amazon-cockpit-final.png` and `artifacts/amazon-kyoto/kyoto-cockpit-v3.png`.
+- The luxury three-slot frame and round roll control are readable at normal touch distance, all bottom tools remain at least 48px high, and the portrait stage art is preserved through current-position cropping plus the existing full-map overlay.
+
+---
+
+# Design QA — Amazon audio, cards, and Cairo-aligned journey shell
+
+- Native normal map: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/amazon-kyoto/amazon-map-cards-final.png`
+- Native item card modal: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/amazon-kyoto/amazon-item-modal.png`
+- Native event card modal: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/amazon-kyoto/amazon-event-modal.png`
+- Native Aquafall boss: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/amazon-kyoto/amazon-boss-bgm.png`
+
+Amazon's stage-select preview, map, and Aquafall transition use separate supplied BGM tracks with crossfade. The normal map keeps the Cairo hierarchy while protecting the waterfall playfield: shared stats at the top, transient status band, then the compact `3 ROLL SLOT` tray with item/event/dice actions. Generated item and event card art keeps the bronze-frame visual language, while labels remain Godot text for legibility and localization.
+
+Verification: Amazon/Kyoto data + battle suite passed; stage-select QA passed with `bgm_preview=true` and `bgm_map=true`; full DICE SLOT TRIP suite passed with `failures=0`.
+
+final result: passed
+
+---
+
+# Design QA — Amazon and Kyoto
+
+- Viewport: 720×1280 portrait.
+- Visual targets: supplied Amazon map and Kyoto White Fox screenshots.
+- Evidence: `artifacts/amazon-kyoto/amazon-map.png`, `amazon-boss.png`, `kyoto-map.png`, `kyoto-boss.png`.
+
+Amazon retains the dense vertical-jungle route hierarchy with all 120 markers, fixed HUD, and a dedicated bottom roll control. Aquafall has five high-contrast waterfall lanes, carried HP, height/lane/difficulty readout, the normalized Explorer Cat, and generated log obstacles. Kyoto presents its afternoon-to-dawn journey art, 90 main markers plus 38 detour markers, and goshuin progress. White Fox presents eight active targets around the guardian, a two-line unclipped current/next Foxfire forecast, and the working three-die/helper controls.
+
+Map, branch, event, secret, boss, defeat, roulette, save, and stage-back paths are wired. The main CTA is 82px tall, secondary controls are 48–66px, Japanese labels use the bundled Noto Sans JP, and generated scenery contains no baked gameplay copy. Old Cairo play/save compatibility remains intact; the new stages use a separate versioned save.
+
+Windows OpenGL native captures and the Amazon/Kyoto, V06 session, full legacy, and stage-select route suites pass. P0: none. P1: none. P2: none.
+
+final result: passed
+
+---
+
 # Design QA — Source-art Title and Ordered Slot Pacing
 
 - Selected visual target: `C:/Dev/Projects/dice-slot-trip-main-verify/assets/art/backgrounds/title-hero.png`

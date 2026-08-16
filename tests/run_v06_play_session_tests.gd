@@ -236,7 +236,7 @@ func _test_boss_victory_score() -> void:
 			_expect(session.acknowledge_boss_round(), "high mirror roll %d acknowledges" % now)
 	_expect(session.boss_result().victory, "high rolls and TRIPLE reach the 20-space race goal")
 	_expect(session.score() == 0 and session.best_score() == 0 and session.score_breakdown().slot == 0 and session.score_breakdown().boss == 0 and session.score_breakdown().finish == 0, "boss roles and victory add no hidden score")
-	_expect(session.heart_roulette_pending() and session.heart_roulette_options() == [1, 2, 1, 3, 1, 2], "wounded boss victory opens the recovery-only six-segment roulette")
+	_expect(session.heart_roulette_pending() and session.heart_roulette_options() == [1, 2, 1, 3, 1, 0], "wounded boss victory opens the +1,+2,+1,Full,+1,0 recovery roulette")
 	var pending_heart_state: Dictionary = session.stable_save_snapshot(0)
 	var heart_reward: Dictionary = session.resolve_heart_roulette(1)
 	_expect(heart_reward.ok and session.player_max_hp() == 3 and session.player_hp() == 3 and not session.heart_roulette_pending(), "+2 roulette result heals HP without changing maximum HP")

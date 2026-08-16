@@ -41,7 +41,7 @@ var _reward_tween: Tween
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pivot_offset = size * 0.5
-	_set_options([1, 2, 1, 3, 1, 2])
+	_set_options([1, 2, 1, 3, 1, 0])
 	_apply_selection(-1, false)
 	sparkle.hide()
 	hide()
@@ -163,12 +163,12 @@ func _chip_style(selected: bool) -> StyleBoxFlat:
 
 func _value_text(value: int) -> String:
 	if value == 3:
-		return "FULL"
+		return "Full"
 	if value > 0:
 		return "+%d" % value
 	if value < 0:
 		return "−%d" % absi(value)
-	return "±0"
+	return "0"
 
 
 func visual_receipt() -> Dictionary:

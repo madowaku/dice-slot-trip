@@ -1,0 +1,58 @@
+{
+  "schema_version": 2,
+  "boss_stage_id": "aquafall_waterfall_climb",
+  "boss_id": "aquafall",
+  "display_name": "瀑竜アクアフォール",
+  "game_type": "waterfall_lane_climb",
+  "board": {
+    "lane_count": 5,
+    "start_lane": 3,
+    "start_height": 0,
+    "goal_height": 24,
+    "edge_behavior": "reflect",
+    "visible_ahead_steps": 8
+  },
+  "collision_rules": {
+    "damage_per_collision": 1,
+    "small_log": "landing_only",
+    "large_log": "path_and_landing"
+  },
+  "slot_rules": {
+    "rolls_per_check": 3,
+    "role_priority": ["TRIPLE", "STRAIGHT", "PAIR", "NONE"],
+    "effects": {
+      "PAIR": {"effect": "water_guard", "charges": 1, "label": "水流ガードを1回獲得！ 次のダメージを防ぐ。"},
+      "STRAIGHT": {"effect": "water_run", "rolls": 1, "label": "水走り発動！ 次の1投は丸太ダメージ無効。"},
+      "TRIPLE": {"effect": "clear_logs_and_climb", "height_bonus": 2, "label": "激流突破！ 丸太を一掃して高さ+2。"},
+      "NONE": {"effect": "none", "label": "役なし。次の3投へ。"}
+    }
+  },
+  "generation_rules": {
+    "max_same_pattern_streak": 2,
+    "min_gap_after_giant_log": 1,
+    "allow_fully_blocked_row": false,
+    "max_candidate_attempts": 96,
+    "max_debug_log_entries": 128
+  },
+  "waterfall_levels": [
+    {"level": 1, "lap_min": 1, "lap_max": 3, "decision_pressure_min": 2, "decision_pressure_max": 4, "max_double_danger": 0, "small_log_min": 2, "small_log_max": 3, "large_log_min": 0, "large_log_max": 1, "large_log_spawn_chance": 0.40, "max_hard_streak": 1, "max_deadly_streak": 1, "pattern_weights": {"easy": 70, "normal": 30, "hard": 0, "deadly": 0}},
+    {"level": 2, "lap_min": 4, "lap_max": 6, "decision_pressure_min": 3, "decision_pressure_max": 5, "max_double_danger": 0, "small_log_min": 3, "small_log_max": 4, "large_log_min": 1, "large_log_max": 2, "max_hard_streak": 1, "max_deadly_streak": 1, "pattern_weights": {"easy": 50, "normal": 50, "hard": 0, "deadly": 0}},
+    {"level": 3, "lap_min": 7, "lap_max": 10, "decision_pressure_min": 4, "decision_pressure_max": 6, "max_double_danger": 1, "small_log_min": 3, "small_log_max": 5, "large_log_min": 2, "large_log_max": 2, "max_hard_streak": 1, "max_deadly_streak": 1, "pattern_weights": {"easy": 30, "normal": 60, "hard": 10, "deadly": 0}},
+    {"level": 4, "lap_min": 11, "lap_max": 14, "decision_pressure_min": 5, "decision_pressure_max": 7, "max_double_danger": 1, "small_log_min": 4, "small_log_max": 5, "large_log_min": 2, "large_log_max": 3, "max_hard_streak": 2, "max_deadly_streak": 1, "pattern_weights": {"easy": 20, "normal": 60, "hard": 20, "deadly": 0}},
+    {"level": 5, "lap_min": 15, "lap_max": 18, "decision_pressure_min": 6, "decision_pressure_max": 8, "max_double_danger": 2, "small_log_min": 4, "small_log_max": 6, "large_log_min": 3, "large_log_max": 3, "max_hard_streak": 2, "max_deadly_streak": 1, "pattern_weights": {"easy": 15, "normal": 45, "hard": 35, "deadly": 5}},
+    {"level": 6, "lap_min": 19, "lap_max": 22, "decision_pressure_min": 7, "decision_pressure_max": 9, "max_double_danger": 2, "small_log_min": 5, "small_log_max": 6, "large_log_min": 3, "large_log_max": 4, "max_hard_streak": 2, "max_deadly_streak": 1, "pattern_weights": {"easy": 10, "normal": 35, "hard": 45, "deadly": 10}},
+    {"level": 7, "lap_min": 23, "lap_max": 26, "decision_pressure_min": 8, "decision_pressure_max": 10, "max_double_danger": 3, "small_log_min": 5, "small_log_max": 7, "large_log_min": 4, "large_log_max": 4, "max_hard_streak": 3, "max_deadly_streak": 1, "pattern_weights": {"easy": 5, "normal": 25, "hard": 55, "deadly": 15}},
+    {"level": 8, "lap_min": 27, "lap_max": -1, "decision_pressure_min": 9, "decision_pressure_max": 11, "max_double_danger": 3, "small_log_min": 6, "small_log_max": 8, "large_log_min": 4, "large_log_max": 5, "max_hard_streak": 3, "max_deadly_streak": 1, "pattern_weights": {"easy": 5, "normal": 15, "hard": 55, "deadly": 25}}
+  ],
+  "log_patterns": [
+    {"id": "side_block_a", "difficulty_class": "EASY", "allowed_levels": [1, 2, 3], "allow_mirror": true, "logs": [{"type": "small", "lane": 3, "steps_until_contact": 1}, {"type": "small", "lane": 5, "steps_until_contact": 3}, {"type": "large", "lane_from": 1, "lane_to": 2, "steps_until_contact": 2}]},
+    {"id": "side_block_b", "difficulty_class": "NORMAL", "allowed_levels": [1, 2, 3], "allow_mirror": true, "logs": [{"type": "small", "lane": 3, "steps_until_contact": 1}, {"type": "small", "lane": 1, "steps_until_contact": 4}, {"type": "small", "lane": 5, "steps_until_contact": 5}, {"type": "large", "lane_from": 4, "lane_to": 5, "steps_until_contact": 2}]},
+    {"id": "gate", "difficulty_class": "NORMAL", "allowed_levels": [2, 3, 4, 5], "allow_mirror": true, "logs": [{"type": "large", "lane_from": 1, "lane_to": 2, "steps_until_contact": 1}, {"type": "large", "lane_from": 4, "lane_to": 5, "steps_until_contact": 2}, {"type": "small", "lane": 3, "steps_until_contact": 3}, {"type": "small", "lane": 2, "steps_until_contact": 4}, {"type": "small", "lane": 5, "steps_until_contact": 5}]},
+    {"id": "reflect_trap", "difficulty_class": "HARD", "allowed_levels": [3, 4, 5, 6], "allow_mirror": true, "logs": [{"type": "small", "lane": 5, "steps_until_contact": 1}, {"type": "large", "lane_from": 2, "lane_to": 4, "steps_until_contact": 2}, {"type": "small", "lane": 1, "steps_until_contact": 3}, {"type": "small", "lane": 3, "steps_until_contact": 4}, {"type": "large", "lane_from": 1, "lane_to": 2, "steps_until_contact": 4}, {"type": "small", "lane": 5, "steps_until_contact": 5}]},
+    {"id": "cross", "difficulty_class": "HARD", "allowed_levels": [4, 5, 6, 7], "allow_mirror": true, "logs": [{"type": "large", "lane_from": 1, "lane_to": 2, "steps_until_contact": 1}, {"type": "small", "lane": 3, "steps_until_contact": 2}, {"type": "large", "lane_from": 4, "lane_to": 5, "steps_until_contact": 3}, {"type": "small", "lane": 2, "steps_until_contact": 4}, {"type": "small", "lane": 4, "steps_until_contact": 5}, {"type": "small", "lane": 1, "steps_until_contact": 6}]},
+    {"id": "dice_trap", "difficulty_class": "HARD", "allowed_levels": [5, 6, 7, 8], "allow_mirror": true, "logs": [{"type": "small", "lane": 3, "steps_until_contact": 1}, {"type": "large", "lane_from": 1, "lane_to": 2, "steps_until_contact": 2}, {"type": "large", "lane_from": 4, "lane_to": 5, "steps_until_contact": 3}, {"type": "small", "lane": 2, "steps_until_contact": 4}, {"type": "large", "lane_from": 2, "lane_to": 4, "steps_until_contact": 5}, {"type": "small", "lane": 4, "steps_until_contact": 6}]},
+    {"id": "false_safe", "difficulty_class": "DEADLY", "allowed_levels": [6, 7, 8], "allow_mirror": true, "logs": [{"type": "large", "lane_from": 1, "lane_to": 2, "steps_until_contact": 1}, {"type": "small", "lane": 3, "steps_until_contact": 2}, {"type": "large", "lane_from": 4, "lane_to": 5, "steps_until_contact": 3}, {"type": "small", "lane": 2, "steps_until_contact": 4}, {"type": "small", "lane": 4, "steps_until_contact": 5}, {"type": "large", "lane_from": 2, "lane_to": 4, "steps_until_contact": 6}, {"type": "small", "lane": 1, "steps_until_contact": 6}]},
+    {"id": "pinch", "difficulty_class": "HARD", "allowed_levels": [7, 8], "allow_mirror": true, "logs": [{"type": "large", "lane_from": 1, "lane_to": 2, "steps_until_contact": 1}, {"type": "large", "lane_from": 4, "lane_to": 5, "steps_until_contact": 1}, {"type": "small", "lane": 3, "steps_until_contact": 2}, {"type": "large", "lane_from": 2, "lane_to": 4, "steps_until_contact": 3}, {"type": "small", "lane": 1, "steps_until_contact": 4}, {"type": "large", "lane_from": 1, "lane_to": 3, "steps_until_contact": 5}, {"type": "small", "lane": 5, "steps_until_contact": 6}, {"type": "small", "lane": 3, "steps_until_contact": 6}]},
+    {"id": "waterfall_maze", "difficulty_class": "DEADLY", "allowed_levels": [8], "allow_mirror": true, "logs": [{"type": "large", "lane_from": 1, "lane_to": 2, "steps_until_contact": 1}, {"type": "large", "lane_from": 4, "lane_to": 5, "steps_until_contact": 1}, {"type": "small", "lane": 3, "steps_until_contact": 2}, {"type": "large", "lane_from": 2, "lane_to": 4, "steps_until_contact": 3}, {"type": "large", "lane_from": 1, "lane_to": 2, "steps_until_contact": 4}, {"type": "large", "lane_from": 4, "lane_to": 5, "steps_until_contact": 5}, {"type": "small", "lane": 3, "steps_until_contact": 6}, {"type": "small", "lane": 1, "steps_until_contact": 6}, {"type": "small", "lane": 5, "steps_until_contact": 5}]}
+  ]
+}

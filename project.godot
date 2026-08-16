@@ -19,6 +19,7 @@ config/features=PackedStringArray("4.7")
 GameState="*res://autoload/game_state.gd"
 SaveManager="*res://autoload/save_manager.gd"
 BgmManager="*res://autoload/bgm_manager.gd"
+UiSfxManager="*res://autoload/ui_sfx_manager.gd"
 
 [display]
 

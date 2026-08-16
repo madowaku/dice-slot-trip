@@ -39,6 +39,7 @@ const DicePresentation3DScript = preload("res://scripts/game/dice_presentation_3
 const MapDiceOverlayScript = preload("res://scripts/game/map_dice_overlay.gd")
 const PopupBookTransitionScript = preload("res://scripts/game/popup_book_transition.gd")
 const V06PlayScreenScene: PackedScene = preload("res://scenes/app/V06PlayScreen.tscn")
+const JourneyStageScreenScene: PackedScene = preload("res://scenes/app/JourneyStageScreen.tscn")
 const V06SessionSaveManagerScript = preload("res://scripts/game/v06_session_save_manager.gd")
 const V06TravelEncyclopediaViewScript = preload("res://scripts/ui/v06_travel_encyclopedia_view.gd")
 const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
@@ -50,6 +51,7 @@ const TITLE_HERO_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/t
 const TITLE_BACKING_MATTE: Texture2D = preload("res://assets/art/ui/title/title-backing-matte-v2.png")
 const WORLD_MAP_BACKGROUND: Texture2D = preload("res://assets/art/backgrounds/world-travel-map.png")
 const CAIRO_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/cairo-city-card.png")
+const AMAZON_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/amazon-city-card.png")
 const KYOTO_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/kyoto-city-card.png")
 const NEWYORK_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/newyork-city-card.png")
 const SINGAPORE_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/singapore-city-card.png")
@@ -69,7 +71,8 @@ const TEAL := Color("#287b80")
 const GOLD := Color("#c79c48")
 const MUTED := Color("#8c7862")
 const STAGE_CAIRO: StringName = &"cairo_hourglass"
-const STAGE_KYOTO: StringName = &"kyoto_thousand_year_maze"
+const STAGE_AMAZON: StringName = &"amazon_suiu_falls"
+const STAGE_KYOTO: StringName = &"kyoto_thousand_year_grid"
 const STAGE_SINGAPORE: StringName = &"singapore_sky_garden"
 const STAGE_NEWYORK: StringName = &"newyork_sleepless_city"
 const STAGE_VENICE: StringName = &"venice_water_maze"
@@ -82,13 +85,21 @@ const STAGE_SELECT_DEFINITIONS: Dictionary = {
 		"boss_label": "周回ボス：眠そうなスフィンクス",
 		"unlocked": true,
 	},
+	STAGE_AMAZON: {
+		"title": "翠雨の大瀑布",
+		"card_title": "翠雨の大瀑布",
+		"description": "二度の分岐と激流を読み、滝裏の秘密まで探す冒険。",
+		"route": "120マス・分岐探索",
+		"boss_label": "試練の守護者：瀑竜アクアフォール",
+		"unlocked": true,
+	},
 	STAGE_KYOTO: {
-		"title": "千年迷宮の京都",
-		"card_title": "千年迷宮の京都",
-		"description": "紅葉の古都で、鳥居と竹林をたどる碁盤目の迷宮。",
-		"route": "ルート準備中",
-		"boss_label": "ボス（仮）：千年碁盤の白狐",
-		"unlocked": false,
+		"title": "千年碁盤の京都",
+		"card_title": "千年碁盤の京都",
+		"description": "急げば近道、巡ればご利益。京都の一日を旅して御朱印を集める。",
+		"route": "90マス・辻と御朱印",
+		"boss_label": "碁盤守：白狐",
+		"unlocked": true,
 	},
 	STAGE_SINGAPORE: {
 		"title": "雨あがりの空中庭園シンガポール",
@@ -278,6 +289,7 @@ func _ready() -> void:
 	v06_save_manager = V06SessionSaveManagerScript.new()
 	match OS.get_environment("DICE_QA_SCREEN"):
 		"stage": show_stage_select()
+		"stage_amazon": _preview_stage(STAGE_AMAZON)
 		"stage_kyoto": _preview_stage(STAGE_KYOTO)
 		"stage_singapore": _preview_stage(STAGE_SINGAPORE)
 		"stage_newyork": _preview_stage(STAGE_NEWYORK)
@@ -285,10 +297,14 @@ func _ready() -> void:
 		"character", "character_selected": _start_new_v06_game()
 		"game": show_game()
 		"v06": show_v06_game()
+		"amazon": show_journey_stage(STAGE_AMAZON)
+		"kyoto": show_journey_stage(STAGE_KYOTO)
 		"font": show_font_qa()
 		_: show_title()
 	if OS.get_environment("DICE_QA_V06_STAGE_EXIT") == "1":
 		call_deferred("_qa_v06_stage_exit")
+	if OS.get_environment("DICE_QA_JOURNEY_STAGE_SELECT") == "1":
+		call_deferred("_qa_journey_stage_select")
 	if OS.get_environment("DICE_QA_EARLY_STOP") == "1":
 		call_deferred("_qa_early_stop")
 	elif OS.get_environment("DICE_QA_ONE_DIE") == "1":
@@ -770,6 +786,11 @@ func _button(text: String, action: Callable, primary: bool = false) -> Button:
 	return button
 
 func _play_ui_click(primary: bool = false) -> void:
+	var ui_sfx := get_node_or_null("/root/UiSfxManager")
+	if ui_sfx != null:
+		ui_sfx.call("play_common_ui_sfx", &"select" if primary else &"press")
+		return
+	# Keep the old player as a safe fallback for partial/legacy launches.
 	if not is_instance_valid(ui_audio_player): return
 	var level := clampf(GameState.se_volume, 0.0, 1.0)
 	if level <= 0.0: return
@@ -818,7 +839,7 @@ func _spacer(height: float) -> Control:
 	return spacer
 
 func show_title() -> void:
-	get_node("/root/BgmManager").call("stop")
+	get_node("/root/BgmManager").call("play_home")
 	var hit_layer := _make_title_page()
 	# These source-space rectangles sit exactly over the painted controls. Since
 	# the complete poster and hit layer share one fitted art rect, every aspect
@@ -838,7 +859,7 @@ func _show_settings_modal() -> void:
 	content.add_child(master_label); content.add_child(master_slider)
 	var se_label := _body("SE音量 %d%%" % roundi(GameState.se_volume * 100.0), UiTokensScript.FONT_CAPTION)
 	var se_slider := HSlider.new(); se_slider.min_value = 0; se_slider.max_value = 100; se_slider.step = 1; se_slider.value = GameState.se_volume * 100.0; se_slider.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
-	se_slider.value_changed.connect(func(value: float) -> void: GameState.se_volume = value / 100.0; se_label.text = "SE音量 %d%%" % roundi(value); if is_instance_valid(dice_audio): dice_audio.set_levels(1.0, GameState.se_volume, GameState.dice_se_muted))
+	se_slider.value_changed.connect(func(value: float) -> void: GameState.se_volume = value / 100.0; se_label.text = "SE音量 %d%%" % roundi(value); if is_instance_valid(dice_audio): dice_audio.set_levels(1.0, GameState.se_volume, GameState.dice_se_muted); var ui_sfx := get_node_or_null("/root/UiSfxManager"); if ui_sfx != null: ui_sfx.call("set_volume", GameState.se_volume))
 	content.add_child(se_label); content.add_child(se_slider)
 	var dice_mute := CheckButton.new(); dice_mute.text = "ダイスSEをミュート"; dice_mute.button_pressed = GameState.dice_se_muted; dice_mute.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
 	dice_mute.toggled.connect(func(value: bool) -> void: GameState.dice_se_muted = value; if is_instance_valid(dice_audio): dice_audio.set_muted(value))
@@ -853,8 +874,13 @@ func _show_settings_modal() -> void:
 
 func show_stage_select() -> void:
 	_v06_exit_transition_pending = false
-	get_node("/root/BgmManager").call("play_stage_select")
-	stage_preview_id = STAGE_CAIRO
+	stage_preview_id = GameState.selected_stage_id if STAGE_SELECT_DEFINITIONS.has(GameState.selected_stage_id) else STAGE_CAIRO
+	if stage_preview_id == STAGE_AMAZON:
+		get_node("/root/BgmManager").call("play_amazon_preview")
+	elif stage_preview_id == STAGE_KYOTO:
+		get_node("/root/BgmManager").call("play_kyoto_preview")
+	else:
+		get_node("/root/BgmManager").call("play_stage_select")
 	_render_stage_select()
 
 func _stage_select_definition(stage_id: StringName) -> Dictionary:
@@ -865,12 +891,21 @@ func _preview_stage(stage_id: StringName) -> void:
 	if not STAGE_SELECT_DEFINITIONS.has(stage_id):
 		stage_id = STAGE_CAIRO
 	stage_preview_id = stage_id
+	if bool(_stage_select_definition(stage_id).get("unlocked", false)):
+		GameState.selected_stage_id = stage_id
+	if stage_id == STAGE_AMAZON and bool(_stage_select_definition(stage_id).get("unlocked", false)):
+		get_node("/root/BgmManager").call("play_amazon_preview")
+	elif stage_id == STAGE_KYOTO and bool(_stage_select_definition(stage_id).get("unlocked", false)):
+		get_node("/root/BgmManager").call("play_kyoto_preview")
+	else:
+		get_node("/root/BgmManager").call("play_stage_select")
 	_render_stage_select()
 
 func _render_stage_select() -> void:
-	# The only currently released stage is Cairo. Keep the selected stage aligned
-	# with the product card even when an older save was previously loaded by QA.
-	GameState.selected_stage_id = GameState.DEFAULT_STAGE
+	if not STAGE_SELECT_DEFINITIONS.has(stage_preview_id):
+		stage_preview_id = STAGE_CAIRO
+	if bool(_stage_select_definition(stage_preview_id).get("unlocked", false)):
+		GameState.selected_stage_id = stage_preview_id
 	var page := _make_world_page()
 	var heading_panel := PanelContainer.new()
 	heading_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.96, 0.88, 0.70, 0.94), Color("#8d6335"), 18))
@@ -885,20 +920,22 @@ func _render_stage_select() -> void:
 
 	var map_area := Control.new()
 	map_area.name = "WorldMapPostcards"
-	map_area.custom_minimum_size.y = 540
+	map_area.custom_minimum_size.y = 460
 	map_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	map_area.clip_contents = true
 	page.add_child(map_area)
 	var newyork_definition := _stage_select_definition(STAGE_NEWYORK)
 	var venice_definition := _stage_select_definition(STAGE_VENICE)
 	var kyoto_definition := _stage_select_definition(STAGE_KYOTO)
+	var amazon_definition := _stage_select_definition(STAGE_AMAZON)
 	var singapore_definition := _stage_select_definition(STAGE_SINGAPORE)
 	var cairo_definition := _stage_select_definition(STAGE_CAIRO)
-	_add_city_postcard(map_area, "NEWYORK", str(newyork_definition.card_title), Vector2(18, 132), Vector2(190, 136), false, _preview_stage.bind(STAGE_NEWYORK), NEWYORK_CITY_CARD, stage_preview_id == STAGE_NEWYORK, str(newyork_definition.boss_label), str(newyork_definition.description))
-	_add_city_postcard(map_area, "VENICE", str(venice_definition.card_title), Vector2(220, 62), Vector2(190, 136), false, _preview_stage.bind(STAGE_VENICE), VENICE_CITY_CARD, stage_preview_id == STAGE_VENICE, str(venice_definition.boss_label), str(venice_definition.description))
-	_add_city_postcard(map_area, "KYOTO", str(kyoto_definition.card_title), Vector2(464, 56), Vector2(190, 136), false, _preview_stage.bind(STAGE_KYOTO), KYOTO_CITY_CARD, stage_preview_id == STAGE_KYOTO, str(kyoto_definition.boss_label), str(kyoto_definition.description))
-	_add_city_postcard(map_area, "SINGAPORE", str(singapore_definition.card_title), Vector2(446, 390), Vector2(210, 136), false, _preview_stage.bind(STAGE_SINGAPORE), SINGAPORE_CITY_CARD, stage_preview_id == STAGE_SINGAPORE, str(singapore_definition.boss_label), str(singapore_definition.description))
-	_add_city_postcard(map_area, "CAIRO", str(cairo_definition.card_title), Vector2(245, 210), Vector2(240, 172), true, _start_new_v06_game, CAIRO_CITY_CARD, stage_preview_id == STAGE_CAIRO, str(cairo_definition.boss_label), str(cairo_definition.description))
+	_add_city_postcard(map_area, "NEWYORK", str(newyork_definition.card_title), Vector2(12, 28), Vector2(164, 116), false, _preview_stage.bind(STAGE_NEWYORK), NEWYORK_CITY_CARD, stage_preview_id == STAGE_NEWYORK, str(newyork_definition.boss_label), str(newyork_definition.description))
+	_add_city_postcard(map_area, "VENICE", str(venice_definition.card_title), Vector2(186, 28), Vector2(164, 116), false, _preview_stage.bind(STAGE_VENICE), VENICE_CITY_CARD, stage_preview_id == STAGE_VENICE, str(venice_definition.boss_label), str(venice_definition.description))
+	_add_city_postcard(map_area, "KYOTO", str(kyoto_definition.card_title), Vector2(466, 22), Vector2(184, 134), true, _preview_stage.bind(STAGE_KYOTO), KYOTO_CITY_CARD, stage_preview_id == STAGE_KYOTO, str(kyoto_definition.boss_label), str(kyoto_definition.description))
+	_add_city_postcard(map_area, "SINGAPORE", str(singapore_definition.card_title), Vector2(472, 292), Vector2(178, 122), false, _preview_stage.bind(STAGE_SINGAPORE), SINGAPORE_CITY_CARD, stage_preview_id == STAGE_SINGAPORE, str(singapore_definition.boss_label), str(singapore_definition.description))
+	_add_city_postcard(map_area, "AMAZON", str(amazon_definition.card_title), Vector2(24, 286), Vector2(214, 146), true, _preview_stage.bind(STAGE_AMAZON), AMAZON_CITY_CARD, stage_preview_id == STAGE_AMAZON, str(amazon_definition.boss_label), str(amazon_definition.description))
+	_add_city_postcard(map_area, "CAIRO", str(cairo_definition.card_title), Vector2(238, 158), Vector2(228, 164), true, _preview_stage.bind(STAGE_CAIRO), CAIRO_CITY_CARD, stage_preview_id == STAGE_CAIRO, str(cairo_definition.boss_label), str(cairo_definition.description))
 	GameState.ensure_boss_data()
 	var preview_definition := _stage_select_definition(stage_preview_id)
 	var preview_unlocked := bool(preview_definition.get("unlocked", false))
@@ -918,7 +955,7 @@ func _render_stage_select() -> void:
 	route_panel.add_child(route_box)
 	page.add_child(route_panel)
 	if preview_unlocked:
-		page.add_child(_button("探検猫で出発", _start_new_v06_game, true))
+		page.add_child(_button("探検猫で出発", _start_selected_stage, true))
 	else:
 		var locked_cta := _button("未解放・旅の準備中", Callable(), true)
 		locked_cta.name = "stage_locked_cta"
@@ -930,12 +967,65 @@ func _render_stage_select() -> void:
 
 func _start_new_v06_game() -> void:
 	var selected_stage_id: StringName = GameState.selected_stage_id
-	if String(selected_stage_id).is_empty():
-		selected_stage_id = GameState.DEFAULT_STAGE
+	if selected_stage_id != STAGE_CAIRO:
+		selected_stage_id = STAGE_CAIRO
 	GameState.start_new_game()
 	GameState.selected_stage_id = selected_stage_id
 	GameState.selected_character_id = GameState.DEFAULT_CHARACTER
 	show_v06_game(selected_stage_id, GameState.DEFAULT_CHARACTER)
+
+func _start_selected_stage() -> void:
+	var selected_stage_id: StringName = stage_preview_id
+	if not STAGE_SELECT_DEFINITIONS.has(selected_stage_id) or not bool(_stage_select_definition(selected_stage_id).get("unlocked", false)):
+		selected_stage_id = STAGE_CAIRO
+	GameState.selected_stage_id = selected_stage_id
+	if selected_stage_id == STAGE_CAIRO:
+		_start_new_v06_game()
+	else:
+		GameState.start_new_game()
+		GameState.selected_stage_id = selected_stage_id
+		show_journey_stage(selected_stage_id)
+
+func show_journey_stage(selected_stage_id: StringName) -> void:
+	_v06_exit_transition_pending = false
+	GameState.selected_stage_id = selected_stage_id
+	_clear()
+	var screen := JourneyStageScreenScene.instantiate() as JourneyStageScreen
+	screen.name = "JourneyStageScreen"
+	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	screen.configure_start_context(selected_stage_id)
+	screen.back_requested.connect(_on_journey_back_requested)
+	screen.encyclopedia_requested.connect(show_encyclopedia)
+	add_child(screen)
+
+func _on_journey_back_requested() -> void:
+	call_deferred("show_stage_select")
+
+func _qa_journey_stage_select() -> void:
+	await get_tree().process_frame
+	var amazon_cards := find_children("city_amazon", "Button", true, false)
+	if amazon_cards.is_empty():
+		print("QA_JOURNEY_STAGE_SELECT passed=false reason=no_amazon_card")
+		get_tree().quit(1)
+		return
+	(amazon_cards[0] as Button).pressed.emit()
+	await get_tree().process_frame
+	var preview_ok := stage_preview_id == STAGE_AMAZON and GameState.selected_stage_id == STAGE_AMAZON
+	var bgm_preview_ok: bool = get_node("/root/BgmManager").call("current_track") == StringName("amazon_preview")
+	_start_selected_stage()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var screen := get_node_or_null("JourneyStageScreen") as JourneyStageScreen
+	var start_ok := screen != null and GameState.selected_stage_id == STAGE_AMAZON
+	var bgm_map_ok: bool = get_node("/root/BgmManager").call("current_track") == StringName("amazon_normal")
+	if screen != null:
+		screen.back_requested.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var back_ok := get_node_or_null("JourneyStageScreen") == null and not find_children("city_amazon", "Button", true, false).is_empty()
+	var passed: bool = preview_ok and bgm_preview_ok and start_ok and bgm_map_ok and back_ok
+	print("QA_JOURNEY_STAGE_SELECT passed=%s preview=%s bgm_preview=%s start=%s bgm_map=%s back=%s" % [passed, preview_ok, bgm_preview_ok, start_ok, bgm_map_ok, back_ok])
+	get_tree().quit(0 if passed else 1)
 
 # DEBUG ONLY: the product flow starts directly with the explorer cat. Keep this
 # screen isolated for legacy QA and future character work without routing users
@@ -4201,27 +4291,31 @@ func _qa_dice_audio() -> void:
 
 func _qa_ui_audio() -> void:
 	await get_tree().process_frame
+	var title_bgm_ok: bool = get_node("/root/BgmManager").call("current_track") == StringName("home")
 	show_stage_select()
 	await get_tree().process_frame
 	var city_buttons := find_children("city_cairo", "Button", true, false)
 	var city_connected := not city_buttons.is_empty() and (city_buttons[0] as Button).pressed.get_connections().size() >= 2
+	var ui_sfx := get_node_or_null("/root/UiSfxManager")
 	_play_ui_click(true)
-	var confirm_ok := is_instance_valid(ui_audio_player) and ui_audio_player.stream == UI_CONFIRM_STREAM
+	var confirm_receipt: Dictionary = ui_sfx.call("receipt") if ui_sfx != null else {}
+	var confirm_ok := str(confirm_receipt.get("last_cue", "")) == "select" and str(confirm_receipt.get("last_pack", "")) == "soft"
 	_play_ui_click(false)
-	var click_ok := is_instance_valid(ui_audio_player) and ui_audio_player.stream == UI_CLICK_STREAM
+	var click_receipt: Dictionary = ui_sfx.call("receipt") if ui_sfx != null else {}
+	var click_ok := str(click_receipt.get("last_cue", "")) == "press" and str(click_receipt.get("last_pack", "")) == "soft"
 	var player_id := ui_audio_player.get_instance_id()
 	_start_new_v06_game()
 	await get_tree().process_frame
 	var survives_transition := is_instance_valid(ui_audio_player) and ui_audio_player.get_instance_id() == player_id and get_node_or_null("UIAudioPlayer") == ui_audio_player
-	var passed := city_connected and confirm_ok and click_ok and survives_transition
-	print("QA_UI_AUDIO city_connected=%s confirm=%s click=%s survives=%s passed=%s" % [city_connected, confirm_ok, click_ok, survives_transition, passed])
+	var passed := title_bgm_ok and city_connected and confirm_ok and click_ok and survives_transition
+	print("QA_UI_AUDIO title_bgm=%s city_connected=%s confirm=%s click=%s survives=%s passed=%s" % [title_bgm_ok, city_connected, confirm_ok, click_ok, survives_transition, passed])
 	if not passed: push_error("UI audio QA failed.")
 	get_tree().quit(0 if passed else 1)
 
 func _qa_android_ui() -> void:
 	var original := GameState.to_dictionary().duplicate(true)
 	var samples: Array[String] = [
-		"砂時計のカイロ", "眠そうなスフィンクスがいる",
+		"砂時計のカイロ", "眠そうなスフィンクスがいる", "翠雨の大瀑布", "千年碁盤の京都", "瀑竜アクアフォール", "碁盤守・白狐",
 		"サイコロをそろえて、世界をめぐる。", "旅人を選ぶ",
 		"香辛料市場通り", "PAIR／STRAIGHT／TRIPLE", "1234567890！？・◇●",
 	]
@@ -4251,8 +4345,23 @@ func _qa_android_ui() -> void:
 	show_stage_select(); await get_tree().process_frame
 	var stage_layout_ok := _root_layout_fits() and _visible_buttons_meet_touch_min()
 	var locked_stage_layout_ok := true
-	var locked_stage_specs: Array[Dictionary] = [
+	var unlocked_stage_specs: Array[Dictionary] = [
+		{"node": "city_amazon", "id": STAGE_AMAZON, "texture": AMAZON_CITY_CARD},
 		{"node": "city_kyoto", "id": STAGE_KYOTO, "texture": KYOTO_CITY_CARD},
+	]
+	var unlocked_stage_layout_ok := true
+	for spec: Dictionary in unlocked_stage_specs:
+		show_stage_select(); await get_tree().process_frame
+		var cards := find_children(str(spec.node), "Button", true, false)
+		var card_ok := not cards.is_empty() and _city_postcard_uses_texture(cards[0] as Button, spec.texture as Texture2D)
+		if card_ok:
+			(cards[0] as Button).emit_signal("pressed")
+		await get_tree().process_frame
+		var locked_stage_ctas := find_children("stage_locked_cta", "Button", true, false)
+		unlocked_stage_layout_ok = unlocked_stage_layout_ok and card_ok \
+			and stage_preview_id == StringName(spec.id) and locked_stage_ctas.is_empty() \
+			and _root_layout_fits() and _visible_buttons_meet_touch_min()
+	var locked_stage_specs: Array[Dictionary] = [
 		{"node": "city_singapore", "id": STAGE_SINGAPORE, "texture": SINGAPORE_CITY_CARD},
 		{"node": "city_newyork", "id": STAGE_NEWYORK, "texture": NEWYORK_CITY_CARD},
 		{"node": "city_venice", "id": STAGE_VENICE, "texture": VENICE_CITY_CARD},
@@ -4271,11 +4380,12 @@ func _qa_android_ui() -> void:
 			and _root_layout_fits() and _visible_buttons_meet_touch_min() \
 			and not locked_stage_ctas.is_empty() and (locked_stage_ctas[0] as Button).disabled
 	show_stage_select(); await get_tree().process_frame
+	_preview_stage(STAGE_CAIRO); await get_tree().process_frame
 	var cairo_cards := find_children("city_cairo", "Button", true, false)
 	var cairo_card_ok := not cairo_cards.is_empty() \
 		and _city_postcard_uses_texture(cairo_cards[0] as Button, CAIRO_CITY_CARD)
 	if cairo_card_ok:
-		(cairo_cards[0] as Button).emit_signal("pressed")
+		_start_selected_stage()
 	await get_tree().process_frame
 	var v06_start_ok := cairo_card_ok and get_node_or_null("V06PlayScreen") != null \
 		and GameState.selected_character_id == GameState.DEFAULT_CHARACTER \
@@ -4301,9 +4411,9 @@ func _qa_android_ui() -> void:
 	await get_tree().process_frame
 	var tourism_restored := board_view is TourismMapView
 	var game_layout_ok := _root_layout_fits() and _visible_buttons_meet_touch_min()
-	var layouts_ok := title_layout_ok and stage_layout_ok and locked_stage_layout_ok and game_layout_ok
+	var layouts_ok := title_layout_ok and stage_layout_ok and unlocked_stage_layout_ok and locked_stage_layout_ok and game_layout_ok
 	var passed := coverage_ok and theme_ok and scale_tokens_ok and controls_ok and layouts_ok and v06_start_ok and legacy_tourism and classic_loaded and classic_after_new_trip and classic_after_character and tourism_restored
-	print("QA_ANDROID_UI font=%s theme=%s scale=%s controls=%s layouts=%s title=%s stage=%s locked_stage=%s v06_start=%s game=%s legacy_tourism=%s classic_load=%s new_trip=%s character_mode=%s tourism=%s passed=%s" % [coverage_ok, theme_ok, scale_tokens_ok, controls_ok, layouts_ok, title_layout_ok, stage_layout_ok, locked_stage_layout_ok, v06_start_ok, game_layout_ok, legacy_tourism, classic_loaded, classic_after_new_trip, classic_after_character, tourism_restored, passed])
+	print("QA_ANDROID_UI font=%s theme=%s scale=%s controls=%s layouts=%s title=%s stage=%s unlocked_stage=%s locked_stage=%s v06_start=%s game=%s legacy_tourism=%s classic_load=%s new_trip=%s character_mode=%s tourism=%s passed=%s" % [coverage_ok, theme_ok, scale_tokens_ok, controls_ok, layouts_ok, title_layout_ok, stage_layout_ok, unlocked_stage_layout_ok, locked_stage_layout_ok, v06_start_ok, game_layout_ok, legacy_tourism, classic_loaded, classic_after_new_trip, classic_after_character, tourism_restored, passed])
 	GameState.apply_dictionary(original)
 	SaveManager.save_now()
 	if not passed: push_error("ANDROID-UI-01 QA failed.")

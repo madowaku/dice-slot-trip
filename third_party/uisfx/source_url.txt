@@ -1,0 +1,4 @@
+Source repository: https://github.com/romainsimon/uisfx
+Preview: https://uisfx.com/
+Imported revision: 2001f3dac2d1cf86ad99cbad5cef222c3a8b9082 (2026-07-29)
+Imported files: selected MP3 cues from packages/uisfx/sounds/{soft,organic,zen,arcade,scifi}

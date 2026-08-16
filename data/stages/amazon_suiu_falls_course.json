@@ -1,0 +1,2815 @@
+{
+  "schema_version": 1,
+  "stage_data_version": "1.0.0",
+  "stage_id": "amazon_suiu_falls",
+  "display_name": "翠雨の大瀑布",
+  "stage_number": 2,
+  "theme": "amazon_waterfall",
+  "space_count": 120,
+  "start_space_id": "main:1",
+  "boss_space_id": "main:120",
+  "map": {
+    "design_size": [
+      1000,
+      3600
+    ],
+    "background_id": "amazon_suiu_falls_map",
+    "coordinate_origin": "top_left"
+  },
+  "rules": {
+    "coin_gain": 2,
+    "rest_heal": 1,
+    "risk_damage": 1,
+    "hp_clamp_to_max": true,
+    "flow_trigger_target_effect": true,
+    "flow_chain_limit": 4,
+    "event_move_trigger_target_effect_default": false,
+    "branch_choice_during_movement": true,
+    "boss_stops_movement": true,
+    "coin_spaces_consume_once": true
+  },
+  "expected_kind_counts": {
+    "BOSS": 1,
+    "COIN": 20,
+    "EVENT": 15,
+    "FLOW": 10,
+    "ITEM": 12,
+    "NORMAL": 27,
+    "REST": 14,
+    "RISK": 16,
+    "SPECIAL": 4,
+    "START": 1
+  },
+  "route_groups": [
+    {
+      "id": "forest",
+      "label": "翠雨の森",
+      "space_ids": [
+        "main:1",
+        "main:2",
+        "main:3",
+        "main:4",
+        "main:5",
+        "main:6",
+        "main:7",
+        "main:8",
+        "main:9",
+        "main:10",
+        "main:11",
+        "main:12",
+        "main:13",
+        "main:14",
+        "main:15",
+        "main:16",
+        "main:17",
+        "main:18",
+        "main:19",
+        "main:20",
+        "main:21",
+        "main:22"
+      ],
+      "risk_level": "low",
+      "hidden": false
+    },
+    {
+      "id": "canopy",
+      "label": "樹上ルート",
+      "space_ids": [
+        "canopy:23",
+        "canopy:24",
+        "canopy:25",
+        "canopy:26",
+        "canopy:27",
+        "canopy:28",
+        "canopy:29",
+        "canopy:30",
+        "canopy:31",
+        "canopy:32",
+        "canopy:33",
+        "canopy:34",
+        "canopy:35",
+        "canopy:36",
+        "canopy:37",
+        "canopy:38"
+      ],
+      "risk_level": "low",
+      "hidden": false
+    },
+    {
+      "id": "stream",
+      "label": "渓流ルート",
+      "space_ids": [
+        "stream:39",
+        "stream:40",
+        "stream:41",
+        "stream:42",
+        "stream:43",
+        "stream:44",
+        "stream:45",
+        "stream:46",
+        "stream:47",
+        "stream:48"
+      ],
+      "risk_level": "high",
+      "hidden": false
+    },
+    {
+      "id": "falls",
+      "label": "千筋の瀑布",
+      "space_ids": [
+        "main:49",
+        "main:50",
+        "main:51",
+        "main:52",
+        "main:53",
+        "main:54",
+        "main:55",
+        "main:56",
+        "main:57",
+        "main:58",
+        "main:59",
+        "main:60",
+        "main:61",
+        "main:62",
+        "main:63",
+        "main:64",
+        "main:65",
+        "main:66",
+        "main:67",
+        "main:68",
+        "main:69",
+        "main:70",
+        "main:71",
+        "main:72",
+        "main:73",
+        "main:74"
+      ],
+      "risk_level": "medium",
+      "hidden": false
+    },
+    {
+      "id": "temple",
+      "label": "神殿上層ルート",
+      "space_ids": [
+        "temple:75",
+        "temple:76",
+        "temple:77",
+        "temple:78",
+        "temple:79",
+        "temple:80",
+        "temple:81",
+        "temple:82",
+        "temple:83",
+        "temple:84",
+        "temple:85",
+        "temple:86",
+        "temple:87",
+        "temple:88"
+      ],
+      "risk_level": "low",
+      "hidden": false
+    },
+    {
+      "id": "submerged",
+      "label": "水没回廊ルート",
+      "space_ids": [
+        "submerged:89",
+        "submerged:90",
+        "submerged:91",
+        "submerged:92",
+        "submerged:93",
+        "submerged:94",
+        "submerged:95",
+        "submerged:96",
+        "submerged:97",
+        "submerged:98"
+      ],
+      "risk_level": "high",
+      "hidden": false
+    },
+    {
+      "id": "secret",
+      "label": "滝裏洞窟",
+      "space_ids": [
+        "secret:99",
+        "secret:100",
+        "secret:101",
+        "secret:102",
+        "secret:103",
+        "secret:104"
+      ],
+      "risk_level": "medium",
+      "hidden": true
+    },
+    {
+      "id": "finale",
+      "label": "虹環大瀑布",
+      "space_ids": [
+        "main:105",
+        "main:106",
+        "main:107",
+        "main:108",
+        "main:109",
+        "main:110",
+        "main:111",
+        "main:112",
+        "main:113",
+        "main:114",
+        "main:115",
+        "main:116",
+        "main:117",
+        "main:118",
+        "main:119",
+        "main:120"
+      ],
+      "risk_level": "medium",
+      "hidden": false
+    }
+  ],
+  "spaces": [
+    {
+      "id": "main:1",
+      "number": 1,
+      "route": "main",
+      "kind": "START",
+      "name": "密林の船着き場",
+      "map_pos": [
+        500,
+        3440
+      ],
+      "next": [
+        "main:2"
+      ]
+    },
+    {
+      "id": "main:2",
+      "number": 2,
+      "route": "main",
+      "kind": "ITEM",
+      "name": "森の小径・道具袋",
+      "map_pos": [
+        537,
+        3406
+      ],
+      "next": [
+        "main:3"
+      ]
+    },
+    {
+      "id": "main:3",
+      "number": 3,
+      "route": "main",
+      "kind": "COIN",
+      "name": "森の実り",
+      "map_pos": [
+        555,
+        3371
+      ],
+      "next": [
+        "main:4"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "main:4",
+      "number": 4,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "しっとりした遊歩道",
+      "map_pos": [
+        551,
+        3337
+      ],
+      "next": [
+        "main:5"
+      ]
+    },
+    {
+      "id": "main:5",
+      "number": 5,
+      "route": "main",
+      "kind": "REST",
+      "name": "癒やしの泉",
+      "map_pos": [
+        539,
+        3303
+      ],
+      "next": [
+        "main:6"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:6",
+      "number": 6,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "巨木の根元道",
+      "map_pos": [
+        534,
+        3269
+      ],
+      "next": [
+        "main:7"
+      ]
+    },
+    {
+      "id": "main:7",
+      "number": 7,
+      "route": "main",
+      "kind": "RISK",
+      "name": "ぬかるみ",
+      "map_pos": [
+        536,
+        3234
+      ],
+      "next": [
+        "main:8"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:8",
+      "number": 8,
+      "route": "main",
+      "kind": "COIN",
+      "name": "光る木の実",
+      "map_pos": [
+        533,
+        3200
+      ],
+      "next": [
+        "main:9"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "main:9",
+      "number": 9,
+      "route": "main",
+      "kind": "EVENT",
+      "name": "森の精の気配",
+      "map_pos": [
+        511,
+        3166
+      ],
+      "next": [
+        "main:10"
+      ],
+      "event_id": "forest_spirit_choice"
+    },
+    {
+      "id": "main:10",
+      "number": 10,
+      "route": "main",
+      "kind": "ITEM",
+      "name": "小川沿いの道具袋",
+      "map_pos": [
+        474,
+        3131
+      ],
+      "next": [
+        "main:11"
+      ]
+    },
+    {
+      "id": "main:11",
+      "number": 11,
+      "route": "main",
+      "kind": "RISK",
+      "name": "毒虫に注意",
+      "map_pos": [
+        441,
+        3097
+      ],
+      "next": [
+        "main:12"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:12",
+      "number": 12,
+      "route": "main",
+      "kind": "REST",
+      "name": "巨木の木陰",
+      "map_pos": [
+        431,
+        3063
+      ],
+      "next": [
+        "main:13"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:13",
+      "number": 13,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "苔の小道",
+      "map_pos": [
+        445,
+        3029
+      ],
+      "next": [
+        "main:14"
+      ]
+    },
+    {
+      "id": "main:14",
+      "number": 14,
+      "route": "main",
+      "kind": "COIN",
+      "name": "川辺の拾い物",
+      "map_pos": [
+        468,
+        2994
+      ],
+      "next": [
+        "main:15"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "main:15",
+      "number": 15,
+      "route": "main",
+      "kind": "EVENT",
+      "name": "大瀑布の遠景を発見",
+      "map_pos": [
+        483,
+        2960
+      ],
+      "next": [
+        "main:16"
+      ],
+      "event_id": "great_falls_discovery"
+    },
+    {
+      "id": "main:16",
+      "number": 16,
+      "route": "main",
+      "kind": "REST",
+      "name": "清流の休憩所",
+      "map_pos": [
+        488,
+        2926
+      ],
+      "next": [
+        "main:17"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:17",
+      "number": 17,
+      "route": "main",
+      "kind": "RISK",
+      "name": "すべる木の根",
+      "map_pos": [
+        494,
+        2891
+      ],
+      "next": [
+        "main:18"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:18",
+      "number": 18,
+      "route": "main",
+      "kind": "REST",
+      "name": "水辺でひと休み",
+      "map_pos": [
+        515,
+        2857
+      ],
+      "next": [
+        "main:19"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:19",
+      "number": 19,
+      "route": "main",
+      "kind": "COIN",
+      "name": "森の供物箱",
+      "map_pos": [
+        546,
+        2823
+      ],
+      "next": [
+        "main:20"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "main:20",
+      "number": 20,
+      "route": "main",
+      "kind": "COIN",
+      "name": "光る花の群生",
+      "map_pos": [
+        570,
+        2789
+      ],
+      "next": [
+        "main:21"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "main:21",
+      "number": 21,
+      "route": "main",
+      "kind": "EVENT",
+      "name": "密林のささやき",
+      "map_pos": [
+        569,
+        2754
+      ],
+      "next": [
+        "main:22"
+      ],
+      "event_id": "jungle_whisper"
+    },
+    {
+      "id": "main:22",
+      "number": 22,
+      "route": "main",
+      "kind": "SPECIAL",
+      "name": "樹冠と渓流の分岐",
+      "map_pos": [
+        500,
+        2720
+      ],
+      "next": [
+        "canopy:23",
+        "stream:39"
+      ],
+      "special_kind": "branch",
+      "branch": {
+        "choice_id": "branch_1",
+        "prompt": "どちらの道を進む？",
+        "preview_camera_cue": "branch_1_preview",
+        "choices": [
+          {
+            "id": "canopy",
+            "label": "樹上ルート",
+            "target": "canopy:23",
+            "description": "遠いが安全。RESTとCOINが多い。",
+            "risk_level": "low"
+          },
+          {
+            "id": "stream",
+            "label": "渓流ルート",
+            "target": "stream:39",
+            "description": "短いが危険。FLOWを利用できる。",
+            "risk_level": "high"
+          }
+        ]
+      }
+    },
+    {
+      "id": "canopy:23",
+      "number": 23,
+      "route": "canopy",
+      "kind": "NORMAL",
+      "name": "吊り橋の入口",
+      "map_pos": [
+        440,
+        2680
+      ],
+      "next": [
+        "canopy:24"
+      ]
+    },
+    {
+      "id": "canopy:24",
+      "number": 24,
+      "route": "canopy",
+      "kind": "REST",
+      "name": "枝上の休憩所",
+      "map_pos": [
+        394,
+        2668
+      ],
+      "next": [
+        "canopy:25"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "canopy:25",
+      "number": 25,
+      "route": "canopy",
+      "kind": "COIN",
+      "name": "木の実の群れ",
+      "map_pos": [
+        351,
+        2654
+      ],
+      "next": [
+        "canopy:26"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "canopy:26",
+      "number": 26,
+      "route": "canopy",
+      "kind": "EVENT",
+      "name": "つるを使って進む？",
+      "map_pos": [
+        311,
+        2635
+      ],
+      "next": [
+        "canopy:27"
+      ],
+      "event_id": "vine_shortcut"
+    },
+    {
+      "id": "canopy:27",
+      "number": 27,
+      "route": "canopy",
+      "kind": "ITEM",
+      "name": "樹上の道具袋",
+      "map_pos": [
+        277,
+        2611
+      ],
+      "next": [
+        "canopy:28"
+      ]
+    },
+    {
+      "id": "canopy:28",
+      "number": 28,
+      "route": "canopy",
+      "kind": "NORMAL",
+      "name": "見晴らしの枝道",
+      "map_pos": [
+        249,
+        2580
+      ],
+      "next": [
+        "canopy:29"
+      ]
+    },
+    {
+      "id": "canopy:29",
+      "number": 29,
+      "route": "canopy",
+      "kind": "COIN",
+      "name": "鳥の巣の落とし物",
+      "map_pos": [
+        231,
+        2545
+      ],
+      "next": [
+        "canopy:30"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "canopy:30",
+      "number": 30,
+      "route": "canopy",
+      "kind": "REST",
+      "name": "木漏れ日の足場",
+      "map_pos": [
+        221,
+        2505
+      ],
+      "next": [
+        "canopy:31"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "canopy:31",
+      "number": 31,
+      "route": "canopy",
+      "kind": "NORMAL",
+      "name": "巨枝の回廊",
+      "map_pos": [
+        221,
+        2465
+      ],
+      "next": [
+        "canopy:32"
+      ]
+    },
+    {
+      "id": "canopy:32",
+      "number": 32,
+      "route": "canopy",
+      "kind": "RISK",
+      "name": "折れかけた枝",
+      "map_pos": [
+        231,
+        2425
+      ],
+      "next": [
+        "canopy:33"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "canopy:33",
+      "number": 33,
+      "route": "canopy",
+      "kind": "EVENT",
+      "name": "森の精の祝福",
+      "map_pos": [
+        249,
+        2390
+      ],
+      "next": [
+        "canopy:34"
+      ],
+      "event_id": "forest_blessing"
+    },
+    {
+      "id": "canopy:34",
+      "number": 34,
+      "route": "canopy",
+      "kind": "ITEM",
+      "name": "吊り橋の道具袋",
+      "map_pos": [
+        277,
+        2359
+      ],
+      "next": [
+        "canopy:35"
+      ]
+    },
+    {
+      "id": "canopy:35",
+      "number": 35,
+      "route": "canopy",
+      "kind": "COIN",
+      "name": "古い護符",
+      "map_pos": [
+        311,
+        2335
+      ],
+      "next": [
+        "canopy:36"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "canopy:36",
+      "number": 36,
+      "route": "canopy",
+      "kind": "NORMAL",
+      "name": "樹冠の道",
+      "map_pos": [
+        351,
+        2316
+      ],
+      "next": [
+        "canopy:37"
+      ]
+    },
+    {
+      "id": "canopy:37",
+      "number": 37,
+      "route": "canopy",
+      "kind": "REST",
+      "name": "大樹のうろ",
+      "map_pos": [
+        394,
+        2302
+      ],
+      "next": [
+        "canopy:38"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "canopy:38",
+      "number": 38,
+      "route": "canopy",
+      "kind": "NORMAL",
+      "name": "霧の合流橋へ",
+      "map_pos": [
+        450,
+        2300
+      ],
+      "next": [
+        "main:49"
+      ]
+    },
+    {
+      "id": "stream:39",
+      "number": 39,
+      "route": "stream",
+      "kind": "RISK",
+      "name": "濡れた岩場",
+      "map_pos": [
+        560,
+        2670
+      ],
+      "next": [
+        "stream:40"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "stream:40",
+      "number": 40,
+      "route": "stream",
+      "kind": "FLOW",
+      "name": "浅瀬の流れ",
+      "map_pos": [
+        637,
+        2612
+      ],
+      "next": [
+        "stream:41"
+      ],
+      "transition": {
+        "type": "flow",
+        "target": "stream:43",
+        "trigger": "on_land",
+        "trigger_target_effect": true
+      }
+    },
+    {
+      "id": "stream:41",
+      "number": 41,
+      "route": "stream",
+      "kind": "COIN",
+      "name": "水辺の輝石",
+      "map_pos": [
+        705,
+        2561
+      ],
+      "next": [
+        "stream:42"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "stream:42",
+      "number": 42,
+      "route": "stream",
+      "kind": "RISK",
+      "name": "激しい水しぶき",
+      "map_pos": [
+        755,
+        2522
+      ],
+      "next": [
+        "stream:43"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "stream:43",
+      "number": 43,
+      "route": "stream",
+      "kind": "EVENT",
+      "name": "丸太に乗る？",
+      "map_pos": [
+        782,
+        2493
+      ],
+      "next": [
+        "stream:44"
+      ],
+      "event_id": "log_ride"
+    },
+    {
+      "id": "stream:44",
+      "number": 44,
+      "route": "stream",
+      "kind": "FLOW",
+      "name": "急流ショートカット",
+      "map_pos": [
+        782,
+        2467
+      ],
+      "next": [
+        "stream:45"
+      ],
+      "transition": {
+        "type": "flow",
+        "target": "stream:48",
+        "trigger": "on_land",
+        "trigger_target_effect": true
+      }
+    },
+    {
+      "id": "stream:45",
+      "number": 45,
+      "route": "stream",
+      "kind": "ITEM",
+      "name": "河岸の道具袋",
+      "map_pos": [
+        755,
+        2438
+      ],
+      "next": [
+        "stream:46"
+      ]
+    },
+    {
+      "id": "stream:46",
+      "number": 46,
+      "route": "stream",
+      "kind": "NORMAL",
+      "name": "流木の通路",
+      "map_pos": [
+        705,
+        2399
+      ],
+      "next": [
+        "stream:47"
+      ]
+    },
+    {
+      "id": "stream:47",
+      "number": 47,
+      "route": "stream",
+      "kind": "RISK",
+      "name": "渦流に注意",
+      "map_pos": [
+        637,
+        2348
+      ],
+      "next": [
+        "stream:48"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "stream:48",
+      "number": 48,
+      "route": "stream",
+      "kind": "NORMAL",
+      "name": "霧の合流橋へ",
+      "map_pos": [
+        550,
+        2300
+      ],
+      "next": [
+        "main:49"
+      ]
+    },
+    {
+      "id": "main:49",
+      "number": 49,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "合流の石橋",
+      "map_pos": [
+        500,
+        2260
+      ],
+      "next": [
+        "main:50"
+      ]
+    },
+    {
+      "id": "main:50",
+      "number": 50,
+      "route": "main",
+      "kind": "REST",
+      "name": "水煙の展望台",
+      "map_pos": [
+        573,
+        2230
+      ],
+      "next": [
+        "main:51"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:51",
+      "number": 51,
+      "route": "main",
+      "kind": "ITEM",
+      "name": "滝見の道具袋",
+      "map_pos": [
+        604,
+        2199
+      ],
+      "next": [
+        "main:52"
+      ]
+    },
+    {
+      "id": "main:52",
+      "number": 52,
+      "route": "main",
+      "kind": "EVENT",
+      "name": "轟音の先へ",
+      "map_pos": [
+        588,
+        2169
+      ],
+      "next": [
+        "main:53"
+      ],
+      "event_id": "waterfall_edge"
+    },
+    {
+      "id": "main:53",
+      "number": 53,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "瀑布の入口",
+      "map_pos": [
+        554,
+        2138
+      ],
+      "next": [
+        "main:54"
+      ]
+    },
+    {
+      "id": "main:54",
+      "number": 54,
+      "route": "main",
+      "kind": "FLOW",
+      "name": "細流に押し流される",
+      "map_pos": [
+        529,
+        2108
+      ],
+      "next": [
+        "main:55"
+      ],
+      "transition": {
+        "type": "flow",
+        "target": "main:58",
+        "trigger": "on_land",
+        "trigger_target_effect": true
+      }
+    },
+    {
+      "id": "main:55",
+      "number": 55,
+      "route": "main",
+      "kind": "COIN",
+      "name": "滝の水晶花",
+      "map_pos": [
+        511,
+        2078
+      ],
+      "next": [
+        "main:56"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "main:56",
+      "number": 56,
+      "route": "main",
+      "kind": "ITEM",
+      "name": "飛沫の道具袋",
+      "map_pos": [
+        478,
+        2047
+      ],
+      "next": [
+        "main:57"
+      ]
+    },
+    {
+      "id": "main:57",
+      "number": 57,
+      "route": "main",
+      "kind": "RISK",
+      "name": "水しぶきの視界不良",
+      "map_pos": [
+        426,
+        2017
+      ],
+      "next": [
+        "main:58"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:58",
+      "number": 58,
+      "route": "main",
+      "kind": "EVENT",
+      "name": "虹の下で願う",
+      "map_pos": [
+        386,
+        1986
+      ],
+      "next": [
+        "main:59"
+      ],
+      "event_id": "rainbow_wish"
+    },
+    {
+      "id": "main:59",
+      "number": 59,
+      "route": "main",
+      "kind": "ITEM",
+      "name": "小滝の道具袋",
+      "map_pos": [
+        393,
+        1956
+      ],
+      "next": [
+        "main:60"
+      ]
+    },
+    {
+      "id": "main:60",
+      "number": 60,
+      "route": "main",
+      "kind": "FLOW",
+      "name": "流木に飛び乗る",
+      "map_pos": [
+        453,
+        1926
+      ],
+      "next": [
+        "main:61"
+      ],
+      "transition": {
+        "type": "flow",
+        "target": "main:64",
+        "trigger": "on_land",
+        "trigger_target_effect": true
+      }
+    },
+    {
+      "id": "main:61",
+      "number": 61,
+      "route": "main",
+      "kind": "COIN",
+      "name": "苔むした遺物",
+      "map_pos": [
+        528,
+        1895
+      ],
+      "next": [
+        "main:62"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "main:62",
+      "number": 62,
+      "route": "main",
+      "kind": "REST",
+      "name": "霧の小盆地",
+      "map_pos": [
+        576,
+        1865
+      ],
+      "next": [
+        "main:63"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:63",
+      "number": 63,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "水煙の回廊",
+      "map_pos": [
+        581,
+        1834
+      ],
+      "next": [
+        "main:64"
+      ]
+    },
+    {
+      "id": "main:64",
+      "number": 64,
+      "route": "main",
+      "kind": "RISK",
+      "name": "崩れかけた断崖",
+      "map_pos": [
+        568,
+        1804
+      ],
+      "next": [
+        "main:65"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:65",
+      "number": 65,
+      "route": "main",
+      "kind": "EVENT",
+      "name": "水の精の導き",
+      "map_pos": [
+        560,
+        1774
+      ],
+      "next": [
+        "main:66"
+      ],
+      "event_id": "water_spirit_guide"
+    },
+    {
+      "id": "main:66",
+      "number": 66,
+      "route": "main",
+      "kind": "FLOW",
+      "name": "横流れの水路",
+      "map_pos": [
+        552,
+        1743
+      ],
+      "next": [
+        "main:67"
+      ],
+      "transition": {
+        "type": "flow",
+        "target": "main:70",
+        "trigger": "on_land",
+        "trigger_target_effect": true
+      }
+    },
+    {
+      "id": "main:67",
+      "number": 67,
+      "route": "main",
+      "kind": "FLOW",
+      "name": "隠れた支流",
+      "map_pos": [
+        521,
+        1713
+      ],
+      "next": [
+        "main:68"
+      ],
+      "transition": {
+        "type": "flow",
+        "target": "main:72",
+        "trigger": "on_land",
+        "trigger_target_effect": true
+      }
+    },
+    {
+      "id": "main:68",
+      "number": 68,
+      "route": "main",
+      "kind": "COIN",
+      "name": "密林の補給箱",
+      "map_pos": [
+        460,
+        1682
+      ],
+      "next": [
+        "main:69"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "main:69",
+      "number": 69,
+      "route": "main",
+      "kind": "RISK",
+      "name": "水煙で方向感覚を失う",
+      "map_pos": [
+        398,
+        1652
+      ],
+      "next": [
+        "main:70"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:70",
+      "number": 70,
+      "route": "main",
+      "kind": "REST",
+      "name": "根の洞の避難所",
+      "map_pos": [
+        378,
+        1622
+      ],
+      "next": [
+        "main:71"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:71",
+      "number": 71,
+      "route": "main",
+      "kind": "EVENT",
+      "name": "滝つぼへ飛び込む？",
+      "map_pos": [
+        415,
+        1591
+      ],
+      "next": [
+        "main:72"
+      ],
+      "event_id": "plunge_pool_jump"
+    },
+    {
+      "id": "main:72",
+      "number": 72,
+      "route": "main",
+      "kind": "COIN",
+      "name": "神殿の欠片",
+      "map_pos": [
+        482,
+        1561
+      ],
+      "next": [
+        "main:73"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "main:73",
+      "number": 73,
+      "route": "main",
+      "kind": "FLOW",
+      "name": "大水路の流れ",
+      "map_pos": [
+        535,
+        1530
+      ],
+      "next": [
+        "main:74"
+      ],
+      "transition": {
+        "type": "flow",
+        "target": "main:74",
+        "trigger": "on_land",
+        "trigger_target_effect": true
+      }
+    },
+    {
+      "id": "main:74",
+      "number": 74,
+      "route": "main",
+      "kind": "SPECIAL",
+      "name": "神殿上層と水没回廊の分岐",
+      "map_pos": [
+        500,
+        1500
+      ],
+      "next": [
+        "temple:75",
+        "submerged:89"
+      ],
+      "special_kind": "branch",
+      "branch": {
+        "choice_id": "branch_2",
+        "prompt": "どちらの神殿ルートを進む？",
+        "preview_camera_cue": "branch_2_preview",
+        "choices": [
+          {
+            "id": "temple",
+            "label": "神殿上層ルート",
+            "target": "temple:75",
+            "description": "やや遠回りだが安全。RESTと祈りが多い。",
+            "risk_level": "low"
+          },
+          {
+            "id": "submerged",
+            "label": "水没回廊ルート",
+            "target": "submerged:89",
+            "description": "短いが危険。水流とRISKが多い。",
+            "risk_level": "high"
+          }
+        ]
+      }
+    },
+    {
+      "id": "temple:75",
+      "number": 75,
+      "route": "temple",
+      "kind": "NORMAL",
+      "name": "石段を上る",
+      "map_pos": [
+        430,
+        1460
+      ],
+      "next": [
+        "temple:76"
+      ]
+    },
+    {
+      "id": "temple:76",
+      "number": 76,
+      "route": "temple",
+      "kind": "COIN",
+      "name": "供物の小壺",
+      "map_pos": [
+        375,
+        1426
+      ],
+      "next": [
+        "temple:77"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "temple:77",
+      "number": 77,
+      "route": "temple",
+      "kind": "REST",
+      "name": "祈りの間",
+      "map_pos": [
+        323,
+        1389
+      ],
+      "next": [
+        "temple:78"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "temple:78",
+      "number": 78,
+      "route": "temple",
+      "kind": "ITEM",
+      "name": "神殿の道具袋",
+      "map_pos": [
+        277,
+        1347
+      ],
+      "next": [
+        "temple:79"
+      ]
+    },
+    {
+      "id": "temple:79",
+      "number": 79,
+      "route": "temple",
+      "kind": "EVENT",
+      "name": "壁画を読む",
+      "map_pos": [
+        241,
+        1297
+      ],
+      "next": [
+        "temple:80"
+      ],
+      "event_id": "temple_mural"
+    },
+    {
+      "id": "temple:80",
+      "number": 80,
+      "route": "temple",
+      "kind": "NORMAL",
+      "name": "苔むした回廊",
+      "map_pos": [
+        215,
+        1241
+      ],
+      "next": [
+        "temple:81"
+      ]
+    },
+    {
+      "id": "temple:81",
+      "number": 81,
+      "route": "temple",
+      "kind": "COIN",
+      "name": "日輪の祭具",
+      "map_pos": [
+        202,
+        1181
+      ],
+      "next": [
+        "temple:82"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "temple:82",
+      "number": 82,
+      "route": "temple",
+      "kind": "SPECIAL",
+      "name": "滝裏洞窟入口",
+      "map_pos": [
+        202,
+        1119
+      ],
+      "next": [
+        "temple:83"
+      ],
+      "special_kind": "secret_entry",
+      "secret_entry": {
+        "id": "behind_falls_cave_entry",
+        "trigger": "on_land",
+        "target": "secret:99",
+        "cost": {
+          "type": "coin",
+          "amount": 4
+        },
+        "requires": {
+          "coin_gte": 4
+        },
+        "prompt": "COINを4枚使って滝裏洞窟へ入る？",
+        "accept_label": "入る",
+        "decline_label": "入らない",
+        "discovery_flag": "secret_cave_discovered",
+        "reveal_route_id": "secret",
+        "trigger_target_effect": false
+      }
+    },
+    {
+      "id": "temple:83",
+      "number": 83,
+      "route": "temple",
+      "kind": "REST",
+      "name": "静かな祭壇",
+      "map_pos": [
+        215,
+        1059
+      ],
+      "next": [
+        "temple:84"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "temple:84",
+      "number": 84,
+      "route": "temple",
+      "kind": "NORMAL",
+      "name": "神像の脇道",
+      "map_pos": [
+        241,
+        1003
+      ],
+      "next": [
+        "temple:85"
+      ]
+    },
+    {
+      "id": "temple:85",
+      "number": 85,
+      "route": "temple",
+      "kind": "RISK",
+      "name": "崩れる石橋",
+      "map_pos": [
+        277,
+        953
+      ],
+      "next": [
+        "temple:86"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "temple:86",
+      "number": 86,
+      "route": "temple",
+      "kind": "COIN",
+      "name": "神殿宝物庫",
+      "map_pos": [
+        323,
+        911
+      ],
+      "next": [
+        "temple:87"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "temple:87",
+      "number": 87,
+      "route": "temple",
+      "kind": "EVENT",
+      "name": "守護の祈り",
+      "map_pos": [
+        375,
+        874
+      ],
+      "next": [
+        "temple:88"
+      ],
+      "event_id": "guardian_prayer"
+    },
+    {
+      "id": "temple:88",
+      "number": 88,
+      "route": "temple",
+      "kind": "NORMAL",
+      "name": "虹環大瀑布への出口",
+      "map_pos": [
+        450,
+        840
+      ],
+      "next": [
+        "main:105"
+      ]
+    },
+    {
+      "id": "submerged:89",
+      "number": 89,
+      "route": "submerged",
+      "kind": "RISK",
+      "name": "水に沈んだ階段",
+      "map_pos": [
+        570,
+        1450
+      ],
+      "next": [
+        "submerged:90"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "submerged:90",
+      "number": 90,
+      "route": "submerged",
+      "kind": "ITEM",
+      "name": "水没回廊の道具袋",
+      "map_pos": [
+        654,
+        1363
+      ],
+      "next": [
+        "submerged:91"
+      ]
+    },
+    {
+      "id": "submerged:91",
+      "number": 91,
+      "route": "submerged",
+      "kind": "FLOW",
+      "name": "排水路の流れ",
+      "map_pos": [
+        727,
+        1285
+      ],
+      "next": [
+        "submerged:92"
+      ],
+      "transition": {
+        "type": "flow",
+        "target": "submerged:94",
+        "trigger": "on_land",
+        "trigger_target_effect": true
+      }
+    },
+    {
+      "id": "submerged:92",
+      "number": 92,
+      "route": "submerged",
+      "kind": "COIN",
+      "name": "沈んだ宝飾",
+      "map_pos": [
+        782,
+        1221
+      ],
+      "next": [
+        "submerged:93"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "submerged:93",
+      "number": 93,
+      "route": "submerged",
+      "kind": "RISK",
+      "name": "深みにはまる",
+      "map_pos": [
+        811,
+        1169
+      ],
+      "next": [
+        "submerged:94"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "submerged:94",
+      "number": 94,
+      "route": "submerged",
+      "kind": "SPECIAL",
+      "name": "滝裏洞窟入口",
+      "map_pos": [
+        811,
+        1121
+      ],
+      "next": [
+        "submerged:95"
+      ],
+      "special_kind": "secret_entry",
+      "secret_entry": {
+        "id": "behind_falls_cave_entry",
+        "trigger": "on_land",
+        "target": "secret:99",
+        "cost": {
+          "type": "coin",
+          "amount": 4
+        },
+        "requires": {
+          "coin_gte": 4
+        },
+        "prompt": "COINを4枚使って滝裏洞窟へ入る？",
+        "accept_label": "入る",
+        "decline_label": "入らない",
+        "discovery_flag": "secret_cave_discovered",
+        "reveal_route_id": "secret",
+        "trigger_target_effect": false
+      }
+    },
+    {
+      "id": "submerged:95",
+      "number": 95,
+      "route": "submerged",
+      "kind": "EVENT",
+      "name": "水底の刻印",
+      "map_pos": [
+        782,
+        1069
+      ],
+      "next": [
+        "submerged:96"
+      ],
+      "event_id": "sunken_inscription"
+    },
+    {
+      "id": "submerged:96",
+      "number": 96,
+      "route": "submerged",
+      "kind": "REST",
+      "name": "乾いた足場",
+      "map_pos": [
+        727,
+        1005
+      ],
+      "next": [
+        "submerged:97"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "submerged:97",
+      "number": 97,
+      "route": "submerged",
+      "kind": "RISK",
+      "name": "古い罠",
+      "map_pos": [
+        654,
+        927
+      ],
+      "next": [
+        "submerged:98"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "submerged:98",
+      "number": 98,
+      "route": "submerged",
+      "kind": "NORMAL",
+      "name": "虹環大瀑布への出口",
+      "map_pos": [
+        550,
+        840
+      ],
+      "next": [
+        "main:105"
+      ]
+    },
+    {
+      "id": "secret:99",
+      "number": 99,
+      "route": "secret",
+      "kind": "ITEM",
+      "name": "滝裏の道具袋",
+      "map_pos": [
+        500,
+        1320
+      ],
+      "next": [
+        "secret:100"
+      ]
+    },
+    {
+      "id": "secret:100",
+      "number": 100,
+      "route": "secret",
+      "kind": "COIN",
+      "name": "隠し供物庫",
+      "map_pos": [
+        574,
+        1220
+      ],
+      "next": [
+        "secret:101"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "secret:101",
+      "number": 101,
+      "route": "secret",
+      "kind": "RISK",
+      "name": "濡れた洞窟床",
+      "map_pos": [
+        528,
+        1120
+      ],
+      "next": [
+        "secret:102"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "secret:102",
+      "number": 102,
+      "route": "secret",
+      "kind": "EVENT",
+      "name": "古代の秘宝",
+      "map_pos": [
+        437,
+        1020
+      ],
+      "next": [
+        "secret:103"
+      ],
+      "event_id": "ancient_treasure"
+    },
+    {
+      "id": "secret:103",
+      "number": 103,
+      "route": "secret",
+      "kind": "FLOW",
+      "name": "地下水路の押し流し",
+      "map_pos": [
+        449,
+        920
+      ],
+      "next": [
+        "secret:104"
+      ],
+      "transition": {
+        "type": "flow",
+        "target": "main:113",
+        "trigger": "on_land",
+        "trigger_target_effect": true
+      }
+    },
+    {
+      "id": "secret:104",
+      "number": 104,
+      "route": "secret",
+      "kind": "NORMAL",
+      "name": "滝裏洞窟の出口",
+      "map_pos": [
+        500,
+        820
+      ],
+      "next": [
+        "main:113"
+      ]
+    },
+    {
+      "id": "main:105",
+      "number": 105,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "虹環の石橋",
+      "map_pos": [
+        500,
+        800
+      ],
+      "next": [
+        "main:106"
+      ]
+    },
+    {
+      "id": "main:106",
+      "number": 106,
+      "route": "main",
+      "kind": "REST",
+      "name": "霧の祠",
+      "map_pos": [
+        547,
+        757
+      ],
+      "next": [
+        "main:107"
+      ],
+      "effect": {
+        "kind": "heal",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:107",
+      "number": 107,
+      "route": "main",
+      "kind": "COIN",
+      "name": "光る水滴の結晶",
+      "map_pos": [
+        576,
+        713
+      ],
+      "next": [
+        "main:108"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "main:108",
+      "number": 108,
+      "route": "main",
+      "kind": "RISK",
+      "name": "不安定な飛び石",
+      "map_pos": [
+        576,
+        670
+      ],
+      "next": [
+        "main:109"
+      ],
+      "effect": {
+        "kind": "hp_damage",
+        "amount": 1,
+        "consume_once": false
+      }
+    },
+    {
+      "id": "main:109",
+      "number": 109,
+      "route": "main",
+      "kind": "EVENT",
+      "name": "瀑竜の気配",
+      "map_pos": [
+        547,
+        627
+      ],
+      "next": [
+        "main:110"
+      ],
+      "event_id": "water_dragon_presence"
+    },
+    {
+      "id": "main:110",
+      "number": 110,
+      "route": "main",
+      "kind": "ITEM",
+      "name": "虹の道具袋",
+      "map_pos": [
+        500,
+        583
+      ],
+      "next": [
+        "main:111"
+      ]
+    },
+    {
+      "id": "main:111",
+      "number": 111,
+      "route": "main",
+      "kind": "COIN",
+      "name": "虹の欠片",
+      "map_pos": [
+        453,
+        540
+      ],
+      "next": [
+        "main:112"
+      ],
+      "effect": {
+        "kind": "coin_gain",
+        "amount": 2,
+        "consume_once": true
+      }
+    },
+    {
+      "id": "main:112",
+      "number": 112,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "聖域の渡り道",
+      "map_pos": [
+        424,
+        497
+      ],
+      "next": [
+        "main:113"
+      ]
+    },
+    {
+      "id": "main:113",
+      "number": 113,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "滝裏洞窟の再合流点",
+      "map_pos": [
+        500,
+        455
+      ],
+      "next": [
+        "main:114"
+      ]
+    },
+    {
+      "id": "main:114",
+      "number": 114,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "神域の橋",
+      "map_pos": [
+        453,
+        410
+      ],
+      "next": [
+        "main:115"
+      ]
+    },
+    {
+      "id": "main:115",
+      "number": 115,
+      "route": "main",
+      "kind": "FLOW",
+      "name": "瀑風に乗る流れ",
+      "map_pos": [
+        500,
+        367
+      ],
+      "next": [
+        "main:116"
+      ],
+      "transition": {
+        "type": "flow",
+        "target": "main:118",
+        "trigger": "on_land",
+        "trigger_target_effect": true
+      }
+    },
+    {
+      "id": "main:116",
+      "number": 116,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "大瀑布の縁",
+      "map_pos": [
+        547,
+        323
+      ],
+      "next": [
+        "main:117"
+      ]
+    },
+    {
+      "id": "main:117",
+      "number": 117,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "祭壇前の回廊",
+      "map_pos": [
+        576,
+        280
+      ],
+      "next": [
+        "main:118"
+      ]
+    },
+    {
+      "id": "main:118",
+      "number": 118,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "聖水の飛沫地",
+      "map_pos": [
+        576,
+        237
+      ],
+      "next": [
+        "main:119"
+      ]
+    },
+    {
+      "id": "main:119",
+      "number": 119,
+      "route": "main",
+      "kind": "NORMAL",
+      "name": "ボス祭壇前",
+      "map_pos": [
+        547,
+        193
+      ],
+      "next": [
+        "main:120"
+      ]
+    },
+    {
+      "id": "main:120",
+      "number": 120,
+      "route": "main",
+      "kind": "BOSS",
+      "name": "虹環の祭壇",
+      "map_pos": [
+        500,
+        150
+      ],
+      "next": [],
+      "boss": {
+        "boss_id": "aquafall",
+        "display_name": "瀑竜アクアフォール",
+        "encounter_type": "boss_race"
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "forest_spirit_choice",
+      "title": "森の精の気配",
+      "text": "葉の向こうから、小さな光がこちらを見ている。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "heal",
+          "label": "光に手を伸ばす　HP+1",
+          "actions": [
+            {
+              "type": "heal",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "coin",
+          "label": "森の恵みを願う　COIN+2",
+          "actions": [
+            {
+              "type": "coin_gain",
+              "amount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "great_falls_discovery",
+      "title": "大瀑布の遠景",
+      "text": "木々の切れ間から、雲を裂く大瀑布が姿を現した。",
+      "consume_once": true,
+      "choices": [
+        {
+          "id": "heal",
+          "label": "滝を眺めてひと休み　HP+1",
+          "actions": [
+            {"type": "camera_cue", "cue_id": "first_falls_view"},
+            {"type": "heal", "amount": 1}
+          ]
+        },
+        {
+          "id": "coin",
+          "label": "周囲を探してみる　COIN+2",
+          "actions": [
+            {"type": "camera_cue", "cue_id": "first_falls_view"},
+            {"type": "coin_gain", "amount": 2}
+          ]
+        }
+      ],
+      "actions": null
+    },
+    {
+      "id": "jungle_whisper",
+      "title": "密林のささやき",
+      "text": "風に揺れる葉音が、旅人に何かを選ばせようとしている。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "heal",
+          "label": "声に耳を澄ます　HP+1",
+          "actions": [
+            {
+              "type": "heal",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "coin",
+          "label": "声のする方を探す　COIN+2",
+          "actions": [
+            {
+              "type": "coin_gain",
+              "amount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "vine_shortcut",
+      "title": "揺れるつる",
+      "text": "向こうの枝まで届きそうな太いつるが垂れている。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "use",
+          "label": "つるを使って滑り降りる　30マスへ移動",
+          "actions": [
+            {
+              "type": "move_to",
+              "target": "canopy:30",
+              "trigger_target_effect": false
+            }
+          ]
+        },
+        {
+          "id": "walk",
+          "label": "慎重に枝道を進む",
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "forest_blessing",
+      "title": "森の精の祝福",
+      "text": "柔らかな緑の光が身体を包んだ。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "heal",
+          "label": "生命の祝福を受ける　HP+1",
+          "actions": [{"type": "heal", "amount": 1}]
+        },
+        {
+          "id": "coin",
+          "label": "実りの祝福を受ける　COIN+2",
+          "actions": [{"type": "coin_gain", "amount": 2}]
+        }
+      ],
+      "actions": null
+    },
+    {
+      "id": "log_ride",
+      "title": "流れてきた丸太",
+      "text": "激流を下るには使えそうだ。ただし旅の荷物を少し手放す必要がある。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "ride",
+          "label": "丸太に乗って下る　COIN-2・48マスへ移動",
+          "requires": {
+            "coin_gte": 2
+          },
+          "actions": [
+            {
+              "type": "coin_spend",
+              "amount": 2
+            },
+            {
+              "type": "move_to",
+              "target": "stream:48",
+              "trigger_target_effect": false
+            }
+          ]
+        },
+        {
+          "id": "skip",
+          "label": "岩場を歩いて進む",
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "waterfall_edge",
+      "title": "轟音の先へ",
+      "text": "滝際を抜ければ近い。安全な道を取ることもできる。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "edge",
+          "label": "滝際の流れに飛び込む　54マスへ移動",
+          "actions": [
+            {
+              "type": "move_to",
+              "target": "main:54",
+              "trigger_target_effect": true
+            }
+          ]
+        },
+        {
+          "id": "safe",
+          "label": "安全な道を進む",
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "rainbow_wish",
+      "title": "虹の下で願う",
+      "text": "水煙の虹が、ほんの一瞬だけ輪になった。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "heal",
+          "label": "健やかな旅を願う　HP+1",
+          "actions": [
+            {
+              "type": "heal",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "coin",
+          "label": "幸運な旅を願う　COIN+2",
+          "actions": [
+            {
+              "type": "coin_gain",
+              "amount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "water_spirit_guide",
+      "title": "水の精の導き",
+      "text": "水面の光が、奥へ続く道を指し示している。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "follow",
+          "label": "水の精の導きに従う　70マスへ移動",
+          "actions": [
+            {
+              "type": "move_to",
+              "target": "main:70",
+              "trigger_target_effect": false
+            }
+          ]
+        },
+        {
+          "id": "own_way",
+          "label": "自分の道を進む",
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "plunge_pool_jump",
+      "title": "滝つぼへの近道",
+      "text": "ここから飛び込めば分岐点の近くへ出られそうだ。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "jump",
+          "label": "滝つぼへ飛び込む！　HP-1・74マスへ移動",
+          "actions": [
+            {
+              "type": "hp_damage",
+              "amount": 1
+            },
+            {
+              "type": "move_to",
+              "target": "main:74",
+              "trigger_target_effect": true
+            }
+          ]
+        },
+        {
+          "id": "skip",
+          "label": "さすがにやめておく",
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "temple_mural",
+      "title": "古代の壁画",
+      "text": "壁画には祈る旅人と、宝を探す旅人が描かれている。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "pray",
+          "label": "壁画に祈りを捧げる　HP+1",
+          "actions": [
+            {
+              "type": "heal",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "search",
+          "label": "周囲に宝がないか探す　COIN+2",
+          "actions": [
+            {
+              "type": "coin_gain",
+              "amount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "guardian_prayer",
+      "title": "守護の祈り",
+      "text": "古い祭具が静かに光り、傷を癒やしてくれる。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "heal",
+          "label": "癒やしを祈る　HP+1",
+          "actions": [{"type": "heal", "amount": 1}]
+        },
+        {
+          "id": "coin",
+          "label": "旅の恵みを祈る　COIN+2",
+          "actions": [{"type": "coin_gain", "amount": 2}]
+        }
+      ],
+      "actions": null
+    },
+    {
+      "id": "sunken_inscription",
+      "title": "水底の刻印",
+      "text": "水に沈んだ刻印から、二つの淡い光が浮かび上がった。",
+      "consume_once": false,
+      "choices": [
+        {
+          "id": "heal",
+          "label": "静かに祈る　HP+1",
+          "actions": [
+            {
+              "type": "heal",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "coin",
+          "label": "刻印を詳しく調べる　COIN+2",
+          "actions": [
+            {
+              "type": "coin_gain",
+              "amount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ancient_treasure",
+      "title": "古代の秘宝",
+      "text": "誰にも見つからなかった供物が、滝裏の闇に眠っていた。",
+      "consume_once": true,
+      "choices": [
+        {
+          "id": "coin",
+          "label": "黄金の供物を持ち帰る　COIN+4",
+          "actions": [{"type": "coin_gain", "amount": 4}]
+        },
+        {
+          "id": "heal",
+          "label": "聖なる雫をいただく　HP+2",
+          "actions": [{"type": "heal", "amount": 2}]
+        }
+      ],
+      "actions": null
+    },
+    {
+      "id": "water_dragon_presence",
+      "title": "瀑竜の気配",
+      "text": "大瀑布の奥で巨大な影が動いた。水の気配が身体を包む。",
+      "consume_once": true,
+      "choices": [
+        {
+          "id": "heal",
+          "label": "瀑竜に祈りを捧げる　HP+1",
+          "actions": [
+            {"type": "camera_cue", "cue_id": "boss_presence"},
+            {"type": "heal", "amount": 1}
+          ]
+        },
+        {
+          "id": "coin",
+          "label": "水晶の欠片を拾う　COIN+2",
+          "actions": [
+            {"type": "camera_cue", "cue_id": "boss_presence"},
+            {"type": "coin_gain", "amount": 2}
+          ]
+        }
+      ],
+      "actions": null
+    }
+  ],
+  "camera_cues": [
+    {
+      "id": "stage_opening_sweep",
+      "trigger": {
+        "type": "stage_start"
+      },
+      "type": "path_preview",
+      "focus_space_ids": [
+        "main:1",
+        "main:22",
+        "main:49",
+        "main:74",
+        "main:105",
+        "main:120"
+      ],
+      "duration": 2.2
+    },
+    {
+      "id": "first_falls_view",
+      "trigger": {
+        "type": "event_action",
+        "event_id": "great_falls_discovery"
+      },
+      "type": "pan_to_space",
+      "target_space_id": "main:53",
+      "duration": 1.8
+    },
+    {
+      "id": "branch_1_preview",
+      "trigger": {
+        "type": "before_branch_choice",
+        "space_id": "main:22"
+      },
+      "type": "show_branch",
+      "focus_space_ids": [
+        "main:22",
+        "canopy:23",
+        "canopy:38",
+        "stream:39",
+        "stream:48",
+        "main:49"
+      ],
+      "duration": 1.5
+    },
+    {
+      "id": "thousand_falls_reveal",
+      "trigger": {
+        "type": "enter_space",
+        "space_id": "main:49"
+      },
+      "type": "pan_to_space",
+      "target_space_id": "main:60",
+      "duration": 1.5
+    },
+    {
+      "id": "branch_2_preview",
+      "trigger": {
+        "type": "before_branch_choice",
+        "space_id": "main:74"
+      },
+      "type": "show_branch",
+      "focus_space_ids": [
+        "main:74",
+        "temple:75",
+        "temple:88",
+        "submerged:89",
+        "submerged:98",
+        "main:105"
+      ],
+      "duration": 1.5
+    },
+    {
+      "id": "secret_cave_reveal",
+      "trigger": {
+        "type": "enter_space",
+        "space_id": "secret:99"
+      },
+      "type": "pan_to_space",
+      "target_space_id": "secret:102",
+      "duration": 1.2
+    },
+    {
+      "id": "rainbow_falls_reveal",
+      "trigger": {
+        "type": "enter_space",
+        "space_id": "main:105"
+      },
+      "type": "pan_to_space",
+      "target_space_id": "main:120",
+      "duration": 1.8
+    },
+    {
+      "id": "boss_presence",
+      "trigger": {
+        "type": "event_action",
+        "event_id": "water_dragon_presence"
+      },
+      "type": "pan_to_space",
+      "target_space_id": "main:120",
+      "duration": 2.0
+    },
+    {
+      "id": "boss_arrival",
+      "trigger": {
+        "type": "enter_space",
+        "space_id": "main:120"
+      },
+      "type": "boss_reveal",
+      "target_space_id": "main:120",
+      "duration": 1.6
+    }
+  ]
+}

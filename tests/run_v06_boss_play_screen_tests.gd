@@ -381,7 +381,7 @@ func _test_screen_contract() -> void:
 	_expect(finish_dim.visible and finish_summary.visible and finish_summary.text.contains("全3ターン") and finish_summary.text.contains("トリプル1"), "FINISHED switches to a readable result presentation with race and role statistics")
 	var roulette_receipt: Dictionary = (roulette_view as Object).call("visual_receipt")
 	_expect(roulette_view.visible and bool(roulette_receipt.get("wheel_visible", false)) and int(roulette_receipt.get("option_count", 0)) == 6 and str(roulette_receipt.get("title", "")) == "HP RECOVERY" and str(roulette_receipt.get("hint", "")) == "光る結果でHP回復" and (terminal_screen.get_node("%NextLapButton") as Button).text == "STOP!", "wounded victory opens one compact HP recovery hierarchy with one obvious STOP action")
-	_expect(roulette_receipt.get("option_texts", []) == ["+1", "+2", "+1", "FULL", "+1", "+2"], "roulette displays only the approved HP recovery outcomes")
+	_expect(roulette_receipt.get("option_texts", []) == ["+1", "+2", "+1", "Full", "+1", "0"], "roulette displays the approved +1,+2,+1,Full,+1,0 recovery outcomes")
 	_expect(not (terminal_screen.get_node("%MessageBand") as Control).visible and not (terminal_screen.get_node("%MessageLabel") as Control).visible, "finish retires the transient reach band before it can cover the roulette")
 	print("V06_HEART_RECTS summary=%s roulette=%s button=%s" % [finish_summary.get_global_rect(), roulette_view.get_global_rect(), finish_button.get_global_rect()])
 	_expect(not finish_summary.get_global_rect().intersects(roulette_view.get_global_rect()) and not roulette_view.get_global_rect().intersects(finish_button.get_global_rect()), "heart roulette protects both the compact race summary and the bottom action button")

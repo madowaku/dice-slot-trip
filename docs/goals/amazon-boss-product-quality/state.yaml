@@ -1,0 +1,366 @@
+# Goal Maker v2 state.yaml
+version: 2
+
+goal:
+  title: "アマゾン・ボス戦 製品品質化"
+  slug: "amazon-boss-product-quality"
+  kind: open_ended
+  tranche: "保存復元・障害物生成・ボス役/勝敗/LIFE回帰に加え、通常マップ同型のロール/スロット/一歩移動演出をAmazonボスへ統合する"
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: high
+    objective: "アクアフォール戦の仕様、実装、画面、保存復帰、検証基盤を照合し、製品品質リスクを順位づけする。"
+    inputs:
+      - "scripts/game/aquafall_battle.gd"
+      - "scripts/app/journey_stage_screen.gd"
+      - "data/bosses/aquafall_waterfall_climb.json"
+      - "tests/run_amazon_kyoto_stage_tests.gd"
+      - "artifacts/amazon-kyoto/amazon-boss-new.png"
+    constraints:
+      - "Read-only."
+      - "既存の未コミット変更を編集しない。"
+      - "抽象論ではなくパスと行番号で根拠を示す。"
+    expected_output:
+      - "現行ループと状態遷移"
+      - "仕様差分と不具合候補"
+      - "利用可能な検証コマンド"
+      - "効果・確信度・可逆性で順位づけした改善候補"
+    receipt:
+      result: done
+      summary: "ボスロジックと画面を照合。P0はクリップ領域外に固定配置されたプレイヤー/接近流木、P1は選択前の経路危険予告不足とRNG状態欠落による保存後分岐、P2はJSON生成ルール未実装と役・勝敗・再挑戦のテスト不足。専用/総合テストは基準状態で成功。"
+      evidence:
+        - "scripts/app/journey_stage_screen.gd:226"
+        - "scripts/app/journey_stage_screen.gd:1068"
+        - "scripts/game/aquafall_battle.gd:79"
+        - "scripts/game/aquafall_battle.gd:163"
+        - "scripts/game/aquafall_battle.gd:183"
+        - "tests/run_amazon_kyoto_stage_tests.gd:56"
+        - "artifacts/amazon-kyoto/amazon-boss-new.png"
+      commands:
+        - cmd: "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_tests.gd"
+          status: pass
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Scout結果から最初の安全で高効果な実装スライスを選ぶ。"
+    inputs:
+      - "T001 receipt"
+      - "現在の dirty diff"
+    constraints:
+      - "Do not implement."
+      - "既存作業と衝突しない小さくレビュー可能な範囲を選ぶ。"
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Deferred tasks"
+    receipt:
+      result: done
+      decision: "最初のスライスはアクアフォール盤面のクリッピング解消と、左右選択前の副作用なし危険予告。即時のプレイヤー影響が最大で、3ファイル内に閉じて検証できる。"
+      next_allowed_task: T003
+      deferred_tasks:
+        - "RNG stateのsnapshot/restoreと保存後決定性テスト"
+        - "JSON generation_rulesの実装"
+        - "3投スロット役、勝敗、LIFE再挑戦の網羅テスト"
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: default
+    objective: "副作用のない左右経路リスク予測を追加し、滝盤面をcontent_hostの実寸に追従させ、720×1280でプレイヤー・接近流木・5レーンを表示し、方向ボタンへ到着レーンと安全/接触見込みを示す。"
+    allowed_files:
+      - "scripts/game/aquafall_battle.gd"
+      - "scripts/app/journey_stage_screen.gd"
+      - "tests/run_amazon_kyoto_stage_tests.gd"
+    verify:
+      - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+      - "Godot --headless --path . --script tests/run_tests.gd"
+      - "git diff --check"
+      - "Amazon boss 720x1280 capture visual review"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "他者が開始時SHA256から対象ファイルを変更した。"
+      - "予測処理が本番状態またはRNGを消費する。"
+      - "720×1280実画面を取得できない。"
+      - "同一検証が2回失敗。"
+    receipt:
+      result: blocked
+      summary: "開始前ハッシュ検査でaquafall_battle.gdがB16740AD…からE6629EA0…へ変化していたため、編集せず安全停止。並行更新は最新のHP3固定仕様をAmazon/Kyoto/Journeyへ適用したものと確認した。"
+      changed_files: []
+      blocker: "対象ファイルの並行仕様更新"
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: default
+    objective: "HP3固定の新基準を保持し、副作用のない左右経路リスク予測、実寸追従する滝盤面、プレイヤー/接近流木/5レーン表示、方向ボタンの安全/接触予告を実装し、旧HP6前提テストを最新仕様へ更新する。"
+    allowed_files:
+      - "scripts/game/aquafall_battle.gd"
+      - "scripts/app/journey_stage_screen.gd"
+      - "tests/run_amazon_kyoto_stage_tests.gd"
+    verify:
+      - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+      - "Godot --headless --path . --script tests/run_tests.gd"
+      - "git diff --check"
+      - "Amazon boss 720x1280 capture visual review"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "aquafall_battle.gdが新基準E6629EA0…から再度変わった。"
+      - "予測処理が本番状態またはRNGを消費する。"
+      - "720×1280実画面を取得できない。"
+      - "同一検証が2回失敗。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/aquafall_battle.gd"
+        - "scripts/app/journey_stage_screen.gd"
+        - "tests/run_amazon_kyoto_stage_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --editor --path . --quit"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      summary: "純粋な左右危険予測、StageContent実寸追従の5レーン/流木/プレイヤー配置、安全/接触付き方向ボタンを実装。HP3固定を保持し、予測のlarge/small衝突・安全経路・状態/RNG不変を回帰テスト化。"
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "実装スライスが元の製品品質目標を満たしたか監査する。"
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current dirty diff"
+      - "720x1280 runtime screenshot"
+    constraints:
+      - "Do not implement."
+      - "必須Worker作業が残る場合は完了を拒否する。"
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt:
+      result: done
+      decision: not_complete
+      summary: "初期盤面のプレイヤー・接近流木・5レーン表示は実画面で確認したが、主要成果であるWAIT_DIRECTIONの両ボタン全文・収容・同時タップ可能性の720×1280証拠がないため完了を拒否。"
+      missing_evidence:
+        - "720×1280 WAIT_DIRECTION capture"
+        - "両方向ラベル全文とボタン境界"
+      next_task: T005
+  - id: T005
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: default
+    objective: "PMとしてAquafallのWAIT_DIRECTIONを安全経路1つ・接触経路1つの決定的状態で720×1280描画できるようQA recorderだけを拡張し、方向ボタン全文と境界を実画面で検証する。"
+    allowed_files:
+      - "tests/record_amazon_kyoto_screens.gd"
+      - "artifacts/amazon-boss-product-quality/"
+    verify:
+      - "Generate direction-720x1280.png"
+      - "両ボタンと安全/接触全文がviewport/control bounds内であることを確認"
+      - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+    stop_if:
+      - "Need implementation files outside allowed_files."
+      - "record_amazon_kyoto_screens.gdが開始時FC38B354…から変わった。"
+      - "決定状態をRNG任せにしなければならない。"
+      - "実画面キャプチャを取得できない。"
+      - "同一検証が2回失敗。"
+    receipt:
+      result: done
+      changed_files:
+        - "tests/record_amazon_kyoto_screens.gd"
+      artifacts:
+        - "artifacts/amazon-boss-product-quality/direction-720x1280.png"
+      commands:
+        - cmd: "Godot --headless --editor --path . --quit"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+          status: pass
+        - cmd: "Godot --path . --script tests/record_amazon_kyoto_screens.gd (DICE_QA_STAGE=amazon, DICE_QA_STATE=direction)"
+          status: pass
+      summary: "QAレコーダーに決定的WAIT_DIRECTION状態を追加。左=滝筋2/流木接触、右=滝筋4/安全を描画し、両Buttonのglobal_rectが720×1280内、全文ラベル、同時表示であることを実行時検査。実画面でも文字欠けなし。"
+  - id: T998
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "T005の方向状態実画面証拠を含め、最初の実装トランシェが完了したか再監査する。"
+    inputs:
+      - "T004 and T005 receipts"
+      - "boss-ready and direction 720x1280 captures"
+      - "Last verification"
+    constraints:
+      - "Do not implement."
+      - "全文判読またはタップ境界に問題があれば完了を拒否する。"
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt:
+      result: done
+      decision: complete
+      summary: "T004の実装スライスとT005の方向状態QAを完了。初期盤面ではプレイヤー・接近流木・5レーンが可視、WAIT_DIRECTIONでは安全/接触の全文が両ボタンに収まり同時タップ可能。専用・総合・parse・diff検証も成功。"
+      evidence:
+        - "artifacts/amazon-boss-product-quality/boss-ready-720x1280.png"
+        - "artifacts/amazon-boss-product-quality/direction-720x1280.png"
+        - "scripts/game/aquafall_battle.gd:80"
+        - "scripts/app/journey_stage_screen.gd:1065"
+        - "scripts/app/journey_stage_screen.gd:1111"
+        - "tests/run_amazon_kyoto_stage_tests.gd:76"
+        - "tests/record_amazon_kyoto_screens.gd:30"
+      verification:
+        - "AMAZON_KYOTO_TESTS passed=true"
+        - "DICE_SLOT_TRIP_TESTS failures=0"
+        - "Godot editor import/parse exit 0"
+        - "git diff --check exit 0"
+      deferred:
+        - "Aquafall RNG stateのsnapshot/restoreと保存後決定性テスト"
+        - "JSON generation_rulesの実装"
+        - "3投スロット役、勝敗、LIFE再挑戦の網羅テスト"
+  - id: T006
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "残課題を一つの安全なロジックトランシェとして実装する。RNG stateをsnapshot/restoreし、JSON generation_rulesを尊重した障害物生成を追加し、3投役・勝敗・LIFE再挑戦の回帰を専用テストへ追加する。"
+    allowed_files:
+      - "scripts/game/aquafall_battle.gd"
+      - "tests/run_amazon_kyoto_stage_tests.gd"
+    verify:
+      - "Godot --headless --editor --path . --quit"
+      - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+      - "Godot --headless --path . --script tests/run_tests.gd"
+      - "git diff --check"
+    stop_if:
+      - "Need UI or unrelated files outside allowed_files."
+      - "Current user changes in owned files are overwritten or reverted."
+      - "Generation rule semantics cannot be made deterministic from the supplied JSON and existing contract."
+      - "Same verification fails twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/aquafall_battle.gd"
+        - "tests/run_amazon_kyoto_stage_tests.gd"
+      commands:
+        - cmd: "Godot --headless --editor --path . --quit"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      summary: "Aquafall snapshotへRNG stateを文字列で保持し、JSON保存復元後も次の障害物生成を決定的に継続。generation_rulesの同型正規化、最大連続パターン数、巨大流木後の空き、行全塞ぎ回避を実装。PAIR/STRAIGHT/TRIPLE、勝利/敗北、LIFE復活再挑戦とJSONラウンドトリップを専用回帰テスト化。"
+  - id: T997
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "残課題トランシェが保存復元、生成制約、役/勝敗/LIFE回帰を満たすか監査し、未達なら次の最小タスクを切り出す。"
+    inputs:
+      - "T006 receipt"
+      - "Dedicated and full test results"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "Deferred behavior must not be declared complete without direct tests."
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt:
+      result: done
+      decision: complete
+      summary: "T006の保存復元決定性、JSON生成制約、3投役/勝敗/LIFE再挑戦をすべて専用回帰で確認。専用・総合テスト、エディタ取込、差分チェックが通過し、このトランシェの必須課題は残っていない。"
+      evidence:
+        - "scripts/game/aquafall_battle.gd"
+        - "tests/run_amazon_kyoto_stage_tests.gd"
+        - "AMAZON_KYOTO_TESTS passed=true"
+        - "DICE_SLOT_TRIP_TESTS failures=0"
+        - "Godot editor import/parse exit 0"
+        - "git diff --check exit 0"
+  - id: T007
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "Amazonボス戦を通常マップと同じロール/スロット/回転ダイス操作へ揃え、出目歩数の一歩ずつ跳躍移動と丸太前進、方向選択、役効果表示を実装する。"
+    allowed_files:
+      - "scripts/app/journey_stage_screen.gd"
+      - "scripts/game/aquafall_battle.gd"
+      - "tests/run_journey_stage_ui_regression_tests.gd"
+      - "tests/record_amazon_kyoto_screens.gd"
+      - "tests/run_amazon_kyoto_stage_tests.gd"
+    verify:
+      - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+      - "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+      - "Godot --headless --path . --script tests/run_tests.gd"
+      - "Godot --headless --editor --path . --quit"
+      - "git diff --check"
+    stop_if:
+      - "Need unrelated files outside the listed UI/game/test files."
+      - "通常マップのロール/スロット操作が壊れる。"
+      - "方向選択が安全/接触判定の常設表示に戻る。"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/journey_stage_screen.gd"
+        - "scripts/game/aquafall_battle.gd"
+        - "tests/run_journey_stage_ui_regression_tests.gd"
+        - "tests/record_amazon_kyoto_screens.gd"
+        - "tests/run_amazon_kyoto_stage_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --editor --path . --quit"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      summary: "Amazonボスへ通常マップ同型の3スロット・タップ停止式回転ダイスを追加。方向選択後は出目の歩数をプレイヤーが一歩ずつ跳ね、同時に丸太を一段ずつ進める。PAIR/STRAIGHT/TRIPLEの役効果を状態と表示へ接続し、方向ボタンは左/右と到着滝筋だけに整理。"
+
+checks:
+  dirty_fingerprint: "pre-existing edits in autoload/bgm_manager.gd, design-qa.md, scripts/app/main.gd, scripts/game/v06_play_session.gd plus untracked Amazon/Kyoto integration files"
+  last_verification:
+    result: pass
+    task: T007
+    commands:
+      - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+      - "Godot --headless --path . --script tests/run_tests.gd"
+      - "Godot --headless --editor --path . --quit"
+      - "git diff --check"

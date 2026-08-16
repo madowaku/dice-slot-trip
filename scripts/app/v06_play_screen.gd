@@ -367,6 +367,12 @@ func configure_resume_data(data: Dictionary) -> void:
 func _ready() -> void:
 	_rng.randomize()
 	add_to_group("v06_session_screen")
+	var ui_sfx := get_node_or_null("/root/UiSfxManager")
+	if ui_sfx != null:
+		ui_sfx.call("set_stage", _start_stage_id)
+		var state_for_audio := get_node_or_null("/root/GameState")
+		if state_for_audio != null:
+			ui_sfx.call("set_volume", float(state_for_audio.get("se_volume")))
 	_session = V06PlaySessionScript.new(_start_stage_id, _start_character_id)
 	_feedback = V06FeedbackControllerScript.new()
 	_feedback.name = "JourneyFeedback"
@@ -843,6 +849,12 @@ func _wire_press_feedback() -> void:
 func _emit_feedback(event: StringName) -> void:
 	if is_instance_valid(_feedback):
 		_feedback.emit_feedback(event)
+
+
+func _play_ui_sfx(cue: StringName, world_specific := false) -> void:
+	var ui_sfx := get_node_or_null("/root/UiSfxManager")
+	if ui_sfx != null:
+		ui_sfx.call("play_ui_sfx", cue, world_specific)
 
 
 func _set_button_pressed(button: Button, pressed: bool) -> void:
@@ -1559,11 +1571,13 @@ func _on_route_chosen(route_id: String) -> void:
 	var bypass: Dictionary = _session.pending_bypass()
 	var resumed: Dictionary = _session.choose_route(route_id)
 	if not bool(resumed.get("ok", false)):
+		_play_ui_sfx(&"blocked")
 		message_label.text = "今はそのルートを選べません"
 		message_label.show()
 		_refresh_ui()
 		return
 	choice_overlay.hide()
+	_play_ui_sfx(&"select")
 	_movement_active = true
 	message_label.text = "本線を進む" if route_id == V06CourseModelScript.ROUTE_MAIN else "%sを進む" % str(bypass.get("name_ja", "近道"))
 	_refresh_ui()
@@ -1585,7 +1599,9 @@ func _complete_nonmodal_resolution() -> void:
 
 func _on_replay_requested() -> void:
 	if not _session.retry_run():
+		_play_ui_sfx(&"blocked")
 		return
+	_play_ui_sfx(&"retry")
 	_heart_roulette_elapsed = 0.0
 	_heart_roulette_display_index = 0
 	_play_bgm(&"play_normal_map")
@@ -1621,7 +1637,9 @@ func _on_next_lap_requested() -> void:
 	var completed_lap: int = int(_session.lap())
 	var life_before: int = int(_session.life())
 	if not _session.next_lap():
+		_play_ui_sfx(&"blocked")
 		return
+	_play_ui_sfx(&"complete", true)
 	_last_presented_life = _session.life()
 	if completed_lap % 10 == 0:
 		_show_operation_message(lap_life_stamp_text(completed_lap, life_before, _session.life()), 1.3, 25)
@@ -1645,6 +1663,7 @@ func _on_boss_pause_pressed() -> void:
 	if _boss_pause_open or not boss_overlay.visible or _session == null:
 		return
 	_boss_pause_open = true
+	_play_ui_sfx(&"open")
 	_session.pause_clock(Time.get_ticks_msec())
 	boss_pause_overlay.show()
 	boss_resume_button.grab_focus()
@@ -1655,6 +1674,7 @@ func _on_boss_resume_pressed() -> void:
 	if not _boss_pause_open or _session == null:
 		return
 	_boss_pause_open = false
+	_play_ui_sfx(&"close")
 	boss_pause_overlay.hide()
 	_session.resume_clock(Time.get_ticks_msec())
 	boss_pause_button.grab_focus()
@@ -1687,6 +1707,7 @@ func _on_travel_menu_pressed() -> void:
 	if _session.phase() != V06PlaySessionScript.PHASE_READY:
 		return
 	_travel_menu_open = true
+	_play_ui_sfx(&"open")
 	_session.pause_clock(Time.get_ticks_msec())
 	_save_stable_checkpoint()
 	travel_menu_overlay.show()
@@ -1698,6 +1719,7 @@ func _on_travel_encyclopedia_pressed() -> void:
 	if not _travel_menu_open or _travel_encyclopedia_open:
 		return
 	_travel_encyclopedia_open = true
+	_play_ui_sfx(&"open")
 	travel_menu_overlay.hide()
 	travel_encyclopedia_overlay.call("open", _global_travel_card_ids(), "設定へ戻る")
 
@@ -1706,6 +1728,7 @@ func _on_travel_encyclopedia_closed() -> void:
 	if not _travel_encyclopedia_open:
 		return
 	_travel_encyclopedia_open = false
+	_play_ui_sfx(&"close")
 	travel_encyclopedia_overlay.call("hide_view")
 	if _travel_menu_open:
 		travel_menu_overlay.show()
@@ -1719,6 +1742,7 @@ func _on_travel_menu_continue() -> void:
 		_on_travel_encyclopedia_closed()
 		return
 	_travel_menu_open = false
+	_play_ui_sfx(&"close")
 	travel_menu_overlay.hide()
 	_session.resume_clock(Time.get_ticks_msec())
 	_persist_global_audio_settings()
@@ -1729,6 +1753,7 @@ func _on_travel_menu_continue() -> void:
 func _leave_stage_requested() -> void:
 	if _session == null or _exit_transition_requested:
 		return
+	_play_ui_sfx(&"back")
 	_save_stable_checkpoint()
 	_persist_global_audio_settings()
 	_exit_transition_requested = true
@@ -1769,6 +1794,9 @@ func _on_travel_se_changed(value: float) -> void:
 		return
 	global_state.set("se_volume", clampf(value / 100.0, 0.0, 1.0))
 	travel_se_label.text = "SE音量　%d%%" % roundi(value)
+	var ui_sfx := get_node_or_null("/root/UiSfxManager")
+	if ui_sfx != null:
+		ui_sfx.call("set_volume", global_state.get("se_volume"))
 	if is_instance_valid(_feedback):
 		_feedback.set_levels(1.0, float(global_state.get("se_volume")), bool(global_state.get("dice_se_muted")))
 
@@ -1878,6 +1906,7 @@ func _open_utility_card(title: String, texture: Texture2D, detail: String) -> vo
 	if _session.phase() != V06PlaySessionScript.PHASE_READY and not (_utility_mode == "boss_coin" and _boss_support_window_open()):
 		return
 	_utility_open = true
+	_play_ui_sfx(&"open")
 	_session.pause_clock(Time.get_ticks_msec())
 	_save_stable_checkpoint()
 	utility_panel.custom_minimum_size.y = 800.0 if _utility_mode == "skill" else 700.0
@@ -2003,6 +2032,7 @@ func _on_utility_action() -> void:
 			_refresh_ui()
 			_refresh_coin_utility("準備OK")
 		else:
+			_emit_feedback(V06FeedbackControllerScript.EVENT_BLOCKED)
 			_refresh_coin_utility("コイン不足 / 準備済み")
 		return
 	if _utility_mode != "item":
@@ -2017,6 +2047,7 @@ func _on_utility_action() -> void:
 		_refresh_ui()
 		_refresh_item_utility("使用しました")
 	else:
+		_emit_feedback(V06FeedbackControllerScript.EVENT_BLOCKED)
 		var reason := str(result.get("error", result.get("status", "使えません")))
 		var reason_copy := "HPは満タンです" if reason == "HP_FULL" else "同じ効果がすでに有効です"
 		_refresh_item_utility(reason_copy)
@@ -2027,9 +2058,10 @@ func _on_pinpoint_face_selected(face: int) -> void:
 		return
 	var result: Dictionary = _session.arm_pinpoint(face)
 	if not bool(result.get("ok", false)):
+		_emit_feedback(V06FeedbackControllerScript.EVENT_BLOCKED)
 		_refresh_skill_utility()
 		return
-	_emit_feedback(V06FeedbackControllerScript.EVENT_MISSION_COMPLETE)
+	_emit_feedback(V06FeedbackControllerScript.EVENT_LEVEL_UP)
 	message_label.text = "ピンポイント　出目 %d を予約" % face
 	message_label.show()
 	_save_stable_checkpoint()
@@ -2040,6 +2072,7 @@ func _on_utility_closed() -> void:
 	if not _utility_open:
 		return
 	var closing_boss_support := _utility_mode == "boss_coin"
+	_play_ui_sfx(&"cancel")
 	_utility_open = false
 	_utility_mode = ""
 	utility_overlay.hide()
@@ -2059,6 +2092,7 @@ func _on_map_pressed() -> void:
 	_map_clock_pause_owned = _session.pause_clock(Time.get_ticks_msec())
 	_save_stable_checkpoint()
 	_map_open = true
+	_play_ui_sfx(&"open")
 	message_band.hide()
 	message_label.hide()
 	overview_title.text = "全体ミニマップ"
@@ -2076,6 +2110,7 @@ func _on_map_closed() -> void:
 	var owned_pause := _map_clock_pause_owned
 	_map_clock_pause_owned = false
 	_map_open = false
+	_play_ui_sfx(&"close")
 	map_overlay.hide()
 	overview_atlas_view.cancel_visual_motion(_session.position())
 	overview_atlas_view.set_overview_mode(false)

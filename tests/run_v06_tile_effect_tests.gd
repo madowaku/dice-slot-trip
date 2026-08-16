@@ -65,7 +65,7 @@ func _test_rest_repeat_and_cap() -> void:
 	_expect(repeat.player_hp() == 3, "REST heals again on a separate landing")
 	var full := _session_at("main", 10, 3)
 	_roll_and_finish(full, 1)
-	_expect(full.player_hp() == 3 and full.last_tile_effect_result().text == "HP FULL", "REST caps at maximum HP")
+	_expect(full.player_hp() == 3 and full.coins() == 1 and full.last_tile_effect_result().text == "HP FULL  COIN +1", "full REST grants one coin instead of going quiet")
 
 
 func _test_hp_risk_and_floor() -> void:

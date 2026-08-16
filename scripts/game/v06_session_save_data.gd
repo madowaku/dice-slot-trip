@@ -1,6 +1,8 @@
 class_name V06SessionSaveData
 extends RefCounted
 
+const HeartRouletteModelScript = preload("res://scripts/game/heart_roulette_model.gd")
+
 const SCHEMA_VERSION := 2
 const COURSE_VERSION := "cairo_v06_90_life3_v1"
 const APP_VERSION := "v0.8"
@@ -350,9 +352,9 @@ static func _validate_heart_roulette(value: Variant, player: Dictionary) -> bool
 	for key: String in ["slot_index", "delta", "max_before", "max_after", "hp_before", "hp_after", "max_gain", "heal_gain"]:
 		if not _integer(result.get(key)):
 			return false
-	var expected_values := [1, 2, 1, 3, 1, 2]
+	var expected_values: Array[int] = HeartRouletteModelScript.VALUES
 	var hp_before := int(result.get("hp_before"))
-	var expected_hp_after := 3 if slot_index == 3 else mini(hp_before + int(expected_values[slot_index]), 3)
+	var expected_hp_after := 3 if int(expected_values[slot_index]) >= 3 else mini(hp_before + int(expected_values[slot_index]), 3)
 	return int(result.get("slot_index")) == slot_index \
 		and int(result.get("delta")) == int(expected_values[slot_index]) \
 		and int(result.get("max_before")) == 3 \

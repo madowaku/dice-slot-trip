@@ -426,6 +426,12 @@ func _test_schema2_roulette_arithmetic() -> void:
 	var bad_life_high := valid.duplicate(true)
 	bad_life_high.session_state.player.life = 4
 	_expect(not SaveData.validate(bad_max_type).ok and not SaveData.validate(bad_max_value).ok and not SaveData.validate(bad_life_low).ok and not SaveData.validate(bad_life_high).ok, "schema2 rejects noninteger/non3 max_hp and LIFE outside 0..3")
+	var zero_session := Session.new()
+	_set_player_hp(zero_session, 1)
+	_enter_victory(zero_session)
+	var zero_result: Dictionary = zero_session.resolve_heart_roulette(5)
+	var zero_save := SaveData.from_session(zero_session)
+	_expect(bool(zero_result.get("ok", false)) and int(zero_result.get("result", {}).get("delta", -1)) == 0 and zero_session.player_hp() == 1 and SaveData.validate(zero_save).ok, "schema2 accepts the zero-heal roulette segment and preserves HP")
 
 
 func _test_schema1_course_migration_contract() -> void:

@@ -4,6 +4,8 @@ extends RefCounted
 const V06RollSetScript = preload("res://scripts/game/v06_roll_set.gd")
 const V06CourseModelScript = preload("res://scripts/game/v06_course_model.gd")
 const V06BossBattleScript = preload("res://scripts/game/v06_boss_battle.gd")
+const HeartRouletteModelScript = preload("res://scripts/game/heart_roulette_model.gd")
+const RestEffectModelScript = preload("res://scripts/game/rest_effect_model.gd")
 const COURSE_PATH := "res://data/stages/v06_cairo_course.json"
 const DEFAULT_STAGE_ID: StringName = &"cairo_hourglass"
 const DEFAULT_CHARACTER_ID: StringName = &"relaxed"
@@ -31,7 +33,7 @@ const START_PLAYER_HP := 3
 const MAX_PLAYER_HP := 3
 const MAX_LIFE := 3
 # 3 is the FULL segment; the other values are direct HP recovery amounts.
-const HEART_ROULETTE_VALUES: Array[int] = [1, 2, 1, 3, 1, 2]
+const HEART_ROULETTE_VALUES: Array[int] = HeartRouletteModelScript.VALUES
 const DEFAULT_COIN_GAIN := 2
 const DEFAULT_REST_HEAL := 1
 const DEFAULT_RISK_AMOUNT := 1
@@ -490,18 +492,13 @@ func resolve_heart_roulette(slot_index: int) -> Dictionary:
 		return _rejected("HEART_ROULETTE_NOT_AVAILABLE")
 	if slot_index < 0 or slot_index >= HEART_ROULETTE_VALUES.size():
 		return _rejected("INVALID_HEART_ROULETTE_SLOT")
-	var rolled_delta: int = HEART_ROULETTE_VALUES[slot_index]
+	var shared_result: Dictionary = HeartRouletteModelScript.resolve(_player_hp, _player_max_hp, slot_index)
+	var rolled_delta: int = int(shared_result.get("rolled_value", HEART_ROULETTE_VALUES[slot_index]))
 	var max_before := _player_max_hp
 	var hp_before := _player_hp
-	var heal_gain := 0
-	if slot_index == 3:
-		_player_hp = _player_max_hp
-	else:
-		_player_hp = mini(_player_hp + rolled_delta, _player_max_hp)
-	heal_gain = _player_hp - hp_before
-	var label := "♥ FULL" if slot_index == 3 else "♥ +%d" % rolled_delta
-	if heal_gain > 0 and slot_index != 3:
-		label = "♥ +%d" % heal_gain
+	_player_hp = int(shared_result.get("after_hp", _player_hp))
+	var heal_gain := _player_hp - hp_before
+	var label := "♥ %s" % str(shared_result.get("label", "+%d" % heal_gain))
 	_heart_roulette_pending = false
 	_heart_roulette_resolved = true
 	_heart_roulette_slot_index = slot_index
@@ -1244,15 +1241,22 @@ func _resolve_landing_effect(kind: String) -> Dictionary:
 			_coins += amount
 			_advance_coin_mission(amount)
 			_consumed_reward_node_keys[node_key] = true
-			result.applied = true
-			result.text = "COIN +%d" % amount
+		result.applied = true
+		result.text = "COIN +%d" % amount
 	elif kind == "REST":
-		var before := _player_hp
 		var boost := 1 if bool(_stage_flags.get(STAGE_FLAG_NEXT_REST_BOOST, false)) else 0
-		_player_hp = mini(_player_hp + amount + boost, _player_max_hp)
+		var rest_result := RestEffectModelScript.resolve(_player_hp, _player_max_hp, amount + boost)
+		var before := int(rest_result.get("before_hp", _player_hp))
+		_player_hp = int(rest_result.get("after_hp", _player_hp))
+		var coin_bonus := int(rest_result.get("coin_bonus", 0))
+		if coin_bonus > 0:
+			_coins += coin_bonus
+			_advance_coin_mission(coin_bonus)
 		if boost > 0: _stage_flags.erase(STAGE_FLAG_NEXT_REST_BOOST)
-		result.applied = _player_hp != before
-		result.text = "HP +%d" % (_player_hp - before) if result.applied else "HP FULL"
+		result["coin_bonus"] = coin_bonus
+		result["hp_gain"] = _player_hp - before
+		result.applied = _player_hp != before or coin_bonus > 0
+		result.text = str(rest_result.get("text", "HP FULL"))
 	elif kind == "ITEM":
 		if not _consumed_reward_node_keys.has(node_key):
 			var item_id: String = str(ITEM_IDS[posmod(int(_position.get("tile_index", 0)), ITEM_IDS.size())])

@@ -15,6 +15,8 @@ func _run() -> void:
 	if bgm == null:
 		quit(1)
 		return
+	bgm.play_home()
+	_expect(bgm.current_track() == &"home", "title screen uses the supplied main theme")
 	bgm.play_stage_select()
 	_expect(bgm.current_track() == &"stage_select", "stage selection uses Sand Dune Wind")
 	bgm.play_normal_map()

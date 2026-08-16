@@ -1,16 +1,30 @@
 extends Node
 
 const TRACK_STAGE_SELECT: StringName = &"stage_select"
+const TRACK_HOME: StringName = &"home"
 const TRACK_NORMAL_MAP: StringName = &"normal_map"
 const TRACK_BOSS: StringName = &"boss"
+const TRACK_AMAZON_PREVIEW: StringName = &"amazon_preview"
+const TRACK_AMAZON_NORMAL: StringName = &"amazon_normal"
+const TRACK_AMAZON_BOSS: StringName = &"amazon_boss"
+const TRACK_KYOTO_PREVIEW: StringName = &"kyoto_preview"
+const TRACK_KYOTO_NORMAL: StringName = &"kyoto_normal"
+const TRACK_KYOTO_BOSS: StringName = &"kyoto_boss"
 const CROSSFADE_SECONDS := 0.8
 const BGM_LINEAR_GAIN := 0.32
 const SILENT_DB := -80.0
 
 const TRACKS: Dictionary = {
+	TRACK_HOME: preload("res://assets/audio/bgm/home/世界の最果てで、自由を謳う_2.mp3"),
 	TRACK_STAGE_SELECT: preload("res://assets/audio/bgm/cairo/砂丘の風.mp3"),
 	TRACK_NORMAL_MAP: preload("res://assets/audio/bgm/cairo/そよ風とお散歩.mp3"),
 	TRACK_BOSS: preload("res://assets/audio/bgm/cairo/太陽の絨毯、砂漠の彼方.mp3"),
+	TRACK_AMAZON_PREVIEW: preload("res://assets/audio/bgm/amazon/アマゾン探検.mp3"),
+	TRACK_AMAZON_NORMAL: preload("res://assets/audio/bgm/amazon/森林ループ_2.mp3"),
+	TRACK_AMAZON_BOSS: preload("res://assets/audio/bgm/amazon/黒の滝.mp3"),
+	TRACK_KYOTO_PREVIEW: preload("res://assets/audio/bgm/kyoto/古都、路地裏にて.mp3"),
+	TRACK_KYOTO_NORMAL: preload("res://assets/audio/bgm/kyoto/雅なフィールド.mp3"),
+	TRACK_KYOTO_BOSS: preload("res://assets/audio/bgm/kyoto/お稲荷様.mp3"),
 }
 
 var _players: Array[AudioStreamPlayer] = []
@@ -42,12 +56,40 @@ func play_stage_select() -> void:
 	play_track(TRACK_STAGE_SELECT)
 
 
+func play_home() -> void:
+	play_track(TRACK_HOME)
+
+
 func play_normal_map() -> void:
 	play_track(TRACK_NORMAL_MAP)
 
 
 func play_boss() -> void:
 	play_track(TRACK_BOSS)
+
+
+func play_amazon_preview() -> void:
+	play_track(TRACK_AMAZON_PREVIEW)
+
+
+func play_amazon_normal() -> void:
+	play_track(TRACK_AMAZON_NORMAL)
+
+
+func play_amazon_boss() -> void:
+	play_track(TRACK_AMAZON_BOSS)
+
+
+func play_kyoto_preview() -> void:
+	play_track(TRACK_KYOTO_PREVIEW)
+
+
+func play_kyoto_normal() -> void:
+	play_track(TRACK_KYOTO_NORMAL)
+
+
+func play_kyoto_boss() -> void:
+	play_track(TRACK_KYOTO_BOSS)
 
 
 func play_track(track: StringName) -> void:
