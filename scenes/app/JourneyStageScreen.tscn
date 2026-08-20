@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource path="res://scripts/app/journey_stage_screen.gd" type="Script" id="1"]
+[ext_resource path="res://scripts/app/journey_stage_screen_kyoto_readability.gd" type="Script" id="1"]
 
 [node name="JourneyStageScreen" type="Control"]
 layout_mode = 3
