@@ -22,6 +22,8 @@ func _record() -> void:
 	var capture_size := Vector2i(720, 1280)
 	if viewport_text == "360x640":
 		capture_size = Vector2i(360, 640)
+	elif viewport_text == "360x800":
+		capture_size = Vector2i(360, 800)
 	root.size = capture_size
 	var screen: Control = ScreenScene.instantiate()
 	screen.configure_start_context(StageCatalog.STAGE_AMAZON if stage_text == "amazon" else StageCatalog.STAGE_KYOTO)
@@ -30,6 +32,11 @@ func _record() -> void:
 		await process_frame
 	if state_name == "map":
 		screen.call("_close_overview_map")
+		# The first Kyoto launch follows the overview with the one-time goshuin
+		# tutorial. Normal-map visual QA needs the unobscured playable state.
+		for _ignored: int in range(4):
+			await process_frame
+		screen.call("_close_modal")
 		for _ignored: int in range(8):
 			await process_frame
 	elif state_name == "overview":

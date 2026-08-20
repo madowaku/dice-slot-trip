@@ -5,6 +5,13 @@ const MAX_HEARTS := 3
 const MAX_LIFE := 3
 const ITEM_CAPACITY := 3
 const SKILL_GAUGE_MAX := 3
+const MISSION_STANDARD_REWARD := 12
+const JOURNEY_MISSION_POOL := [
+	{"id": "journey_face4", "kind": "dice", "short_text": "4を10回出す", "target": 10, "target_face": 4, "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "dice"},
+	{"id": "journey_pair4", "kind": "slot", "short_text": "PAIRを4回作る", "target": 4, "target_role": "PAIR", "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "slot"},
+	{"id": "journey_travel30", "kind": "trip", "short_text": "30マス進む", "target": 30, "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "trip"},
+	{"id": "journey_coin12", "kind": "coin", "short_text": "コインを12枚集める", "target": 12, "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "coin"},
+]
 const ITEM_WATER_CANTEEN := "water_canteen"
 const ITEM_BRASS_COMPASS := "brass_compass"
 const ITEM_SCARAB_SEAL := "scarab_seal"
@@ -14,6 +21,7 @@ const RestEffectModelScript = preload("res://scripts/game/rest_effect_model.gd")
 const PHASE_READY: StringName = &"READY"
 const PHASE_BRANCH: StringName = &"BRANCH"
 const PHASE_EVENT: StringName = &"EVENT"
+const PHASE_BOSS_CHOICE: StringName = &"BOSS_CHOICE"
 const PHASE_SECRET: StringName = &"SECRET"
 const PHASE_BOSS: StringName = &"BOSS"
 const PHASE_RUN_OVER: StringName = &"RUN_OVER"
@@ -71,6 +79,7 @@ func apply_rest_landing(heal_amount: int = 1) -> Dictionary:
 
 
 func start_next_lap() -> void:
+	var had_journey_mission := stage_flags.has("journey_mission")
 	lap += 1
 	cumulative_score += score
 	score = 0
@@ -79,13 +88,15 @@ func start_next_lap() -> void:
 	consumed.clear()
 	# Travel resources are intentionally lap-local, matching Cairo: the player
 	# starts each new sightseeing loop with an empty bag and skill gauge.
-	for resource_key: String in ["item_count", "item_inventory", "next_move_bonus", "risk_shield", "skill_gauge", "skill_last_roll", "skill_next_face", "skill_ready_seen", "mission_event_count", "mission_rest_count"]:
+	for resource_key: String in ["item_count", "item_inventory", "next_move_bonus", "risk_shield", "skill_gauge", "skill_last_roll", "skill_next_face", "skill_ready_seen", "mission_event_count", "mission_rest_count", "journey_mission"]:
 		stage_flags.erase(resource_key)
 	pending_steps = 0
 	pending_choices.clear()
 	pending_event.clear()
 	last_result.clear()
 	phase = PHASE_READY
+	if had_journey_mission:
+		ensure_journey_mission()
 
 
 func snapshot() -> Dictionary:
@@ -146,6 +157,85 @@ func restore(data: Dictionary) -> bool:
 	pending_event = (data.get("pending_event", {}) as Dictionary).duplicate(true)
 	last_result = (data.get("last_result", {}) as Dictionary).duplicate(true)
 	return true
+
+
+func ensure_journey_mission() -> Dictionary:
+	var raw: Variant = stage_flags.get("journey_mission", null)
+	if raw is Dictionary and not (raw as Dictionary).is_empty():
+		var existing := (raw as Dictionary).duplicate(true)
+		existing["progress"] = clampi(int(existing.get("progress", 0)), 0, maxi(int(existing.get("target", 1)), 1))
+		existing["completed"] = bool(existing.get("completed", false))
+		existing["reward_claimed"] = bool(existing.get("reward_claimed", false))
+		existing["last_coins"] = maxi(int(existing.get("last_coins", coins)), 0)
+		stage_flags["journey_mission"] = existing
+		return existing.duplicate(true)
+	var selection_seed := int(Time.get_ticks_usec()) ^ int(hash(String(stage_id))) ^ (lap * 7919)
+	var index := posmod(selection_seed, JOURNEY_MISSION_POOL.size())
+	var mission := (JOURNEY_MISSION_POOL[index] as Dictionary).duplicate(true)
+	mission["progress"] = 0
+	mission["completed"] = false
+	mission["reward_claimed"] = false
+	mission["selection_seed"] = selection_seed
+	mission["last_coins"] = coins
+	stage_flags["journey_mission"] = mission
+	return mission.duplicate(true)
+
+
+func journey_mission_state() -> Dictionary:
+	return ensure_journey_mission()
+
+
+func record_journey_mission_roll(face: int, traveled_spaces: int) -> Dictionary:
+	var mission := ensure_journey_mission()
+	_sync_journey_mission_coins(mission)
+	if not bool(mission.get("completed", false)):
+		match str(mission.get("kind", "")):
+			"dice":
+				if face == int(mission.get("target_face", 0)):
+					mission["progress"] = int(mission.get("progress", 0)) + 1
+			"trip":
+				mission["progress"] = int(mission.get("progress", 0)) + maxi(traveled_spaces, 0)
+	_finalize_journey_mission(mission)
+	stage_flags["journey_mission"] = mission
+	return mission.duplicate(true)
+
+
+func record_journey_mission_role(role: String) -> Dictionary:
+	var mission := ensure_journey_mission()
+	_sync_journey_mission_coins(mission)
+	if not bool(mission.get("completed", false)) and str(mission.get("kind", "")) == "slot" and role == str(mission.get("target_role", "")):
+		mission["progress"] = int(mission.get("progress", 0)) + 1
+	_finalize_journey_mission(mission)
+	stage_flags["journey_mission"] = mission
+	return mission.duplicate(true)
+
+
+func sync_journey_mission() -> Dictionary:
+	var mission := ensure_journey_mission()
+	_sync_journey_mission_coins(mission)
+	_finalize_journey_mission(mission)
+	stage_flags["journey_mission"] = mission
+	return mission.duplicate(true)
+
+
+func _sync_journey_mission_coins(mission: Dictionary) -> void:
+	var last_coins := maxi(int(mission.get("last_coins", coins)), 0)
+	if str(mission.get("kind", "")) == "coin" and not bool(mission.get("completed", false)) and coins > last_coins:
+		mission["progress"] = int(mission.get("progress", 0)) + coins - last_coins
+	mission["last_coins"] = coins
+
+
+func _finalize_journey_mission(mission: Dictionary) -> void:
+	var target := maxi(int(mission.get("target", 1)), 1)
+	mission["progress"] = clampi(int(mission.get("progress", 0)), 0, target)
+	if int(mission.get("progress", 0)) < target:
+		return
+	mission["completed"] = true
+	if bool(mission.get("reward_claimed", false)):
+		return
+	coins += maxi(int(mission.get("reward_coins", MISSION_STANDARD_REWARD)), 0)
+	mission["reward_claimed"] = true
+	mission["last_coins"] = coins
 
 
 func item_count() -> int:

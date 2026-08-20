@@ -43,6 +43,31 @@ final result: passed
 
 ---
 
+# Design QA — Kyoto Boss / 狐火追陣
+
+- ImageGen target: `C:/Dev/Projects/dice-slot-trip-main-verify/art_source/fox_fire_chase/ui/fox-fire-chase-target-v1.png`
+- Native captures: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-chase/fox-fire-chase-qa-720x1280.png`, `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-chase/fox-fire-chase-qa-360x640.png`
+- Target/implementation comparison: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-chase/fox-fire-chase-target-vs-implementation.png`
+- Generated four-frame white-fox run set: `C:/Dev/Projects/dice-slot-trip-main-verify/assets/art/bosses/kyoto/fox_fire_chase/white_fox_run/`
+
+## Findings
+
+The selected hybrid direction is implemented: the teal/red advantage HUD makes the leader immediately legible; the perspective 6x6 board is the dominant surface; the explorer and white fox sit on square cells; and the compact SLOT tray preserves the three-roll role readout. The shared ivory-brass die now rotates in the unused center cell `(2,2)`, so a finger pressing ROLL cannot hide it. That center cell is outside both the outer chase ring and the one-cell-inward fox-fire detour route.
+
+The 720x1280 and 360x640 native captures were inspected for hierarchy, board readability, piece centering, die visibility, button obstruction, safe-area fit, and touch sizing. Per-cell fox-then-player movement, the fox-fire choice sheet, reduced motion, the three-page tutorial, and the explicit result handoff remain intact. No actionable P0/P1/P2 visual issues remain.
+
+## Verification
+
+- Chase core, balance reference, snapshot/JSON roundtrip, SLOT roles, fires, detours, goshuin, and victory/defeat: pass, `failures=0`.
+- Chase UI at 720x1280 and 360x640, including center-die placement and ROLL non-overlap: pass, `failures=0`.
+- Journey-stage dispatch/save/retry regression: pass, `failures=0`.
+- Existing 狐火六路陣 UI regression: pass, `failures=0`.
+- P0: none. P1: none. P2: none.
+
+final result: passed
+
+---
+
 # Design QA — Amazon/Kyoto Survival HUD and HP3 Boss Contract
 
 - Amazon normal HUD: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/amazon-kyoto/amazon-survival-hud.png`
@@ -445,5 +470,48 @@ Windows/OpenGL native captures at 360×640 and 720×1280 confirm the compact nor
 At both sizes, the corrected full-map modal reaches opposite padded route extents without blank overscroll, retains its title and separate `閉じる` action, and hides the backing operation band/white `サイコロを振ろう` copy. Direct message updates remain hidden while the map is open; closing restores the READY copy, clock ownership, MapButton focus, and die input. The purchased boss pre-roll state shows YOU `3 / 20` against SPHINX `0 / 20`, with both full racer footprints visible after the existing intro CTA and before the first roll.
 
 The independent recorder validates exact PNG dimensions, non-uniform pixel content, and normal process exit. Mission, candidate-mission, save, play-screen, play-session, feedback, tall-phone, visual-asset, atlas-interaction, boss-screen, boss-battle, coin-economy, course-model, and full suites pass with no failures. P0: none. P1: none. P2: none.
+
+final result: passed
+
+---
+
+# Design QA — Kyoto Normal Map / Cairo-style Current-to-+6 Horizon
+
+## Evidence
+
+- Source visual truth: `C:/Users/hiro/Desktop/cairo-kyoto.jpg` (757x798, Cairo reference on the left).
+- Normalized Cairo reference crop: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/kyoto-cairo-map/reference-cairo-360x800.png` (360x800).
+- Implementation: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/kyoto-cairo-map/kyoto-map-360x800.png` (Godot viewport 360x800, density 1).
+- Responsive captures: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/kyoto-cairo-map/kyoto-map-720x1280.png` and `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/kyoto-cairo-map/kyoto-map-360x640.png`.
+- Full-view comparison: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/kyoto-cairo-map/cairo-reference-vs-kyoto-implementation.png`.
+- Focused map comparison: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/kyoto-cairo-map/cairo-map-focus-vs-kyoto-map-focus.png`.
+- State: fresh Kyoto normal map after the opening overview and one-time goshuin tutorial are dismissed.
+
+## Findings
+
+No actionable P0/P1/P2 findings remain. Cairo is now the layout source of truth for Kyoto's normal screen rather than a loose stylistic reference. At 360x800 the implemented bands measure approximately HUD 102px, MISSION 60px, playfield 352px, message 35px, SLOT 116px, and tool dock 58px, closely matching the reference hierarchy. The 99-node topology, two shortcuts, four goshuin checkpoints, and boss destination remain available in 全体マップ rather than competing with normal play.
+
+- Fonts and typography: bundled Noto Sans JP remains consistent; +1 through +6 use 36-design-pixel labels, while 現在地 uses a responsive 24-pixel label so the three Japanese characters remain intact at 360px width.
+- Spacing and layout: the seven cards target 260 design pixels in height (responsive minimum 220), the explorer is 136px and bottom-anchored, and the centered live die scales from 152 to 184px. On the 360x800 reference state the card horizon begins about 35% into the playfield, replacing the previous top-heavy composition and unused lower approach space. No overlap or clipping appears at 720x1280, 360x800, or 360x640.
+- HUD: Kyoto now uses Cairo's two-row information hierarchy without four boxed value chips. The large `1/90` value, survival stack, coin value, and light 全体マップ action read as one cluster. This profile is Kyoto-only, preserving Amazon's existing battle geometry.
+- Mission: 御朱印 0/4 moved into the stage band. The MISSION band now presents one saved, lap-local Cairo-style random objective with live DICE/SLOT/travel/coin progress and a single-claim COIN reward.
+- Colors and tokens: Kyoto red, gold, cream, and ink replace Cairo teal appropriately. A restrained warm 18% overlay pushes the torii photograph behind the cards without blurring it.
+- Image quality and assets: the existing Kyoto torii background, explorer strip, semantic tile icons, and real 3D ivory die are sharp and correctly cropped. No placeholder, handcrafted SVG, or code-drawn substitute is used.
+- Copy and content: current through +6 is explicit, the status band remains contextual, and 全体マップ still names the complete-route action.
+- Interaction and accessibility: ROLL/STOP, cat hop, camera follow, route refresh, reduced-motion path, branch choices, mission reward idempotency, JSON mission restore, and 360-wide scaling pass. The enlarged map die stays away from the finger-operated ROLL control. The four lower tools use Cairo's light panels, 36px icons, 16px labels, and approximately 58px physical height at 360x800.
+
+## Comparison history
+
+The first implementation capture exposed two P2 issues: one obsolete semantic route marker remained over the background, and the explorer obscured the 現在地 label. The second pass enlarged the cards, explorer, numbers, and die. The final source-of-truth pass removed Kyoto's boxed HUD, restored the full Cairo mission hierarchy, separated goshuin progress, moved the card horizon to the visual center, shortened the decorative playfield, softened the background, and adopted Cairo's light tool dock. Combined full and focused comparisons confirm the requested hierarchy is present.
+
+## Verification
+
+- Journey-stage UI regression: `failures=0`.
+- Journey-stage motion for Amazon and Kyoto: `failures=0`.
+- Amazon/Kyoto course, branch, goshuin, save, and boss integration: pass.
+- Tall-phone layout: `failures=0`.
+- 狐火追陣 core/UI regression: `failures=0`.
+- Full foundational suite: `DICE_SLOT_TRIP_TESTS failures=0`.
+- P0: none. P1: none. P2: none.
 
 final result: passed

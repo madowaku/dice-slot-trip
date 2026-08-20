@@ -2,6 +2,7 @@ extends SceneTree
 
 const SCREEN_SCENE: PackedScene = preload("res://scenes/app/JourneyStageScreen.tscn")
 const AquafallBattle := preload("res://scripts/game/aquafall_battle.gd")
+const FOX_FIRE_CHASE_SCENE: PackedScene = preload("res://boss/kyoto/fox_fire_chase/FoxFireChaseBattle.tscn")
 
 var failures: Array[String] = []
 
@@ -12,6 +13,7 @@ func _init() -> void:
 
 func _run() -> void:
 	root.size = Vector2i(720, 1280)
+	await _check_kyoto_chase_scene_contract()
 	await _exercise(StageCatalog.STAGE_AMAZON)
 	await _exercise_aquafall_rules_mobile()
 	await _exercise(StageCatalog.STAGE_KYOTO)
@@ -19,6 +21,22 @@ func _run() -> void:
 	for failure: String in failures:
 		push_error(failure)
 	quit(0 if failures.is_empty() else 1)
+
+
+func _check_kyoto_chase_scene_contract() -> void:
+	var battle := FOX_FIRE_CHASE_SCENE.instantiate() as Control
+	_expect(battle != null, "Kyoto 狐火追陣 scene instantiates")
+	if battle == null:
+		return
+	root.add_child(battle)
+	for _ignored: int in range(2):
+		await process_frame
+	var configured := bool(battle.call("configure_battle", 5, 2, 12, 3, 3, 20260820, {}))
+	_expect(configured, "Kyoto 狐火追陣 host contract accepts lap/goshuin/coins/hp/max_hp/seed/snapshot")
+	var snapshot := battle.call("snapshot") as Dictionary
+	_expect(str(snapshot.get("battle_id", "")) == "fox_fire_chase", "Kyoto 狐火追陣 scene exposes chase snapshot id")
+	battle.queue_free()
+	await process_frame
 
 
 func _exercise(stage_id: StringName) -> void:
@@ -59,6 +77,7 @@ func _exercise(stage_id: StringName) -> void:
 	await _check_route_preview_and_player_anchor(screen, journey, stage_id)
 	if stage_id == StageCatalog.STAGE_KYOTO:
 		await _check_kyoto_detour_geometry(screen, journey as KyotoJourney)
+		await _check_kyoto_boss_choice_copy(screen, journey as KyotoJourney)
 	await _check_boss_marker(screen, journey, stage_id)
 	if stage_id == StageCatalog.STAGE_AMAZON:
 		await _check_aquafall_rules_modal(screen)
@@ -149,12 +168,12 @@ func _check_kyoto_branch_choices(screen: JourneyStageScreen, journey: StageJourn
 	var kyoto := journey as KyotoJourney
 	if kyoto == null:
 		return
-	kyoto.current_space_id = "main:8"
+	kyoto.current_space_id = "main:31"
 	kyoto.phase = StageJourneyBase.PHASE_READY
 	kyoto.pending_event.clear()
-	var arrival := kyoto.roll(2)
+	var arrival := kyoto.roll(6)
 	_expect(str(arrival.get("status", "")) == "CHOICE_REQUIRED" and kyoto.phase == StageJourneyBase.PHASE_BRANCH,
-		"Kyoto branch test reaches the first pilgrimage junction")
+		"Kyoto branch test reaches the first shortcut junction")
 	screen.call("_show_branch_modal")
 	await process_frame
 	var modal := screen.get("active_modal") as Control
@@ -164,7 +183,7 @@ func _check_kyoto_branch_choices(screen: JourneyStageScreen, journey: StageJourn
 		"Kyoto route modal shows both route classes and projected stops")
 	_expect(branch_copy.contains("通常") or branch_copy.contains("御朱印") or branch_copy.contains("RISK"),
 		"Kyoto route modal names the projected tile type")
-	_expect(not branch_copy.contains("fushimi:") and not branch_copy.contains("main:"),
+	_expect(not branch_copy.contains("gion_shortcut:") and not branch_copy.contains("main:"),
 		"Kyoto route modal hides internal route IDs from player copy")
 	screen.call("_close_modal")
 	kyoto.current_space_id = "main:1"
@@ -184,6 +203,26 @@ func _check_boss_marker(screen: JourneyStageScreen, journey: StageJourneyBase, s
 	var marker: Control = null
 	if layer != null:
 		marker = layer.get_node_or_null("space_%s" % boss_space.replace(":", "_")) as Control
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		var row := screen.get("route_preview_row") as HBoxContainer
+		var boss_card: Control = null
+		if row != null:
+			for child: Node in row.get_children():
+				var candidate := child as Control
+				if candidate != null and str(candidate.get_meta("space_id", "")) == boss_space:
+					boss_card = candidate
+					break
+		var card_emblem_found := false
+		if boss_card != null:
+			for child: Node in boss_card.find_children("*", "Control", true, false):
+				var child_script: Script = child.get_script() as Script
+				if child_script != null and str(child_script.resource_path).ends_with("boss_map_emblem.gd"):
+					card_emblem_found = true
+					break
+		_expect(boss_card != null and boss_card.get_global_rect().size.y >= 116.0,
+			"Kyoto boss destination remains large in the current-to-+6 horizon")
+		_expect(card_emblem_found, "Kyoto boss card uses the shared crown emblem")
+		return
 	_expect(marker != null and marker.size.x >= 64.0 and marker.size.y >= 64.0,
 		"%s boss map marker is larger than ordinary route markers" % String(stage_id))
 	var emblem_found := false
@@ -194,6 +233,44 @@ func _check_boss_marker(screen: JourneyStageScreen, journey: StageJourneyBase, s
 				emblem_found = true
 				break
 	_expect(emblem_found, "%s boss map marker uses the shared crown emblem" % String(stage_id))
+
+
+func _check_kyoto_boss_choice_copy(screen: JourneyStageScreen, journey: KyotoJourney) -> void:
+	if journey == null:
+		return
+	var saved := journey.snapshot()
+	journey.current_space_id = "main:87"
+	journey.phase = StageJourneyBase.PHASE_READY
+	var choice_result := journey.roll(1)
+	_expect(str(choice_result.get("status", "")) == "BOSS_CHOICE_REQUIRED",
+		"Kyoto final fork reaches the boss-choice presentation")
+	screen.call("_show_kyoto_boss_choice_modal")
+	await process_frame
+	var modal := screen.get("active_modal") as Control
+	var copy := _all_label_text(modal)
+	_expect(copy.contains("狐火追陣") and copy.contains("狐火六路陣") and not copy.contains("白狐決戦"),
+		"Kyoto final fork clearly offers chase and puzzle routes")
+	screen.call("_close_modal")
+	journey.restore(saved)
+	journey.stage_flags["kyoto_boss_route"] = "direct"
+	screen.call("_refresh_all")
+	var route_label := screen.get("stage_route_label") as Label
+	_expect(route_label != null and route_label.text.contains("追陣") and route_label.text.contains("御朱印"),
+		"Kyoto HUD names the selected direct route as 狐火追陣")
+	_expect(str(screen.call("_kyoto_boss_restore_target", "direct", {"battle_id": "fox_fire_chase"})) == "chase",
+		"Kyoto restore dispatches chase snapshots to 狐火追陣")
+	_expect(str(screen.call("_kyoto_boss_restore_target", "direct", {"seals": []})) == "legacy_direct",
+		"Kyoto restore keeps schema-v1 direct seal saves compatible")
+	_expect(str(screen.call("_kyoto_boss_restore_target", "foxfire", {"battle_id": "fox_fire_six_routes"})) == "six_routes",
+		"Kyoto restore preserves the 狐火六路陣 route")
+	var coins_before := journey.coins
+	journey.coins = 7
+	screen.call("_on_fox_fire_chase_coins_spent", 3)
+	_expect(journey.coins == 4, "Kyoto chase head-start spending immediately updates journey coins")
+	journey.coins = coins_before
+	journey.restore(saved)
+	screen.call("_render_map")
+	screen.call("_refresh_all")
 
 
 func _exercise_aquafall_rules_mobile() -> void:
@@ -290,8 +367,8 @@ func _check_overview_and_event_choices(screen: JourneyStageScreen, stage_id: Str
 			for child: Node in overview_layer.get_children():
 				if child is PanelContainer:
 					route_nodes += 1
-		_expect(route_nodes == 128,
-			"Kyoto overview includes 90 main spaces plus 38 branch spaces")
+		_expect(route_nodes == 99,
+			"Kyoto overview includes 90 main spaces plus 9 shortcut spaces")
 		var route_lines := 0
 		var main_line_points := 0
 		if overview_layer != null:
@@ -299,10 +376,10 @@ func _check_overview_and_event_choices(screen: JourneyStageScreen, stage_id: Str
 				if child is Line2D:
 					route_lines += 1
 					main_line_points = maxi(main_line_points, (child as Line2D).points.size())
-		_expect(route_lines == 9 and main_line_points == 90,
-			"Kyoto overview draws one main spine and eight documented branch routes")
+		_expect(route_lines == 3 and main_line_points == 90,
+			"Kyoto overview draws one main spine and two documented shortcut routes")
 		var gion_centers: Array[Vector2] = []
-		for route_id: String in ["gion_loop:L1", "gion_loop:L2", "gion_loop:L3", "gion_loop:L4", "stone_garden:R1", "stone_garden:R2", "stone_garden:R3", "stone_garden:R4"]:
+		for route_id: String in ["gion_shortcut:S1", "gion_shortcut:S2", "gion_shortcut:S3", "gion_shortcut:S4", "arashiyama_shortcut:S1", "arashiyama_shortcut:S2", "arashiyama_shortcut:S3", "arashiyama_shortcut:S4", "arashiyama_shortcut:S5"]:
 			var detour_marker := _find_overview_node(overview_layer, route_id)
 			if detour_marker != null:
 				gion_centers.append(detour_marker.position + detour_marker.size * 0.5)
@@ -832,12 +909,14 @@ func _check_hud(screen: JourneyStageScreen, journey: StageJourneyBase, stage_id:
 		journey.current_space_id = "main:1"
 		screen.call("_refresh_all")
 	else:
-		journey.stage_flags["mission_rest_count"] = 4
 		screen.call("_refresh_all")
-		var kyoto_mission_labels := screen.get("mission_value_labels") as Dictionary
-		var lantern_label := kyoto_mission_labels.get("灯籠", null) as Label
-		_expect(lantern_label != null and lantern_label.text == "4/5",
-			"Kyoto 灯籠 mission reflects REST landing count")
+		var kyoto_mission_caption := screen.get("mission_caption_label") as Label
+		var kyoto_mission_progress := screen.get("mission_progress_label") as Label
+		var stage_goshuin := screen.get("goshuin_mission_label") as Label
+		_expect(kyoto_mission_caption != null and not kyoto_mission_caption.text.contains("御朱印") and kyoto_mission_progress != null and kyoto_mission_progress.text.contains("報酬 COIN"),
+			"Kyoto separates the shared random mission from goshuin collection")
+		_expect(stage_goshuin != null and stage_goshuin.text.contains("御朱印 0/4"),
+			"Kyoto keeps goshuin progress in the stage band")
 
 
 func _check_normal_icon(screen: JourneyStageScreen, stage_id: StringName) -> void:
@@ -912,15 +991,15 @@ func _check_skill_ready_discovery(screen: JourneyStageScreen, journey: StageJour
 
 
 func _check_kyoto_goshuin_stamp(screen: JourneyStageScreen, journey: StageJourneyBase) -> void:
-	journey.current_space_id = "fushimi:F2"
+	journey.current_space_id = "main:20"
 	screen.call("_render_map")
 	for _ignored: int in range(3):
 		await process_frame
 	var layer := screen.get("map_node_layer") as Control
-	var checkpoint := layer.get_node_or_null("space_fushimi_F3") as Control if layer != null else null
+	var checkpoint := layer.get_node_or_null("space_main_21") as Control if layer != null else null
 	_expect(checkpoint != null and checkpoint.size.x >= 52.0 and checkpoint.size.y >= 52.0,
 		"Kyoto goshuin checkpoint uses a larger shrine marker")
-	screen.call("_play_goshuin_stamp", {"id": "fushimi", "space_id": "fushimi:F3", "title": "伏見稲荷"})
+	screen.call("_play_goshuin_stamp", {"id": "fushimi", "space_id": "main:21", "title": "伏見稲荷"})
 	await process_frame
 	var popup := layer.get_node_or_null("GoshuinStampPopup") as Control if layer != null else null
 	var popup_copy := ""
@@ -940,8 +1019,8 @@ func _check_kyoto_goshuin_stamp(screen: JourneyStageScreen, journey: StageJourne
 	journey.stage_flags["goshuin"] = {"fushimi": true, "yasaka": false, "kiyomizu": false, "tenryuji": false}
 	screen.call("_refresh_all")
 	var mission_label := screen.get("goshuin_mission_label") as Label
-	_expect(mission_label != null and mission_label.text == "1/4",
-		"Kyoto mission HUD updates the goshuin count after a checkpoint")
+	_expect(mission_label != null and mission_label.text.contains("御朱印 1/4"),
+		"Kyoto stage band updates the goshuin count after a checkpoint")
 	journey.current_space_id = "main:1"
 	screen.call("_render_map")
 
@@ -1015,10 +1094,24 @@ func _check_route_preview_and_player_anchor(screen: JourneyStageScreen, journey:
 	var layer_edges := screen.get("map_node_layer") as Control
 	var main_edges := layer_edges.find_children("LocalRouteMain", "Line2D", true, false) if layer_edges != null else []
 	var side_edges := layer_edges.find_children("LocalRouteSide", "Line2D", true, false) if layer_edges != null else []
-	_expect(legend != null and _all_label_text(legend).contains("本線") and _all_label_text(legend).contains("脇道"),
-		"%s normal map shows a main/detour route legend" % String(stage_id))
-	_expect(main_edges.size() > 0 and side_edges.size() > 0,
-		"%s normal map draws separate main and detour connectors" % String(stage_id))
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		_expect(legend == null and main_edges.is_empty() and side_edges.is_empty(),
+			"Kyoto normal play leaves full-route topology to 全体マップ")
+		var horizon := row.get_parent() as Control if row != null else null
+		var die := screen.get("map_dice") as Control
+		var first_tile := row.get_child(0) as Control if row != null and row.get_child_count() > 0 else null
+		var number_label := _first_label(row.get_child(1)) if row != null and row.get_child_count() > 1 else null
+		_expect(horizon != null and horizon.get_global_rect().size.y >= 204.0 and first_tile != null and first_tile.get_global_rect().size.y >= 184.0,
+			"Kyoto promotes current through +6 into tall Cairo-style cards")
+		_expect(number_label != null and number_label.get_theme_font_size("font_size") >= 32,
+			"Kyoto makes +1 through +6 the dominant card labels")
+		_expect(die != null and die.size.x >= 152.0 and absf(die.get_global_rect().get_center().x - 360.0) <= 8.0 and die.get_global_rect().get_center().y > horizon.get_global_rect().get_center().y,
+			"Kyoto centers an enlarged map die below the seven readable cards")
+	else:
+		_expect(legend != null and _all_label_text(legend).contains("本線") and _all_label_text(legend).contains("脇道"),
+			"%s normal map shows a main/detour route legend" % String(stage_id))
+		_expect(main_edges.size() > 0 and side_edges.size() > 0,
+			"%s normal map draws separate main and detour connectors" % String(stage_id))
 	if row != null and row.get_child_count() == 7:
 		var current_icon := _first_texture_rect(row.get_child(0))
 		var expected_kind := str(screen.call("_space_kind", test_space))
@@ -1042,7 +1135,15 @@ func _check_route_preview_and_player_anchor(screen: JourneyStageScreen, journey:
 			"%s moving marker changes color without relabeling the seven-space horizon" % String(stage_id))
 		var moving_player := (row.get_child(1) as Control).get_meta("motion_player") as TextureRect
 		_expect(moving_player != null and moving_player.visible,
-			"%s moving route tile shows the mini explorer marker" % String(stage_id))
+			"%s moving route tile retains its explorer marker state" % String(stage_id))
+		if stage_id == StageCatalog.STAGE_KYOTO:
+			_expect(moving_player.modulate.a == 0.0,
+				"Kyoto uses one large map-layer explorer instead of a duplicate mini cat")
+			var current_badge := (row.get_child(0) as Control).find_child("CurrentKindBadge", true, false) as Control
+			var current_badge_icon := current_badge.find_child("KindIcon", true, false) as TextureRect if current_badge != null else null
+			var current_player := screen.get("map_player") as Control
+			_expect(current_badge != null and current_badge_icon != null and current_badge_icon.texture == expected_icon and current_player != null and current_badge.get_global_rect().end.y <= current_player.get_global_rect().position.y + 1.0,
+				"Kyoto keeps the current-space icon above and clear of the large explorer")
 
 	var player := screen.get("map_player") as Control
 	var layer := screen.get("map_node_layer") as Control
@@ -1057,14 +1158,25 @@ func _check_route_preview_and_player_anchor(screen: JourneyStageScreen, journey:
 		var normalized := screen.call("_map_normalized_for_space", test_space) as Vector2
 		unanchored = Vector2(normalized.x * layer.size.x, normalized.y * layer.size.y) - player.size * 0.5
 	var anchored := screen.call("_map_player_position_for_space", test_space) as Vector2
-	_expect(anchored.distance_to(unanchored + Vector2(0.0, -22.0)) < 0.75,
-		"%s traveler uses a foot anchor instead of covering the map medal" % String(stage_id))
+	if stage_id == StageCatalog.STAGE_KYOTO and marker != null and bool(marker.get_meta("kyoto_horizon_anchor", false)):
+		var current_tile := row.get_child(0) as Control if row != null and row.get_child_count() > 0 else null
+		var card_bottom_anchor := marker.position + Vector2(
+			(marker.size.x - player.size.x) * 0.5,
+			marker.size.y - player.size.y - 6.0
+		)
+		_expect(anchored.distance_to(card_bottom_anchor) < 0.75 and player.size.x >= 112.0,
+			"Kyoto uses a larger explorer and bottom-anchors it over the current-card medal")
+		_expect(current_tile != null and player.get_global_rect().get_center().y > current_tile.get_global_rect().get_center().y,
+			"Kyoto keeps the explorer in the lower half of the current card")
+	else:
+		_expect(anchored.distance_to(unanchored + Vector2(0.0, -22.0)) < 0.75,
+			"%s traveler uses a foot anchor instead of covering the map medal" % String(stage_id))
 
 
 func _check_kyoto_detour_geometry(screen: JourneyStageScreen, journey: KyotoJourney) -> void:
 	if journey == null:
 		return
-	var route_ids: Array[String] = ["fushimi", "fox_shortcut", "yasaka", "gion_loop", "kiyomizu", "stone_garden", "tenryuji", "river_boat"]
+	var route_ids: Array[String] = ["gion_shortcut", "arashiyama_shortcut"]
 	for route_id: String in route_ids:
 		var route_spaces: Array[Dictionary] = []
 		for value: Variant in journey.course.spaces.values():
@@ -1087,13 +1199,13 @@ func _check_kyoto_detour_geometry(screen: JourneyStageScreen, journey: KyotoJour
 		_expect(direction_ok, "Kyoto %s detour follows the main route upward" % route_id)
 		_expect(spacing_ok, "Kyoto %s detour keeps readable vertical marker spacing" % route_id)
 	var original_space := journey.current_space_id
-	for sample_space: String in ["gion_loop:L2", "stone_garden:R2"]:
+	for sample_space: String in ["gion_shortcut:S2", "arashiyama_shortcut:S3"]:
 		journey.current_space_id = sample_space
 		screen.call("_render_map")
 		for _ignored: int in range(6):
 			await process_frame
 		var route_id := str(journey.course.space(sample_space).get("route", ""))
-		var visible_markers: Array[Control] = []
+		var visible_route_nodes: Array[Control] = []
 		var map_layer := screen.get("map_node_layer") as Control
 		if map_layer != null:
 			for value: Variant in journey.course.spaces.values():
@@ -1101,13 +1213,15 @@ func _check_kyoto_detour_geometry(screen: JourneyStageScreen, journey: KyotoJour
 					continue
 				var marker_name := "space_%s" % str((value as Dictionary).get("id", "")).replace(":", "_")
 				var marker := map_layer.get_node_or_null(marker_name) as Control
-				if marker != null:
-					visible_markers.append(marker)
-		var no_overlap := visible_markers.size() == 4
-		for left_index: int in range(visible_markers.size()):
-			for right_index: int in range(left_index + 1, visible_markers.size()):
-				no_overlap = no_overlap and not visible_markers[left_index].get_global_rect().intersects(visible_markers[right_index].get_global_rect())
-		_expect(no_overlap, "Kyoto %s local loop shows four separate checkpoint icons" % route_id)
+				if marker != null and marker.visible:
+					visible_route_nodes.append(marker)
+		var row := screen.get("route_preview_row") as HBoxContainer
+		var card_ids: Dictionary = {}
+		if row != null:
+			for child: Node in row.get_children():
+				card_ids[str((child as Control).get_meta("space_id", ""))] = true
+		_expect(visible_route_nodes.is_empty() and row != null and row.get_child_count() == 7 and card_ids.size() == 7,
+			"Kyoto %s shortcut stays readable as seven unique cards without background node clutter" % route_id)
 	journey.current_space_id = original_space
 	screen.call("_render_map")
 	for _ignored: int in range(4):

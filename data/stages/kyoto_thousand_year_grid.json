@@ -1,128 +1,678 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "course_version": "kyoto_v2_90_core_1",
   "stage_id": "kyoto_thousand_year_grid",
   "display_name": "千年碁盤の京都",
   "space_count": 90,
   "start_space_id": "main:1",
   "boss_space_id": "main:90",
-  "concept": "急げば近道、巡ればご利益",
+  "branch_count": 2,
+  "route_count": 2,
+  "concept": "止まらず巡って、近道と最後の試練だけを選ぶ京都",
   "districts": [
-    {"id": "fushimi", "name": "伏見稲荷", "range": [1, 22], "time": "午後"},
-    {"id": "gion", "name": "祇園", "range": [23, 45], "time": "夕暮れ"},
-    {"id": "higashiyama", "name": "東山・清水", "range": [46, 68], "time": "夜"},
-    {"id": "arashiyama", "name": "嵐山", "range": [69, 89], "time": "夜明け前"},
-    {"id": "fox_garden", "name": "白狐庭園", "range": [90, 90], "time": "朝焼け"}
+    {
+      "id": "fushimi",
+      "name": "伏見稲荷",
+      "range": [
+        1,
+        22
+      ],
+      "time": "午後"
+    },
+    {
+      "id": "gion",
+      "name": "祇園",
+      "range": [
+        23,
+        45
+      ],
+      "time": "夕暮れ"
+    },
+    {
+      "id": "higashiyama",
+      "name": "東山・清水",
+      "range": [
+        46,
+        69
+      ],
+      "time": "夜"
+    },
+    {
+      "id": "arashiyama",
+      "name": "嵐山",
+      "range": [
+        70,
+        89
+      ],
+      "time": "夜明け前"
+    },
+    {
+      "id": "fox_garden",
+      "name": "白狐庭園",
+      "range": [
+        90,
+        90
+      ],
+      "time": "朝焼け"
+    }
   ],
   "main_spaces": [
-    {"number": 1, "kind": "START", "name": "伏見稲荷・大鳥居"},
-    {"number": 2, "kind": "NORMAL", "name": "表参道"},
-    {"number": 3, "kind": "COIN", "amount": 2, "name": "旅銭"},
-    {"number": 4, "kind": "EVENT", "name": "狐のお使い"},
-    {"number": 5, "kind": "NORMAL", "name": "狛狐の参道"},
-    {"number": 6, "kind": "RISK", "name": "滑る石段"},
-    {"number": 7, "kind": "REST", "name": "稲荷茶店"},
-    {"number": 8, "kind": "COIN", "amount": 2, "name": "鳥居の小径"},
-    {"number": 9, "kind": "JUNCTION", "name": "稲荷山・御朱印分岐", "branch_id": "fushimi_pilgrimage"},
-    {"number": 10, "kind": "NORMAL", "name": "千本鳥居"},
-    {"number": 11, "kind": "EVENT", "name": "おもかる石"},
-    {"number": 12, "kind": "COIN", "amount": 3, "name": "奥社の旅銭"},
-    {"number": 13, "kind": "NORMAL", "name": "奥社参道"},
-    {"number": 14, "kind": "RISK", "name": "急な石段"},
-    {"number": 15, "kind": "REST", "name": "山腹の茶店"},
-    {"number": 16, "kind": "JUNCTION", "name": "狐の抜け道", "branch_id": "fox_shortcut"},
-    {"number": 17, "kind": "NORMAL", "name": "鳥居の尾根"},
-    {"number": 18, "kind": "ITEM", "name": "山道の旅守"},
-    {"number": 19, "kind": "EVENT", "name": "狐火の誘い"},
-    {"number": 20, "kind": "RISK", "name": "迷い鳥居"},
-    {"number": 21, "kind": "COIN", "amount": 3, "name": "稲荷の宝銭"},
-    {"number": 22, "kind": "EVENT", "name": "洛中を望む"},
-    {"number": 23, "kind": "NORMAL", "name": "八坂口"},
-    {"number": 24, "kind": "COIN", "amount": 2, "name": "石畳の旅銭"},
-    {"number": 25, "kind": "EVENT", "name": "団子茶屋"},
-    {"number": 26, "kind": "NORMAL", "name": "花街入口"},
-    {"number": 27, "kind": "REST", "name": "夕暮れ茶屋"},
-    {"number": 28, "kind": "ITEM", "name": "白川の旅守"},
-    {"number": 29, "kind": "RISK", "name": "にわか雨"},
-    {"number": 30, "kind": "JUNCTION", "name": "八坂・御朱印分岐", "branch_id": "yasaka_pilgrimage"},
-    {"number": 31, "kind": "NORMAL", "name": "花見小路"},
-    {"number": 32, "kind": "EVENT", "name": "人力車"},
-    {"number": 33, "kind": "COIN", "amount": 3, "name": "祇園の旅銭"},
-    {"number": 34, "kind": "NORMAL", "name": "白川沿い"},
-    {"number": 35, "kind": "RISK", "name": "夜の細道"},
-    {"number": 36, "kind": "REST", "name": "辰巳茶屋"},
-    {"number": 37, "kind": "EVENT", "name": "迷子の旅人"},
-    {"number": 38, "kind": "JUNCTION", "name": "花見小路・夜巡り", "branch_id": "gion_night_loop"},
-    {"number": 39, "kind": "COIN", "amount": 2, "name": "提灯小路"},
-    {"number": 40, "kind": "NORMAL", "name": "祇園新橋"},
-    {"number": 41, "kind": "EVENT", "name": "骨董露店"},
-    {"number": 42, "kind": "RISK", "name": "暗い路地"},
-    {"number": 43, "kind": "ITEM", "name": "宵の旅守"},
-    {"number": 44, "kind": "REST", "name": "円山公園"},
-    {"number": 45, "kind": "EVENT", "name": "八坂の鐘"},
-    {"number": 46, "kind": "NORMAL", "name": "東山坂口"},
-    {"number": 47, "kind": "COIN", "amount": 2, "name": "石段の旅銭"},
-    {"number": 48, "kind": "RISK", "name": "二年坂"},
-    {"number": 49, "kind": "EVENT", "name": "土産物屋"},
-    {"number": 50, "kind": "REST", "name": "甘味処"},
-    {"number": 51, "kind": "NORMAL", "name": "石塀小路"},
-    {"number": 52, "kind": "JUNCTION", "name": "清水・御朱印分岐", "branch_id": "kiyomizu_pilgrimage"},
-    {"number": 53, "kind": "COIN", "amount": 3, "name": "清水坂"},
-    {"number": 54, "kind": "EVENT", "name": "音羽の滝", "event_id": "otowa_three_waters"},
-    {"number": 55, "kind": "RISK", "name": "三年坂"},
-    {"number": 56, "kind": "NORMAL", "name": "月夜の参道"},
-    {"number": 57, "kind": "COIN", "amount": 2, "name": "門前の旅銭"},
-    {"number": 58, "kind": "EVENT", "name": "清水の舞台"},
-    {"number": 59, "kind": "REST", "name": "月見茶屋"},
-    {"number": 60, "kind": "NORMAL", "name": "八坂の塔"},
-    {"number": 61, "kind": "JUNCTION", "name": "夜の石庭", "branch_id": "stone_garden_loop"},
-    {"number": 62, "kind": "RISK", "name": "狐雨"},
-    {"number": 63, "kind": "ITEM", "name": "月影の旅守"},
-    {"number": 64, "kind": "EVENT", "name": "京都夜景"},
-    {"number": 65, "kind": "NORMAL", "name": "高台寺路"},
-    {"number": 66, "kind": "RISK", "name": "長い石段"},
-    {"number": 67, "kind": "COIN", "amount": 2, "name": "洛西への旅銭"},
-    {"number": 68, "kind": "EVENT", "name": "嵐山へ"},
-    {"number": 69, "kind": "NORMAL", "name": "竹林入口"},
-    {"number": 70, "kind": "COIN", "amount": 2, "name": "竹影の旅銭"},
-    {"number": 71, "kind": "EVENT", "name": "竹の囁き"},
-    {"number": 72, "kind": "RISK", "name": "ぬかるむ小径"},
-    {"number": 73, "kind": "REST", "name": "竹林休憩所"},
-    {"number": 74, "kind": "JUNCTION", "name": "天龍寺・御朱印分岐", "branch_id": "tenryuji_pilgrimage"},
-    {"number": 75, "kind": "ITEM", "name": "竹林の旅守"},
-    {"number": 76, "kind": "NORMAL", "name": "深い竹林"},
-    {"number": 77, "kind": "EVENT", "name": "野宮の願掛け"},
-    {"number": 78, "kind": "RISK", "name": "倒れ竹"},
-    {"number": 79, "kind": "COIN", "amount": 2, "name": "朝露の旅銭"},
-    {"number": 80, "kind": "NORMAL", "name": "山荘前"},
-    {"number": 81, "kind": "REST", "name": "桂川茶店"},
-    {"number": 82, "kind": "JUNCTION", "name": "渡月橋 / 保津川下り", "branch_id": "river_shortcut"},
-    {"number": 83, "kind": "NORMAL", "name": "桂川沿い"},
-    {"number": 84, "kind": "COIN", "amount": 3, "name": "川辺の旅銭"},
-    {"number": 85, "kind": "RISK", "name": "強い川風"},
-    {"number": 86, "kind": "EVENT", "name": "旅人との交換"},
-    {"number": 87, "kind": "REST", "name": "渡月橋たもと"},
-    {"number": 88, "kind": "ITEM", "name": "朝露の旅守"},
-    {"number": 89, "kind": "EVENT", "name": "白狐の使い"},
-    {"number": 90, "kind": "BOSS", "name": "朝焼けの大碁盤庭園", "boss_id": "white_fox_seal"}
+    {
+      "number": 1,
+      "kind": "START",
+      "name": "伏見稲荷・大鳥居"
+    },
+    {
+      "number": 2,
+      "kind": "NORMAL",
+      "name": "京都の道 2"
+    },
+    {
+      "number": 3,
+      "kind": "NORMAL",
+      "name": "京都の道 3"
+    },
+    {
+      "number": 4,
+      "kind": "NORMAL",
+      "name": "京都の道 4"
+    },
+    {
+      "number": 5,
+      "kind": "COIN",
+      "name": "鳥居の旅銭",
+      "amount": 2
+    },
+    {
+      "number": 6,
+      "kind": "NORMAL",
+      "name": "京都の道 6"
+    },
+    {
+      "number": 7,
+      "kind": "NORMAL",
+      "name": "京都の道 7"
+    },
+    {
+      "number": 8,
+      "kind": "REST",
+      "name": "稲荷茶店"
+    },
+    {
+      "number": 9,
+      "kind": "NORMAL",
+      "name": "京都の道 9"
+    },
+    {
+      "number": 10,
+      "kind": "COIN",
+      "name": "奥社の旅銭",
+      "amount": 2
+    },
+    {
+      "number": 11,
+      "kind": "NORMAL",
+      "name": "京都の道 11"
+    },
+    {
+      "number": 12,
+      "kind": "NORMAL",
+      "name": "京都の道 12"
+    },
+    {
+      "number": 13,
+      "kind": "RISK",
+      "name": "急な石段"
+    },
+    {
+      "number": 14,
+      "kind": "NORMAL",
+      "name": "京都の道 14"
+    },
+    {
+      "number": 15,
+      "kind": "COIN",
+      "name": "山頂の旅銭",
+      "amount": 2
+    },
+    {
+      "number": 16,
+      "kind": "NORMAL",
+      "name": "京都の道 16"
+    },
+    {
+      "number": 17,
+      "kind": "REST",
+      "name": "狐の木陰"
+    },
+    {
+      "number": 18,
+      "kind": "NORMAL",
+      "name": "京都の道 18"
+    },
+    {
+      "number": 19,
+      "kind": "ITEM",
+      "name": "伏見の旅守"
+    },
+    {
+      "number": 20,
+      "kind": "NORMAL",
+      "name": "京都の道 20"
+    },
+    {
+      "number": 21,
+      "kind": "GOSHUIN",
+      "name": "伏見稲荷",
+      "goshuin": "fushimi"
+    },
+    {
+      "number": 22,
+      "kind": "RISK",
+      "name": "迷い鳥居"
+    },
+    {
+      "number": 23,
+      "kind": "NORMAL",
+      "name": "京都の道 23"
+    },
+    {
+      "number": 24,
+      "kind": "NORMAL",
+      "name": "京都の道 24"
+    },
+    {
+      "number": 25,
+      "kind": "NORMAL",
+      "name": "京都の道 25"
+    },
+    {
+      "number": 26,
+      "kind": "ITEM",
+      "name": "白川の旅守"
+    },
+    {
+      "number": 27,
+      "kind": "REST",
+      "name": "夕暮れ茶屋"
+    },
+    {
+      "number": 28,
+      "kind": "NORMAL",
+      "name": "京都の道 28"
+    },
+    {
+      "number": 29,
+      "kind": "NORMAL",
+      "name": "京都の道 29"
+    },
+    {
+      "number": 30,
+      "kind": "RISK",
+      "name": "にわか雨"
+    },
+    {
+      "number": 31,
+      "kind": "EVENT",
+      "name": "舞妓の落とし物",
+      "event_id": "kyoto_event_a",
+      "event_mode": "auto",
+      "effect": "coin",
+      "amount": 2,
+      "text": "落とし物を届けて旅銭を受け取った。"
+    },
+    {
+      "number": 32,
+      "kind": "NORMAL",
+      "name": "京都の道 32"
+    },
+    {
+      "number": 33,
+      "kind": "BYPASS_FORK",
+      "name": "祇園の裏路地",
+      "branch_id": "gion_shortcut_choice"
+    },
+    {
+      "number": 34,
+      "kind": "NORMAL",
+      "name": "京都の道 34"
+    },
+    {
+      "number": 35,
+      "kind": "COIN",
+      "name": "祇園の旅銭",
+      "amount": 2
+    },
+    {
+      "number": 36,
+      "kind": "RISK",
+      "name": "夜の細道"
+    },
+    {
+      "number": 37,
+      "kind": "NORMAL",
+      "name": "京都の道 37"
+    },
+    {
+      "number": 38,
+      "kind": "REST",
+      "name": "辰巳茶屋"
+    },
+    {
+      "number": 39,
+      "kind": "ITEM",
+      "name": "宵の旅守"
+    },
+    {
+      "number": 40,
+      "kind": "NORMAL",
+      "name": "京都の道 40"
+    },
+    {
+      "number": 41,
+      "kind": "NORMAL",
+      "name": "京都の道 41"
+    },
+    {
+      "number": 42,
+      "kind": "NORMAL",
+      "name": "京都の道 42"
+    },
+    {
+      "number": 43,
+      "kind": "COIN",
+      "name": "門前の旅銭",
+      "amount": 2
+    },
+    {
+      "number": 44,
+      "kind": "GOSHUIN",
+      "name": "八坂神社",
+      "goshuin": "yasaka"
+    },
+    {
+      "number": 45,
+      "kind": "NORMAL",
+      "name": "京都の道 45"
+    },
+    {
+      "number": 46,
+      "kind": "NORMAL",
+      "name": "京都の道 46"
+    },
+    {
+      "number": 47,
+      "kind": "EVENT",
+      "name": "甘味処の誘い",
+      "event_id": "kyoto_event_choice",
+      "event_mode": "choice",
+      "title": "ひと休みする？",
+      "text": "甘味処で休むか、先を急ぐか選ぼう。",
+      "choices": [
+        {
+          "id": "heal",
+          "label": "甘味でひと休み・HP +1",
+          "effect": "heal",
+          "amount": 1
+        },
+        {
+          "id": "coin",
+          "label": "旅を続ける・COIN +2",
+          "effect": "coin",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "number": 48,
+      "kind": "NORMAL",
+      "name": "京都の道 48"
+    },
+    {
+      "number": 49,
+      "kind": "NORMAL",
+      "name": "京都の道 49"
+    },
+    {
+      "number": 50,
+      "kind": "ITEM",
+      "name": "清水の旅守"
+    },
+    {
+      "number": 51,
+      "kind": "NORMAL",
+      "name": "京都の道 51"
+    },
+    {
+      "number": 52,
+      "kind": "COIN",
+      "name": "門前の旅銭",
+      "amount": 2
+    },
+    {
+      "number": 53,
+      "kind": "RISK",
+      "name": "三年坂"
+    },
+    {
+      "number": 54,
+      "kind": "NORMAL",
+      "name": "京都の道 54"
+    },
+    {
+      "number": 55,
+      "kind": "NORMAL",
+      "name": "京都の道 55"
+    },
+    {
+      "number": 56,
+      "kind": "NORMAL",
+      "name": "京都の道 56"
+    },
+    {
+      "number": 57,
+      "kind": "ITEM",
+      "name": "月影の旅守"
+    },
+    {
+      "number": 58,
+      "kind": "NORMAL",
+      "name": "京都の道 58"
+    },
+    {
+      "number": 59,
+      "kind": "REST",
+      "name": "月見茶屋"
+    },
+    {
+      "number": 60,
+      "kind": "NORMAL",
+      "name": "京都の道 60"
+    },
+    {
+      "number": 61,
+      "kind": "RISK",
+      "name": "狐雨"
+    },
+    {
+      "number": 62,
+      "kind": "NORMAL",
+      "name": "京都の道 62"
+    },
+    {
+      "number": 63,
+      "kind": "EVENT",
+      "name": "お守りの落とし物",
+      "event_id": "kyoto_event_b",
+      "event_mode": "auto",
+      "effect": "item",
+      "text": "小さなお守りを見つけた。"
+    },
+    {
+      "number": 64,
+      "kind": "COIN",
+      "name": "洛西への旅銭",
+      "amount": 2
+    },
+    {
+      "number": 65,
+      "kind": "NORMAL",
+      "name": "京都の道 65"
+    },
+    {
+      "number": 66,
+      "kind": "ITEM",
+      "name": "東山の旅守"
+    },
+    {
+      "number": 67,
+      "kind": "RISK",
+      "name": "長い石段"
+    },
+    {
+      "number": 68,
+      "kind": "REST",
+      "name": "峠の休み処"
+    },
+    {
+      "number": 69,
+      "kind": "GOSHUIN",
+      "name": "清水寺",
+      "goshuin": "kiyomizu"
+    },
+    {
+      "number": 70,
+      "kind": "NORMAL",
+      "name": "京都の道 70"
+    },
+    {
+      "number": 71,
+      "kind": "COIN",
+      "name": "竹影の旅銭",
+      "amount": 2
+    },
+    {
+      "number": 72,
+      "kind": "BYPASS_FORK",
+      "name": "竹林の分かれ道",
+      "branch_id": "arashiyama_shortcut_choice"
+    },
+    {
+      "number": 73,
+      "kind": "NORMAL",
+      "name": "京都の道 73"
+    },
+    {
+      "number": 74,
+      "kind": "NORMAL",
+      "name": "京都の道 74"
+    },
+    {
+      "number": 75,
+      "kind": "RISK",
+      "name": "ぬかるむ小径"
+    },
+    {
+      "number": 76,
+      "kind": "NORMAL",
+      "name": "京都の道 76"
+    },
+    {
+      "number": 77,
+      "kind": "COIN",
+      "name": "朝露の旅銭",
+      "amount": 2
+    },
+    {
+      "number": 78,
+      "kind": "ITEM",
+      "name": "竹林の旅守"
+    },
+    {
+      "number": 79,
+      "kind": "NORMAL",
+      "name": "京都の道 79"
+    },
+    {
+      "number": 80,
+      "kind": "NORMAL",
+      "name": "京都の道 80"
+    },
+    {
+      "number": 81,
+      "kind": "NORMAL",
+      "name": "京都の道 81"
+    },
+    {
+      "number": 82,
+      "kind": "NORMAL",
+      "name": "京都の道 82"
+    },
+    {
+      "number": 83,
+      "kind": "RISK",
+      "name": "強い川風"
+    },
+    {
+      "number": 84,
+      "kind": "ITEM",
+      "name": "朝露の旅守"
+    },
+    {
+      "number": 85,
+      "kind": "GOSHUIN",
+      "name": "天龍寺",
+      "goshuin": "tenryuji"
+    },
+    {
+      "number": 86,
+      "kind": "COIN",
+      "name": "満願の旅銭",
+      "amount": 2
+    },
+    {
+      "number": 87,
+      "kind": "REST",
+      "name": "渡月橋たもと"
+    },
+    {
+      "number": 88,
+      "kind": "BOSS_FORK",
+      "name": "最後の試練"
+    },
+    {
+      "number": 89,
+      "kind": "BOSS_APPROACH",
+      "name": "白狐の鳥居"
+    },
+    {
+      "number": 90,
+      "kind": "BOSS",
+      "name": "朝焼けの大碁盤庭園"
+    }
   ],
   "branches": [
-    {"id": "fushimi_pilgrimage", "prompt": "稲荷山を巡って御朱印を受ける？", "choices": [{"id": "main", "label": "千本鳥居を進む", "target": "main:10"}, {"id": "pilgrimage", "label": "稲荷山巡礼 +2", "target": "fushimi:F1"}]},
-    {"id": "fox_shortcut", "prompt": "3 COINで狐の抜け道へ？", "choices": [{"id": "main", "label": "鳥居の尾根を進む", "target": "main:17"}, {"id": "shortcut", "label": "狐の抜け道 -3", "target": "fox_shortcut:S1", "cost": 3}]},
-    {"id": "yasaka_pilgrimage", "prompt": "八坂を巡って御朱印を受ける？", "choices": [{"id": "main", "label": "花見小路を進む", "target": "main:31"}, {"id": "pilgrimage", "label": "八坂巡礼 +2", "target": "yasaka:G1"}]},
-    {"id": "gion_night_loop", "prompt": "花見小路を夜巡りする？", "choices": [{"id": "main", "label": "提灯小路へ", "target": "main:39"}, {"id": "loop", "label": "夜巡り +4", "target": "gion_loop:L1", "once_per_lap": true}]},
-    {"id": "kiyomizu_pilgrimage", "prompt": "清水寺へ巡礼する？", "choices": [{"id": "main", "label": "清水坂を進む", "target": "main:53"}, {"id": "pilgrimage", "label": "清水巡礼 +2", "target": "kiyomizu:K1"}]},
-    {"id": "stone_garden_loop", "prompt": "夜の石庭で旅支度を整える？", "choices": [{"id": "main", "label": "狐雨の道へ", "target": "main:62"}, {"id": "loop", "label": "石庭巡り +4", "target": "stone_garden:R1", "once_per_lap": true}]},
-    {"id": "tenryuji_pilgrimage", "prompt": "天龍寺へ巡礼する？", "choices": [{"id": "main", "label": "竹の小径へ", "target": "main:75"}, {"id": "pilgrimage", "label": "天龍寺巡礼 +2", "target": "tenryuji:T1"}]},
-    {"id": "river_shortcut", "prompt": "4 COINで保津川下りへ？", "choices": [{"id": "main", "label": "渡月橋を歩く", "target": "main:83"}, {"id": "shortcut", "label": "保津川下り -3", "target": "river_boat:B1", "cost": 4}]}
+    {
+      "id": "gion_shortcut_choice",
+      "type": "bypass",
+      "prompt": "この先に近道！",
+      "choice_space": "main:33",
+      "standard_distance": 9,
+      "bypass_distance": 5,
+      "saved_steps": 4,
+      "choices": [
+        {
+          "id": "main",
+          "label": "本線 9マス　COIN×1 ITEM×1 RISK×1",
+          "target": "main:34"
+        },
+        {
+          "id": "shortcut",
+          "label": "祇園の裏路地 5マス　REST×1 RISK×2（4マス短縮）",
+          "target": "gion_shortcut:S1"
+        }
+      ]
+    },
+    {
+      "id": "arashiyama_shortcut_choice",
+      "type": "bypass",
+      "prompt": "竹林を抜ける？",
+      "choice_space": "main:72",
+      "standard_distance": 12,
+      "bypass_distance": 6,
+      "saved_steps": 6,
+      "choices": [
+        {
+          "id": "main",
+          "label": "本線 12マス　COIN×1 ITEM×2 RISK×2",
+          "target": "main:73"
+        },
+        {
+          "id": "shortcut",
+          "label": "竹林の抜け道 6マス　REST×1 ITEM×1 RISK×3（6マス短縮）",
+          "target": "arashiyama_shortcut:S1"
+        }
+      ]
+    }
   ],
   "routes": [
-    {"id": "fushimi", "rejoin": "main:13", "spaces": [{"id": "fushimi:F1", "kind": "NORMAL", "name": "稲荷山参道"}, {"id": "fushimi:F2", "kind": "RISK", "name": "険しい鳥居坂"}, {"id": "fushimi:F3", "kind": "GOSHUIN", "goshuin": "fushimi", "name": "稲荷御朱印所"}, {"id": "fushimi:F4", "kind": "COIN", "amount": 2, "name": "山頂の旅銭"}, {"id": "fushimi:F5", "kind": "REST", "name": "狐の木陰"}]},
-    {"id": "fox_shortcut", "rejoin": "main:23", "spaces": [{"id": "fox_shortcut:S1", "kind": "NORMAL", "name": "狐穴の入口"}, {"id": "fox_shortcut:S2", "kind": "RISK", "name": "朱の隧道"}, {"id": "fox_shortcut:S3", "kind": "EVENT", "name": "洛中への抜け道"}]},
-    {"id": "yasaka", "rejoin": "main:35", "spaces": [{"id": "yasaka:G1", "kind": "NORMAL", "name": "八坂参道"}, {"id": "yasaka:G2", "kind": "COIN", "amount": 2, "name": "門前の旅銭"}, {"id": "yasaka:G3", "kind": "RISK", "name": "宵の石段"}, {"id": "yasaka:G4", "kind": "GOSHUIN", "goshuin": "yasaka", "name": "八坂御朱印所"}, {"id": "yasaka:G5", "kind": "EVENT", "name": "祇園囃子"}, {"id": "yasaka:G6", "kind": "REST", "name": "灯籠の休み処"}]},
-    {"id": "gion_loop", "rejoin": "main:39", "spaces": [{"id": "gion_loop:L1", "kind": "COIN", "amount": 3, "name": "夜の旅銭"}, {"id": "gion_loop:L2", "kind": "EVENT", "name": "秘密の茶屋"}, {"id": "gion_loop:L3", "kind": "RISK", "name": "行き止まり"}, {"id": "gion_loop:L4", "kind": "ITEM", "name": "夜巡りの旅守"}]},
-    {"id": "kiyomizu", "rejoin": "main:58", "spaces": [{"id": "kiyomizu:K1", "kind": "NORMAL", "name": "仁王門"}, {"id": "kiyomizu:K2", "kind": "RISK", "name": "巡礼坂"}, {"id": "kiyomizu:K3", "kind": "COIN", "amount": 2, "name": "門前の旅銭"}, {"id": "kiyomizu:K4", "kind": "GOSHUIN", "goshuin": "kiyomizu", "name": "清水寺御朱印所"}, {"id": "kiyomizu:K5", "kind": "EVENT", "name": "舞台の眺め"}, {"id": "kiyomizu:K6", "kind": "REST", "name": "音羽の休み処"}, {"id": "kiyomizu:K7", "kind": "NORMAL", "name": "月の回廊"}]},
-    {"id": "stone_garden", "rejoin": "main:62", "spaces": [{"id": "stone_garden:R1", "kind": "REST", "name": "座禅"}, {"id": "stone_garden:R2", "kind": "EVENT", "name": "枯山水"}, {"id": "stone_garden:R3", "kind": "RISK", "name": "月影"}, {"id": "stone_garden:R4", "kind": "ITEM", "name": "石庭の旅守"}]},
-    {"id": "tenryuji", "rejoin": "main:79", "spaces": [{"id": "tenryuji:T1", "kind": "NORMAL", "name": "天龍寺参道"}, {"id": "tenryuji:T2", "kind": "REST", "name": "曹源池"}, {"id": "tenryuji:T3", "kind": "EVENT", "name": "達磨図"}, {"id": "tenryuji:T4", "kind": "GOSHUIN", "goshuin": "tenryuji", "name": "天龍寺御朱印所"}, {"id": "tenryuji:T5", "kind": "COIN", "amount": 2, "name": "庭園の旅銭"}, {"id": "tenryuji:T6", "kind": "NORMAL", "name": "竹林北門"}]},
-    {"id": "river_boat", "rejoin": "main:89", "spaces": [{"id": "river_boat:B1", "kind": "NORMAL", "name": "保津川の舟"}, {"id": "river_boat:B2", "kind": "RISK", "name": "急流"}, {"id": "river_boat:B3", "kind": "EVENT", "name": "渡月の水面"}]}
-  ]
+    {
+      "id": "gion_shortcut",
+      "rejoin": "main:42",
+      "spaces": [
+        {
+          "id": "gion_shortcut:S1",
+          "kind": "RISK",
+          "name": "暗い裏路地"
+        },
+        {
+          "id": "gion_shortcut:S2",
+          "kind": "NORMAL",
+          "name": "格子戸の小径"
+        },
+        {
+          "id": "gion_shortcut:S3",
+          "kind": "REST",
+          "name": "秘密の茶屋"
+        },
+        {
+          "id": "gion_shortcut:S4",
+          "kind": "RISK",
+          "name": "行き止まり"
+        }
+      ]
+    },
+    {
+      "id": "arashiyama_shortcut",
+      "rejoin": "main:84",
+      "spaces": [
+        {
+          "id": "arashiyama_shortcut:S1",
+          "kind": "RISK",
+          "name": "倒れ竹"
+        },
+        {
+          "id": "arashiyama_shortcut:S2",
+          "kind": "NORMAL",
+          "name": "竹影の抜け道"
+        },
+        {
+          "id": "arashiyama_shortcut:S3",
+          "kind": "REST",
+          "name": "竹の休み処"
+        },
+        {
+          "id": "arashiyama_shortcut:S4",
+          "kind": "RISK",
+          "name": "滑る根道"
+        },
+        {
+          "id": "arashiyama_shortcut:S5",
+          "kind": "RISK",
+          "name": "崩れた小径"
+        }
+      ]
+    }
+  ],
+  "boss_choice": {
+    "trigger_space_id": "main:88",
+    "approach_space_id": "main:89",
+    "boss_space_id": "main:90",
+    "choices": [
+      {
+        "id": "direct",
+        "name": "狐火追陣",
+        "description": "外周を走り白狐を追う短時間の追走戦",
+        "style": "chase",
+        "boss_id": "fox_fire_chase"
+      },
+      {
+        "id": "foxfire",
+        "name": "狐火六路陣",
+        "description": "狐火を読み切る盤面戦",
+        "style": "puzzle",
+        "boss_id": "white_fox_seal"
+      }
+    ]
+  }
 }

@@ -43,6 +43,7 @@ const DICE_ROLL_SE: AudioStream = preload("res://assets/audio/dice/roll_01.wav")
 const DICE_LAND_SE: AudioStream = preload("res://assets/audio/dice/land_01.wav")
 const SAVE_MANAGER := preload("res://scripts/game/journey_save_manager.gd")
 const FOX_FIRE_BATTLE_SCENE: PackedScene = preload("res://boss/kyoto/fox_fire_six_routes/FoxFireSixRoutesBattle.tscn")
+const FOX_FIRE_CHASE_BATTLE_PATH := "res://boss/kyoto/fox_fire_chase/FoxFireChaseBattle.tscn"
 
 const INK := Color("#2d241d")
 const PAPER := Color("#f8ebca")
@@ -56,6 +57,13 @@ const LOCAL_MAP_WINDOW_KYOTO := 0.12
 const MAP_HOP_SECONDS := 0.24
 const MAP_LANDING_SECONDS := 0.76
 const MAP_CAMERA_FOLLOW_SECONDS := 0.52
+const KYOTO_HORIZON_CARD_HEIGHT := 260.0
+const KYOTO_HORIZON_CARD_MIN_HEIGHT := 220.0
+const KYOTO_HORIZON_DIE_SIZE := 184.0
+const KYOTO_HORIZON_DIE_MIN_SIZE := 152.0
+const KYOTO_HORIZON_CAT_SIZE := 136.0
+const KYOTO_HORIZON_ANCHOR_SIZE := 92.0
+const KYOTO_HORIZON_GAP := 14.0
 const AQUAFALL_STEP_SECONDS := 0.52
 const AQUAFALL_STEP_PAUSE_SECONDS := 0.14
 const AQUAFALL_HOP_ARC := 36.0
@@ -67,9 +75,8 @@ const KYOTO_MAIN_WAYPOINTS := {
 	68: 0.40, 69: 0.52, 89: 0.57, 90: 0.50,
 }
 const KYOTO_ROUTE_SIDES := {
-	"fushimi": -1.0, "fox_shortcut": 1.0, "yasaka": -1.0,
-	"gion_loop": 1.0, "kiyomizu": -1.0, "stone_garden": 1.0,
-	"tenryuji": -1.0, "river_boat": 1.0,
+	"gion_shortcut": 1.0,
+	"arashiyama_shortcut": -1.0,
 }
 const TYPE_COLORS := {
 	"START": Color("#3c9d88"), "NORMAL": Color("#f7edca"), "COIN": Color("#f3bd3d"),
@@ -83,6 +90,7 @@ var journey: StageJourneyBase
 var amazon_boss: AquafallBattle
 var kyoto_boss: WhiteFoxBattle
 var kyoto_boss_scene: FoxFireSixRoutesBattle
+var kyoto_chase_scene: Control
 var rng := RandomNumberGenerator.new()
 var save_manager := SAVE_MANAGER.new()
 var root_layer: Control
@@ -109,6 +117,9 @@ var coin_tool_button: Button
 var skill_tool_button: Button
 var event_card_button: Button
 var goshuin_mission_label: Label
+var mission_caption_label: Label
+var mission_progress_label: Label
+var mission_icon_view: TextureRect
 var mission_value_labels: Dictionary = {}
 var roll_slot_labels: Array[Label] = []
 var roll_slot_panels: Array[PanelContainer] = []
@@ -248,6 +259,7 @@ func _process(delta: float) -> void:
 
 
 func _build_shell() -> void:
+	var is_kyoto_ui := stage_id == StageCatalog.STAGE_KYOTO
 	root_layer = Control.new()
 	root_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(root_layer)
@@ -276,7 +288,7 @@ func _build_shell() -> void:
 	margin.add_child(vertical)
 	top_hud = PanelContainer.new()
 	top_hud.name = "HudPanel"
-	top_hud.custom_minimum_size.y = 128
+	top_hud.custom_minimum_size.y = 200 if is_kyoto_ui else 128
 	top_hud.add_theme_stylebox_override("panel", _panel(_stage_ink(0.96), GOLD, 16, 3))
 	var hud := VBoxContainer.new()
 	hud.add_theme_constant_override("separation", 4)
@@ -291,11 +303,11 @@ func _build_shell() -> void:
 	hud.add_child(stats)
 	var info := HBoxContainer.new()
 	info.add_theme_constant_override("separation", 5)
-	var coin_chip := _info_value_chip("コイン", "0")
+	var coin_chip := _cairo_coin_hud() if is_kyoto_ui else _info_value_chip("コイン", "0")
 	coin_info_chip = coin_chip["chip"] as PanelContainer
 	coins_label = coin_chip["value"] as Label
 	var survival_chip := _survival_chip()
-	var progress_chip := _info_value_chip("現在", "1/90")
+	var progress_chip := _cairo_progress_hud() if is_kyoto_ui else _info_value_chip("現在", "1/90")
 	progress_info_chip = progress_chip["chip"] as PanelContainer
 	progress_label = progress_chip["value"] as Label
 	coin_info_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -306,15 +318,22 @@ func _build_shell() -> void:
 	info.add_child(progress_info_chip)
 	overview_button = _button("全体マップ", _show_overview_map, false)
 	overview_button.name = "MapButton"
-	overview_button.custom_minimum_size = Vector2(104, 55)
-	overview_button.add_theme_font_size_override("font_size", 15)
+	overview_button.custom_minimum_size = Vector2(112, 96) if is_kyoto_ui else Vector2(104, 55)
+	overview_button.add_theme_font_size_override("font_size", 17 if is_kyoto_ui else 15)
+	if is_kyoto_ui:
+		overview_button.add_theme_color_override("font_color", INK)
+		overview_button.add_theme_color_override("font_hover_color", INK)
+		overview_button.add_theme_color_override("font_pressed_color", INK)
+		overview_button.add_theme_stylebox_override("normal", _panel(Color("#f8ebca"), Color("#c6a66a"), 12, 2))
+		overview_button.add_theme_stylebox_override("hover", _panel(Color("#fff4d7"), GOLD, 12, 3))
+		overview_button.add_theme_stylebox_override("pressed", _panel(Color("#ead7ac"), GOLD, 12, 3))
 	info.add_child(overview_button)
 	hud.add_child(info)
 	top_hud.add_child(hud)
 	vertical.add_child(top_hud)
 	stage_band = PanelContainer.new()
 	stage_band.name = "StageBand"
-	stage_band.custom_minimum_size.y = 54
+	stage_band.custom_minimum_size.y = 48 if is_kyoto_ui else 54
 	stage_band.add_theme_stylebox_override("panel", _panel(PAPER, GOLD, 10, 2))
 	var stage_row := HBoxContainer.new()
 	var stage_title := _label("", 22, INK)
@@ -323,6 +342,10 @@ func _build_shell() -> void:
 	stage_row.add_child(stage_title)
 	stage_route_label = _label("本線　旅のスタート", 16, _stage_accent(), HORIZONTAL_ALIGNMENT_RIGHT)
 	stage_row.add_child(stage_route_label)
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		# Keep the goshuin collection visible as Kyoto-specific stage context,
+		# separate from the shared lap mission below.
+		goshuin_mission_label = stage_route_label
 	var back := _button("‹", _request_back, false)
 	back.name = "BackButton"
 	back.custom_minimum_size = Vector2(46, 40)
@@ -333,17 +356,15 @@ func _build_shell() -> void:
 	mission_band = PanelContainer.new()
 	mission_band.name = "MissionBand"
 	mission_value_labels.clear()
-	mission_band.custom_minimum_size.y = 74
+	mission_band.custom_minimum_size.y = 120 if is_kyoto_ui else 74
 	mission_band.add_theme_stylebox_override("panel", _panel(PAPER, GOLD, 10, 2))
 	var mission_row := HBoxContainer.new()
 	mission_row.add_theme_constant_override("separation", 4)
-	var mission_title := _label("MISSION", 14, INK, HORIZONTAL_ALIGNMENT_CENTER)
-	mission_title.custom_minimum_size.x = 62
+	var mission_title := _label("MISSION", 22 if is_kyoto_ui else 14, INK, HORIZONTAL_ALIGNMENT_CENTER)
+	mission_title.custom_minimum_size.x = 118 if is_kyoto_ui else 62
 	mission_row.add_child(mission_title)
-	if stage_id == StageCatalog.STAGE_KYOTO:
-		mission_row.add_child(_mission_cell("御朱印", "0/4", ICON_SPECIAL))
-		mission_row.add_child(_mission_cell("コイン", "獲得 0/10", ICON_COIN))
-		mission_row.add_child(_mission_cell("灯籠", "0/5", ICON_REST))
+	if is_kyoto_ui:
+		mission_row.add_child(_journey_mission_cell())
 	else:
 		mission_row.add_child(_mission_cell("無傷", "継続中", ICON_REST))
 		mission_row.add_child(_mission_cell("コイン", "獲得 0/12", ICON_COIN))
@@ -358,7 +379,7 @@ func _build_shell() -> void:
 	vertical.add_child(content_host)
 	var status_panel := PanelContainer.new()
 	status_panel.name = "MessageBand"
-	status_panel.custom_minimum_size.y = 52
+	status_panel.custom_minimum_size.y = 72 if is_kyoto_ui else 52
 	status_panel.add_theme_stylebox_override("panel", _panel(Color("#2e1e17"), GOLD, 9, 2))
 	# Keep the operation band reserved for live movement/effect feedback. The
 	# antique die already communicates the idle action, so no duplicate
@@ -370,7 +391,7 @@ func _build_shell() -> void:
 	vertical.add_child(status_panel)
 	controls_box = VBoxContainer.new()
 	controls_box.name = "ControlsBox"
-	controls_box.custom_minimum_size.y = 326
+	controls_box.custom_minimum_size.y = 335 if is_kyoto_ui else 326
 	controls_box.add_theme_constant_override("separation", 7)
 	vertical.add_child(controls_box)
 	idle_timer = Timer.new()
@@ -407,6 +428,9 @@ func _render_map() -> void:
 	if is_instance_valid(kyoto_boss_scene):
 		kyoto_boss_scene.queue_free()
 		kyoto_boss_scene = null
+	if is_instance_valid(kyoto_chase_scene):
+		kyoto_chase_scene.queue_free()
+		kyoto_chase_scene = null
 	amazon_boss = null
 	map_roll_active = false
 	map_roll_elapsed = 0.0
@@ -438,13 +462,14 @@ func _render_map() -> void:
 	map_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content_host.add_child(map_background)
 	var shade := ColorRect.new()
-	shade.color = Color(0.03, 0.05, 0.04, 0.14)
+	shade.color = Color(0.16, 0.10, 0.045, 0.18) if stage_id == StageCatalog.STAGE_KYOTO else Color(0.03, 0.05, 0.04, 0.14)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content_host.add_child(shade)
 	map_node_layer = Control.new()
 	map_node_layer.clip_contents = true
 	map_node_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	map_node_layer.z_index = 8
 	content_host.add_child(map_node_layer)
 	var map_frame := PanelContainer.new()
 	map_frame.name = "AtlasFrame"
@@ -452,20 +477,43 @@ func _render_map() -> void:
 	map_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_frame.add_theme_stylebox_override("panel", _panel(Color(0, 0, 0, 0), GOLD, 8, 2))
 	content_host.add_child(map_frame)
-	_add_route_legend(content_host)
+	# The Cairo-style Kyoto horizon makes the seven cards authoritative in
+	# normal play. Route-line legend and the full 99-node topology belong to the
+	# dedicated 全体マップ, where both remain available.
+	if stage_id != StageCatalog.STAGE_KYOTO:
+		_add_route_legend(content_host)
 	var route_preview := PanelContainer.new()
 	route_preview.name = "LocalRoutePreview"
-	route_preview.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	route_preview.offset_left = 10
-	route_preview.offset_top = -116
-	route_preview.offset_right = -10
-	route_preview.offset_bottom = -8
-	route_preview.add_theme_stylebox_override("panel", _panel(Color(0.96, 0.90, 0.75, 0.93), GOLD, 12, 2))
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		# Kyoto's normal-play map uses a Cairo-style card horizon as the primary
+		# route readout. It is laid out from the content size below so the same
+		# design coordinates scale cleanly to the 360x640 capture.
+		route_preview.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		route_preview.z_index = 12
+		route_preview.custom_minimum_size = Vector2(0.0, KYOTO_HORIZON_CARD_HEIGHT)
+	else:
+		route_preview.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+		route_preview.offset_left = 10
+		route_preview.offset_top = -116
+		route_preview.offset_right = -10
+		route_preview.offset_bottom = -8
+		route_preview.add_theme_stylebox_override("panel", _panel(Color(0.96, 0.90, 0.75, 0.93), GOLD, 12, 2))
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		var horizon_style := _panel(Color(0.96, 0.90, 0.75, 0.97), GOLD, 14, 3)
+		horizon_style.content_margin_left = 5
+		horizon_style.content_margin_right = 5
+		horizon_style.content_margin_top = 8
+		horizon_style.content_margin_bottom = 8
+		route_preview.add_theme_stylebox_override("panel", horizon_style)
 	route_preview_row = HBoxContainer.new()
 	route_preview_row.name = "RoutePreviewRow"
 	route_preview_row.add_theme_constant_override("separation", 4)
 	route_preview.add_child(route_preview_row)
 	content_host.add_child(route_preview)
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		var layout_callable := Callable(self, "_layout_kyoto_card_horizon")
+		if not content_host.resized.is_connected(layout_callable):
+			content_host.resized.connect(layout_callable)
 	_refresh_route_preview_for_space(journey.current_space_id)
 	map_dice = DICE_PRESENTATION.new()
 	map_dice.name = "MapDicePresentation"
@@ -474,20 +522,75 @@ func _render_map() -> void:
 	map_dice.tray_surface_visible = false
 	map_dice.high_contrast_pips = true
 	content_host.add_child(map_dice)
-	map_dice.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	# Keep the primary die in the same lower-right dock on both normal maps. The
-	# route strip remains the authoritative forecast, so this placement leaves
-	# the scenic center open while preserving a familiar Cairo-style control.
-	var dice_x_offset := 188.0
-	map_dice.offset_left = -80 + dice_x_offset
-	map_dice.offset_top = -284
-	map_dice.offset_right = 80 + dice_x_offset
-	map_dice.offset_bottom = -124
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		map_dice.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		map_dice.custom_minimum_size = Vector2(KYOTO_HORIZON_DIE_SIZE, KYOTO_HORIZON_DIE_SIZE)
+		map_dice.size = Vector2(KYOTO_HORIZON_DIE_SIZE, KYOTO_HORIZON_DIE_SIZE)
+		map_dice.z_index = 16
+	else:
+		map_dice.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		# Keep the primary die in the same lower-right dock on the Amazon map. The
+		# route strip remains the authoritative forecast there.
+		var dice_x_offset := 188.0
+		map_dice.offset_left = -80 + dice_x_offset
+		map_dice.offset_top = -284
+		map_dice.offset_right = 80 + dice_x_offset
+		map_dice.offset_bottom = -124
 	map_dice.present([1], false, 1)
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		call_deferred("_layout_kyoto_card_horizon")
 	_update_local_view_window()
 	call_deferred("_apply_background_camera")
 	call_deferred("_populate_map_nodes")
 	_build_travel_tray()
+
+
+func _layout_kyoto_card_horizon() -> void:
+	if stage_id != StageCatalog.STAGE_KYOTO:
+		return
+	if not is_instance_valid(content_host) or not is_instance_valid(route_preview_row) or not is_instance_valid(map_dice):
+		return
+	if content_host.size.x <= 0.0 or content_host.size.y <= 0.0:
+		call_deferred("_layout_kyoto_card_horizon")
+		return
+	var route_preview := route_preview_row.get_parent() as PanelContainer
+	if route_preview == null:
+		return
+	var content_size := content_host.size
+	var horizon_width := clampf(content_size.x - 16.0, 300.0, minf(696.0, content_size.x - 8.0))
+	var die_size := clampf(content_size.y * 0.31, KYOTO_HORIZON_DIE_MIN_SIZE, KYOTO_HORIZON_DIE_SIZE)
+	var card_height := clampf(content_size.y * 0.48, KYOTO_HORIZON_CARD_MIN_HEIGHT, KYOTO_HORIZON_CARD_HEIGHT)
+	var panel_height := card_height + 16.0
+	var total_height := panel_height + KYOTO_HORIZON_GAP + die_size
+	var row_y := clampf(
+		content_size.y * 0.40,
+		12.0,
+		maxf(12.0, content_size.y - total_height - 12.0)
+	)
+	route_preview.custom_minimum_size = Vector2(horizon_width, panel_height)
+	route_preview.position = Vector2((content_size.x - horizon_width) * 0.5, row_y)
+	route_preview.size = Vector2(horizon_width, panel_height)
+	route_preview_row.custom_minimum_size = Vector2(0.0, card_height)
+	for child: Node in route_preview_row.get_children():
+		var tile := child as Control
+		if tile == null:
+			continue
+		tile.custom_minimum_size.y = card_height
+		var tile_content := tile.get_node_or_null("TileContent") as Control
+		if tile_content != null:
+			tile_content.custom_minimum_size.y = card_height
+			var motion_player := tile_content.get_node_or_null("MotionPlayer") as TextureRect
+			if motion_player != null:
+				motion_player.size = Vector2(KYOTO_HORIZON_CAT_SIZE, KYOTO_HORIZON_CAT_SIZE)
+				motion_player.position = Vector2(4.0, maxf(4.0, card_height - KYOTO_HORIZON_CAT_SIZE - 5.0))
+	route_preview_row.queue_sort()
+	map_dice.custom_minimum_size = Vector2(die_size, die_size)
+	map_dice.size = Vector2(die_size, die_size)
+	map_dice.position = Vector2(
+		(content_size.x - die_size) * 0.5,
+		row_y + panel_height + KYOTO_HORIZON_GAP
+	)
+	call_deferred("_sync_kyoto_horizon_anchors")
 
 
 func _show_stage_intro() -> void:
@@ -529,7 +632,7 @@ func _show_overview_map(initial: bool = false) -> void:
 	var title := _label(("アマゾン" if stage_id == StageCatalog.STAGE_AMAZON else "京都") + "の旅路を見渡そう", 24, INK, HORIZONTAL_ALIGNMENT_CENTER)
 	title.custom_minimum_size.y = 40
 	box.add_child(title)
-	var hint := _label("全体マップ" + ("　滝へ続く森の道" if stage_id == StageCatalog.STAGE_AMAZON else "　五つの寄り道と本線"), 13, _stage_accent(), HORIZONTAL_ALIGNMENT_CENTER)
+	var hint := _label("全体マップ" + ("　滝へ続く森の道" if stage_id == StageCatalog.STAGE_AMAZON else "　本線・2つの近道・4つの御朱印"), 13, _stage_accent(), HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(hint)
 	var map_view := Control.new()
 	map_view.name = "OverviewMapView"
@@ -878,12 +981,13 @@ func _build_boss_roll_tray() -> void:
 
 
 func _build_roll_tray(roll_callback: Callable, include_tools: bool) -> void:
+	var is_kyoto_ui := stage_id == StageCatalog.STAGE_KYOTO and include_tools
 	var tray := PanelContainer.new()
 	tray.name = "TravelRollTray"
-	tray.custom_minimum_size.y = 248
+	tray.custom_minimum_size.y = 220 if is_kyoto_ui else 248
 	tray.add_theme_stylebox_override("panel", _panel(Color("#f2dfb6"), GOLD, 14, 2))
 	var tray_root := Control.new()
-	tray_root.custom_minimum_size.y = 240
+	tray_root.custom_minimum_size.y = 212 if is_kyoto_ui else 240
 	travel_tray_root = tray_root
 	primary_roll_controls = Control.new()
 	primary_roll_controls.name = "PrimaryRollControls"
@@ -956,7 +1060,8 @@ func _layout_travel_controls() -> void:
 	if not is_instance_valid(travel_tray_root) or not is_instance_valid(primary_roll_controls):
 		return
 	var available_width := maxf(travel_tray_root.size.x, 1.0)
-	var scale_factor := minf(1.0, available_width / SLOT_DESIGN_SIZE.x)
+	var available_height := maxf(travel_tray_root.size.y, 1.0)
+	var scale_factor := minf(1.0, minf(available_width / SLOT_DESIGN_SIZE.x, available_height / SLOT_DESIGN_SIZE.y)) if stage_id == StageCatalog.STAGE_KYOTO else minf(1.0, available_width / SLOT_DESIGN_SIZE.x)
 	primary_roll_controls.scale = Vector2.ONE * scale_factor
 	primary_roll_controls.position = Vector2(
 		maxf((available_width - SLOT_DESIGN_SIZE.x * scale_factor) * 0.5, 0.0),
@@ -967,8 +1072,8 @@ func _layout_travel_controls() -> void:
 func _build_tool_dock() -> void:
 	var dock := PanelContainer.new()
 	dock.name = "ToolDock"
-	dock.custom_minimum_size.y = 72
-	dock.add_theme_stylebox_override("panel", _panel(Color("#ead4a5"), GOLD, 12, 2))
+	dock.custom_minimum_size.y = 108 if stage_id == StageCatalog.STAGE_KYOTO else 72
+	dock.add_theme_stylebox_override("panel", _panel(Color("#f1dfb8") if stage_id == StageCatalog.STAGE_KYOTO else Color("#ead4a5"), GOLD, 12, 2))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 5)
 	item_card_button = _tool_button("アイテム\n0/3", ITEM_CARD_ICON, _show_item_card)
@@ -987,17 +1092,25 @@ func _build_tool_dock() -> void:
 
 func _tool_button(text_value: String, icon: Texture2D, callback: Callable) -> Button:
 	var button := _button(text_value, callback, false)
-	button.custom_minimum_size = Vector2(0, 68)
-	button.add_theme_font_size_override("font_size", 14)
+	button.custom_minimum_size = Vector2(0, 100 if stage_id == StageCatalog.STAGE_KYOTO else 68)
+	button.add_theme_font_size_override("font_size", 16 if stage_id == StageCatalog.STAGE_KYOTO else 14)
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		button.add_theme_color_override("font_color", INK)
+		button.add_theme_color_override("font_hover_color", INK)
+		button.add_theme_color_override("font_pressed_color", INK)
+		button.add_theme_stylebox_override("normal", _panel(Color("#fbefd2"), Color("#b89559"), 11, 2))
+		button.add_theme_stylebox_override("hover", _panel(Color("#fff7e3"), GOLD, 11, 3))
+		button.add_theme_stylebox_override("pressed", _panel(Color("#e8d3a7"), GOLD, 11, 3))
 	button.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var icon_view := TextureRect.new()
 	icon_view.texture = icon
 	icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon_view.position = Vector2(10, 10)
-	icon_view.size = Vector2(30, 30)
-	icon_view.custom_minimum_size = Vector2(30, 30)
+	var tool_icon_size := 36.0 if stage_id == StageCatalog.STAGE_KYOTO else 30.0
+	icon_view.position = Vector2(9, 13) if stage_id == StageCatalog.STAGE_KYOTO else Vector2(10, 10)
+	icon_view.size = Vector2.ONE * tool_icon_size
+	icon_view.custom_minimum_size = Vector2.ONE * tool_icon_size
 	icon_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	button.add_child(icon_view)
 	return button
@@ -1008,21 +1121,30 @@ func _route_tile(text_value: String, kind: String, current: bool, space_id_value
 	tile.set_meta("space_id", space_id_value)
 	tile.set_meta("kind", kind)
 	tile.set_meta("current", current)
-	tile.custom_minimum_size = Vector2(0, 66)
+	var is_kyoto_horizon := stage_id == StageCatalog.STAGE_KYOTO
+	var tile_height := KYOTO_HORIZON_CARD_HEIGHT if is_kyoto_horizon else 66.0
+	tile.custom_minimum_size = Vector2(0, tile_height)
 	tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tile.add_theme_stylebox_override("panel", _panel(Color("#e8d8b4") if not current else _stage_accent(), GOLD, 9, 2))
+	var tile_fill := Color("#e8d8b4") if not current else _stage_accent()
+	if is_kyoto_horizon and not current:
+		tile_fill = Color("#f3e5c4")
+	tile.add_theme_stylebox_override("panel", _panel(tile_fill, GOLD, 12 if is_kyoto_horizon else 9, 3 if is_kyoto_horizon else 2))
 	var tile_content := Control.new()
 	tile_content.name = "TileContent"
-	tile_content.custom_minimum_size = Vector2(0, 66)
+	tile_content.custom_minimum_size = Vector2(0, tile_height)
 	var box := VBoxContainer.new()
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var caption := _label(text_value, 14, Color.WHITE if current else INK, HORIZONTAL_ALIGNMENT_CENTER)
+	var horizon_caption_size := 24 if current else 36
+	var caption := _label(text_value, horizon_caption_size if is_kyoto_horizon else 14, Color.WHITE if current else INK, HORIZONTAL_ALIGNMENT_CENTER)
+	if is_kyoto_horizon:
+		caption.custom_minimum_size.y = 60
 	caption.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(caption)
 	var is_boss := kind == "BOSS"
 	var medal := PanelContainer.new()
-	medal.custom_minimum_size = Vector2(0, 44 if is_boss else 34)
-	medal.add_theme_stylebox_override("panel", _panel(Color("#351c27") if is_boss else TYPE_COLORS.get(kind, TYPE_COLORS.NORMAL), Color("#f7d36c") if is_boss else Color("#684c2f"), 9 if is_boss else 7, 3 if is_boss else 1))
+	var medal_height := 44.0 if is_boss else (142.0 if is_kyoto_horizon else 34.0)
+	medal.custom_minimum_size = Vector2(0, medal_height)
+	medal.add_theme_stylebox_override("panel", _panel(Color("#351c27") if is_boss else TYPE_COLORS.get(kind, TYPE_COLORS.NORMAL), Color("#f7d36c") if is_boss else Color("#684c2f"), 9 if is_boss else (10 if is_kyoto_horizon else 7), 3 if is_boss else (2 if is_kyoto_horizon else 1)))
 	if is_boss:
 		var emblem := BOSS_MAP_EMBLEM_SCRIPT.new() as Control
 		emblem.custom_minimum_size = Vector2(0, 42)
@@ -1035,19 +1157,44 @@ func _route_tile(text_value: String, kind: String, current: bool, space_id_value
 		icon_view.texture = _icon_for_kind(kind)
 		icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon_view.custom_minimum_size = Vector2(0, 26)
+		icon_view.custom_minimum_size = Vector2(0, 112 if is_kyoto_horizon else 26)
 		icon_view.modulate = _icon_modulate_for_kind(kind)
+		if is_kyoto_horizon and current:
+			# The large explorer owns the lower half of the current card. Hide the
+			# centered copy and surface the same semantic icon in the clear space
+			# between the caption and the explorer instead.
+			icon_view.modulate.a = 0.0
 		icon_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		medal.add_child(icon_view)
 	box.add_child(medal)
 	tile_content.add_child(box)
+	if is_kyoto_horizon and current and not is_boss:
+		var kind_badge := PanelContainer.new()
+		kind_badge.name = "CurrentKindBadge"
+		kind_badge.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		kind_badge.offset_left = -50.0
+		kind_badge.offset_top = 64.0
+		kind_badge.offset_right = -4.0
+		kind_badge.offset_bottom = 110.0
+		kind_badge.z_index = 36
+		kind_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		kind_badge.add_theme_stylebox_override("panel", _panel(TYPE_COLORS.get(kind, TYPE_COLORS.NORMAL), Color("#684c2f"), 9, 2))
+		var badge_icon := TextureRect.new()
+		badge_icon.name = "KindIcon"
+		badge_icon.texture = _icon_for_kind(kind)
+		badge_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		badge_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		badge_icon.modulate = _icon_modulate_for_kind(kind)
+		badge_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		kind_badge.add_child(badge_icon)
+		tile_content.add_child(kind_badge)
 	var motion_player := TextureRect.new()
 	motion_player.name = "MotionPlayer"
 	motion_player.texture = _cat_frame(0)
 	motion_player.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	motion_player.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	motion_player.position = Vector2(4, 1)
-	motion_player.size = Vector2(30, 30)
+	motion_player.position = Vector2(4, KYOTO_HORIZON_CARD_HEIGHT - KYOTO_HORIZON_CAT_SIZE - 5.0) if is_kyoto_horizon else Vector2(4, 1)
+	motion_player.size = Vector2(KYOTO_HORIZON_CAT_SIZE, KYOTO_HORIZON_CAT_SIZE) if is_kyoto_horizon else Vector2(30, 30)
 	motion_player.modulate = Color.WHITE
 	motion_player.visible = false
 	motion_player.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1085,11 +1232,15 @@ func _refresh_route_preview_for_space(space_id_value: String) -> void:
 			preview_space = next_space
 		route_preview_row.add_child(_route_tile("+%d" % step, _space_kind(preview_space), false, preview_space))
 	_set_route_preview_motion_marker(space_id_value)
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		call_deferred("_layout_kyoto_card_horizon")
+		call_deferred("_sync_kyoto_horizon_anchors")
 
 
 func _set_route_preview_motion_marker(space_id_value: String) -> void:
 	if not is_instance_valid(route_preview_row):
 		return
+	var is_kyoto_horizon := stage_id == StageCatalog.STAGE_KYOTO
 	for child: Node in route_preview_row.get_children():
 		var tile := child as PanelContainer
 		if tile == null:
@@ -1097,20 +1248,26 @@ func _set_route_preview_motion_marker(space_id_value: String) -> void:
 		var is_active := str(tile.get_meta("space_id", "")) == space_id_value
 		var kind := str(tile.get_meta("kind", "NORMAL"))
 		var is_current := bool(tile.get_meta("current", false))
-		var base_color := _stage_accent() if is_current else Color("#e8d8b4")
+		var base_color := _stage_accent() if is_current else (Color("#f3e5c4") if is_kyoto_horizon else Color("#e8d8b4"))
 		var border := GOLD
-		var width := 2
+		var width := 3 if is_kyoto_horizon else 2
 		if is_active:
 			base_color = _stage_accent().lightened(0.16)
 			border = Color("#fff0a6")
 			width = 3
-		tile.add_theme_stylebox_override("panel", _panel(base_color, border, 9, width))
+		tile.add_theme_stylebox_override("panel", _panel(base_color, border, 12 if is_kyoto_horizon else 9, width))
 		var motion_player := tile.get_meta("motion_player") as TextureRect
 		if motion_player != null:
 			motion_player.visible = is_active
 			if is_active:
 				motion_player.texture = _cat_frame((idle_frame + 1) % 4)
-				motion_player.modulate = Color.WHITE
+				# The Kyoto horizon uses the larger map-layer cat as its single visible
+				# traveler. Keep the legacy per-card marker alive for callers/tests, but
+				# transparent so it never creates a duplicate cat silhouette.
+				motion_player.modulate = Color(1.0, 1.0, 1.0, 0.0) if is_kyoto_horizon else Color.WHITE
+	if is_kyoto_horizon and is_instance_valid(map_player) and not map_movement_active:
+		map_player.visible = true
+		_position_map_player()
 
 
 func _next_preview_space_id(space_id_value: String) -> String:
@@ -1167,6 +1324,44 @@ func _mission_cell(title_text: String, value_text: String, icon: Texture2D) -> C
 	return cell
 
 
+func _journey_mission_cell() -> Control:
+	var mission := journey.journey_mission_state() if journey != null else {}
+	var cell := PanelContainer.new()
+	cell.name = "JourneyMissionCell"
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cell.add_theme_stylebox_override("panel", _panel(Color("#f6e7c5"), Color("#c0a66f"), 9, 1))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	mission_icon_view = TextureRect.new()
+	mission_icon_view.name = "MissionIcon"
+	mission_icon_view.texture = _journey_mission_icon(str(mission.get("icon_kind", "dice")))
+	mission_icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	mission_icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	mission_icon_view.custom_minimum_size = Vector2(56, 56)
+	mission_icon_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(mission_icon_view)
+	var copy := VBoxContainer.new()
+	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.add_theme_constant_override("separation", 0)
+	mission_caption_label = _label(str(mission.get("short_text", "旅の目標")), 20, INK)
+	mission_caption_label.name = "MissionCaption"
+	mission_progress_label = _label("進捗 0/1　報酬 COIN ×12", 20, _stage_accent())
+	mission_progress_label.name = "MissionProgress"
+	copy.add_child(mission_caption_label)
+	copy.add_child(mission_progress_label)
+	row.add_child(copy)
+	cell.add_child(row)
+	return cell
+
+
+func _journey_mission_icon(icon_kind: String) -> Texture2D:
+	match icon_kind:
+		"coin": return ICON_COIN
+		"trip": return ICON_NORMAL
+		"slot": return SKILL_CARD_ICON
+		_: return DICE_ART
+
+
 func _populate_map_nodes() -> void:
 	if not is_instance_valid(map_node_layer):
 		return
@@ -1183,12 +1378,16 @@ func _populate_map_nodes() -> void:
 	map_player.texture = _cat_frame(0)
 	map_player.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	map_player.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	map_player.custom_minimum_size = Vector2(60, 60)
-	map_player.size = Vector2(60, 60)
-	map_player.z_index = 5
+	var player_size := Vector2(KYOTO_HORIZON_CAT_SIZE, KYOTO_HORIZON_CAT_SIZE) if stage_id == StageCatalog.STAGE_KYOTO else Vector2(60, 60)
+	map_player.custom_minimum_size = player_size
+	map_player.size = player_size
+	map_player.z_index = 20 if stage_id == StageCatalog.STAGE_KYOTO else 5
+	map_player.visible = true
 	map_player.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_node_layer.add_child(map_player)
 	_position_map_player()
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		call_deferred("_sync_kyoto_horizon_anchors")
 
 
 func _build_amazon_map_nodes() -> void:
@@ -1208,23 +1407,68 @@ func _build_amazon_map_nodes() -> void:
 
 
 func _build_kyoto_map_nodes() -> void:
-	var layer_size := map_node_layer.size
-	var kyoto := journey as KyotoJourney
-	_add_kyoto_local_route_lines(kyoto, layer_size)
-	for number: int in range(1, 91):
-		var space_id := "main:%d" % number
-		var space := kyoto.course.space(space_id)
-		var point := _kyoto_overview_normalized_for_space(space_id)
-		_add_map_node(space_id, str(space.get("kind", "NORMAL")), Vector2(point.x, _local_y(point.y)), number, layer_size)
-	for value: Variant in kyoto.course.spaces.values():
-		if not value is Dictionary:
+	# Normal play is deliberately uncluttered: the background supplies place,
+	# while current through +6 supplies navigation. Invisible card anchors are
+	# created below for the explorer hop animation. The full route, shortcuts,
+	# goshuin and boss markers are still drawn in 全体マップ.
+	_sync_kyoto_horizon_anchors()
+
+
+func _sync_kyoto_horizon_anchors() -> void:
+	if stage_id != StageCatalog.STAGE_KYOTO or not is_instance_valid(map_node_layer) or not is_instance_valid(route_preview_row):
+		return
+	for child: Node in map_node_layer.get_children():
+		if child.name.begins_with("space_") and bool(child.get_meta("kyoto_horizon_anchor", false)):
+			map_node_layer.remove_child(child)
+			child.queue_free()
+	var layer_transform := map_node_layer.get_global_transform_with_canvas().affine_inverse()
+	var anchor_ids: Dictionary = {}
+	var anchor_count := 0
+	for child: Node in route_preview_row.get_children():
+		var tile := child as Control
+		if tile == null:
 			continue
-		var route_space := value as Dictionary
-		if str(route_space.get("route", "main")) == "main":
+		var space_id_value := str(tile.get_meta("space_id", ""))
+		if space_id_value.is_empty() or anchor_ids.has(space_id_value):
 			continue
-		var route_id := str(route_space.get("id", ""))
-		var route_point := _kyoto_overview_normalized_for_space(route_id)
-		_add_map_node(route_id, str(route_space.get("kind", "NORMAL")), Vector2(route_point.x, _local_y(route_point.y)), 0, layer_size)
+		var tile_rect := tile.get_global_rect()
+		if tile_rect.size.x <= 0.0 or tile_rect.size.y <= 0.0:
+			continue
+		var anchor_name := "space_%s" % space_id_value.replace(":", "_")
+		var anchor := map_node_layer.get_node_or_null(anchor_name) as Control
+		var existing_marker := anchor != null and not bool(anchor.get_meta("kyoto_horizon_anchor", false))
+		if anchor == null:
+			anchor = Control.new()
+			anchor.name = anchor_name
+			anchor.set_meta("kyoto_horizon_anchor", true)
+		elif existing_marker:
+			# Boss/semantic markers keep their authored emblem and size, but follow
+			# the current horizon card when that space is in the visible seven.
+			anchor.set_meta("kyoto_horizon_anchor", false)
+		var tile_local_position := layer_transform * tile_rect.position
+		if not existing_marker:
+			# A compact hidden anchor keeps the public foot-offset contract while
+			# placing the 112px visible cat on the lower half of the card with a
+			# five-pixel bottom inset.
+			anchor.size = Vector2(KYOTO_HORIZON_ANCHOR_SIZE, KYOTO_HORIZON_ANCHOR_SIZE)
+			anchor.position = tile_local_position + Vector2(
+				(tile_rect.size.x - KYOTO_HORIZON_ANCHOR_SIZE) * 0.5,
+				tile_rect.size.y - KYOTO_HORIZON_ANCHOR_SIZE
+			)
+		else:
+			anchor.position = tile_local_position
+		anchor.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if not existing_marker:
+			anchor.visible = false
+			map_node_layer.add_child(anchor)
+		else:
+			anchor.position += (tile_rect.size - anchor.size) * 0.5
+		anchor_ids[space_id_value] = true
+		anchor_count += 1
+	if anchor_count == 0 and route_preview_row.get_child_count() > 0:
+		call_deferred("_sync_kyoto_horizon_anchors")
+	elif is_instance_valid(map_player) and not map_movement_active:
+		_position_map_player()
 
 
 func _add_amazon_overview_route_lines(amazon: AmazonJourney, layer_size: Vector2) -> void:
@@ -1563,6 +1807,13 @@ func _map_player_position_for_space(space_id_value: String) -> Vector2:
 		return Vector2.ZERO
 	var target := map_node_layer.get_node_or_null("space_%s" % space_id_value.replace(":", "_")) as Control
 	if target != null:
+		if stage_id == StageCatalog.STAGE_KYOTO and bool(target.get_meta("kyoto_horizon_anchor", false)):
+			# Keep the card label clear and plant the explorer over the semantic
+			# medal, matching Cairo's current-card silhouette.
+			return target.position + Vector2(
+				(target.size.x - map_player.size.x) * 0.5,
+				target.size.y - map_player.size.y - 6.0
+			)
 		return target.position + target.size * 0.5 - map_player.size * 0.5 + MAP_PLAYER_FOOT_OFFSET
 	var normalized := _map_normalized_for_space(space_id_value)
 	return Vector2(normalized.x * map_node_layer.size.x, normalized.y * map_node_layer.size.y) - map_player.size * 0.5 + MAP_PLAYER_FOOT_OFFSET
@@ -1639,6 +1890,8 @@ func _stop_map_roll() -> void:
 		status_label.text = _journey_result_text(result)
 		_refresh_all()
 		return
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		journey.record_journey_mission_roll(face, (result.get("path", []) as Array).size())
 	if skill_face > 0:
 		journey.consume_skill_face()
 	status_label.text = "出目 %d！　%dマス進む…" % [face, face]
@@ -1720,6 +1973,8 @@ func _show_slot_result_or_reach() -> void:
 			status_label.add_theme_font_size_override("font_size", 27)
 			_flash_roll_slots(3, Color("#ffd96a"))
 			var charge := journey.charge_skill_for_role(pending_slot_role, journey.roll_count)
+			if stage_id == StageCatalog.STAGE_KYOTO:
+				journey.record_journey_mission_role(pending_slot_role)
 			status_label.text += "　スキル %d/%d" % [journey.skill_gauge(), StageJourneyBase.SKILL_GAUGE_MAX]
 			if bool(charge.get("first_ready", false)) and not bool(journey.stage_flags.get("skill_ready_seen", false)):
 				journey.stage_flags["skill_ready_seen"] = true
@@ -1818,6 +2073,10 @@ func _animate_journey_movement(start_space: String, result: Dictionary) -> void:
 
 func _animate_map_hop(from_position: Vector2, to_position: Vector2) -> void:
 	if not is_instance_valid(map_player):
+		return
+	if _reduced_motion_enabled():
+		map_player.position = to_position
+		map_player.scale = Vector2.ONE
 		return
 	var tween := create_tween()
 	tween.tween_method(_apply_map_hop.bind(from_position, to_position), 0.0, 1.0, MAP_HOP_SECONDS).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
@@ -1995,6 +2254,8 @@ func _landing_effect_text(result: Dictionary) -> String:
 	match kind:
 		"COIN": return "COINマス！　コインを見つけた"
 		"REST":
+			if int(result.get("skill_bonus", 0)) > 0:
+				return "RESTマス！　HP満タンでSKILL +1"
 			if int(result.get("coin_bonus", 0)) > 0:
 				return "RESTマス！　HP満タンボーナス COIN +1"
 			return "RESTマス！　ハートを整えた"
@@ -2017,7 +2278,7 @@ func _animate_map_camera_follow(space_id: String) -> void:
 	var target_min := _local_view_min_for_space(space_id)
 	if is_equal_approx(local_view_y_min, target_min):
 		_populate_map_nodes()
-		_refresh_route_preview_for_space(space_id)
+		await _rebuild_kyoto_horizon_after_camera(space_id)
 		return
 	if map_camera_tween != null:
 		map_camera_tween.kill()
@@ -2033,7 +2294,31 @@ func _animate_map_camera_follow(space_id: String) -> void:
 	map_camera_tween = null
 	map_node_layer.position = Vector2.ZERO
 	_populate_map_nodes()
+	await _rebuild_kyoto_horizon_after_camera(space_id)
+
+
+func _rebuild_kyoto_horizon_after_camera(space_id: String) -> void:
+	if stage_id != StageCatalog.STAGE_KYOTO or not is_instance_valid(route_preview_row):
+		_refresh_route_preview_for_space(space_id)
+		return
+	var route_preview := route_preview_row.get_parent() as Control
+	if _reduced_motion_enabled() or route_preview == null:
+		_refresh_route_preview_for_space(space_id)
+		return
+	var fade_out := create_tween()
+	fade_out.tween_property(route_preview, "modulate:a", 0.72, 0.10).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await fade_out.finished
+	if not is_inside_tree() or not is_instance_valid(route_preview):
+		return
 	_refresh_route_preview_for_space(space_id)
+	_layout_kyoto_card_horizon()
+	var fade_in := create_tween()
+	fade_in.tween_property(route_preview, "modulate:a", 1.0, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	await fade_in.finished
+
+
+func _reduced_motion_enabled() -> bool:
+	return OS.get_environment("DICE_REDUCED_MOTION") == "1"
 
 
 func _set_map_camera_min(value: float) -> void:
@@ -2041,10 +2326,16 @@ func _set_map_camera_min(value: float) -> void:
 	local_view_y_max = local_view_y_min + _map_window_size()
 	_apply_background_camera()
 	if is_instance_valid(map_node_layer):
-		# Keep the route medals and Explorer Cat glued to the same portrait
-		# texture while the AtlasTexture crop eases to the new window.
-		var y_offset := -(local_view_y_min - map_camera_follow_origin) / maxf(_map_window_size(), 0.001) * map_node_layer.size.y
-		map_node_layer.position = Vector2(0.0, y_offset)
+		if stage_id == StageCatalog.STAGE_KYOTO:
+			# The Kyoto card horizon is a stable UI layer. Let the scenic portrait
+			# crop follow the landing, while the single visible cat stays anchored to
+			# the corresponding card instead of drifting beneath the row.
+			map_node_layer.position = Vector2.ZERO
+		else:
+			# Keep the route medals and Explorer Cat glued to the same portrait
+			# texture while the AtlasTexture crop eases to the new window.
+			var y_offset := -(local_view_y_min - map_camera_follow_origin) / maxf(_map_window_size(), 0.001) * map_node_layer.size.y
+			map_node_layer.position = Vector2(0.0, y_offset)
 
 
 func _play_dice_se(stream: AudioStream) -> void:
@@ -2066,6 +2357,8 @@ func _after_journey_action() -> void:
 			_show_kyoto_route_tutorial()
 		else:
 			_show_branch_modal()
+	elif journey.phase == StageJourneyBase.PHASE_BOSS_CHOICE:
+		_show_kyoto_boss_choice_modal()
 	elif journey.phase == StageJourneyBase.PHASE_EVENT:
 		_show_event_modal()
 	elif journey.phase == StageJourneyBase.PHASE_SECRET:
@@ -2218,6 +2511,9 @@ func _space_kind_label(kind: String) -> String:
 		"FLOW": "急流",
 		"ITEM": "ITEM",
 		"GOSHUIN": "御朱印",
+		"BYPASS_FORK": "近道",
+		"BOSS_FORK": "ボス選択",
+		"BOSS_APPROACH": "ボス前",
 		"JUNCTION": "分岐",
 		"SPECIAL": "特殊",
 		"BOSS": "BOSS",
@@ -2225,7 +2521,7 @@ func _space_kind_label(kind: String) -> String:
 
 
 func _show_kyoto_route_tutorial() -> void:
-	_open_choice_modal("京都の分岐マス", "京都では、分岐で選んだ道へ旅人が移動します。\n本線を進むか、御朱印巡りや近道へ寄り道するかを選べます。\n読んだらタップして道を選びましょう。", [{"id": "continue", "label": "わかった。道を選ぶ"}], func(_choice_id: String) -> void:
+	_open_choice_modal("京都の近道", "京都の分岐は2か所だけ。\n本線の報酬を取るか、RISKの多い近道で4〜6マス縮めるかを選べます。", [{"id": "continue", "label": "道を選ぶ"}], func(_choice_id: String) -> void:
 		journey.stage_flags["kyoto_route_tutorial_seen"] = true
 		_show_branch_modal()
 	, KYOTO_ROUTE_TUTORIAL)
@@ -2246,12 +2542,7 @@ func _show_event_modal() -> void:
 	var title := str(event.get("title", event.get("name", "旅の出会い")))
 	var body := str(event.get("text", "旅の途中で小さな選択が訪れた。"))
 	var choices: Array = event.get("choices", [])
-	if stage_id == StageCatalog.STAGE_KYOTO:
-		if str(event.get("event_id", "")) == "otowa_three_waters":
-			choices = [{"id": "health", "label": "健康の水・HP+2"}, {"id": "commerce", "label": "商運の水・次のCOIN×2"}, {"id": "luck", "label": "勝運の水・ボスで±1"}]
-		else:
-			choices = [{"id": "heal", "label": "ひと息つく・HP+1"}, {"id": "coin", "label": "旅を続ける・COIN+2"}]
-	elif choices.is_empty():
+	if choices.is_empty():
 		choices = [{"id": "", "label": "旅の記憶に刻む"}]
 	var card_art: Texture2D = AMAZON_EVENT_CARD if stage_id == StageCatalog.STAGE_AMAZON else KYOTO_EVENT_CARD
 	_open_choice_modal(title, body, choices, func(choice_id: String) -> void:
@@ -2440,8 +2731,37 @@ func _show_boss_intro() -> void:
 	if stage_id == StageCatalog.STAGE_AMAZON:
 		_show_aquafall_rules_modal()
 		return
-	_open_choice_modal("狐火六路陣", "6×6の路地を3つの出目で進み、白狐より先に3つの鳥居を封じる。", [{"id": "start", "label": "試練を始める"}], func(_choice: String) -> void:
-		_start_white_fox_boss()
+	var route := str(journey.stage_flags.get("kyoto_boss_route", ""))
+	if route == "direct":
+		_open_choice_modal("狐火追陣", "6×6の盤面外周を走り、逃げる白狐に追いつこう。", [{"id": "start", "label": "狐火追陣を始める"}], func(_choice: String) -> void:
+			_start_fox_fire_chase_boss()
+		)
+	else:
+		_open_choice_modal("狐火六路陣", "6×6の路地を3つの出目で進み、白狐より先に3つの鳥居を封じる。", [{"id": "start", "label": "狐火六路陣を始める"}], func(_choice: String) -> void:
+			_start_fox_fire_six_routes_boss()
+		)
+
+
+func _show_kyoto_boss_choice_modal() -> void:
+	if stage_id != StageCatalog.STAGE_KYOTO:
+		return
+	var choices: Array = []
+	for value: Variant in journey.pending_choices:
+		if not value is Dictionary:
+			continue
+		var choice := (value as Dictionary).duplicate(true)
+		choice["label"] = "%s　%s" % [str(choice.get("name", "最後の試練")), str(choice.get("description", ""))]
+		choices.append(choice)
+	_open_choice_modal("最後の試練を選ぶ", "報酬は同じ。好きな遊び方を選べます。\n\n狐火追陣：短時間・追走型\n狐火六路陣：じっくり・パズル型", choices, func(choice_id: String) -> void:
+		var start_space := journey.current_space_id
+		var result := (journey as KyotoJourney).choose_boss_route(choice_id)
+		if bool(result.get("ok", false)) and not (result.get("path", []) as Array).is_empty():
+			map_movement_active = true
+			await _animate_journey_movement(start_space, result)
+			map_movement_active = false
+		status_label.text = _journey_result_text(result)
+		_refresh_all()
+		_after_journey_action()
 	)
 
 
@@ -3900,16 +4220,138 @@ func _apply_aquafall_step_motion(progress: float, cat: Control, from_position: V
 
 
 func _start_white_fox_boss(qa_mode: bool = false, restore_snapshot: Dictionary = {}) -> void:
+	# Kept as the legacy visual-QA entry point for 狐火六路陣. New
+	# `direct` selections are dispatched explicitly to 狐火追陣 below.
 	_start_fox_fire_six_routes_boss(qa_mode, restore_snapshot)
 
 
+func _start_direct_white_fox_boss(restore_snapshot: Dictionary = {}) -> void:
+	# Schema-v1 `direct` saves used the seal board. Only restoration calls this
+	# compatibility path; a fresh `direct` battle starts 狐火追陣.
+	var kyoto := journey as KyotoJourney
+	if kyoto == null:
+		return
+	if is_instance_valid(kyoto_chase_scene):
+		kyoto_chase_scene.queue_free()
+		kyoto_chase_scene = null
+	if is_instance_valid(kyoto_boss_scene):
+		kyoto_boss_scene.queue_free()
+		kyoto_boss_scene = null
+	kyoto_boss = WhiteFoxBattle.new()
+	if not kyoto_boss.configure(kyoto.goshuin_state(), journey.coins, false, rng.randi()):
+		push_error("Unable to configure direct WhiteFoxBattle")
+		kyoto_boss = null
+		return
+	if not restore_snapshot.is_empty():
+		kyoto_boss.restore(restore_snapshot)
+	var bgm := get_node_or_null("/root/BgmManager")
+	if bgm != null:
+		bgm.call("play_kyoto_boss")
+	_render_white_fox_boss()
+
+
+func _start_fox_fire_chase_boss(qa_mode: bool = false, restore_snapshot: Dictionary = {}) -> void:
+	var kyoto := journey as KyotoJourney
+	if kyoto == null or root_layer == null:
+		return
+	if is_instance_valid(kyoto_chase_scene):
+		kyoto_chase_scene.queue_free()
+		kyoto_chase_scene = null
+	if is_instance_valid(kyoto_boss_scene):
+		kyoto_boss_scene.queue_free()
+		kyoto_boss_scene = null
+	kyoto_boss = null
+	var chase_scene := load(FOX_FIRE_CHASE_BATTLE_PATH) as PackedScene
+	if chase_scene == null:
+		push_error("FoxFireChaseBattle scene is not available: %s" % FOX_FIRE_CHASE_BATTLE_PATH)
+		return
+	var chase := chase_scene.instantiate() as Control
+	if chase == null:
+		push_error("Unable to instantiate FoxFireChaseBattle")
+		return
+	kyoto_chase_scene = chase
+	kyoto_chase_scene.name = "FoxFireChaseBattle"
+	kyoto_chase_scene.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	kyoto_chase_scene.z_index = 50
+	root_layer.add_child(kyoto_chase_scene)
+	if kyoto_chase_scene.has_signal("battle_finished"):
+		kyoto_chase_scene.connect("battle_finished", Callable(self, "_on_fox_fire_chase_finished"))
+	else:
+		push_error("FoxFireChaseBattle must expose battle_finished")
+	if kyoto_chase_scene.has_signal("coins_spent"):
+		kyoto_chase_scene.connect("coins_spent", Callable(self, "_on_fox_fire_chase_coins_spent"))
+	var configured := bool(kyoto_chase_scene.call(
+		"configure_battle",
+		journey.lap,
+		kyoto.goshuin_count(),
+		journey.coins,
+		journey.hp,
+		journey.max_hp,
+		rng.randi(),
+		restore_snapshot
+	))
+	if not configured:
+		push_error("FoxFireChaseBattle configuration failed")
+		kyoto_chase_scene.queue_free()
+		kyoto_chase_scene = null
+		return
+	var bgm := get_node_or_null("/root/BgmManager")
+	if bgm != null:
+		bgm.call("play_kyoto_boss")
+	if qa_mode and kyoto_chase_scene.has_method("show_for_qa"):
+		kyoto_chase_scene.call("show_for_qa")
+	else:
+		kyoto_chase_scene.call("start_battle")
+
+
+func _on_fox_fire_chase_coins_spent(amount: int) -> void:
+	if journey == null or amount <= 0:
+		return
+	journey.coins = maxi(journey.coins - amount, 0)
+	_refresh_all()
+	# Persist the journey and the purchased head start together. Otherwise an
+	# app restart between purchase and the first roll could refund the coins.
+	if is_instance_valid(kyoto_chase_scene):
+		var chase_snapshot: Variant = kyoto_chase_scene.call("snapshot")
+		if chase_snapshot is Dictionary:
+			save_manager.save(stage_id, journey.snapshot(), chase_snapshot as Dictionary)
+
+
+func _on_fox_fire_chase_finished(result: Variant) -> void:
+	if not is_instance_valid(kyoto_chase_scene):
+		return
+	kyoto_chase_scene.visible = false
+	kyoto_chase_scene.queue_free()
+	kyoto_chase_scene = null
+	if _boss_result_victory(result):
+		status_label.text = "外周を駆け、白狐に追いついた。"
+		_show_boss_recovery_or_perfect()
+	else:
+		_resolve_boss_defeat("白狐に一周先を取られた。")
+
+
+func _boss_result_victory(result: Variant) -> bool:
+	if result is Dictionary:
+		return bool((result as Dictionary).get("victory", false))
+	if result is Object:
+		var object_result := result as Object
+		for property: Dictionary in object_result.get_property_list():
+			if str(property.get("name", "")) == "victory":
+				return bool(object_result.get("victory"))
+	return false
+
+
 func _start_fox_fire_six_routes_boss(qa_mode: bool = false, restore_snapshot: Dictionary = {}) -> void:
+	if is_instance_valid(kyoto_chase_scene):
+		kyoto_chase_scene.queue_free()
+		kyoto_chase_scene = null
 	if is_instance_valid(kyoto_boss_scene):
 		kyoto_boss_scene.queue_free()
 		kyoto_boss_scene = null
 	var kyoto := journey as KyotoJourney
 	if kyoto == null or root_layer == null:
 		return
+	kyoto_boss = null
 	kyoto_boss_scene = FOX_FIRE_BATTLE_SCENE.instantiate() as FoxFireSixRoutesBattle
 	if kyoto_boss_scene == null:
 		push_error("Unable to instantiate FoxFireSixRoutesBattle")
@@ -4145,6 +4587,10 @@ func _fox_luck_shift() -> void:
 
 
 func _show_heart_roulette() -> void:
+	if is_instance_valid(kyoto_chase_scene):
+		kyoto_chase_scene.visible = false
+		kyoto_chase_scene.queue_free()
+		kyoto_chase_scene = null
 	if is_instance_valid(kyoto_boss_scene):
 		kyoto_boss_scene.visible = false
 		kyoto_boss_scene.queue_free()
@@ -4384,7 +4830,11 @@ func _resolve_boss_defeat(message: String) -> void:
 	if stage_id == StageCatalog.STAGE_AMAZON:
 		_start_aquafall_boss()
 	else:
-		_start_white_fox_boss()
+		var boss_route := str(journey.stage_flags.get("kyoto_boss_route", ""))
+		if boss_route == "foxfire":
+			_start_fox_fire_six_routes_boss()
+		else:
+			_start_fox_fire_chase_boss()
 
 
 func _show_run_over() -> void:
@@ -4487,11 +4937,20 @@ func _refresh_all() -> void:
 	score_label.text = str(traveled)
 	best_label.text = str(maxi(traveled, int(best_label.text)))
 	if stage_id == StageCatalog.STAGE_KYOTO:
+		var mission := journey.sync_journey_mission()
+		if is_instance_valid(mission_caption_label):
+			mission_caption_label.text = str(mission.get("short_text", "旅の目標"))
+		if is_instance_valid(mission_progress_label):
+			var mission_target := maxi(int(mission.get("target", 1)), 1)
+			var mission_progress := clampi(int(mission.get("progress", 0)), 0, mission_target)
+			var mission_reward := maxi(int(mission.get("reward_coins", StageJourneyBase.MISSION_STANDARD_REWARD)), 0)
+			mission_progress_label.text = "✓ CLEAR!　獲得 COIN +%d" % mission_reward if bool(mission.get("completed", false)) else "進捗 %d/%d　報酬 COIN ×%d" % [mission_progress, mission_target, mission_reward]
+		if is_instance_valid(mission_icon_view):
+			mission_icon_view.texture = _journey_mission_icon(str(mission.get("icon_kind", "dice")))
 		progress_label.text = _space_number_text()
-		stage_route_label.text = "本線　御朱印巡り"
-		if is_instance_valid(goshuin_mission_label):
-			goshuin_mission_label.text = "%d/4" % (journey as KyotoJourney).goshuin_count()
-		_set_mission_value("灯籠", "%d/5" % mini(int(journey.stage_flags.get("mission_rest_count", 0)), 5))
+		var boss_route := str(journey.stage_flags.get("kyoto_boss_route", ""))
+		var goshuin_copy := "御朱印 %d/4" % (journey as KyotoJourney).goshuin_count()
+		stage_route_label.text = ("追陣" if boss_route == "direct" else ("六路陣" if boss_route == "foxfire" else "本線")) + "　" + goshuin_copy
 	else:
 		progress_label.text = _space_number_text()
 		stage_route_label.text = "本線　滝の支流"
@@ -4622,6 +5081,9 @@ func _journey_result_text(result: Dictionary) -> String:
 	match str(result.get("status", "")):
 		"CHOICE_REQUIRED": return "辻に到着。残り歩数を保ったまま進路を選ぶ。"
 		"EVENT_REQUIRED": return "旅の出会いが待っている。"
+		"AUTO_EVENT_RESOLVED": return str(result.get("text", "旅の出来事がすぐに解決した。"))
+		"BOSS_CHOICE_REQUIRED": return "最後の試練を選ぼう。"
+		"BOSS_CHOICE_RESOLVED": return "選んだ試練の鳥居へ進む。"
 		"SECRET_REQUIRED": return "滝裏にひそかな入口を見つけた。"
 		"BOSS_READY": return "守護者の試練へ。"
 		"EVENT_RESOLVED": return "選択が旅の続きを変えた。"
@@ -4638,6 +5100,8 @@ func _survival_result_text(hp_before: int, life_before: int, result: Dictionary,
 		return "%s 御朱印をいただいた！" % str(stamp.get("title", "寺社"))
 	if int(result.get("coin_bonus", 0)) > 0:
 		return "REST！ HP満タンボーナス。COIN +1"
+	if int(result.get("skill_bonus", 0)) > 0:
+		return "REST！ HP満タンボーナス。SKILL +1"
 	if bool(result.get("item_acquired", false)):
 		return "ITEM！ %sを手に入れた。" % str(result.get("item_name", "アイテム"))
 	if bool(result.get("full", false)):
@@ -4664,6 +5128,10 @@ func _save_now() -> void:
 	var boss_snapshot: Dictionary = {}
 	if amazon_boss != null:
 		boss_snapshot = amazon_boss.snapshot()
+	elif is_instance_valid(kyoto_chase_scene):
+		var chase_snapshot: Variant = kyoto_chase_scene.call("snapshot")
+		if chase_snapshot is Dictionary:
+			boss_snapshot = (chase_snapshot as Dictionary).duplicate(true)
 	elif is_instance_valid(kyoto_boss_scene):
 		boss_snapshot = kyoto_boss_scene.snapshot()
 	elif kyoto_boss != null:
@@ -4697,10 +5165,22 @@ func _restore_saved_state() -> void:
 			else:
 				var kyoto := journey as KyotoJourney
 				if kyoto != null:
-					_start_fox_fire_six_routes_boss(false, boss_snapshot)
+					var route := str(kyoto.stage_flags.get("kyoto_boss_route", ""))
+					match _kyoto_boss_restore_target(route, boss_snapshot):
+						"chase": _start_fox_fire_chase_boss(false, boss_snapshot)
+						"legacy_direct": _start_direct_white_fox_boss(boss_snapshot)
+						_: _start_fox_fire_six_routes_boss(false, boss_snapshot)
 		else:
 			_render_map()
-		_refresh_all()
+			_refresh_all()
+
+
+func _kyoto_boss_restore_target(route: String, boss_snapshot: Dictionary) -> String:
+	if str(boss_snapshot.get("battle_id", "")) == "fox_fire_chase":
+		return "chase"
+	if route == "direct":
+		return "legacy_direct" if boss_snapshot.has("seals") else "chase"
+	return "six_routes"
 
 
 func _advance_idle_frame() -> void:
@@ -4778,9 +5258,9 @@ func _stat_chip(text_value: String) -> Label:
 
 func _hud_stat(caption: String, value: String) -> Label:
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 0)
-	var title := _label(caption, 13, Color("#e4d5b8"), HORIZONTAL_ALIGNMENT_CENTER)
-	var number := _label(value, 25, Color("#f9df8d"), HORIZONTAL_ALIGNMENT_CENTER)
+	box.add_theme_constant_override("separation", -2 if stage_id == StageCatalog.STAGE_KYOTO else 0)
+	var title := _label(caption, 16 if stage_id == StageCatalog.STAGE_KYOTO else 13, Color("#d9c6a0") if stage_id == StageCatalog.STAGE_KYOTO else Color("#e4d5b8"), HORIZONTAL_ALIGNMENT_CENTER)
+	var number := _label(value, 40 if stage_id == StageCatalog.STAGE_KYOTO else 25, Color("#f9df8d"), HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(title)
 	box.add_child(number)
 	return number
@@ -4810,11 +5290,48 @@ func _info_value_chip(caption_text: String, value_text: String) -> Dictionary:
 	return {"chip": chip, "value": value}
 
 
+func _cairo_coin_hud() -> Dictionary:
+	var chip := PanelContainer.new()
+	chip.name = "CoinStack"
+	chip.custom_minimum_size = Vector2(104, 96)
+	chip.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 3)
+	var icon_view := TextureRect.new()
+	icon_view.texture = ICON_COIN
+	icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_view.custom_minimum_size = Vector2(36, 36)
+	icon_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(icon_view)
+	var value := _label("0", 26, Color("#f0d69f"), HORIZONTAL_ALIGNMENT_CENTER)
+	value.custom_minimum_size = Vector2(54, 44)
+	row.add_child(value)
+	chip.add_child(row)
+	return {"chip": chip, "value": value}
+
+
+func _cairo_progress_hud() -> Dictionary:
+	var chip := PanelContainer.new()
+	chip.name = "ProgressStack"
+	chip.custom_minimum_size = Vector2(148, 96)
+	chip.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	var value := _label("1/90", 46, Color("#fff0c1"), HORIZONTAL_ALIGNMENT_CENTER)
+	value.add_theme_color_override("font_outline_color", Color(0.05, 0.08, 0.09, 0.92))
+	value.add_theme_constant_override("outline_size", 4)
+	chip.add_child(value)
+	return {"chip": chip, "value": value}
+
+
 func _survival_chip() -> PanelContainer:
 	var chip := PanelContainer.new()
 	chip.name = "SurvivalStack"
-	chip.custom_minimum_size.y = 54
-	chip.add_theme_stylebox_override("panel", _panel(Color(0.14, 0.13, 0.11, 0.92), Color("#796b50"), 8, 1))
+	chip.custom_minimum_size = Vector2(124, 96) if stage_id == StageCatalog.STAGE_KYOTO else Vector2(0, 54)
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		chip.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	else:
+		chip.add_theme_stylebox_override("panel", _panel(Color(0.14, 0.13, 0.11, 0.92), Color("#796b50"), 8, 1))
 	var stack := VBoxContainer.new()
 	stack.name = "SurvivalStackContent"
 	stack.alignment = BoxContainer.ALIGNMENT_CENTER
