@@ -2,7 +2,11 @@ extends "res://scripts/app/journey_stage_screen.gd"
 
 # Thin presentation override for Kyoto readability fixes.
 # Keep the shared JourneyStageScreen implementation as the gameplay authority;
-# this script only changes layering and the Kyoto branch copy/layout.
+# this script only changes layering and the Kyoto branch copy/layout, plus the
+# cross-stage post-boss Casino Chip handoff introduced after this override became
+# the active JourneyStageScreen entry point.
+
+const CASINO_BANK := preload("res://scripts/game/casino_bank.gd")
 
 
 func _show_overview_map(initial: bool = false) -> void:
@@ -53,3 +57,24 @@ func _show_branch_modal() -> void:
 			status_label.text = _journey_result_text(result)
 			_after_journey_action()
 	)
+
+
+func _show_boss_recovery_or_perfect() -> void:
+	_bank_casino_chips_for_completed_lap()
+	super._show_boss_recovery_or_perfect()
+
+
+func _bank_casino_chips_for_completed_lap() -> Dictionary:
+	if journey == null:
+		return {}
+	var already_banked_lap := int(journey.stage_flags.get("casino_chip_banked_lap", 0))
+	if already_banked_lap == journey.lap:
+		return (journey.stage_flags.get("last_casino_chip_result", {}) as Dictionary).duplicate(true)
+	var result: Dictionary = CASINO_BANK.stage_clear_conversion(journey.coins, true)
+	journey.coins = 0
+	journey.stage_flags["casino_chip_banked_lap"] = journey.lap
+	journey.stage_flags["last_casino_chip_result"] = result.duplicate(true)
+	# Save the zeroed run wallet and one-shot marker immediately. This prevents
+	# an app restart on the recovery screen from converting the same lap twice.
+	save_manager.save(stage_id, journey.snapshot())
+	return result
