@@ -1,0 +1,10 @@
+{
+  "cards": [
+    {"id":"dice_racer_camel","number":"01","name":"ラクダ","cost":50,"flavor":"長い脚で、今日もゆったり先頭を狙う。"},
+    {"id":"dice_racer_crocodile","number":"02","name":"ワニ","cost":50,"flavor":"低い姿勢で、静かにゴールをにらむ。"},
+    {"id":"dice_racer_fox","number":"03","name":"キツネ","cost":50,"flavor":"欲しい出目は、もう見えている。"},
+    {"id":"dice_racer_duck","number":"04","name":"アヒル","cost":50,"flavor":"小さな一歩も、六が出れば大きな一歩。"},
+    {"id":"dice_racer_dinosaur","number":"05","name":"恐竜","cost":50,"flavor":"時代を越えて、カジノのコースへ。"},
+    {"id":"dice_racer_robot","number":"06","name":"ロボット","cost":50,"flavor":"計算は正確。出目だけはサイコロ次第。"}
+  ]
+}
