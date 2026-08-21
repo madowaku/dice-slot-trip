@@ -3,6 +3,7 @@ extends SceneTree
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const RACE_SCENE: PackedScene = preload("res://scenes/casino/DiceRace.tscn")
+const CAIRO_SCENE: PackedScene = preload("res://scenes/casino/CairoCasinoPlayScreen.tscn")
 
 var failures := 0
 var assertions := 0
@@ -39,6 +40,15 @@ func _run() -> void:
 	_expect(race.roll_button != null and race.start_button != null, "Dice Race exposes start and roll controls")
 	_expect(race.racer_nodes.size() == 6, "Dice Race creates six racer markers")
 	race.queue_free()
+	await process_frame
+
+	var cairo := CAIRO_SCENE.instantiate()
+	root.add_child(cairo)
+	await process_frame
+	_expect(cairo is V06PlayScreen, "casino-aware Cairo scene preserves the V06PlayScreen contract")
+	_expect(cairo.has_method("_bank_cairo_completed_lap"), "casino-aware Cairo scene exposes the lap banking hook")
+	_expect(cairo.session_for_test() != null, "casino-aware Cairo scene initializes the established V06 session")
+	cairo.queue_free()
 	await process_frame
 
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(CasinoBankScript.SAVE_PATH))
