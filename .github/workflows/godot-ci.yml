@@ -1,0 +1,50 @@
+name: Godot 4.7 CI
+
+on:
+  push:
+    branches:
+      - main
+      - agent/cairo-core-game-improvements
+      - feat/casino-chip-dice-race
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Godot 4.7
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            -o /tmp/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          rm -rf /tmp/godot
+          mkdir -p /tmp/godot
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          GODOT_BIN="$(find /tmp/godot -maxdepth 3 -type f -name 'Godot*' ! -name '*console*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          sudo install -m 0755 "$GODOT_BIN" /usr/local/bin/godot
+          godot --version
+
+      - name: Parse project headlessly
+        run: godot --headless --editor --path . --quit
+
+      - name: Run core regression tests
+        run: godot --headless --path . --script tests/run_tests.gd
+
+      - name: Run Amazon and Kyoto stage tests
+        run: godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd
+
+      - name: Run coin economy tests
+        run: godot --headless --path . --script tests/run_v06_coin_economy_tests.gd
+
+      - name: Run casino rules
+        run: godot --headless --path . --script tests/run_casino_tests.gd
+
+      - name: Smoke test casino scenes
+        run: godot --headless --path . --script tests/run_casino_ui_tests.gd

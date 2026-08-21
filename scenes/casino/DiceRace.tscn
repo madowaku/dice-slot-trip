@@ -1,8 +1,8 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource path="res://scripts/app/main_casino_entry.gd" type="Script" id="1"]
+[ext_resource path="res://scripts/app/dice_race_screen.gd" type="Script" id="1"]
 
-[node name="Main" type="Control"]
+[node name="DiceRace" type="Control"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
