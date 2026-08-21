@@ -1,22 +1,207 @@
 extends "res://scripts/app/journey_stage_screen.gd"
 
-# Thin presentation override for Kyoto readability fixes.
-# Keep the shared JourneyStageScreen implementation as the gameplay authority;
-# this script only changes layering and the Kyoto branch/local-map presentation.
+# Kyoto presentation override.
+# Gameplay remains owned by JourneyStageScreen/KyotoJourney; this layer keeps
+# the Kyoto map readable and deliberately reuses Cairo's icon + SE language.
+
+const CAIRO_FEEDBACK_SCRIPT = preload("res://scripts/ui/v06_feedback_controller.gd")
+const CAIRO_STAGE_ID: StringName = &"cairo_hourglass"
+const KYOTO_HORIZON_ICON_SIZE := 46.0
+const KYOTO_CURRENT_ICON_SIZE := 38.0
+const KYOTO_CURRENT_ICON_TOP := 64.0
+
+var _cairo_feedback: Node
+var _kyoto_last_feedback_space := ""
+
+
+func _ready() -> void:
+	super._ready()
+	if stage_id != StageCatalog.STAGE_KYOTO:
+		return
+
+	# Reuse the same semantic feedback mixer and world-specific SFX palette as
+	# Cairo so a roll, reward, damage and button press mean the same thing in
+	# both stages.
+	var ui_sfx := get_node_or_null("/root/UiSfxManager")
+	if ui_sfx != null:
+		ui_sfx.call("set_stage", CAIRO_STAGE_ID)
+
+	_cairo_feedback = CAIRO_FEEDBACK_SCRIPT.new()
+	_cairo_feedback.name = "CairoStyleFeedback"
+	add_child(_cairo_feedback)
+	var game_state := get_node_or_null("/root/GameState")
+	if game_state != null:
+		_cairo_feedback.call(
+			"set_levels",
+			1.0,
+			float(game_state.get("se_volume")),
+			bool(game_state.get("dice_se_muted"))
+		)
+		_cairo_feedback.call("set_haptics_enabled", bool(game_state.get("haptics_enabled")))
+	_kyoto_last_feedback_space = journey.current_space_id if journey != null else ""
+
+
+func _button(text_value: String, callback: Callable, primary: bool = false) -> Button:
+	var button := super._button(text_value, callback, primary)
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		button.pressed.connect(func() -> void:
+			_emit_cairo_feedback(CAIRO_FEEDBACK_SCRIPT.EVENT_BUTTON)
+		)
+	return button
+
+
+func _play_dice_se(stream: AudioStream) -> void:
+	if stage_id == StageCatalog.STAGE_KYOTO and is_instance_valid(_cairo_feedback):
+		# Cairo uses a light press on roll start and the crisp lock_02 hit when
+		# the die is stopped. Do not layer Kyoto's old roll_01/land_01 on top.
+		if stream == DICE_LAND_SE:
+			_emit_cairo_feedback(CAIRO_FEEDBACK_SCRIPT.EVENT_ROLL_STOP)
+		else:
+			_emit_cairo_feedback(CAIRO_FEEDBACK_SCRIPT.EVENT_BUTTON)
+		return
+	super._play_dice_se(stream)
+
+
+func _after_journey_action() -> void:
+	super._after_journey_action()
+	if stage_id != StageCatalog.STAGE_KYOTO or journey == null:
+		return
+	var current_space := journey.current_space_id
+	if current_space == _kyoto_last_feedback_space:
+		return
+	_kyoto_last_feedback_space = current_space
+	match _current_space_kind():
+		"COIN", "REST", "ITEM", "GOSHUIN":
+			_emit_cairo_feedback(CAIRO_FEEDBACK_SCRIPT.EVENT_REWARD)
+		"RISK":
+			_emit_cairo_feedback(CAIRO_FEEDBACK_SCRIPT.EVENT_DAMAGE)
+		"JUNCTION", "BYPASS_FORK", "BOSS_FORK":
+			_emit_cairo_feedback(CAIRO_FEEDBACK_SCRIPT.EVENT_BUTTON)
+
+
+func _emit_cairo_feedback(event: StringName) -> void:
+	if is_instance_valid(_cairo_feedback):
+		_cairo_feedback.call("emit_feedback", event)
 
 
 func _route_tile(text_value: String, kind: String, current: bool, space_id_value: String = "") -> PanelContainer:
 	var tile := super._route_tile(text_value, kind, current, space_id_value)
-	if stage_id == StageCatalog.STAGE_KYOTO and current:
-		# The explorer is the visual identity of the current card. A second kind
-		# badge competes for the same tiny phone-space and is easily covered by the
-		# cat, so keep the current tile deliberately simple: label + explorer only.
-		var tile_content := tile.get_node_or_null("TileContent") as Control
-		if tile_content != null:
-			var kind_badge := tile_content.get_node_or_null("CurrentKindBadge") as Control
+	if stage_id != StageCatalog.STAGE_KYOTO:
+		return tile
+
+	var tile_content := tile.get_node_or_null("TileContent") as Control
+	if tile_content == null:
+		return tile
+	var box := tile_content.get_child(0) as VBoxContainer if tile_content.get_child_count() > 0 else null
+	var medal := box.get_child(1) as PanelContainer if box != null and box.get_child_count() > 1 else null
+
+	if medal != null and kind != "BOSS":
+		if current:
+			# The cat owns the lower half of the current card. Keep that colored
+			# landing area, but move the semantic icon into a small badge just above
+			# the explorer's head instead of putting a large icon behind the sprite.
+			var kind_badge := tile_content.get_node_or_null("CurrentKindBadge") as PanelContainer
 			if kind_badge != null:
-				kind_badge.visible = false
+				_style_current_kind_badge(kind_badge, kind)
+		else:
+			# Cairo's v06 atlas uses these same tile_kind_icons. Center them at a
+			# compact fixed size instead of stretching them to Kyoto's 112px medal.
+			_fit_horizon_medal_icon(medal, kind)
 	return tile
+
+
+func _style_current_kind_badge(kind_badge: PanelContainer, kind: String) -> void:
+	kind_badge.visible = true
+	kind_badge.anchor_left = 0.5
+	kind_badge.anchor_right = 0.5
+	kind_badge.anchor_top = 0.0
+	kind_badge.anchor_bottom = 0.0
+	kind_badge.offset_left = -KYOTO_CURRENT_ICON_SIZE * 0.5
+	kind_badge.offset_right = KYOTO_CURRENT_ICON_SIZE * 0.5
+	kind_badge.offset_top = KYOTO_CURRENT_ICON_TOP
+	kind_badge.offset_bottom = KYOTO_CURRENT_ICON_TOP + KYOTO_CURRENT_ICON_SIZE
+	kind_badge.z_index = 38
+	kind_badge.add_theme_stylebox_override(
+		"panel",
+		_panel(_kyoto_kind_color(kind), Color("#6b5034"), 9, 2)
+	)
+
+	var old_icon := kind_badge.get_node_or_null("KindIcon") as TextureRect
+	if old_icon != null:
+		old_icon.visible = not _uses_text_semantic_icon(kind)
+		old_icon.texture = _icon_for_kind(kind)
+		old_icon.modulate = _icon_modulate_for_kind(kind)
+	if _uses_text_semantic_icon(kind):
+		var existing := kind_badge.get_node_or_null("SemanticGlyph") as Label
+		if existing == null:
+			existing = _semantic_glyph(kind, 27)
+			existing.name = "SemanticGlyph"
+			kind_badge.add_child(existing)
+		else:
+			existing.text = _semantic_glyph_text(kind)
+
+
+func _fit_horizon_medal_icon(medal: PanelContainer, kind: String) -> void:
+	medal.custom_minimum_size.y = 92.0
+	medal.add_theme_stylebox_override(
+		"panel",
+		_panel(_kyoto_kind_color(kind), Color("#684c2f"), 10, 2)
+	)
+	if medal.get_child_count() <= 0:
+		return
+	var old_icon := medal.get_child(0) as TextureRect
+	if old_icon == null:
+		return
+	medal.remove_child(old_icon)
+
+	var center := CenterContainer.new()
+	center.name = "CompactKindIconCenter"
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	medal.add_child(center)
+
+	if _uses_text_semantic_icon(kind):
+		old_icon.queue_free()
+		var glyph := _semantic_glyph(kind, 39)
+		glyph.custom_minimum_size = Vector2(KYOTO_HORIZON_ICON_SIZE, KYOTO_HORIZON_ICON_SIZE)
+		glyph.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		center.add_child(glyph)
+		return
+
+	old_icon.texture = _icon_for_kind(kind)
+	old_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	old_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	old_icon.custom_minimum_size = Vector2(KYOTO_HORIZON_ICON_SIZE, KYOTO_HORIZON_ICON_SIZE)
+	old_icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	old_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	old_icon.modulate = _icon_modulate_for_kind(kind)
+	old_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.add_child(old_icon)
+
+
+func _uses_text_semantic_icon(kind: String) -> bool:
+	return kind in ["REST", "JUNCTION", "BYPASS_FORK", "BOSS_FORK"]
+
+
+func _semantic_glyph_text(kind: String) -> String:
+	if kind == "REST":
+		return "♥"
+	if kind in ["JUNCTION", "BYPASS_FORK", "BOSS_FORK"]:
+		return "Y"
+	return ""
+
+
+func _semantic_glyph(kind: String, font_size: int) -> Label:
+	var glyph := _label(_semantic_glyph_text(kind), font_size, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	glyph.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return glyph
+
+
+func _kyoto_kind_color(kind: String) -> Color:
+	if kind in ["JUNCTION", "BYPASS_FORK", "BOSS_FORK"]:
+		return TYPE_COLORS.get("JUNCTION", Color("#a96bc7"))
+	return TYPE_COLORS.get(kind, TYPE_COLORS.NORMAL)
 
 
 func _show_overview_map(initial: bool = false) -> void:
