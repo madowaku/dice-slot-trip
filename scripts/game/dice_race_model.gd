@@ -2,7 +2,7 @@ extends RefCounted
 class_name DiceRaceModel
 
 const GOAL := 24
-const RACERS := ["camel", "crocodile", "fox", "duck", "dinosaur", "robot"]
+const RACERS: Array[String] = ["camel", "crocodile", "fox", "duck", "dinosaur", "robot"]
 const WIN_MULTIPLIER := 4.0
 const CASHOUT_MULTIPLIERS := {
 	1: 1.8,
@@ -143,7 +143,9 @@ static func rank_for_racer(state: Dictionary, racer_id: String) -> int:
 	return ahead + 1
 
 static func ranking(state: Dictionary) -> Array[String]:
-	var ordered: Array[String] = RACERS.duplicate()
+	var ordered: Array[String] = []
+	for racer_id: String in RACERS:
+		ordered.append(racer_id)
 	var racers: Dictionary = state.get("racers", {})
 	ordered.sort_custom(func(a: String, b: String) -> bool:
 		var pa := int((racers.get(a, {}) as Dictionary).get("position", 0))
