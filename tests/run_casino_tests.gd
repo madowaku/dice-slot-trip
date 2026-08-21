@@ -72,6 +72,12 @@ func _test_chip_bank() -> void:
 	var saved: Dictionary = CasinoBankScript.load_data()
 	_expect(int(saved.chips) == 5 and "dice_racer_duck" in saved.owned_cards, "card ownership and remaining chip persist")
 	_expect(not CasinoBankScript.own_card("dice_racer_duck", 0), "owned card cannot be bought twice")
+	var once: Dictionary = CasinoBankScript.stage_clear_conversion_once("test:lap:1", 24, true)
+	_expect(int(once.gained_chip) == 17 and CasinoBankScript.balance() == 22, "one-shot clear conversion credits the first receipt")
+	var replay: Dictionary = CasinoBankScript.stage_clear_conversion_once("test:lap:1", 24, true)
+	_expect(bool(replay.already_converted) and int(replay.gained_chip) == 0 and CasinoBankScript.balance() == 22, "one-shot clear conversion rejects result-screen replay")
+	var migrated: Dictionary = CasinoBankScript.load_data()
+	_expect("test:lap:1" in migrated.conversion_keys, "conversion ledger persists with bank data")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(CasinoBankScript.SAVE_PATH))
 
 func _test_gimmicks() -> void:
