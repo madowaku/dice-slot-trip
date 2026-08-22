@@ -110,7 +110,7 @@ func _check_amazon_branch_choices(screen: JourneyStageScreen, journey: StageJour
 	var branch_copy := _all_label_text(modal)
 	_expect(branch_copy.contains("本線") and branch_copy.contains("脇道"),
 		"Amazon route modal labels the main route and detour distinctly")
-	_expect(branch_copy.contains("REST") or branch_copy.contains("FLOW") or branch_copy.contains("通常"),
+	_expect(branch_copy.contains("回復") or branch_copy.contains("急流") or branch_copy.contains("通常"),
 		"Amazon route modal names the projected tile type")
 	_expect(not branch_copy.contains("canopy:") and not branch_copy.contains("stream:") and not branch_copy.contains("main:"),
 		"Amazon route modal hides internal route IDs from player copy")
@@ -179,10 +179,16 @@ func _check_kyoto_branch_choices(screen: JourneyStageScreen, journey: StageJourn
 	var modal := screen.get("active_modal") as Control
 	var buttons := modal.find_children("*", "Button", true, false) if modal != null else []
 	var branch_copy := _all_label_text(modal)
-	_expect(buttons.size() == 2 and branch_copy.contains("本線") and branch_copy.contains("脇道"),
+	_expect(buttons.size() == 2 and branch_copy.contains("本線") and branch_copy.contains("近道"),
 		"Kyoto route modal shows both route classes and projected stops")
-	_expect(branch_copy.contains("通常") or branch_copy.contains("御朱印") or branch_copy.contains("RISK"),
+	_expect(branch_copy.contains("通常") or branch_copy.contains("御朱印") or branch_copy.contains("ダメージ") or branch_copy.contains("回復"),
 		"Kyoto route modal names the projected tile type")
+	_expect(not branch_copy.contains("RISK") and not branch_copy.contains("REST"),
+		"Kyoto route modal localizes projected landing kinds")
+	for button_value: Variant in buttons:
+		var route_button := button_value as Button
+		_expect(route_button != null and route_button.icon != null,
+			"Kyoto route choices pair landing labels with semantic icons")
 	_expect(not branch_copy.contains("gion_shortcut:") and not branch_copy.contains("main:"),
 		"Kyoto route modal hides internal route IDs from player copy")
 	screen.call("_close_modal")
@@ -1144,6 +1150,12 @@ func _check_route_preview_and_player_anchor(screen: JourneyStageScreen, journey:
 			var current_player := screen.get("map_player") as Control
 			_expect(current_badge != null and current_badge_icon != null and current_badge_icon.texture == expected_icon and current_player != null and current_badge.get_global_rect().end.y <= current_player.get_global_rect().position.y + 1.0,
 				"Kyoto keeps the current-space icon above and clear of the large explorer")
+			_expect(current_badge.position.y <= 52.0,
+				"Kyoto raises the current-space icon away from the explorer")
+			var future_icon_center := (row.get_child(1) as Control).find_child("CompactKindIconCenter", true, false) as Control
+			var future_icon_margin := (row.get_child(1) as Control).find_child("CompactKindIconMargin", true, false) as Control
+			_expect(future_icon_center != null and future_icon_margin != null and future_icon_center.get_global_rect().get_center().y < future_icon_margin.get_global_rect().get_center().y,
+				"Kyoto raises future landing icons within their tiles")
 
 	var player := screen.get("map_player") as Control
 	var layer := screen.get("map_node_layer") as Control

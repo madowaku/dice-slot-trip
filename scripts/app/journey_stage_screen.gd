@@ -2504,24 +2504,24 @@ func _space_kind_label(kind: String) -> String:
 	return {
 		"START": "スタート",
 		"NORMAL": "通常",
-		"COIN": "COIN",
-		"EVENT": "EVENT",
-		"REST": "REST",
-		"RISK": "RISK",
+		"COIN": "コイン",
+		"EVENT": "イベント",
+		"REST": "回復",
+		"RISK": "ダメージ",
 		"FLOW": "急流",
-		"ITEM": "ITEM",
+		"ITEM": "アイテム",
 		"GOSHUIN": "御朱印",
-		"BYPASS_FORK": "近道",
+		"BYPASS_FORK": "分岐",
 		"BOSS_FORK": "ボス選択",
 		"BOSS_APPROACH": "ボス前",
 		"JUNCTION": "分岐",
 		"SPECIAL": "特殊",
-		"BOSS": "BOSS",
+		"BOSS": "ボス",
 	}.get(kind, kind)
 
 
 func _show_kyoto_route_tutorial() -> void:
-	_open_choice_modal("京都の近道", "京都の分岐は2か所だけ。\n本線の報酬を取るか、RISKの多い近道で4〜6マス縮めるかを選べます。", [{"id": "continue", "label": "道を選ぶ"}], func(_choice_id: String) -> void:
+	_open_choice_modal("京都の近道", "京都の分岐は2か所だけ。\n本線の報酬を取るか、ダメージマスの多い近道で4〜6マス縮めるかを選べます。", [{"id": "continue", "label": "道を選ぶ"}], func(_choice_id: String) -> void:
 		journey.stage_flags["kyoto_route_tutorial_seen"] = true
 		_show_branch_modal()
 	, KYOTO_ROUTE_TUTORIAL)
@@ -4297,7 +4297,7 @@ func _start_fox_fire_chase_boss(qa_mode: bool = false, restore_snapshot: Diction
 		return
 	var bgm := get_node_or_null("/root/BgmManager")
 	if bgm != null:
-		bgm.call("play_kyoto_boss")
+		bgm.call("play_kyoto_fox_fire_chase")
 	if qa_mode and kyoto_chase_scene.has_method("show_for_qa"):
 		kyoto_chase_scene.call("show_for_qa")
 	else:
@@ -4865,6 +4865,12 @@ func _open_choice_modal(title_text: String, body_text: String, choices: Array, c
 			_close_modal()
 			callback.call(choice_id)
 		, true)
+		var choice_icon := choice.get("icon") as Texture2D
+		if choice_icon != null:
+			button.icon = choice_icon
+			button.expand_icon = true
+			button.add_theme_constant_override("icon_max_width", 34)
+			button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		var requirements := choice.get("requires", {}) as Dictionary
 		if not requirements.is_empty():
 			button.disabled = journey == null or journey.coins < int(requirements.get("coin_gte", 0))

@@ -14,7 +14,7 @@ func _record() -> void:
 	var state_name := OS.get_environment("DICE_QA_STATE")
 	var viewport_text := OS.get_environment("DICE_QA_VIEWPORT")
 	var rule_slide := clampi(int(OS.get_environment("DICE_QA_RULE_SLIDE")), 1, 4)
-	if output_path.is_empty() or not stage_text in ["amazon", "kyoto"] or not state_name in ["map", "overview", "boss", "boss_tutorial", "boss_input", "direction", "collision", "role_effect", "boss_rules", "boss_practice", "heart_roulette", "item", "event", "menu", "rolled", "risk", "revival", "perfect"]:
+	if output_path.is_empty() or not stage_text in ["amazon", "kyoto"] or not state_name in ["map", "branch", "overview", "boss", "boss_tutorial", "boss_input", "direction", "collision", "role_effect", "boss_rules", "boss_practice", "heart_roulette", "item", "event", "menu", "rolled", "risk", "revival", "perfect"]:
 		push_error("DICE_QA_OUTPUT, DICE_QA_STAGE, and DICE_QA_STATE are required")
 		quit(2)
 		return
@@ -37,6 +37,26 @@ func _record() -> void:
 		for _ignored: int in range(4):
 			await process_frame
 		screen.call("_close_modal")
+		for _ignored: int in range(8):
+			await process_frame
+	elif state_name == "branch":
+		screen.call("_close_overview_map")
+		for _ignored: int in range(4):
+			await process_frame
+		screen.call("_close_modal")
+		var branch_journey := screen.get("journey") as StageJourneyBase
+		if stage_text == "kyoto" and branch_journey is KyotoJourney:
+			branch_journey.current_space_id = "main:31"
+			branch_journey.phase = StageJourneyBase.PHASE_READY
+			branch_journey.pending_event.clear()
+			branch_journey.roll(6)
+		else:
+			var amazon_journey := branch_journey as AmazonJourney
+			amazon_journey.current_space_id = "main:20"
+			amazon_journey.phase = StageJourneyBase.PHASE_READY
+			amazon_journey.pending_event.clear()
+			amazon_journey.roll(4)
+		screen.call("_show_branch_modal")
 		for _ignored: int in range(8):
 			await process_frame
 	elif state_name == "overview":

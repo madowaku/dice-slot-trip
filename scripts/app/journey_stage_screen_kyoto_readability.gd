@@ -8,7 +8,8 @@ const CAIRO_FEEDBACK_SCRIPT = preload("res://scripts/ui/v06_feedback_controller.
 const CAIRO_STAGE_ID: StringName = &"cairo_hourglass"
 const KYOTO_HORIZON_ICON_SIZE := 46.0
 const KYOTO_CURRENT_ICON_SIZE := 38.0
-const KYOTO_CURRENT_ICON_TOP := 64.0
+const KYOTO_CURRENT_ICON_TOP := 50.0
+const KYOTO_FUTURE_ICON_LIFT := 8.0
 
 var _cairo_feedback: Node
 var _kyoto_last_feedback_space := ""
@@ -154,10 +155,16 @@ func _fit_horizon_medal_icon(medal: PanelContainer, kind: String) -> void:
 		return
 	medal.remove_child(old_icon)
 
+	var icon_margin := MarginContainer.new()
+	icon_margin.name = "CompactKindIconMargin"
+	icon_margin.add_theme_constant_override("margin_bottom", int(KYOTO_FUTURE_ICON_LIFT * 2.0))
+	icon_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	medal.add_child(icon_margin)
+
 	var center := CenterContainer.new()
 	center.name = "CompactKindIconCenter"
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	medal.add_child(center)
+	icon_margin.add_child(center)
 
 	if _uses_text_semantic_icon(kind):
 		old_icon.queue_free()
@@ -238,9 +245,11 @@ func _show_branch_modal() -> void:
 		var projection := _project_branch_choice(choice)
 		var route_label := "本線" if str(projection.get("route", "main")) == "main" else "近道"
 		var destination_kind := str(projection.get("kind_label", "通常"))
+		var destination_kind_id := str(projection.get("kind", "NORMAL"))
 		var destination := str(projection.get("destination", "次のマス"))
 		# Two large lines only: route name, then the exact projected landing tile.
 		choice["label"] = "%s　→　%s\n%s" % [route_label, destination_kind, destination]
+		choice["icon"] = _icon_for_kind(destination_kind_id)
 		choices.append(choice)
 
 	var remaining_steps := maxi(int(journey.pending_steps), 1)

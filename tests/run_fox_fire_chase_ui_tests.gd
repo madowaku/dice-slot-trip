@@ -78,7 +78,7 @@ func _run() -> void:
 	root.size = Vector2i(360, 640)
 	for _frame: int in range(3):
 		await process_frame
-	_expect(view.design_root.scale.x > 0.49 and view.design_root.scale.x < 0.51, "composition scales to 360x640")
+	_expect(view.design_root.scale.x > 0.99 and view.design_root.scale.x < 1.01, "composition preserves logical scale in a 360x640 stretched viewport")
 	_expect(view.roll_button.get_global_rect().size.x >= 52.0, "scaled roll control remains physically tappable")
 	var small_die_target := view.board_canvas.get_global_transform_with_canvas() * view.board_cell_center(view.ROLL_DIE_CELL)
 	_expect(view.roll_die_icon.get_global_rect().get_center().distance_to(small_die_target) < 1.0, "scaled board die remains centered on (2,2)")
