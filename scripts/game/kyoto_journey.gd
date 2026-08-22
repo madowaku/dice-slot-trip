@@ -42,7 +42,7 @@ func roll(face: int) -> Dictionary:
 	if current_space_id == "main:88" and not str(stage_flags.get("kyoto_boss_route", "")).is_empty():
 		selected_target = str(course.boss_choice().get("approach_space_id", "main:89"))
 	var result := course.advance(current_space_id, move_face, selected_target)
-	var passed_goshuin: Array[Dictionary] = _mark_passed(result.get("path", []))
+	_mark_discovered(result.get("path", []))
 	score += (result.get("path", []) as Array).size()
 	if not bool(result.get("ok", false)) and str(result.get("status", "")) == "CHOICE_REQUIRED":
 		if item_bonus > 0:
@@ -56,7 +56,6 @@ func roll(face: int) -> Dictionary:
 				pending_choices.append((value as Dictionary).duplicate(true))
 		phase = PHASE_BRANCH
 		last_result = {"ok": true, "status": "CHOICE_REQUIRED", "face": face, "move_face": move_face, "item_bonus": item_bonus, "path": result.get("path", []), "branch": pending_event.duplicate(true)}
-		_append_goshuin_result(last_result, passed_goshuin)
 		return last_result.duplicate(true)
 	if not bool(result.get("ok", false)) and str(result.get("status", "")) == "BOSS_CHOICE_REQUIRED":
 		if item_bonus > 0:
@@ -70,7 +69,6 @@ func roll(face: int) -> Dictionary:
 				pending_choices.append((value as Dictionary).duplicate(true))
 		phase = PHASE_BOSS_CHOICE
 		last_result = {"ok": true, "status": "BOSS_CHOICE_REQUIRED", "face": face, "move_face": move_face, "item_bonus": item_bonus, "path": result.get("path", [])}
-		_append_goshuin_result(last_result, passed_goshuin)
 		return last_result.duplicate(true)
 	if not bool(result.get("ok", false)):
 		return result
@@ -78,7 +76,6 @@ func roll(face: int) -> Dictionary:
 		consume_next_move_bonus()
 	current_space_id = str(result.get("position", current_space_id))
 	last_result = {"ok": true, "status": "MOVED", "face": face, "move_face": move_face, "item_bonus": item_bonus, "path": result.get("path", [])}
-	_append_goshuin_result(last_result, passed_goshuin)
 	_resolve_landing()
 	return last_result.duplicate(true)
 
@@ -102,7 +99,7 @@ func choose_branch(choice_id: String) -> Dictionary:
 		return last_result.duplicate(true)
 	if not bool(result.get("ok", false)) and str(result.get("status", "")) != "CHOICE_REQUIRED":
 		return result
-	var passed_goshuin: Array[Dictionary] = _mark_passed(result.get("path", []))
+	_mark_discovered(result.get("path", []))
 	score += (result.get("path", []) as Array).size()
 	current_space_id = str(result.get("position", current_space_id))
 	if str(result.get("status", "")) == "CHOICE_REQUIRED":
@@ -114,14 +111,12 @@ func choose_branch(choice_id: String) -> Dictionary:
 				pending_choices.append((value as Dictionary).duplicate(true))
 		phase = PHASE_BRANCH
 		last_result = {"ok": true, "status": "CHOICE_REQUIRED", "choice_id": choice_id, "path": result.get("path", [])}
-		_append_goshuin_result(last_result, passed_goshuin)
 		return last_result.duplicate(true)
 	pending_steps = 0
 	pending_choices.clear()
 	pending_event.clear()
 	phase = PHASE_READY
 	last_result = {"ok": true, "status": "BRANCH_RESOLVED", "choice_id": choice_id, "path": result.get("path", [])}
-	_append_goshuin_result(last_result, passed_goshuin)
 	if current_space_id.begins_with("river_boat:"):
 		last_result["camera_cue"] = "river_crossing"
 	_resolve_landing()
@@ -166,6 +161,7 @@ func choose_boss_route(choice_id: String) -> Dictionary:
 	var result := course.advance(current_space_id, pending_steps, approach)
 	if not bool(result.get("ok", false)):
 		return result
+	_mark_discovered(result.get("path", []))
 	current_space_id = str(result.get("position", current_space_id))
 	score += (result.get("path", []) as Array).size()
 	pending_steps = 0
@@ -189,23 +185,27 @@ func goshuin_count() -> int:
 	return count
 
 
-func _mark_passed(path: Array) -> Array[Dictionary]:
-	var acquired: Array[Dictionary] = []
-	var goshuin_state := _ensure_goshuin_flags()
+func _mark_discovered(path: Array) -> void:
 	for value: Variant in path:
-		var id := str(value)
-		discovered[id] = true
-		var passed := course.space(id)
-		if str(passed.get("kind", "")) == "GOSHUIN":
-			var goshuin_id := str(passed.get("goshuin", ""))
-			if not goshuin_id.is_empty() and not bool(goshuin_state.get(goshuin_id, false)):
-				goshuin_state[goshuin_id] = true
-				acquired.append({
-					"id": goshuin_id,
-					"space_id": id,
-					"title": _goshuin_title(goshuin_id),
-					"space_name": str(passed.get("name", "御朱印所")),
-				})
+		discovered[str(value)] = true
+
+
+func _mark_landed_goshuin(space_id: String) -> Array[Dictionary]:
+	var acquired: Array[Dictionary] = []
+	var landed := course.space(space_id)
+	if str(landed.get("kind", "")) != "GOSHUIN":
+		return acquired
+	var goshuin_id := str(landed.get("goshuin", ""))
+	var goshuin_state := _ensure_goshuin_flags()
+	if goshuin_id.is_empty() or bool(goshuin_state.get(goshuin_id, false)):
+		return acquired
+	goshuin_state[goshuin_id] = true
+	acquired.append({
+		"id": goshuin_id,
+		"space_id": space_id,
+		"title": _goshuin_title(goshuin_id),
+		"space_name": str(landed.get("name", "御朱印所")),
+	})
 	return acquired
 
 
@@ -224,6 +224,8 @@ func _ensure_goshuin_flags() -> Dictionary:
 func _append_goshuin_result(target: Dictionary, acquired: Array[Dictionary]) -> void:
 	if acquired.is_empty():
 		return
+	target["goshuin_landed"] = acquired.duplicate(true)
+	# Keep the existing result key until the presentation layer migrates.
 	target["goshuin_passed"] = acquired.duplicate(true)
 	if acquired.size() == 1:
 		target["goshuin_acquired"] = str(acquired[0].get("id", ""))
@@ -241,6 +243,8 @@ func _goshuin_title(goshuin_id: String) -> String:
 func _resolve_landing() -> void:
 	var current := course.space(current_space_id)
 	var kind := str(current.get("kind", "NORMAL"))
+	if kind == "GOSHUIN":
+		_append_goshuin_result(last_result, _mark_landed_goshuin(current_space_id))
 	if kind == "REST":
 		stage_flags["mission_rest_count"] = mini(int(stage_flags.get("mission_rest_count", 0)) + 1, 5)
 	match kind:

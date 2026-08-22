@@ -26,7 +26,7 @@ func _init() -> void:
 	_test_aquafall_roles_and_terminals()
 	_test_aquafall_defeat_life_retry()
 	_test_kyoto_course()
-	_test_kyoto_pass_through_goshuin()
+	_test_kyoto_landing_goshuin()
 	_test_kyoto_risk_life_contract()
 	_test_kyoto_luck_shift_and_restore()
 	_test_aquafall_goal_collision_order()
@@ -645,25 +645,26 @@ func _test_kyoto_course() -> void:
 		"kyoto boss-choice save resumes remaining steps and dispatches the puzzle boss")
 
 
-func _test_kyoto_pass_through_goshuin() -> void:
-	var journey := KyotoJourneyScript.new()
-	journey.current_space_id = "main:20"
-	var result := journey.roll(2)
-	var passed := result.get("goshuin_passed", []) as Array
-	_expect(bool(result.get("ok", false)) and bool(journey.goshuin_state().get("fushimi", false)) and passed.size() == 1 and str((passed[0] as Dictionary).get("title", "")) == "伏見稲荷", "goshuin acquired on pass-through")
-
+func _test_kyoto_landing_goshuin() -> void:
 	for route_case: Dictionary in [
-		{"origin": "main:20", "expected": "fushimi", "after": "main:22"},
-		{"origin": "main:43", "expected": "yasaka", "after": "main:45"},
-		{"origin": "main:68", "expected": "kiyomizu", "after": "main:70"},
-		{"origin": "main:84", "expected": "tenryuji", "after": "main:86"},
+		{"origin": "main:20", "space": "main:21", "expected": "fushimi", "title": "伏見稲荷", "after": "main:22"},
+		{"origin": "main:43", "space": "main:44", "expected": "yasaka", "title": "八坂神社", "after": "main:45"},
+		{"origin": "main:68", "space": "main:69", "expected": "kiyomizu", "title": "清水寺", "after": "main:70"},
+		{"origin": "main:84", "space": "main:85", "expected": "tenryuji", "title": "天龍寺", "after": "main:86"},
 	]:
-		var direct := KyotoJourneyScript.new()
-		direct.current_space_id = str(route_case.get("origin", ""))
-		var direct_result := direct.roll(2)
-		var direct_passed := direct_result.get("goshuin_passed", []) as Array
-		_expect(bool(direct_result.get("ok", false)) and direct.current_space_id == str(route_case.get("after", "")) and direct_passed.size() == 1 and str((direct_passed[0] as Dictionary).get("id", "")) == str(route_case.get("expected", "")),
-			"%s goshuin checkpoint is awarded while passing on the main route" % str(route_case.get("expected", "")))
+		var crossing := KyotoJourneyScript.new()
+		crossing.current_space_id = str(route_case.get("origin", ""))
+		var crossing_result := crossing.roll(2)
+		_expect(bool(crossing_result.get("ok", false)) and crossing.current_space_id == str(route_case.get("after", "")) and not bool(crossing.goshuin_state().get(route_case.get("expected", ""), false)) and (crossing_result.get("goshuin_landed", []) as Array).is_empty(),
+			"%s goshuin checkpoint is not awarded when passed" % str(route_case.get("expected", "")))
+
+		var landing := KyotoJourneyScript.new()
+		landing.current_space_id = str(route_case.get("origin", ""))
+		var landing_result := landing.roll(1)
+		var landed := landing_result.get("goshuin_landed", []) as Array
+		var legacy_events := landing_result.get("goshuin_passed", []) as Array
+		_expect(bool(landing_result.get("ok", false)) and landing.current_space_id == str(route_case.get("space", "")) and bool(landing.goshuin_state().get(route_case.get("expected", ""), false)) and landed.size() == 1 and legacy_events.size() == 1 and str((landed[0] as Dictionary).get("id", "")) == str(route_case.get("expected", "")) and str((landed[0] as Dictionary).get("title", "")) == str(route_case.get("title", "")),
+			"%s goshuin checkpoint is awarded on exact landing" % str(route_case.get("expected", "")))
 
 
 func _test_kyoto_risk_life_contract() -> void:

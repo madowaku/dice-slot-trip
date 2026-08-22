@@ -167,11 +167,13 @@ func _on_roll_requested() -> void:
 	if not view.is_die_rolling() and not view.reduced_motion:
 		view.begin_die_roll()
 		return
-	if view.is_die_rolling():
-		view.finish_die_roll()
 	var cat_start: Variant = state.get("cat_position")
 	var fox_start: Variant = state.get("fox_position")
-	var face := _rng.randi_range(1, 6)
+	# Match the normal-map die contract: the top face visible on the STOP tap is
+	# the committed result. Reduced-motion mode has no carousel, so it keeps the
+	# seeded random fallback and immediately presents that exact face.
+	var face := view.visible_die_face() if view.is_die_rolling() else _rng.randi_range(1, 6)
+	view.finish_die_roll(face)
 	_resolving_turn = true
 	var event: Dictionary = _controller().commit_face(face)
 	if not bool(event.get("ok", false)):
@@ -208,6 +210,7 @@ func _on_fire_choice_requested(choice: StringName) -> void:
 		return
 	event["cat_start"] = cat_start
 	event["fox_start"] = fox_start
+	event["fire_choice"] = str(choice)
 	_view().hide_fire_choice()
 	_view().present_roll(event)
 	await _view().animate_turn(event)

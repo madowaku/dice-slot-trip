@@ -27,11 +27,12 @@ const FOX_RUN_FRAMES: Array[Texture2D] = [
 const FIRE_TEXTURE: Texture2D = preload("res://assets/art/bosses/kyoto/white-foxfire.png")
 const SLOT_TRAY_TEXTURE: Texture2D = preload("res://assets/art/ui/common/slot-tray-luxury-v1.png")
 const ROLL_RING_TEXTURE: Texture2D = preload("res://assets/art/ui/common/roll-button-round-v1.png")
-const DICE_UI_TEXTURE: Texture2D = preload("res://assets/art/ui/common/dice-ivory-brass.png")
 const VICTORY_TEXTURE: Texture2D = preload("res://assets/art/bosses/kyoto/fox-fire-victory-key-art-explorer-cat.png")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 const BOARD_SCRIPT = preload("res://boss/kyoto/fox_fire_chase/fox_fire_chase_board.gd")
+const DICE_PRESENTATION_SCRIPT = preload("res://scripts/game/dice_presentation_3d.gd")
 const ROLL_DIE_CELL := Vector2i(2, 2)
+const ROLL_SPEED_MULTIPLIER := 1.7
 
 const NAVY := Color("#080d1e")
 const PANEL := Color(0.035, 0.045, 0.09, 0.95)
@@ -139,17 +140,17 @@ class BoardOverlay extends Control:
 				var position := Vector2i(column, row)
 				var rect := owner_view.cell_rect(position)
 				var is_outer := BOARD_SCRIPT.is_outer_position(position)
-				var fill := Color(0.08, 0.62, 0.62, 0.06) if is_outer else Color(0.03, 0.04, 0.11, 0.10)
+				var fill := Color(0.98, 0.72, 0.20, 0.15) if is_outer else Color(0.02, 0.04, 0.10, 0.20)
 				draw_rect(rect, fill, true)
 				if is_outer:
-					draw_rect(rect, Color(0.98, 0.83, 0.37, 0.56), false, 3.0)
+					draw_rect(rect, Color(1.0, 0.88, 0.42, 0.86), false, 4.0)
 
 		var fires: Array = owner_view._fire_indices()
 		for raw_index: Variant in fires:
 			var cell := BOARD_SCRIPT.outer_position(int(raw_index))
 			var rect := owner_view.cell_rect(cell).grow(-7.0)
-			draw_rect(rect, Color(0.25, 0.80, 0.95, 0.11), true)
-			draw_rect(rect, Color(0.49, 0.93, 1.0, 0.72), false, 2.0)
+			draw_rect(rect, Color(0.25, 0.80, 0.95, 0.22), true)
+			draw_rect(rect, Color(0.49, 0.93, 1.0, 0.96), false, 4.0)
 
 		for path: Array in [owner_view.last_cat_path, owner_view.last_fox_path]:
 			if path.size() < 2:
@@ -189,8 +190,10 @@ var slot_faces: Array[DieFace] = []
 var slot_role_label: Label
 var slot_explainer: Panel
 var slot_explainer_label: Label
+var action_banner: Panel
+var action_banner_label: Label
 var roll_button: TextureButton
-var roll_die_icon: TextureRect
+var roll_die_icon: DicePresentation3D
 var roll_button_copy: Label
 var roll_button_hint: Label
 var head_start_button: Button
@@ -217,7 +220,12 @@ var last_cat_path: Array = []
 var last_fox_path: Array = []
 var _tutorial_page: int = 0
 var _slot_explainer_timer: float = 0.0
+var _action_banner_timer: float = 0.0
 var _roll_phase: bool = false
+var _roll_elapsed: float = 0.0
+var _rolling_face: int = 1
+var _settled_face: int = 1
+var _known_fire_indices: Dictionary = {}
 var _last_cat_position := Vector2i(2, 5)
 var _last_fox_position := Vector2i(3, 0)
 var _layout_viewport_size := Vector2.ZERO
@@ -251,8 +259,7 @@ func set_reduced_motion(enabled: bool) -> void:
 		if roll_button_hint != null:
 			roll_button_hint.text = "狙って止める"
 		if roll_die_icon != null:
-			roll_die_icon.rotation = 0.0
-			roll_die_icon.scale = Vector2.ONE
+			roll_die_icon.present([_settled_face], false, 1)
 		if slot_explainer != null:
 			slot_explainer.modulate = Color.WHITE
 	queue_redraw()
@@ -333,10 +340,21 @@ func present_roll(event: Dictionary) -> void:
 	var role := str(event.get("slot_role", ""))
 	if not role.is_empty():
 		slot_role_label.text = "%s  +%d" % [role, int(event.get("slot_bonus", 0))]
+		show_slot_explainer(role, int(event.get("slot_bonus", 0)))
+		_play_slot_completion_pulse()
 	else:
-		slot_role_label.text = "SLOT %d / 3" % slot_faces.size()
-	if slot_faces.size() >= 3:
-		show_slot_explainer()
+		var face := int(event.get("face", _settled_face))
+		var player_move := int(event.get("player_move", face))
+		var fox_move := int(event.get("fox_face", 7 - face))
+		show_action_banner("出目 %d　猫%d歩／白狐%d歩" % [face, player_move, fox_move], GOLD)
+	if int(event.get("fox_fire_created", -1)) >= 0:
+		show_action_banner("狐火で外周が封鎖！", FIRE_BLUE, 1.8)
+		_play_sfx(&"warning")
+	if str(event.get("fire_choice", "")) == "CLEANSE":
+		show_action_banner("御朱印で狐火を浄化！", TEAL, 1.8)
+		_play_sfx(&"reward")
+	elif str(event.get("fire_choice", "")) == "DETOUR":
+		show_action_banner("中央の迂回路へ！", GOLD, 1.6)
 
 
 func animate_turn(event: Dictionary) -> void:
@@ -368,33 +386,97 @@ func _tween_piece_to_cell(piece: Control, cell: Vector2i, duration: float) -> vo
 	await tween.finished
 
 
-func show_slot_explainer() -> void:
+func show_slot_explainer(role: String = "", bonus: int = -1) -> void:
 	if slot_explainer == null:
 		return
-	slot_explainer_label.text = "3投目でSLOT完成\nPAIR +1 / STRAIGHT +2 / TRIPLE +3"
-	slot_explainer.visible = true
-	_slot_explainer_timer = 3.0
+	if role.is_empty():
+		slot_explainer_label.text = "3投目でSLOT完成\nPAIR +1 / STRAIGHT +2 / TRIPLE +3"
+		slot_explainer.visible = true
+		_slot_explainer_timer = 3.0
+	else:
+		slot_explainer_label.text = "%s！　猫 +%dマス" % [role, maxi(bonus, 0)]
+		slot_explainer.visible = false
+		show_action_banner("%s！　猫 +%d" % [role, maxi(bonus, 0)], GOLD, 2.0)
+		_play_sfx(&"bonus" if bonus > 0 else &"complete")
 
 
 func begin_die_roll() -> bool:
 	if roll_button == null or roll_button.disabled:
 		return false
 	_roll_phase = true
+	_roll_elapsed = 0.0
+	_rolling_face = 1
 	if roll_die_icon != null:
 		roll_die_icon.visible = true
+		roll_die_icon.present([_rolling_face], true, 0)
 	roll_button_copy.text = "止める"
 	roll_button_hint.text = "もう一度タップ"
+	_play_sfx(&"start")
 	return true
 
 
-func finish_die_roll() -> void:
+func finish_die_roll(face: int = 1) -> void:
 	_roll_phase = false
+	_settled_face = clampi(face, 1, 6)
+	if roll_die_icon != null:
+		roll_die_icon.present([_settled_face], false, 1)
 	roll_button_copy.text = "ROLL"
-	roll_button_hint.text = "狙って止める"
+	roll_button_hint.text = "出目 %d" % _settled_face
+	_play_sfx(&"stop")
+	show_action_banner("出目 %d！" % _settled_face, GOLD, 0.9)
 
 
 func is_die_rolling() -> bool:
 	return _roll_phase
+
+
+func settled_die_face() -> int:
+	return _settled_face
+
+
+func visible_die_face() -> int:
+	if roll_die_icon == null or roll_die_icon.dice_roots.is_empty():
+		return _settled_face
+	return DICE_PRESENTATION_SCRIPT.top_face_for_orientation(roll_die_icon.dice_roots[0].quaternion)
+
+
+func _initialize_roll_die() -> void:
+	if roll_die_icon != null and is_instance_valid(roll_die_icon):
+		roll_die_icon.present([_settled_face], false, 1)
+
+
+func show_action_banner(text_value: String, accent: Color = GOLD, duration: float = 1.4) -> void:
+	if action_banner == null or action_banner_label == null:
+		return
+	action_banner.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.07, 0.11, 0.98), accent, 18, 3))
+	action_banner_label.text = text_value
+	action_banner_label.add_theme_color_override("font_color", accent)
+	action_banner.visible = true
+	action_banner.modulate = Color.WHITE
+	action_banner.scale = Vector2.ONE
+	_action_banner_timer = duration
+	if reduced_motion:
+		return
+	action_banner.scale = Vector2(0.90, 0.90)
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(action_banner, "scale", Vector2.ONE, 0.18)
+
+
+func _play_slot_completion_pulse() -> void:
+	if slot_panel == null or reduced_motion:
+		return
+	slot_panel.pivot_offset = slot_panel.size * 0.5
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(slot_panel, "scale", Vector2(1.035, 1.035), 0.12)
+	tween.tween_property(slot_panel, "scale", Vector2.ONE, 0.18)
+
+
+func _play_sfx(cue: StringName) -> void:
+	var manager := get_node_or_null("/root/UiSfxManager")
+	if manager != null:
+		manager.call("play_world_sfx", cue)
 
 
 func refresh() -> void:
@@ -439,17 +521,18 @@ func _process(delta: float) -> void:
 		_slot_explainer_timer -= delta
 		if _slot_explainer_timer <= 0.0 and slot_explainer != null:
 			slot_explainer.visible = false
+	if _action_banner_timer > 0.0:
+		_action_banner_timer -= delta
+		if _action_banner_timer <= 0.0 and action_banner != null:
+			action_banner.visible = false
 	if not reduced_motion and cat_sprite != null and controller != null:
 		cat_sprite.texture = _cat_frame(int(Time.get_ticks_msec() / 170) % 4)
 		fox_sprite.texture = FOX_RUN_FRAMES[int(Time.get_ticks_msec() / 250) % FOX_RUN_FRAMES.size()]
-	if roll_die_icon != null:
-		if _roll_phase and not reduced_motion:
-			roll_die_icon.rotation += delta * 7.4
-			var pulse := 1.0 + sin(float(Time.get_ticks_msec()) * 0.018) * 0.06
-			roll_die_icon.scale = Vector2.ONE * pulse
-		else:
-			roll_die_icon.rotation = lerp_angle(roll_die_icon.rotation, 0.0, minf(delta * 12.0, 1.0))
-			roll_die_icon.scale = roll_die_icon.scale.lerp(Vector2.ONE, minf(delta * 12.0, 1.0))
+	if roll_die_icon != null and _roll_phase and not reduced_motion:
+		_roll_elapsed += delta * ROLL_SPEED_MULTIPLIER
+		_rolling_face = DICE_PRESENTATION_SCRIPT.rolling_face_for_elapsed(_roll_elapsed)
+		roll_die_icon.present([_rolling_face], true, 0)
+		roll_die_icon.sync_rolling_elapsed(_roll_elapsed)
 
 
 func _build_composition() -> void:
@@ -550,15 +633,15 @@ func _build_top_hud() -> void:
 	fox_advantage_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	advantage_bar.add_child(fox_advantage_fill)
 
-	advantage_label = _label("PLAYER　　　　　　　　　白狐", 17, INK, HORIZONTAL_ALIGNMENT_CENTER)
+	advantage_label = _label("白狐リード　10マス", 19, INK, HORIZONTAL_ALIGNMENT_CENTER)
 	advantage_label.position = Vector2(158, 118)
 	advantage_label.size = Vector2(404, 30)
 	advantage_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	design_root.add_child(advantage_label)
 
-	distance_label = _label("あと 5", 46, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
-	distance_label.position = Vector2(250, 140)
-	distance_label.size = Vector2(220, 52)
+	distance_label = _label("追いつくまで 10マス", 34, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	distance_label.position = Vector2(190, 146)
+	distance_label.size = Vector2(340, 48)
 	distance_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.72))
 	distance_label.add_theme_constant_override("shadow_offset_x", 2)
 	distance_label.add_theme_constant_override("shadow_offset_y", 3)
@@ -595,7 +678,7 @@ func _build_board_pieces() -> void:
 	cat_sprite.texture = _cat_frame(0)
 	cat_sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	cat_sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	cat_sprite.size = Vector2(66, 66)
+	cat_sprite.size = Vector2(94, 94)
 	cat_sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board_canvas.add_child(cat_sprite)
 	fox_sprite = TextureRect.new()
@@ -603,7 +686,7 @@ func _build_board_pieces() -> void:
 	fox_sprite.texture = FOX_RUN_FRAMES[0]
 	fox_sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	fox_sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	fox_sprite.size = Vector2(68, 68)
+	fox_sprite.size = Vector2(98, 98)
 	fox_sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board_canvas.add_child(fox_sprite)
 
@@ -679,6 +762,20 @@ func _build_bottom_controls() -> void:
 	slot_explainer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	slot_explainer.add_child(slot_explainer_label)
 
+	action_banner = Panel.new()
+	action_banner.name = "ActionBanner"
+	action_banner.position = Vector2(126, 600)
+	action_banner.size = Vector2(468, 94)
+	action_banner.pivot_offset = action_banner.size * 0.5
+	action_banner.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.07, 0.11, 0.98), GOLD, 18, 3))
+	action_banner.z_index = 24
+	action_banner.visible = false
+	design_root.add_child(action_banner)
+	action_banner_label = _label("", 30, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	action_banner_label.position = Vector2(12, 8)
+	action_banner_label.size = Vector2(444, 78)
+	action_banner.add_child(action_banner_label)
+
 	roll_button = TextureButton.new()
 	roll_button.name = "RollButton"
 	roll_button.texture_normal = ROLL_RING_TEXTURE
@@ -691,18 +788,19 @@ func _build_bottom_controls() -> void:
 	roll_button.tooltip_text = "出目を決める"
 	roll_button.pressed.connect(func() -> void: roll_requested.emit())
 	design_root.add_child(roll_button)
-	roll_die_icon = TextureRect.new()
+	roll_die_icon = DICE_PRESENTATION_SCRIPT.new() as DicePresentation3D
 	roll_die_icon.name = "RollingDieIcon"
-	roll_die_icon.texture = DICE_UI_TEXTURE
-	roll_die_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	roll_die_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	roll_die_icon.position = Vector2(56, 10)
-	roll_die_icon.size = Vector2(64, 64)
-	roll_die_icon.pivot_offset = Vector2(32, 32)
+	roll_die_icon.overlay_compact = true
+	roll_die_icon.compact_single = true
+	roll_die_icon.layout_min_height = 0.0
+	roll_die_icon.tray_surface_visible = false
+	roll_die_icon.high_contrast_pips = true
+	roll_die_icon.size = Vector2(144, 144)
 	roll_die_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	roll_die_icon.position = board_cell_center(ROLL_DIE_CELL) - roll_die_icon.size * 0.5
 	roll_die_icon.z_index = 16
 	board_canvas.add_child(roll_die_icon)
+	call_deferred("_initialize_roll_die")
 	roll_button_copy = _label("ROLL", 26, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
 	roll_button_copy.position = Vector2(272, 1170)
 	roll_button_copy.size = Vector2(176, 42)
@@ -828,15 +926,15 @@ func _build_result() -> void:
 
 func _refresh_hud(state: Object) -> void:
 	var distance := maxi(int(state.get("fox_progress")) - int(state.get("cat_progress")), 0)
-	distance_label.text = "あと %d" % distance
+	distance_label.text = "追いつくまで %dマス" % distance if distance > 0 else "白狐に追いついた！"
 	var cat_share := clampf((20.0 - float(distance)) / 20.0, 0.08, 0.92)
 	var usable_width := 412.0
 	cat_advantage_fill.size.x = usable_width * cat_share
 	fox_advantage_fill.position.x = 4.0 + cat_advantage_fill.size.x
 	fox_advantage_fill.size.x = usable_width - cat_advantage_fill.size.x
 	advantage_label.text = (
-		"PLAYER 優勢　　　　　　　　　白狐" if distance < 10
-		else ("PLAYER　　　　　　　　　白狐 優勢" if distance > 10 else "PLAYER　　　　　　互角　　　　　　白狐")
+		"PLAYER　追いついた！" if distance <= 0
+		else ("PLAYER追撃中　あと%dマス" % distance if distance <= 5 else "白狐リード　%dマス" % distance)
 	)
 	var level := int(_state_get(state, "difficulty_level", 1))
 	fox_preview_label.text = "白狐 Lv%d　狐火 %d" % [level, _fire_indices().size()]
@@ -885,19 +983,30 @@ func _refresh_fire_sprites() -> void:
 		if is_instance_valid(sprite):
 			sprite.queue_free()
 	fire_sprites.clear()
+	var current_fires: Dictionary = {}
 	for raw_index: Variant in _fire_indices():
+		var fire_index := int(raw_index)
+		current_fires[fire_index] = true
 		var sprite := TextureRect.new()
-		sprite.name = "FoxFire_%d" % int(raw_index)
+		sprite.name = "FoxFire_%d" % fire_index
 		sprite.texture = FIRE_TEXTURE
 		sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		sprite.size = Vector2(52, 58)
-		sprite.position = board_cell_center(BOARD_SCRIPT.outer_position(int(raw_index))) - sprite.size * 0.5
+		sprite.size = Vector2(72, 80)
+		sprite.position = board_cell_center(BOARD_SCRIPT.outer_position(fire_index)) - sprite.size * 0.5
 		sprite.modulate = Color(0.78, 0.98, 1.0, 0.96)
 		sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		sprite.z_index = 12
 		board_canvas.add_child(sprite)
 		fire_sprites.append(sprite)
+		if not _known_fire_indices.has(fire_index) and not reduced_motion:
+			sprite.pivot_offset = sprite.size * 0.5
+			sprite.scale = Vector2(0.25, 0.25)
+			var tween := create_tween()
+			tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tween.tween_property(sprite, "scale", Vector2(1.22, 1.22), 0.20)
+			tween.tween_property(sprite, "scale", Vector2.ONE, 0.16)
+	_known_fire_indices = current_fires
 
 
 func _fire_indices() -> Array:
@@ -917,9 +1026,9 @@ func _on_tutorial_button_pressed() -> void:
 
 func _refresh_tutorial() -> void:
 	var pages := [
-		["3ROLL SLOTで追いつく", "3回の出目をためてSLOTを完成。\nPAIR +1 / STRAIGHT +2 / TRIPLE +3\n猫と白狐は、マスの中央を1つずつ進む。"],
-		["外周20マスを読む", "白狐は外周を先に進む。\n黄色く光る外周のマスが、追陣の舞台。\n大きな「あとN」が優勢を知らせる。"],
-		["狐火は選べる", "狐火で外周が塞がったら、御朱印で浄化するか、内側へ迂回。\nROLLで追陣を始めよう。"],
+		["3回ROLLして追いつけ！", "① ROLLを3回止めて出目をためる\n② PAIR +1 ／ STRAIGHT +2 ／ TRIPLE +3\n③ 猫が進み、白狐も毎回進む"],
+		["金色の外周で白狐を追え！", "白狐は外周20マスを先に逃げる\n猫は外周と、中央の迂回路を進める\n同じマスに追いつけば勝ち！"],
+		["狐火を消すか、迂回！", "狐火は外周を封鎖する\n御朱印で浄化 ／ なければ中央へ迂回\n白狐が1周先へ逃げ切ると負け"],
 	]
 	tutorial_progress.text = "%d / 3" % (_tutorial_page + 1)
 	tutorial_title.text = pages[_tutorial_page][0]
@@ -931,24 +1040,64 @@ func _refresh_tutorial() -> void:
 func _refresh_tutorial_art() -> void:
 	for child: Node in tutorial_art.get_children():
 		child.queue_free()
-	var icon := TextureRect.new()
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.size = Vector2(132, 132)
-	icon.position = Vector2(178, 10)
-	icon.texture = _cat_frame(_tutorial_page)
-	tutorial_art.add_child(icon)
-	var fox_icon := TextureRect.new()
-	fox_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	fox_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	fox_icon.size = Vector2(132, 132)
-	fox_icon.position = Vector2(278, 10)
-	fox_icon.texture = FOX_RUN_FRAMES[(_tutorial_page + 1) % 4]
-	tutorial_art.add_child(fox_icon)
-	var caption := _label("□　□　□　□　□　□", 24, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
-	caption.position = Vector2(12, 138)
-	caption.size = Vector2(464, 36)
-	tutorial_art.add_child(caption)
+	match _tutorial_page:
+		0:
+			for index: int in range(3):
+				var die := DieFace.new()
+				die.font = FONT
+				die.position = Vector2(76 + index * 116, 12)
+				die.size = Vector2(96, 96)
+				die.set_value([2, 2, 4][index], index == 1)
+				tutorial_art.add_child(die)
+			var slot_caption := _label("3回止める　→　PAIR！ 猫+1", 22, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+			slot_caption.position = Vector2(12, 124)
+			slot_caption.size = Vector2(464, 42)
+			tutorial_art.add_child(slot_caption)
+		1:
+			var board_art := TextureRect.new()
+			var board_atlas := AtlasTexture.new()
+			board_atlas.atlas = BOARD_TEXTURE
+			board_atlas.region = BOARD_CROP_SOURCE
+			board_art.texture = board_atlas
+			board_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			board_art.stretch_mode = TextureRect.STRETCH_SCALE
+			board_art.position = Vector2(164, 0)
+			board_art.size = Vector2(160, 160)
+			tutorial_art.add_child(board_art)
+			_add_tutorial_piece(_cat_frame(1), Vector2(92, 88), Vector2(90, 90))
+			_add_tutorial_piece(FOX_RUN_FRAMES[2], Vector2(306, -2), Vector2(96, 96))
+			var board_caption := _label("外周＝主戦場　中央＝迂回路", 20, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+			board_caption.position = Vector2(12, 142)
+			board_caption.size = Vector2(464, 34)
+			tutorial_art.add_child(board_caption)
+		2:
+			_add_tutorial_piece(FIRE_TEXTURE, Vector2(188, -4), Vector2(112, 124))
+			var cleanse := _tutorial_choice_chip("御朱印で浄化", Vector2(8, 118), TEAL)
+			var detour := _tutorial_choice_chip("中央へ迂回", Vector2(256, 118), GOLD)
+			tutorial_art.add_child(cleanse)
+			tutorial_art.add_child(detour)
+
+
+func _add_tutorial_piece(texture: Texture2D, position_value: Vector2, size_value: Vector2) -> void:
+	var piece := TextureRect.new()
+	piece.texture = texture
+	piece.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	piece.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	piece.position = position_value
+	piece.size = size_value
+	piece.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tutorial_art.add_child(piece)
+
+
+func _tutorial_choice_chip(text_value: String, position_value: Vector2, accent: Color) -> Panel:
+	var chip := Panel.new()
+	chip.position = position_value
+	chip.size = Vector2(224, 50)
+	chip.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.05, 0.09, 0.98), accent, 12, 2))
+	var label := _label(text_value, 18, INK, HORIZONTAL_ALIGNMENT_CENTER)
+	label.size = chip.size
+	chip.add_child(label)
+	return chip
 
 
 func _cat_frame(frame: int) -> AtlasTexture:
