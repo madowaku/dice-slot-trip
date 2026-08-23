@@ -4,7 +4,7 @@ class_name DiceRaceOrientation
 const DIRECTIONS := ["top", "bottom", "front", "back", "left", "right"]
 const RACER_DIRECTION := {
 	"fox": "top",
-	"crocodile": "bottom",
+	"rabbit": "bottom",
 	"duck": "front",
 	"dinosaur": "back",
 	"camel": "left",
