@@ -130,18 +130,19 @@ func show_v06_game(stage_id: StringName = &"", character_id: StringName = &"", r
 	# established V06 UI/session remains authoritative while CHIP banking hooks
 	# into its existing Next Lap boundary.
 	_v06_exit_transition_pending = false
+	var game_state := get_node("/root/GameState")
 	var resolved_stage_id: StringName = stage_id
 	if String(resolved_stage_id).is_empty():
-		resolved_stage_id = GameState.selected_stage_id
+		resolved_stage_id = game_state.selected_stage_id
 	if String(resolved_stage_id).is_empty():
-		resolved_stage_id = GameState.DEFAULT_STAGE
+		resolved_stage_id = game_state.DEFAULT_STAGE
 	var resolved_character_id: StringName = character_id
 	if String(resolved_character_id).is_empty():
-		resolved_character_id = GameState.selected_character_id
+		resolved_character_id = game_state.selected_character_id
 	if String(resolved_character_id).is_empty():
-		resolved_character_id = GameState.DEFAULT_CHARACTER
-	GameState.selected_stage_id = resolved_stage_id
-	GameState.selected_character_id = resolved_character_id
+		resolved_character_id = game_state.DEFAULT_CHARACTER
+	game_state.selected_stage_id = resolved_stage_id
+	game_state.selected_character_id = resolved_character_id
 	_clear()
 	add_to_group("v06_session_screen")
 	var screen := CAIRO_CASINO_PLAY_SCENE.instantiate() as V06PlayScreen

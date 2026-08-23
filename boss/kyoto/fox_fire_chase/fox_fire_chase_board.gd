@@ -8,7 +8,7 @@ extends RefCounted
 const BOARD_SIZE: int = 6
 const OUTER_CELL_COUNT: int = 20
 const CAT_BASE_OUTER_INDEX: int = 13 # Specification cell 14 (zero based).
-const FOX_START_OUTER_INDEX: int = 3 # Specification cell 4 (zero based).
+const FOX_START_OUTER_INDEX: int = 1 # Lv1 balance: eight cells ahead of the cat.
 
 
 ## JSON uses integer cell ids instead of Vector2i values.  The id is the

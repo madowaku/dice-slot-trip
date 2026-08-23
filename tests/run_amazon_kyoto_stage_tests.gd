@@ -15,6 +15,8 @@ func _init() -> void:
 	_test_amazon_journey()
 	_test_full_rest_bonus()
 	_test_shared_travel_resources()
+	_test_kyoto_defeat_lap_reset_contract()
+	_test_shared_coin_shop()
 	_test_shared_random_mission()
 	_test_item_spaces_and_inventory()
 	_test_amazon_events()
@@ -26,7 +28,7 @@ func _init() -> void:
 	_test_aquafall_roles_and_terminals()
 	_test_aquafall_defeat_life_retry()
 	_test_kyoto_course()
-	_test_kyoto_pass_through_goshuin()
+	_test_kyoto_landing_goshuin()
 	_test_kyoto_risk_life_contract()
 	_test_kyoto_luck_shift_and_restore()
 	_test_aquafall_goal_collision_order()
@@ -97,8 +99,8 @@ func _test_full_rest_bonus() -> void:
 	var amazon_full := AmazonJourneyScript.new()
 	amazon_full.current_space_id = "main:4"
 	var amazon_full_result := amazon_full.roll(1)
-	_expect(bool(amazon_full_result.get("ok", false)) and amazon_full.hp == 3 and amazon_full.coins == 1 and int(amazon_full_result.get("coin_bonus", 0)) == 1 and str(amazon_full_result.get("text", "")) == "HP FULL  COIN +1",
-		"amazon full REST grants one coin")
+	_expect(bool(amazon_full_result.get("ok", false)) and amazon_full.hp == 3 and amazon_full.coins == 0 and amazon_full.skill_gauge() == 1 and int(amazon_full_result.get("skill_bonus", 0)) == 1,
+		"amazon full REST charges skill without adding coins")
 
 	var kyoto_heal := KyotoJourneyScript.new()
 	kyoto_heal.hp = 2
@@ -128,7 +130,8 @@ func _test_shared_travel_resources() -> void:
 		_expect(journey.consume_item() and journey.item_count() == 1, "%s item use decrements inventory" % String(journey.stage_id))
 		var pair := journey.charge_skill_for_role("PAIR", 1)
 		var straight := journey.charge_skill_for_role("STRAIGHT", 2)
-		_expect(int(pair.get("after", 0)) == 1 and int(straight.get("after", 0)) == 3 and journey.skill_ready(), "%s role charges match Cairo" % String(journey.stage_id))
+		_expect(not bool(pair.get("ok", true)) and not bool(straight.get("ok", true)) and journey.skill_gauge() == 0, "%s SLOT roles do not charge the REST-based skill" % String(journey.stage_id))
+		journey.stage_flags["skill_gauge"] = StageJourneyBase.SKILL_GAUGE_MAX
 		var armed := journey.arm_skill_face(6)
 		_expect(bool(armed.get("ok", false)) and journey.peek_skill_face() == 6 and journey.skill_gauge() == 0, "%s READY chooses the next face" % String(journey.stage_id))
 		_expect(journey.consume_skill_face() == 6 and journey.peek_skill_face() == 0, "%s consumes the selected face once" % String(journey.stage_id))
@@ -136,11 +139,55 @@ func _test_shared_travel_resources() -> void:
 		_expect(journey.item_count() == 0 and journey.skill_gauge() == 0, "%s resets lap-local resources" % String(journey.stage_id))
 
 
+func _test_shared_coin_shop() -> void:
+	var journey := KyotoJourneyScript.new()
+	journey.coins = 20
+	var catalog := journey.coin_action_catalog(true)
+	_expect(catalog.size() == 5 and str(catalog[0].get("id", "")) == "risk_insurance", "Kyoto exposes the same five COIN products as Cairo")
+	var guard := journey.purchase_coin_action("risk_insurance")
+	var rest := journey.purchase_coin_action("rest_boost")
+	var head_start := journey.purchase_coin_action("boss_head_start")
+	_expect(bool(guard.get("ok", false)) and bool(rest.get("ok", false)) and bool(head_start.get("ok", false)) and journey.coins == 12, "COIN purchases spend Cairo prices and arm one-use effects")
+	_expect(not bool(journey.purchase_coin_action("risk_insurance").get("ok", true)), "an active COIN product cannot be purchased twice")
+	var supports := journey.consume_boss_supports()
+	_expect(bool(supports.get("head_start", false)) and not bool(journey.boss_support_snapshot().get("head_start", true)), "boss COIN support transfers once into the battle")
+
+
+func _test_kyoto_defeat_lap_reset_contract() -> void:
+	var journey := KyotoJourneyScript.new()
+	journey.coins = 9
+	journey.add_item(2)
+	journey.stage_flags["skill_gauge"] = 2
+	journey.current_space_id = "main:90"
+	journey.phase = StageJourneyBase.PHASE_BOSS
+	journey.start_next_lap()
+	_expect(journey.lap == 2 and journey.current_space_id == journey.course.start_space_id() and journey.phase == StageJourneyBase.PHASE_READY,
+		"Kyoto boss loss advances LAP and restarts the normal stage at its first space")
+	_expect(journey.coins == 0 and journey.item_count() == 0 and journey.skill_gauge() == 0,
+		"Kyoto boss loss resets COIN, ITEM, and SKILL charge for the lost lap")
+
+
 func _test_shared_random_mission() -> void:
 	var journey := KyotoJourneyScript.new()
 	var initial := journey.journey_mission_state()
 	_expect(not initial.is_empty() and int(initial.get("target", 0)) > 0 and int(initial.get("reward_coins", 0)) == StageJourneyBase.MISSION_STANDARD_REWARD,
 		"journey stages start with one Cairo-style random mission")
+	for mission: Dictionary in StageJourneyBase.JOURNEY_MISSION_POOL:
+		_expect(str(mission.get("kind", "")) not in ["trip", "roll"] and str(mission.get("id", "")) not in StageJourneyBase.RETIRED_JOURNEY_MISSION_IDS,
+			"journey mission pool excludes automatic travel and roll completion")
+	journey.stage_flags["journey_mission"] = {
+		"id": "journey_coin3", "kind": "landing", "short_text": "COINマスに3回止まる", "target": 3,
+		"target_kind": "COIN", "reward_coins": 12, "icon_kind": "coin", "progress": 2,
+		"completed": false, "reward_claimed": false, "selection_seed": 1233,
+	}
+	var landing_completed := journey.record_journey_mission_landing("COIN")
+	_expect(bool(landing_completed.get("completed", false)) and int(landing_completed.get("progress", 0)) == 3,
+		"COIN mission advances only from a COIN landing")
+	journey.stage_flags["journey_mission"] = {
+		"id": "journey_travel30", "kind": "trip", "short_text": "30マス進む", "target": 30,
+		"progress": 12, "completed": false, "reward_claimed": false,
+	}
+	_expect(str(journey.ensure_journey_mission().get("id", "")) != "journey_travel30", "legacy automatic travel mission migrates to an active mission")
 	journey.stage_flags["journey_mission"] = {
 		"id": "journey_face4", "kind": "dice", "short_text": "4を10回出す", "target": 10,
 		"target_face": 4, "reward_coins": 12, "icon_kind": "dice", "progress": 9,
@@ -645,25 +692,26 @@ func _test_kyoto_course() -> void:
 		"kyoto boss-choice save resumes remaining steps and dispatches the puzzle boss")
 
 
-func _test_kyoto_pass_through_goshuin() -> void:
-	var journey := KyotoJourneyScript.new()
-	journey.current_space_id = "main:20"
-	var result := journey.roll(2)
-	var passed := result.get("goshuin_passed", []) as Array
-	_expect(bool(result.get("ok", false)) and bool(journey.goshuin_state().get("fushimi", false)) and passed.size() == 1 and str((passed[0] as Dictionary).get("title", "")) == "伏見稲荷", "goshuin acquired on pass-through")
-
+func _test_kyoto_landing_goshuin() -> void:
 	for route_case: Dictionary in [
-		{"origin": "main:20", "expected": "fushimi", "after": "main:22"},
-		{"origin": "main:43", "expected": "yasaka", "after": "main:45"},
-		{"origin": "main:68", "expected": "kiyomizu", "after": "main:70"},
-		{"origin": "main:84", "expected": "tenryuji", "after": "main:86"},
+		{"origin": "main:20", "space": "main:21", "expected": "fushimi", "title": "伏見稲荷", "after": "main:22"},
+		{"origin": "main:43", "space": "main:44", "expected": "yasaka", "title": "八坂神社", "after": "main:45"},
+		{"origin": "main:68", "space": "main:69", "expected": "kiyomizu", "title": "清水寺", "after": "main:70"},
+		{"origin": "main:84", "space": "main:85", "expected": "tenryuji", "title": "天龍寺", "after": "main:86"},
 	]:
-		var direct := KyotoJourneyScript.new()
-		direct.current_space_id = str(route_case.get("origin", ""))
-		var direct_result := direct.roll(2)
-		var direct_passed := direct_result.get("goshuin_passed", []) as Array
-		_expect(bool(direct_result.get("ok", false)) and direct.current_space_id == str(route_case.get("after", "")) and direct_passed.size() == 1 and str((direct_passed[0] as Dictionary).get("id", "")) == str(route_case.get("expected", "")),
-			"%s goshuin checkpoint is awarded while passing on the main route" % str(route_case.get("expected", "")))
+		var crossing := KyotoJourneyScript.new()
+		crossing.current_space_id = str(route_case.get("origin", ""))
+		var crossing_result := crossing.roll(2)
+		_expect(bool(crossing_result.get("ok", false)) and crossing.current_space_id == str(route_case.get("after", "")) and not bool(crossing.goshuin_state().get(route_case.get("expected", ""), false)) and (crossing_result.get("goshuin_landed", []) as Array).is_empty(),
+			"%s goshuin checkpoint is not awarded when passed" % str(route_case.get("expected", "")))
+
+		var landing := KyotoJourneyScript.new()
+		landing.current_space_id = str(route_case.get("origin", ""))
+		var landing_result := landing.roll(1)
+		var landed := landing_result.get("goshuin_landed", []) as Array
+		var legacy_events := landing_result.get("goshuin_passed", []) as Array
+		_expect(bool(landing_result.get("ok", false)) and landing.current_space_id == str(route_case.get("space", "")) and bool(landing.goshuin_state().get(route_case.get("expected", ""), false)) and landed.size() == 1 and legacy_events.size() == 1 and str((landed[0] as Dictionary).get("id", "")) == str(route_case.get("expected", "")) and str((landed[0] as Dictionary).get("title", "")) == str(route_case.get("title", "")),
+			"%s goshuin checkpoint is awarded on exact landing" % str(route_case.get("expected", "")))
 
 
 func _test_kyoto_risk_life_contract() -> void:

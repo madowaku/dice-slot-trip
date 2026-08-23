@@ -27,6 +27,8 @@ func _run() -> void:
 	_expect(bgm.current_track() == &"dice_race", "Dice Race uses Minimal Derby")
 	bgm.play_normal_map()
 	_expect(bgm.current_track() == &"normal_map", "normal travel uses A Walk in the Breeze")
+	bgm.play_kyoto_fox_fire_chase()
+	_expect(bgm.current_track() == &"kyoto_fox_fire_chase", "Kyoto Fox-Fire Chase uses Anone")
 	bgm.set_master_volume(0.0)
 	bgm.set_master_volume(1.0)
 

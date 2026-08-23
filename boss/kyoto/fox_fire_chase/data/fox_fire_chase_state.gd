@@ -7,17 +7,21 @@ var difficulty_level: int = 1
 var roll_speed_scale: float = 1.0
 
 ## Absolute clockwise progress, measured from the cat's specification cell 14.
-## The fox begins 10 cells ahead, at specification cell 4.
+## Lv1 starts with the fox eight cells ahead. This leaves twelve cells behind
+## the cat before a full-lap defeat while preserving the chase composition.
 var cat_progress: int = 0
-var fox_progress: int = 10
+var fox_progress: int = 8
 var cat_position: Vector2i = Vector2i(2, 5)
-var fox_position: Vector2i = Vector2i(3, 0)
+var fox_position: Vector2i = Vector2i(1, 0)
 var cat_on_outer: bool = true
 
 var fox_fire_indices: Dictionary = {}
 var goshuin_count: int = 0
 var coins: int = 0
 var head_start_count: int = 0
+var boss_shield_charges: int = 0
+var boss_stop_turns: int = 0
+var reverse_card_count: int = 0
 
 var slot_faces: Array[int] = []
 var completed_slot_faces: Array[int] = []
@@ -34,6 +38,9 @@ var pending_fire_progress: int = -1
 var current_turn_cat_path: Array[Vector2i] = []
 var current_turn_fox_path: Array[Vector2i] = []
 var current_turn_fire_created: int = -1
+var current_turn_reverse_used: bool = false
+var current_turn_reverse_acquired: bool = false
+var current_turn_fox_resolved: bool = false
 
 
 func distance_to_fox() -> int:
@@ -52,3 +59,6 @@ func clear_turn_runtime() -> void:
 	current_turn_cat_path.clear()
 	current_turn_fox_path.clear()
 	current_turn_fire_created = -1
+	current_turn_reverse_used = false
+	current_turn_reverse_acquired = false
+	current_turn_fox_resolved = false

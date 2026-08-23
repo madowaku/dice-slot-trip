@@ -142,6 +142,12 @@ static func item_space_rewards_for_roll(roll: int, is_double: bool = false) -> A
 	if normalized < 90: return [&"ITEM"]
 	return [&"ITEM_CHOICE"]
 
+## Deterministic stand-in for the live dice RNG when a landing effect must be
+## replayable across save/resume. Hash spread approximates the uniform 0..99
+## pool used by item_space_rewards_for_roll.
+static func stable_reward_roll(seed_text: String) -> int:
+	return absi(str(seed_text).hash()) % 100
+
 static func circular_gaps(types: Array[StringName], target: StringName) -> Array[int]:
 	var indices: Array[int] = []
 	for index: int in range(types.size()):

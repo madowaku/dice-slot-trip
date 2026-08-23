@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://boss/kyoto/fox_fire_chase/fox_fire_chase_battle.gd" id="1_battle"]
 [ext_resource type="Script" path="res://boss/kyoto/fox_fire_chase/fox_fire_chase_controller.gd" id="2_controller"]
-[ext_resource type="Script" path="res://boss/kyoto/fox_fire_chase/fox_fire_chase_view.gd" id="3_view"]
+[ext_resource type="Script" path="res://boss/kyoto/fox_fire_chase/fox_fire_chase_view_host_layout.gd" id="3_view"]
 
 [node name="FoxFireChaseBattle" type="Control"]
 layout_mode = 3

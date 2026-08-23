@@ -43,6 +43,77 @@ final result: passed
 
 ---
 
+# Design QA — 狐火追陣 UIブラッシュアップ v1.0
+
+## Evidence
+
+- 360×640 live composition: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-chase/fox-fire-chase-qa-360x640.png`.
+- 720×1280 live composition: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-chase/fox-fire-chase-qa-720x1280.png`.
+- SLOT completion: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-chase/slot-triple-720x1280.png`.
+- Fox-fire blockage: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-chase/fox-fire-warning-720x1280.png`.
+- Explicit six synchronization: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-chase/dice-six-sync-720x1280.png`.
+
+## Findings
+
+No actionable P0/P1 issues remain for this pass. The top HUD has one distance hierarchy (`追いつくまで` plus the large distance), with the HP-like split gauge hidden. Secondary information is limited to fox-fire and goshuin counts; the level label no longer competes with the distance.
+
+The central three SLOT faces are larger than both side chips, empty faces use an em dash instead of a dot, and completion retains `3/3` while the central `PAIR / STRAIGHT / TRIPLE` movement banner is visible. The explorer, white fox, and shared 3D die were enlarged within the requested ranges. The outer route is brighter than the inner field, the next route segment is highlighted, and a fox-fire cell receives a cyan fill plus two high-contrast borders in addition to the flame sprite.
+
+The normal-map 3D die remains the sole presentation path. Automated interaction verifies first tap starts rotation, second tap stops, and the face visible at STOP is the same value committed to the controller, shown on the settled 3D die, and written to SLOT. The six face has six pips with no center pip. Native OpenGL capture confirms the same result visually.
+
+## Verification
+
+- 狐火追陣 core: `failures=0`.
+- 狐火追陣 UI at 720×1280 and 360×640: `failures=0`.
+- Six-route Kyoto boss UI regression: `failures=0`.
+- Journey-stage UI regression: `failures=0`.
+- P0: none. P1: none. P2: no blocker; per-cell movement, short fox-fire emergence, near-lap warning, and reason-specific defeat copy are present.
+
+final result: passed
+
+---
+
+# Design QA — Kyoto PAIR feedback and 狐火追陣 pacing/chrome (2026-08-22)
+
+- Source visual truth: `C:/Users/hiro/AppData/Local/Temp/codex-clipboard-b6d8fe12-b59a-4086-b9d8-7d22695051d6.png` (364×787; reported overlap state).
+- Implementation screenshot: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-chase/host-chase-360x800.png` (native Godot 360×800 viewport, density 1).
+- Full comparison: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-chase/design-qa-comparison.png` (720×800).
+- Focused SLOT evidence: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/fox-fire-chase/slot-triple-720x1280.png` (native Godot 720×1280 viewport, density 1).
+- Normal-map source evidence: `C:/Users/hiro/AppData/Local/Temp/codex-clipboard-c9036a1b-69b1-4fef-93bc-06b0f9d8a29f.png` (PAIR mission and rolling-copy report).
+- State: 狐火追陣 initial playable state plus a separately captured TRIPLE completion state.
+- Density normalization: the 364×787 report screenshot was proportionally scaled to 360px wide and vertically padded to 360×800; the implementation remained native 360×800.
+
+## Findings
+
+No actionable P0/P1/P2 findings remain for this correction slice. The implementation removes the normal-map HUD, MISSION, message strip, and lower tool dock from the boss state. The boss title, advantage meter, board, SLOT, and ROLL remain unobstructed. The completed TRIPLE capture retains all three matching faces and the large result banner before movement begins.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the existing Noto Sans JP hierarchy is preserved; the boss title, lead distance, and result banner remain readable at both captured densities.
+- Spacing and layout rhythm: the full boss composition remains centered in the 360×800 host with only the shared leather backing in the tall-phone letterbox. No normal-stage band overlaps the boss surface.
+- Colors and visual tokens: the established Kyoto gold, teal/red advantage meter, dark enamel panels, and warm board remain unchanged.
+- Image quality and asset fidelity: the authored board, explorer cat, white fox, shared 3D die, slot tray, and roll ring remain native project assets without placeholder substitutions.
+- Copy and content: the unreadable `タップで止める` sentence is removed from rolling status; `ダイス回転中` remains. PAIR now resolves on the normal Kyoto map and updates `進捗 1/4` in the same frame.
+
+## Comparison history
+
+1. The supplied screenshot showed normal HUD and lower tools visible behind the letterboxed 狐火追陣 composition.
+2. The first post-fix capture removed the main bands but exposed the normal message strip and a deferred 御朱印 tutorial over the boss.
+3. The journey chrome was then hidden at its parent container and the deferred tutorial was gated during boss phase.
+4. The final 360×800 comparison shows only the dedicated boss UI; the 720×1280 focused capture confirms three completed SLOT faces remain visible during the 1.4-second result hold.
+
+## Verification
+
+- 狐火追陣 core/difficulty/snapshot suite: `failures=0`.
+- 狐火追陣 UI suite: `failures=0`.
+- Journey-stage UI regression, including PAIR mission refresh, rolling copy, and boss chrome lifecycle: `failures=0`.
+- Amazon/Kyoto stage integration suite: `passed=true`.
+- P0: none. P1: none. P2: none.
+
+final result: passed
+
+---
+
 # Design QA — Kyoto Boss / 狐火追陣
 
 - ImageGen target: `C:/Dev/Projects/dice-slot-trip-main-verify/art_source/fox_fire_chase/ui/fox-fire-chase-target-v1.png`

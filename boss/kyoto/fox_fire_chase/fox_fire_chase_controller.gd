@@ -21,7 +21,7 @@ const BattlePhase = Phase # Familiar alias for the other Kyoto boss package.
 const SNAPSHOT_VERSION: int = 2
 const LEGACY_SNAPSHOT_VERSION: int = 1
 const BATTLE_ID: String = "fox_fire_chase"
-const INITIAL_DISTANCE: int = 10
+const INITIAL_DISTANCE: int = 8
 const HEAD_START_COST: int = 3
 const MAX_HEAD_STARTS: int = 2
 const CHOICE_CLEANSE: StringName = &"CLEANSE"
@@ -53,11 +53,12 @@ func configure(
 	goshuin_count: int = 0,
 	coins: int = 0,
 	seed: int = 0,
-	saved_snapshot: Dictionary = {}
+	saved_snapshot: Dictionary = {},
+	supports: Dictionary = {}
 ) -> bool:
 	## Short compatibility entry point used by headless tools and older Kyoto
 	## callers.  The scene wrapper uses the more explicit configure_battle name.
-	return configure_battle(battle_lap, goshuin_count, coins, seed, saved_snapshot)
+	return configure_battle(battle_lap, goshuin_count, coins, seed, saved_snapshot, supports)
 
 
 func configure_battle(
@@ -65,7 +66,8 @@ func configure_battle(
 	goshuin_count: int = 0,
 	coins: int = 0,
 	seed: int = 0,
-	saved_snapshot: Dictionary = {}
+	saved_snapshot: Dictionary = {},
+	supports: Dictionary = {}
 ) -> bool:
 	if battle_lap < 1 or goshuin_count < 0 or coins < 0:
 		return false
@@ -74,9 +76,17 @@ func configure_battle(
 	state.lap = battle_lap
 	state.goshuin_count = goshuin_count
 	state.coins = coins
+	state.boss_shield_charges = 1 if bool(supports.get("shield", false)) else 0
+	state.boss_stop_turns = 1 if bool(supports.get("sabotage", false)) else 0
+	if bool(supports.get("head_start", false)):
+		state.cat_progress = 3
+		state.head_start_count = 1
 	difficulty = DifficultyScript.for_lap(battle_lap)
 	state.difficulty_level = difficulty.level
 	state.roll_speed_scale = difficulty.roll_speed_scale
+	# The gentler eight-cell opening is a Lv1 onboarding balance. Later levels
+	# keep the original ten-cell chase pressure.
+	state.fox_progress = INITIAL_DISTANCE if difficulty.level == 1 else 10
 	battle_seed = seed
 	_roll_set = V06RollSetScript.new()
 	_result = ResultScript.new()
@@ -84,7 +94,7 @@ func configure_battle(
 	_result.kyoto_level = difficulty.level
 	_result.roll_speed_scale = difficulty.roll_speed_scale
 	_result.goshuin_start = goshuin_count
-	_result.final_distance = INITIAL_DISTANCE
+	_result.final_distance = state.fox_progress - state.cat_progress
 	_configured = true
 	_sync_piece_positions()
 	if not saved_snapshot.is_empty() and not restore_snapshot(saved_snapshot):
@@ -174,6 +184,7 @@ func commit_face(face: int) -> Dictionary:
 	state.clear_turn_runtime()
 	state.pending_face = face
 	state.pending_fox_face = 7 - face
+	state.current_turn_reverse_used = state.reverse_card_count > 0
 	_result.rolls_used += 1
 	_result.player_faces.append(face)
 
@@ -193,19 +204,6 @@ func commit_face(face: int) -> Dictionary:
 		_roll_set.reset_after_resolution()
 		state.slot_faces = []
 	state.pending_player_steps = face + state.last_slot_bonus
-
-	if face == 6:
-		var fire_index := BoardScript.normalize_outer_index(state.fox_progress + BoardScript.CAT_BASE_OUTER_INDEX)
-		state.current_turn_fire_created = fire_index
-		if not state.fox_fire_indices.has(fire_index):
-			state.fox_fire_indices[fire_index] = true
-			_result.fox_fire_generated += 1
-
-	_move_fox(state.pending_fox_face)
-	if state.phase == Phase.DEFEAT:
-		var defeat_event := _turn_event("DEFEAT")
-		_publish_event(defeat_event)
-		return defeat_event
 
 	if not _extend_active_detour():
 		_finish_defeat("OUTER_RING_BLOCKED")
@@ -361,6 +359,9 @@ func snapshot() -> Dictionary:
 		"goshuin_count": state.goshuin_count,
 		"coins": state.coins,
 		"head_start_count": state.head_start_count,
+		"boss_shield_charges": state.boss_shield_charges,
+		"boss_stop_turns": state.boss_stop_turns,
+		"reverse_card_count": state.reverse_card_count,
 		"slot_faces": state.slot_faces.duplicate(),
 		"completed_slot_faces": state.completed_slot_faces.duplicate(),
 		"last_slot_role": str(state.last_slot_role),
@@ -380,6 +381,9 @@ func snapshot() -> Dictionary:
 		"current_turn_fox_path_cell_ids": _path_to_cell_ids(state.current_turn_fox_path),
 		"current_turn_fox_path_xy": _path_to_json(state.current_turn_fox_path),
 		"current_turn_fire_created": state.current_turn_fire_created,
+		"current_turn_reverse_used": state.current_turn_reverse_used,
+		"current_turn_reverse_acquired": state.current_turn_reverse_acquired,
+		"current_turn_fox_resolved": state.current_turn_fox_resolved,
 		"result": _result.to_dictionary(),
 	}
 
@@ -519,7 +523,13 @@ func restore_snapshot(saved: Dictionary) -> bool:
 
 	var coins_data := _strict_int(saved.get("coins", 0), 0)
 	var head_start_data := _strict_int(saved.get("head_start_count", 0), 0, MAX_HEAD_STARTS)
-	if not bool(goshuin_data.get("ok", false)) or not bool(coins_data.get("ok", false)) or not bool(head_start_data.get("ok", false)):
+	var boss_shield_data := _strict_int(saved.get("boss_shield_charges", 0), 0, 1)
+	var boss_stop_data := _strict_int(saved.get("boss_stop_turns", 0), 0, 1)
+	var reverse_card_data := _strict_int(saved.get("reverse_card_count", 0), 0, 1)
+	var reverse_used_data := _strict_bool(saved.get("current_turn_reverse_used", false))
+	var reverse_acquired_data := _strict_bool(saved.get("current_turn_reverse_acquired", false))
+	var fox_resolved_data := _strict_bool(saved.get("current_turn_fox_resolved", false))
+	if not bool(goshuin_data.get("ok", false)) or not bool(coins_data.get("ok", false)) or not bool(head_start_data.get("ok", false)) or not bool(boss_shield_data.get("ok", false)) or not bool(boss_stop_data.get("ok", false)) or not bool(reverse_card_data.get("ok", false)) or not bool(reverse_used_data.get("ok", false)) or not bool(reverse_acquired_data.get("ok", false)) or not bool(fox_resolved_data.get("ok", false)):
 		return false
 	var restored_goshuin := int(goshuin_data["value"])
 	var restored_coins := int(coins_data["value"])
@@ -540,6 +550,9 @@ func restore_snapshot(saved: Dictionary) -> bool:
 	state.goshuin_count = restored_goshuin
 	state.coins = restored_coins
 	state.head_start_count = restored_head_start
+	state.boss_shield_charges = int(boss_shield_data["value"])
+	state.boss_stop_turns = int(boss_stop_data["value"])
+	state.reverse_card_count = int(reverse_card_data["value"])
 	state.slot_faces = restored_slot_faces
 	state.completed_slot_faces = restored_completed_faces
 	var restored_role := StringName(str(saved.get("last_slot_role", "")))
@@ -562,6 +575,9 @@ func restore_snapshot(saved: Dictionary) -> bool:
 	state.current_turn_cat_path = restored_cat_turn_path
 	state.current_turn_fox_path = restored_fox_turn_path
 	state.current_turn_fire_created = int(created_fire_data["value"])
+	state.current_turn_reverse_used = bool(reverse_used_data["value"])
+	state.current_turn_reverse_acquired = bool(reverse_acquired_data["value"])
+	state.current_turn_fox_resolved = bool(fox_resolved_data["value"])
 	var seed_data := _strict_int(saved.get("battle_seed", 0))
 	if not bool(seed_data.get("ok", false)):
 		return false
@@ -578,15 +594,15 @@ func restore_snapshot(saved: Dictionary) -> bool:
 	return true
 
 
-func _move_fox(steps: int) -> void:
+func _move_fox(steps: int, direction: int = 1) -> void:
+	if state.boss_stop_turns > 0:
+		state.boss_stop_turns -= 1
+		return
 	for _step: int in range(steps):
-		state.fox_progress += 1
+		state.fox_progress += direction
 		state.fox_position = BoardScript.outer_position(BoardScript.CAT_BASE_OUTER_INDEX + state.fox_progress)
 		state.current_turn_fox_path.append(state.fox_position)
 		_result.total_fox_steps += 1
-		if state.fox_progress >= state.cat_progress + BoardScript.OUTER_CELL_COUNT:
-			_finish_defeat("FOX_LAPPED_PLAYER")
-			return
 
 
 func _continue_cat_movement() -> Dictionary:
@@ -601,9 +617,6 @@ func _continue_cat_movement() -> Dictionary:
 			if state.cat_on_outer and state.detour_path.is_empty():
 				state.cat_progress = state.detour_exit_progress
 				state.detour_exit_progress = -1
-				if state.cat_progress >= state.fox_progress:
-					_finish_victory()
-					return _turn_event("VICTORY")
 			continue
 
 		var next_progress := state.cat_progress + 1
@@ -626,10 +639,39 @@ func _continue_cat_movement() -> Dictionary:
 		state.pending_player_steps -= 1
 		state.current_turn_cat_path.append(state.cat_position)
 		_result.total_player_steps += 1
-		if state.cat_progress >= state.fox_progress:
-			_finish_victory()
-			return _turn_event("VICTORY")
 
+	return _complete_turn_after_cat_movement()
+
+
+func _complete_turn_after_cat_movement() -> Dictionary:
+	# Presentation and rules share this order: cat path, fox path, then board
+	# effects and the terminal distance check. A reverse card changes only the
+	# direction of this turn's ordinary complementary fox movement.
+	var fox_direction := -1 if state.current_turn_reverse_used else 1
+	if state.current_turn_reverse_used:
+		state.reverse_card_count = 0
+	_move_fox(state.pending_fox_face, fox_direction)
+	state.current_turn_fox_resolved = true
+
+	if state.pending_face == 6 and state.boss_shield_charges > 0:
+		state.boss_shield_charges -= 1
+	elif state.pending_face == 6:
+		var fire_index := BoardScript.normalize_outer_index(state.fox_progress + BoardScript.CAT_BASE_OUTER_INDEX)
+		state.current_turn_fire_created = fire_index
+		if not state.fox_fire_indices.has(fire_index):
+			state.fox_fire_indices[fire_index] = true
+			_result.fox_fire_generated += 1
+
+	if state.pending_face == 1:
+		state.reverse_card_count = 1
+		state.current_turn_reverse_acquired = true
+
+	if state.cat_progress >= state.fox_progress:
+		_finish_victory()
+		return _turn_event("VICTORY")
+	if state.fox_progress >= state.cat_progress + BoardScript.OUTER_CELL_COUNT:
+		_finish_defeat("FOX_LAPPED_PLAYER")
+		return _turn_event("DEFEAT")
 	_set_phase(Phase.TURN_RESOLVED)
 	_result.final_distance = _display_distance()
 	return _turn_event("TURN_RESOLVED")
@@ -690,6 +732,7 @@ func _turn_event(status: String) -> Dictionary:
 		"phase": state.phase,
 		"face": state.pending_face,
 		"fox_face": state.pending_fox_face,
+		"fox_move": (-state.pending_fox_face if state.current_turn_reverse_used else state.pending_fox_face),
 		"player_move": state.pending_face + state.last_slot_bonus,
 		"player_steps_remaining": state.pending_player_steps,
 		"slot_role": str(state.last_slot_role),
@@ -697,6 +740,9 @@ func _turn_event(status: String) -> Dictionary:
 		"slot_faces": state.slot_faces.duplicate(),
 		"completed_slot_faces": state.completed_slot_faces.duplicate(),
 		"fox_fire_created": state.current_turn_fire_created,
+		"reverse_card_count": state.reverse_card_count,
+		"reverse_card_used": state.current_turn_reverse_used and state.current_turn_fox_resolved,
+		"reverse_card_acquired": state.current_turn_reverse_acquired,
 		"fox_fire_indices": fox_fire_outer_indices(),
 		"fox_fire_cell_ids": _fire_cell_ids(),
 		"pending_fire_index": (

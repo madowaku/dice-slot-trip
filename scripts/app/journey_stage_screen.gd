@@ -94,6 +94,7 @@ var kyoto_chase_scene: Control
 var rng := RandomNumberGenerator.new()
 var save_manager := SAVE_MANAGER.new()
 var root_layer: Control
+var journey_chrome: Control
 var top_hud: PanelContainer
 var stage_band: PanelContainer
 var mission_band: PanelContainer
@@ -143,6 +144,7 @@ var overview_sweep_layer: Control
 var overview_marker_occupancy: Array[Dictionary] = []
 var overview_button: Button
 var show_stage_intro := true
+var _resume_requested := false
 var selected_fox_die := -1
 var idle_frame := 0
 var idle_timer: Timer
@@ -189,8 +191,7 @@ var heart_roulette_result_label: Label
 func configure_start_context(selected_stage_id: StringName, resume: bool = false) -> void:
 	stage_id = selected_stage_id
 	show_stage_intro = not resume
-	if resume:
-		call_deferred("_restore_saved_state")
+	_resume_requested = resume
 
 
 func show_boss_for_qa() -> void:
@@ -225,6 +226,17 @@ func _ready() -> void:
 	rng.randomize()
 	_build_shell()
 	_start_journey()
+	if _resume_requested:
+		_resume_requested = false
+		_restore_saved_state()
+
+
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_APPLICATION_PAUSED:
+		return
+	if journey == null or _resume_requested:
+		return
+	save_manager.save(stage_id, journey.snapshot(), _current_boss_snapshot())
 
 
 func _process(delta: float) -> void:
@@ -275,6 +287,7 @@ func _build_shell() -> void:
 	tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root_layer.add_child(tint)
 	var margin := MarginContainer.new()
+	journey_chrome = margin
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", 16)
 	margin.add_theme_constant_override("margin_top", 16)
@@ -557,7 +570,9 @@ func _layout_kyoto_card_horizon() -> void:
 	if route_preview == null:
 		return
 	var content_size := content_host.size
-	var horizon_width := clampf(content_size.x - 16.0, 300.0, minf(696.0, content_size.x - 8.0))
+	# Keep half of the large explorer inside both edge cards. The cards remain
+	# centered anchors, while this side breathing room prevents +6 from clipping.
+	var horizon_width := clampf(content_size.x - 48.0, 300.0, minf(672.0, content_size.x - 32.0))
 	var die_size := clampf(content_size.y * 0.31, KYOTO_HORIZON_DIE_MIN_SIZE, KYOTO_HORIZON_DIE_SIZE)
 	var card_height := clampf(content_size.y * 0.48, KYOTO_HORIZON_CARD_MIN_HEIGHT, KYOTO_HORIZON_CARD_HEIGHT)
 	var panel_height := card_height + 16.0
@@ -1237,6 +1252,32 @@ func _refresh_route_preview_for_space(space_id_value: String) -> void:
 		call_deferred("_sync_kyoto_horizon_anchors")
 
 
+func _refresh_kyoto_horizon_for_movement(start_space: String, movement_path: Array[String]) -> void:
+	if stage_id != StageCatalog.STAGE_KYOTO or not is_instance_valid(route_preview_row):
+		return
+	for child: Node in route_preview_row.get_children():
+		route_preview_row.remove_child(child)
+		child.queue_free()
+	var visible_spaces: Array[String] = [start_space]
+	for path_space: String in movement_path:
+		if visible_spaces.size() >= 7:
+			break
+		if not path_space.is_empty() and path_space != visible_spaces.back():
+			visible_spaces.append(path_space)
+	var preview_space: String = visible_spaces.back()
+	while visible_spaces.size() < 7:
+		var next_space: String = _next_preview_space_id(preview_space)
+		if next_space.is_empty():
+			next_space = preview_space
+		preview_space = next_space
+		visible_spaces.append(preview_space)
+	for index: int in range(visible_spaces.size()):
+		var space_id_value := visible_spaces[index]
+		route_preview_row.add_child(_route_tile("現在地" if index == 0 else "+%d" % index, _space_kind(space_id_value), index == 0, space_id_value))
+	_set_route_preview_motion_marker(start_space)
+	_layout_kyoto_card_horizon()
+
+
 func _set_route_preview_motion_marker(space_id_value: String) -> void:
 	if not is_instance_valid(route_preview_row):
 		return
@@ -1845,7 +1886,7 @@ func _begin_map_roll() -> void:
 	roll_animation_active = false
 	if is_instance_valid(roll_button):
 		roll_button.disabled = false
-		roll_button.tooltip_text = "タップで止める"
+		roll_button.tooltip_text = ""
 	if is_instance_valid(roll_caption_label):
 		roll_caption_label.text = "止める"
 		roll_caption_label.visible = true
@@ -1854,7 +1895,7 @@ func _begin_map_roll() -> void:
 		map_dice.sync_rolling_elapsed(map_roll_elapsed)
 	_play_dice_se(DICE_ROLL_SE)
 	status_label.add_theme_font_size_override("font_size", 18)
-	status_label.text = "ダイス回転中　—　タップで止める"
+	status_label.text = "ダイス回転中"
 	_refresh_all()
 
 
@@ -1972,13 +2013,11 @@ func _show_slot_result_or_reach() -> void:
 			status_label.text = "%s！　3投の役がそろった" % pending_slot_role
 			status_label.add_theme_font_size_override("font_size", 27)
 			_flash_roll_slots(3, Color("#ffd96a"))
-			var charge := journey.charge_skill_for_role(pending_slot_role, journey.roll_count)
 			if stage_id == StageCatalog.STAGE_KYOTO:
 				journey.record_journey_mission_role(pending_slot_role)
-			status_label.text += "　スキル %d/%d" % [journey.skill_gauge(), StageJourneyBase.SKILL_GAUGE_MAX]
-			if bool(charge.get("first_ready", false)) and not bool(journey.stage_flags.get("skill_ready_seen", false)):
-				journey.stage_flags["skill_ready_seen"] = true
-				_show_skill_ready_discovery()
+				# The role is recorded after the movement refresh, so repaint the
+				# mission immediately instead of waiting for the next ROLL.
+				_refresh_journey_mission()
 
 
 func _show_skill_ready_discovery() -> void:
@@ -2012,6 +2051,8 @@ func _completed_slot_role(values: Array[int]) -> String:
 		return ""
 	if values[0] == values[1] and values[1] == values[2]:
 		return "TRIPLE"
+	if values[0] == values[1] or values[1] == values[2] or values[0] == values[2]:
+		return "PAIR"
 	# Cairo's STRAIGHT is order-sensitive: the dice must continue in one
 	# direction. A shuffled set such as [1, 3, 2] remains a MIX.
 	var first_step := values[1] - values[0]
@@ -2044,6 +2085,19 @@ func _animate_journey_movement(start_space: String, result: Dictionary) -> void:
 	var final_space := journey.current_space_id
 	if str(result.get("status", "")) != "CHOICE_REQUIRED" and not final_space.is_empty() and (path.is_empty() or path.back() != final_space):
 		path.append(final_space)
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		# The visible seven cards are the only screen-space authority. Rebuild a
+		# transient current-to-+6 horizon from the chosen path before measuring any
+		# hop target, so branch route coordinates can never leak into presentation.
+		_refresh_kyoto_horizon_for_movement(start_space, path)
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+		_layout_kyoto_card_horizon()
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+		_sync_kyoto_horizon_anchors()
 	var visual_position := _map_player_position_for_space(start_space)
 	map_player.position = visual_position
 	map_player.move_to_front()
@@ -2069,6 +2123,14 @@ func _animate_journey_movement(start_space: String, result: Dictionary) -> void:
 	await _play_map_landing_effect(result)
 	await _animate_map_camera_follow(final_space)
 	_refresh_route_preview_for_space(final_space)
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+		_layout_kyoto_card_horizon()
+		_sync_kyoto_horizon_anchors()
+		map_player.position = _map_player_position_for_space(final_space)
+		map_player.move_to_front()
 
 
 func _animate_map_hop(from_position: Vector2, to_position: Vector2) -> void:
@@ -2504,24 +2566,24 @@ func _space_kind_label(kind: String) -> String:
 	return {
 		"START": "スタート",
 		"NORMAL": "通常",
-		"COIN": "COIN",
-		"EVENT": "EVENT",
-		"REST": "REST",
-		"RISK": "RISK",
+		"COIN": "コイン",
+		"EVENT": "イベント",
+		"REST": "回復",
+		"RISK": "ダメージ",
 		"FLOW": "急流",
-		"ITEM": "ITEM",
+		"ITEM": "アイテム",
 		"GOSHUIN": "御朱印",
-		"BYPASS_FORK": "近道",
+		"BYPASS_FORK": "分岐",
 		"BOSS_FORK": "ボス選択",
 		"BOSS_APPROACH": "ボス前",
 		"JUNCTION": "分岐",
 		"SPECIAL": "特殊",
-		"BOSS": "BOSS",
+		"BOSS": "ボス",
 	}.get(kind, kind)
 
 
 func _show_kyoto_route_tutorial() -> void:
-	_open_choice_modal("京都の近道", "京都の分岐は2か所だけ。\n本線の報酬を取るか、RISKの多い近道で4〜6マス縮めるかを選べます。", [{"id": "continue", "label": "道を選ぶ"}], func(_choice_id: String) -> void:
+	_open_choice_modal("京都の近道", "京都の分岐は2か所だけ。\n本線の報酬を取るか、ダメージマスの多い近道で4〜6マス縮めるかを選べます。", [{"id": "continue", "label": "道を選ぶ"}], func(_choice_id: String) -> void:
 		journey.stage_flags["kyoto_route_tutorial_seen"] = true
 		_show_branch_modal()
 	, KYOTO_ROUTE_TUTORIAL)
@@ -2529,6 +2591,8 @@ func _show_kyoto_route_tutorial() -> void:
 
 func _show_kyoto_goshuin_tutorial() -> void:
 	if stage_id != StageCatalog.STAGE_KYOTO or journey == null or bool(journey.stage_flags.get("kyoto_goshuin_tutorial_seen", false)):
+		return
+	if journey.phase == StageJourneyBase.PHASE_BOSS or is_instance_valid(kyoto_chase_scene):
 		return
 	_open_choice_modal("京都の御朱印めぐり", "京都には4つの御朱印所があります。\n御朱印マスを通過すると、御朱印帳に自動で記録されます。\n4つすべて集めると、白狐戦で『満願の護り』が一度発動します。", [{"id": "continue", "label": "御朱印めぐりを始める"}], func(_choice_id: String) -> void:
 		journey.stage_flags["kyoto_goshuin_tutorial_seen"] = true
@@ -2615,8 +2679,43 @@ func _show_event_card_preview() -> void:
 	_open_choice_modal(title, body, [{"id": "close", "label": "カードを閉じる"}], func(_choice_id: String) -> void: return, art)
 
 
-func _show_coin_tool() -> void:
-	_open_choice_modal("コインポーチ", "旅で集めたコイン\n現在 %d 枚。イベントや分岐で使い道が変わります。" % journey.coins, [{"id": "close", "label": "閉じる"}], func(_choice_id: String) -> void: return, ICON_COIN)
+func _show_coin_tool(feedback: String = "") -> void:
+	var entries := journey.coin_action_catalog(stage_id == StageCatalog.STAGE_KYOTO)
+	var choices: Array[Dictionary] = []
+	for entry: Dictionary in entries:
+		var active := bool(entry.get("active", false))
+		var cost := int(entry.get("cost", 0))
+		choices.append({
+			"id": str(entry.get("id", "")),
+			"label": "%s　%s\n%s　%d COIN" % [str(entry.get("name", "")), "準備済み" if active else "購入", str(entry.get("effect_text", "")), cost],
+			"requires": {} if active else {"coin_gte": cost},
+		})
+	choices.append({"id": "close", "label": "閉じる"})
+	var body := "TRIP COIN　%d\nカイロと同じ旅支度。購入した効果は1回だけ自動で発動します。" % journey.coins
+	if not feedback.is_empty():
+		body += "\n\n%s" % feedback
+	_open_choice_modal("COINショップ", body, choices, func(choice_id: String) -> void:
+		if choice_id == "close":
+			return
+		var selected_name := choice_id
+		for entry: Dictionary in entries:
+			if str(entry.get("id", "")) == choice_id:
+				selected_name = str(entry.get("name", choice_id))
+				break
+		var purchase := journey.purchase_coin_action(choice_id)
+		if bool(purchase.get("ok", false)):
+			status_label.text = "%sを準備した。" % selected_name
+			_refresh_all()
+			_show_coin_tool("%s　準備OK" % selected_name)
+		else:
+			var error := str(purchase.get("error", "UNKNOWN"))
+			var error_text: String = str({
+				"COIN_ACTION_ALREADY_ACTIVE": "すでに準備済みです。",
+				"NOT_ENOUGH_COINS": "コインが足りません。",
+				"COIN_ACTION_NOT_AVAILABLE": "今は購入できません。",
+			}.get(error, "購入できませんでした。"))
+			_show_coin_tool(error_text)
+	, ICON_COIN)
 
 
 func _show_skill_tool() -> void:
@@ -2633,7 +2732,7 @@ func _show_skill_tool() -> void:
 			_refresh_all()
 		, SKILL_CARD_ICON)
 		return
-	_open_choice_modal("旅のスキル", "役でチャージされます。\nPAIR +1　／　STRAIGHT +2　／　TRIPLE → MAX\n現在 %d/%d" % [journey.skill_gauge(), StageJourneyBase.SKILL_GAUGE_MAX], [{"id": "close", "label": "閉じる"}], func(_choice_id: String) -> void: return, SKILL_CARD_ICON)
+	_open_choice_modal("旅のスキル", "HP満タンのときにRESTマスへ止まると\nSKILL +1\n\n現在 %d/%d" % [journey.skill_gauge(), StageJourneyBase.SKILL_GAUGE_MAX], [{"id": "close", "label": "閉じる"}], func(_choice_id: String) -> void: return, SKILL_CARD_ICON)
 
 
 func _show_menu_tool() -> void:
@@ -3854,13 +3953,13 @@ func _aquafall_roll() -> void:
 		roll_caption_label.visible = true
 	if is_instance_valid(roll_button):
 		roll_button.disabled = false
-		roll_button.tooltip_text = "タップで止める"
+		roll_button.tooltip_text = ""
 	if is_instance_valid(map_dice):
 		map_dice.present([amazon_boss_roll_face], true, 0)
 		map_dice.sync_rolling_elapsed(amazon_boss_roll_elapsed)
 	_play_dice_se(DICE_ROLL_SE)
 	status_label.add_theme_font_size_override("font_size", 18)
-	status_label.text = "ダイス回転中　—　タップで止める"
+	status_label.text = "ダイス回転中"
 	_refresh_roll_slots()
 
 
@@ -4254,6 +4353,9 @@ func _start_fox_fire_chase_boss(qa_mode: bool = false, restore_snapshot: Diction
 	var kyoto := journey as KyotoJourney
 	if kyoto == null or root_layer == null:
 		return
+	show_stage_intro = false
+	_close_overview_map()
+	_close_modal()
 	if is_instance_valid(kyoto_chase_scene):
 		kyoto_chase_scene.queue_free()
 		kyoto_chase_scene = null
@@ -4280,6 +4382,7 @@ func _start_fox_fire_chase_boss(qa_mode: bool = false, restore_snapshot: Diction
 		push_error("FoxFireChaseBattle must expose battle_finished")
 	if kyoto_chase_scene.has_signal("coins_spent"):
 		kyoto_chase_scene.connect("coins_spent", Callable(self, "_on_fox_fire_chase_coins_spent"))
+	var boss_supports := {} if not restore_snapshot.is_empty() else journey.boss_support_snapshot()
 	var configured := bool(kyoto_chase_scene.call(
 		"configure_battle",
 		journey.lap,
@@ -4288,16 +4391,20 @@ func _start_fox_fire_chase_boss(qa_mode: bool = false, restore_snapshot: Diction
 		journey.hp,
 		journey.max_hp,
 		rng.randi(),
-		restore_snapshot
+		restore_snapshot,
+		boss_supports
 	))
 	if not configured:
 		push_error("FoxFireChaseBattle configuration failed")
 		kyoto_chase_scene.queue_free()
 		kyoto_chase_scene = null
 		return
+	if restore_snapshot.is_empty():
+		journey.consume_boss_supports()
+	_set_fox_fire_chase_chrome_visible(false)
 	var bgm := get_node_or_null("/root/BgmManager")
 	if bgm != null:
-		bgm.call("play_kyoto_boss")
+		bgm.call("play_kyoto_fox_fire_chase")
 	if qa_mode and kyoto_chase_scene.has_method("show_for_qa"):
 		kyoto_chase_scene.call("show_for_qa")
 	else:
@@ -4323,11 +4430,29 @@ func _on_fox_fire_chase_finished(result: Variant) -> void:
 	kyoto_chase_scene.visible = false
 	kyoto_chase_scene.queue_free()
 	kyoto_chase_scene = null
+	_set_fox_fire_chase_chrome_visible(true)
 	if _boss_result_victory(result):
 		status_label.text = "外周を駆け、白狐に追いついた。"
 		_show_boss_recovery_or_perfect()
 	else:
-		_resolve_boss_defeat("白狐に一周先を取られた。")
+		_return_from_fox_fire_chase_defeat("白狐に一周先を取られた。")
+
+
+func _set_fox_fire_chase_chrome_visible(chrome_visible: bool) -> void:
+	# 狐火追陣 owns the full screen. Hiding the journey bands prevents the
+	# letterboxed boss composition from revealing normal-map HUD underneath.
+	if is_instance_valid(journey_chrome):
+		journey_chrome.visible = chrome_visible
+
+
+func _return_from_fox_fire_chase_defeat(message: String) -> void:
+	# Match Cairo's boss-loss boundary: advance the LAP and rebuild the normal
+	# stage from its first tile. The player is free to shop and prepare again.
+	journey.start_next_lap()
+	status_label.text = "%s ステージの最初から再出発。" % message
+	_render_map()
+	_refresh_all()
+	_save_now()
 
 
 func _boss_result_victory(result: Variant) -> bool:
@@ -4386,12 +4511,9 @@ func _start_fox_fire_six_routes_boss(qa_mode: bool = false, restore_snapshot: Di
 
 
 func _on_fox_fire_slot_role_completed(role: String) -> void:
-	# Kyoto uses the same role reward as the normal map: PAIR +1,
-	# STRAIGHT +2, TRIPLE → MAX. The boss owns presentation while the journey
-	# remains the authority for the persistent skill gauge.
-	if journey == null or role not in ["PAIR", "STRAIGHT", "TRIPLE"]:
-		return
-	journey.charge_skill_for_role(role)
+	# Slot roles affect their own battle rewards only. Skill charge now comes
+	# exclusively from landing on REST while HP is already full.
+	return
 
 
 func _on_fox_fire_battle_finished(result: Variant) -> void:
@@ -4865,6 +4987,12 @@ func _open_choice_modal(title_text: String, body_text: String, choices: Array, c
 			_close_modal()
 			callback.call(choice_id)
 		, true)
+		var choice_icon := choice.get("icon") as Texture2D
+		if choice_icon != null:
+			button.icon = choice_icon
+			button.expand_icon = true
+			button.add_theme_constant_override("icon_max_width", 34)
+			button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		var requirements := choice.get("requires", {}) as Dictionary
 		if not requirements.is_empty():
 			button.disabled = journey == null or journey.coins < int(requirements.get("coin_gte", 0))
@@ -4937,16 +5065,7 @@ func _refresh_all() -> void:
 	score_label.text = str(traveled)
 	best_label.text = str(maxi(traveled, int(best_label.text)))
 	if stage_id == StageCatalog.STAGE_KYOTO:
-		var mission := journey.sync_journey_mission()
-		if is_instance_valid(mission_caption_label):
-			mission_caption_label.text = str(mission.get("short_text", "旅の目標"))
-		if is_instance_valid(mission_progress_label):
-			var mission_target := maxi(int(mission.get("target", 1)), 1)
-			var mission_progress := clampi(int(mission.get("progress", 0)), 0, mission_target)
-			var mission_reward := maxi(int(mission.get("reward_coins", StageJourneyBase.MISSION_STANDARD_REWARD)), 0)
-			mission_progress_label.text = "✓ CLEAR!　獲得 COIN +%d" % mission_reward if bool(mission.get("completed", false)) else "進捗 %d/%d　報酬 COIN ×%d" % [mission_progress, mission_target, mission_reward]
-		if is_instance_valid(mission_icon_view):
-			mission_icon_view.texture = _journey_mission_icon(str(mission.get("icon_kind", "dice")))
+		_refresh_journey_mission()
 		progress_label.text = _space_number_text()
 		var boss_route := str(journey.stage_flags.get("kyoto_boss_route", ""))
 		var goshuin_copy := "御朱印 %d/4" % (journey as KyotoJourney).goshuin_count()
@@ -4980,6 +5099,21 @@ func _refresh_all() -> void:
 		event_card_button.disabled = false
 	_refresh_roll_slots()
 	_position_map_player()
+
+
+func _refresh_journey_mission() -> void:
+	if journey == null or stage_id != StageCatalog.STAGE_KYOTO:
+		return
+	var mission := journey.sync_journey_mission()
+	if is_instance_valid(mission_caption_label):
+		mission_caption_label.text = str(mission.get("short_text", "旅の目標"))
+	if is_instance_valid(mission_progress_label):
+		var mission_target := maxi(int(mission.get("target", 1)), 1)
+		var mission_progress := clampi(int(mission.get("progress", 0)), 0, mission_target)
+		var mission_reward := maxi(int(mission.get("reward_coins", StageJourneyBase.MISSION_STANDARD_REWARD)), 0)
+		mission_progress_label.text = "✓ CLEAR!　獲得 COIN +%d" % mission_reward if bool(mission.get("completed", false)) else "進捗 %d/%d　報酬 COIN ×%d" % [mission_progress, mission_target, mission_reward]
+	if is_instance_valid(mission_icon_view):
+		mission_icon_view.texture = _journey_mission_icon(str(mission.get("icon_kind", "dice")))
 
 
 func _set_mission_value(title_text: String, value_text: String) -> void:
@@ -5125,18 +5259,21 @@ func _fox_result_text(result: Dictionary) -> String:
 
 
 func _save_now() -> void:
-	var boss_snapshot: Dictionary = {}
+	status_label.text = "旅の途中を保存した。" if save_manager.save(stage_id, journey.snapshot(), _current_boss_snapshot()) else "保存に失敗した。"
+
+
+func _current_boss_snapshot() -> Dictionary:
 	if amazon_boss != null:
-		boss_snapshot = amazon_boss.snapshot()
+		return amazon_boss.snapshot()
 	elif is_instance_valid(kyoto_chase_scene):
 		var chase_snapshot: Variant = kyoto_chase_scene.call("snapshot")
 		if chase_snapshot is Dictionary:
-			boss_snapshot = (chase_snapshot as Dictionary).duplicate(true)
+			return (chase_snapshot as Dictionary).duplicate(true)
 	elif is_instance_valid(kyoto_boss_scene):
-		boss_snapshot = kyoto_boss_scene.snapshot()
+		return kyoto_boss_scene.snapshot()
 	elif kyoto_boss != null:
-		boss_snapshot = kyoto_boss.snapshot()
-	status_label.text = "旅の途中を保存した。" if save_manager.save(stage_id, journey.snapshot(), boss_snapshot) else "保存に失敗した。"
+		return kyoto_boss.snapshot()
+	return {}
 
 
 func _restore_saved_state() -> void:

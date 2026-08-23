@@ -6,12 +6,25 @@ const MAX_LIFE := 3
 const ITEM_CAPACITY := 3
 const SKILL_GAUGE_MAX := 3
 const MISSION_STANDARD_REWARD := 12
+const COIN_COST_RISK_INSURANCE := 2
+const COIN_COST_REST_BOOST := 2
+const COIN_COST_BOSS_SHIELD := 3
+const COIN_COST_BOSS_HEAD_START := 4
+const COIN_COST_BOSS_SABOTAGE := 5
+const COIN_FLAG_NEXT_REST_BOOST := "next_rest_boost"
+const COIN_FLAG_BOSS_SHIELD := "boss_support_shield"
+const COIN_FLAG_BOSS_HEAD_START := "boss_support_head_start"
+const COIN_FLAG_BOSS_SABOTAGE := "boss_support_sabotage"
 const JOURNEY_MISSION_POOL := [
 	{"id": "journey_face4", "kind": "dice", "short_text": "4を10回出す", "target": 10, "target_face": 4, "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "dice"},
 	{"id": "journey_pair4", "kind": "slot", "short_text": "PAIRを4回作る", "target": 4, "target_role": "PAIR", "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "slot"},
-	{"id": "journey_travel30", "kind": "trip", "short_text": "30マス進む", "target": 30, "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "trip"},
-	{"id": "journey_coin12", "kind": "coin", "short_text": "コインを12枚集める", "target": 12, "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "coin"},
+	{"id": "journey_straight3", "kind": "slot", "short_text": "STRAIGHTを3回作る", "target": 3, "target_role": "STRAIGHT", "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "slot"},
+	{"id": "journey_triple2", "kind": "slot", "short_text": "TRIPLEを2回作る", "target": 2, "target_role": "TRIPLE", "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "slot"},
+	{"id": "journey_coin3", "kind": "landing", "short_text": "COINマスに3回止まる", "target": 3, "target_kind": "COIN", "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "coin"},
+	{"id": "journey_item2", "kind": "landing", "short_text": "ITEMマスに2回止まる", "target": 2, "target_kind": "ITEM", "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "item"},
+	{"id": "journey_risk3", "kind": "landing", "short_text": "RISKマスに3回止まる", "target": 3, "target_kind": "RISK", "reward_coins": MISSION_STANDARD_REWARD, "icon_kind": "risk"},
 ]
+const RETIRED_JOURNEY_MISSION_IDS := ["journey_travel30", "journey_coin12"]
 const ITEM_WATER_CANTEEN := "water_canteen"
 const ITEM_BRASS_COMPASS := "brass_compass"
 const ITEM_SCARAB_SEAL := "scarab_seal"
@@ -72,9 +85,19 @@ func apply_heart_roulette(slot_index: int) -> Dictionary:
 
 
 func apply_rest_landing(heal_amount: int = 1) -> Dictionary:
-	var result := RestEffectModelScript.resolve(hp, max_hp, heal_amount)
+	var boost := 1 if bool(stage_flags.get(COIN_FLAG_NEXT_REST_BOOST, false)) else 0
+	var was_full := hp >= max_hp
+	var result := RestEffectModelScript.resolve(hp, max_hp, heal_amount + boost)
+	if boost > 0:
+		stage_flags.erase(COIN_FLAG_NEXT_REST_BOOST)
+		result["rest_boost_used"] = true
 	hp = int(result.get("after_hp", hp))
-	coins += int(result.get("coin_bonus", 0))
+	if was_full:
+		var before_skill := skill_gauge()
+		stage_flags["skill_gauge"] = mini(before_skill + 1, SKILL_GAUGE_MAX)
+		result["coin_bonus"] = 0
+		result["skill_bonus"] = int(stage_flags["skill_gauge"]) - before_skill
+		result["text"] = "HP FULL  SKILL +1" if before_skill < SKILL_GAUGE_MAX else "HP / SKILL MAX"
 	return result
 
 
@@ -84,11 +107,12 @@ func start_next_lap() -> void:
 	cumulative_score += score
 	score = 0
 	roll_count = 0
+	coins = 0
 	discovered.clear()
 	consumed.clear()
 	# Travel resources are intentionally lap-local, matching Cairo: the player
 	# starts each new sightseeing loop with an empty bag and skill gauge.
-	for resource_key: String in ["item_count", "item_inventory", "next_move_bonus", "risk_shield", "skill_gauge", "skill_last_roll", "skill_next_face", "skill_ready_seen", "mission_event_count", "mission_rest_count", "journey_mission"]:
+	for resource_key: String in ["item_count", "item_inventory", "next_move_bonus", "risk_shield", COIN_FLAG_NEXT_REST_BOOST, COIN_FLAG_BOSS_SHIELD, COIN_FLAG_BOSS_HEAD_START, COIN_FLAG_BOSS_SABOTAGE, "skill_gauge", "skill_last_roll", "skill_next_face", "skill_ready_seen", "mission_event_count", "mission_rest_count", "journey_mission"]:
 		stage_flags.erase(resource_key)
 	pending_steps = 0
 	pending_choices.clear()
@@ -163,12 +187,13 @@ func ensure_journey_mission() -> Dictionary:
 	var raw: Variant = stage_flags.get("journey_mission", null)
 	if raw is Dictionary and not (raw as Dictionary).is_empty():
 		var existing := (raw as Dictionary).duplicate(true)
-		existing["progress"] = clampi(int(existing.get("progress", 0)), 0, maxi(int(existing.get("target", 1)), 1))
-		existing["completed"] = bool(existing.get("completed", false))
-		existing["reward_claimed"] = bool(existing.get("reward_claimed", false))
-		existing["last_coins"] = maxi(int(existing.get("last_coins", coins)), 0)
-		stage_flags["journey_mission"] = existing
-		return existing.duplicate(true)
+		if str(existing.get("id", "")) not in RETIRED_JOURNEY_MISSION_IDS:
+			existing["progress"] = clampi(int(existing.get("progress", 0)), 0, maxi(int(existing.get("target", 1)), 1))
+			existing["completed"] = bool(existing.get("completed", false))
+			existing["reward_claimed"] = bool(existing.get("reward_claimed", false))
+			stage_flags["journey_mission"] = existing
+			return existing.duplicate(true)
+		stage_flags.erase("journey_mission")
 	var selection_seed := int(Time.get_ticks_usec()) ^ int(hash(String(stage_id))) ^ (lap * 7919)
 	var index := posmod(selection_seed, JOURNEY_MISSION_POOL.size())
 	var mission := (JOURNEY_MISSION_POOL[index] as Dictionary).duplicate(true)
@@ -187,14 +212,11 @@ func journey_mission_state() -> Dictionary:
 
 func record_journey_mission_roll(face: int, traveled_spaces: int) -> Dictionary:
 	var mission := ensure_journey_mission()
-	_sync_journey_mission_coins(mission)
 	if not bool(mission.get("completed", false)):
 		match str(mission.get("kind", "")):
 			"dice":
 				if face == int(mission.get("target_face", 0)):
 					mission["progress"] = int(mission.get("progress", 0)) + 1
-			"trip":
-				mission["progress"] = int(mission.get("progress", 0)) + maxi(traveled_spaces, 0)
 	_finalize_journey_mission(mission)
 	stage_flags["journey_mission"] = mission
 	return mission.duplicate(true)
@@ -202,8 +224,16 @@ func record_journey_mission_roll(face: int, traveled_spaces: int) -> Dictionary:
 
 func record_journey_mission_role(role: String) -> Dictionary:
 	var mission := ensure_journey_mission()
-	_sync_journey_mission_coins(mission)
 	if not bool(mission.get("completed", false)) and str(mission.get("kind", "")) == "slot" and role == str(mission.get("target_role", "")):
+		mission["progress"] = int(mission.get("progress", 0)) + 1
+	_finalize_journey_mission(mission)
+	stage_flags["journey_mission"] = mission
+	return mission.duplicate(true)
+
+
+func record_journey_mission_landing(space_kind: String) -> Dictionary:
+	var mission := ensure_journey_mission()
+	if not bool(mission.get("completed", false)) and str(mission.get("kind", "")) == "landing" and space_kind == str(mission.get("target_kind", "")):
 		mission["progress"] = int(mission.get("progress", 0)) + 1
 	_finalize_journey_mission(mission)
 	stage_flags["journey_mission"] = mission
@@ -212,17 +242,9 @@ func record_journey_mission_role(role: String) -> Dictionary:
 
 func sync_journey_mission() -> Dictionary:
 	var mission := ensure_journey_mission()
-	_sync_journey_mission_coins(mission)
 	_finalize_journey_mission(mission)
 	stage_flags["journey_mission"] = mission
 	return mission.duplicate(true)
-
-
-func _sync_journey_mission_coins(mission: Dictionary) -> void:
-	var last_coins := maxi(int(mission.get("last_coins", coins)), 0)
-	if str(mission.get("kind", "")) == "coin" and not bool(mission.get("completed", false)) and coins > last_coins:
-		mission["progress"] = int(mission.get("progress", 0)) + coins - last_coins
-	mission["last_coins"] = coins
 
 
 func _finalize_journey_mission(mission: Dictionary) -> void:
@@ -356,6 +378,53 @@ func consume_risk_shield() -> bool:
 	return true
 
 
+func coin_action_catalog(kyoto_boss_copy: bool = false) -> Array[Dictionary]:
+	return [
+		{"id": "risk_insurance", "name": "RISKガード", "category": "旅の道具", "cost": COIN_COST_RISK_INSURANCE, "effect_text": "次のRISKを1回防ぐ", "timing": "通常マップで有効", "use_rule": "次のRISKで自動発動・1回で消費", "active": bool(stage_flags.get("risk_shield", false))},
+		{"id": "rest_boost", "name": "ハート強化", "category": "旅の道具", "cost": COIN_COST_REST_BOOST, "effect_text": "次のREST回復を強化する", "timing": "通常マップで有効", "use_rule": "次のRESTで自動発動・1回で消費", "active": bool(stage_flags.get(COIN_FLAG_NEXT_REST_BOOST, false))},
+		{"id": "boss_shield", "name": "ボスの盾", "category": "ボスの準備", "cost": COIN_COST_BOSS_SHIELD, "effect_text": "最初の狐火を1個無効化" if kyoto_boss_copy else "次のボス移動を1回半分にする", "timing": "次のボス戦で有効", "use_rule": "ボス戦で自動発動・1回で消費", "active": bool(stage_flags.get(COIN_FLAG_BOSS_SHIELD, false))},
+		{"id": "boss_head_start", "name": "先行スタート", "category": "ボスの準備", "cost": COIN_COST_BOSS_HEAD_START, "effect_text": "猫を+3マスして開始", "timing": "次のボス戦で有効", "use_rule": "開始時に自動発動・1回で消費", "active": bool(stage_flags.get(COIN_FLAG_BOSS_HEAD_START, false))},
+		{"id": "boss_sabotage", "name": "ボスを止める", "category": "ボスの準備", "cost": COIN_COST_BOSS_SABOTAGE, "effect_text": "白狐が最初の1回だけ動かない" if kyoto_boss_copy else "次のボス移動を1回止める", "timing": "次のボス戦で有効", "use_rule": "ボス戦で自動発動・1回で消費", "active": bool(stage_flags.get(COIN_FLAG_BOSS_SABOTAGE, false))},
+	]
+
+
+func purchase_coin_action(action_id: String) -> Dictionary:
+	if phase != PHASE_READY:
+		return {"ok": false, "error": "COIN_ACTION_NOT_AVAILABLE"}
+	var flag := ""
+	var cost := 0
+	match action_id:
+		"risk_insurance": flag = "risk_shield"; cost = COIN_COST_RISK_INSURANCE
+		"rest_boost": flag = COIN_FLAG_NEXT_REST_BOOST; cost = COIN_COST_REST_BOOST
+		"boss_shield": flag = COIN_FLAG_BOSS_SHIELD; cost = COIN_COST_BOSS_SHIELD
+		"boss_head_start": flag = COIN_FLAG_BOSS_HEAD_START; cost = COIN_COST_BOSS_HEAD_START
+		"boss_sabotage": flag = COIN_FLAG_BOSS_SABOTAGE; cost = COIN_COST_BOSS_SABOTAGE
+		_: return {"ok": false, "error": "UNKNOWN_COIN_ACTION"}
+	if bool(stage_flags.get(flag, false)):
+		return {"ok": false, "error": "COIN_ACTION_ALREADY_ACTIVE"}
+	if coins < cost:
+		return {"ok": false, "error": "NOT_ENOUGH_COINS", "cost": cost, "coins": coins}
+	coins -= cost
+	stage_flags[flag] = true
+	return {"ok": true, "status": "COIN_ACTION_PURCHASED", "action_id": action_id, "cost": cost, "coins": coins}
+
+
+func boss_support_snapshot() -> Dictionary:
+	return {
+		"shield": bool(stage_flags.get(COIN_FLAG_BOSS_SHIELD, false)),
+		"head_start": bool(stage_flags.get(COIN_FLAG_BOSS_HEAD_START, false)),
+		"sabotage": bool(stage_flags.get(COIN_FLAG_BOSS_SABOTAGE, false)),
+	}
+
+
+func consume_boss_supports() -> Dictionary:
+	var supports := boss_support_snapshot()
+	stage_flags.erase(COIN_FLAG_BOSS_SHIELD)
+	stage_flags.erase(COIN_FLAG_BOSS_HEAD_START)
+	stage_flags.erase(COIN_FLAG_BOSS_SABOTAGE)
+	return supports
+
+
 func _item_definition(item_id: String) -> Dictionary:
 	for definition: Dictionary in item_catalog():
 		if str(definition.get("id", "")) == item_id:
@@ -398,21 +467,8 @@ func skill_ready() -> bool:
 
 
 func charge_skill_for_role(role: String, roll_number: int = -1) -> Dictionary:
-	if role not in ["PAIR", "STRAIGHT", "TRIPLE"]:
-		return {"ok": false, "role": role, "before": skill_gauge(), "after": skill_gauge(), "changed": false}
-	if roll_number > 0 and int(stage_flags.get("skill_last_roll", -1)) == roll_number:
-		return {"ok": true, "duplicate": true, "role": role, "before": skill_gauge(), "after": skill_gauge(), "changed": false, "ready": skill_ready()}
 	var before := skill_gauge()
-	var after := before
-	match role:
-		"PAIR": after = mini(before + 1, SKILL_GAUGE_MAX)
-		"STRAIGHT": after = mini(before + 2, SKILL_GAUGE_MAX)
-		"TRIPLE": after = SKILL_GAUGE_MAX
-	stage_flags["skill_gauge"] = after
-	if roll_number > 0:
-		stage_flags["skill_last_roll"] = roll_number
-	var first_ready := after >= SKILL_GAUGE_MAX and before < SKILL_GAUGE_MAX
-	return {"ok": true, "role": role, "before": before, "after": after, "changed": after != before, "ready": after >= SKILL_GAUGE_MAX, "first_ready": first_ready}
+	return {"ok": false, "error": "SKILL_CHARGES_ON_FULL_REST", "role": role, "roll_number": roll_number, "before": before, "after": before, "changed": false, "ready": skill_ready(), "first_ready": false}
 
 
 func arm_skill_face(face: int) -> Dictionary:
