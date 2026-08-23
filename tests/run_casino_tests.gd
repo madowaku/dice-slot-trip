@@ -53,9 +53,10 @@ func _test_orientation_contract() -> void:
 		keys[OrientationScript.orientation_key(orientation)] = true
 	_expect(keys.size() == 24, "all 24 orientations are unique")
 	var base: Dictionary = OrientationScript.values_for_racers(OrientationScript.base_orientation())
-	_expect(int(base.fox) == 1 and int(base.crocodile) == 6, "fox and crocodile use opposite top/bottom faces")
+	_expect(int(base.fox) == 1 and int(base.rabbit) == 6, "fox and rabbit use opposite top/bottom faces")
 	_expect(int(base.duck) == 2 and int(base.dinosaur) == 5, "duck and dinosaur use opposite front/back faces")
 	_expect(int(base.camel) == 3 and int(base.robot) == 4, "camel and robot use opposite left/right faces")
+	_expect(not base.has("crocodile"), "retired crocodile racer is not assigned a die face")
 
 func _test_chip_bank() -> void:
 	if FileAccess.file_exists(CasinoBankScript.SAVE_PATH):
@@ -72,12 +73,18 @@ func _test_chip_bank() -> void:
 	var saved: Dictionary = CasinoBankScript.load_data()
 	_expect(int(saved.chips) == 5 and "dice_racer_duck" in saved.owned_cards, "card ownership and remaining chip persist")
 	_expect(not CasinoBankScript.own_card("dice_racer_duck", 0), "owned card cannot be bought twice")
+	var legacy := CasinoBankScript.default_data()
+	legacy["owned_cards"] = ["dice_racer_crocodile"]
+	CasinoBankScript.save_data(legacy)
+	var migrated := CasinoBankScript.load_data()
+	_expect("dice_racer_rabbit" in migrated.owned_cards and "dice_racer_crocodile" not in migrated.owned_cards, "legacy crocodile prize ownership migrates to rabbit")
+	CasinoBankScript.save_data(saved)
 	var once: Dictionary = CasinoBankScript.stage_clear_conversion_once("test:lap:1", 24, true)
 	_expect(int(once.gained_chip) == 17 and CasinoBankScript.balance() == 22, "one-shot clear conversion credits the first receipt")
 	var replay: Dictionary = CasinoBankScript.stage_clear_conversion_once("test:lap:1", 24, true)
 	_expect(bool(replay.already_converted) and int(replay.gained_chip) == 0 and CasinoBankScript.balance() == 22, "one-shot clear conversion rejects result-screen replay")
-	var migrated: Dictionary = CasinoBankScript.load_data()
-	_expect("test:lap:1" in migrated.conversion_keys, "conversion ledger persists with bank data")
+	var ledger: Dictionary = CasinoBankScript.load_data()
+	_expect("test:lap:1" in ledger.conversion_keys, "conversion ledger persists with bank data")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(CasinoBankScript.SAVE_PATH))
 
 func _test_gimmicks() -> void:
