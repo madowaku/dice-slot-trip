@@ -36,6 +36,10 @@ func _add_las_vegas_postcard() -> void:
 		"CHIPを賭けて、目押しで推しレーサーを応援。"
 	)
 	entry.tooltip_text = "LAS VEGAS CASINO\nCHIP %d\nDICE RACE" % CasinoBankScript.balance()
+	for node: Node in entry.find_children("*", "Label", true, false):
+		var caption := node as Label
+		if caption != null and "きらめきのラスベガス" in caption.text:
+			caption.text = "きらめきのラスベガス\n● カジノへ"
 
 	var badge := Label.new()
 	badge.name = "CasinoChipBadge"
