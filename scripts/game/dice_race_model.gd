@@ -2,7 +2,7 @@ extends RefCounted
 class_name DiceRaceModel
 
 const GOAL := 24
-const RACERS: Array[String] = ["camel", "crocodile", "fox", "duck", "dinosaur", "robot"]
+const RACERS: Array[String] = ["camel", "rabbit", "fox", "duck", "dinosaur", "robot"]
 const WIN_MULTIPLIER := 4.0
 const CASHOUT_MULTIPLIERS := {
 	1: 1.8,
