@@ -32,7 +32,7 @@ const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.t
 const BOARD_SCRIPT = preload("res://boss/kyoto/fox_fire_chase/fox_fire_chase_board.gd")
 const DICE_PRESENTATION_SCRIPT = preload("res://scripts/game/dice_presentation_3d.gd")
 const ROLL_DIE_CELL := Vector2i(2, 2)
-const ROLL_SPEED_MULTIPLIER := 1.7
+const PIECE_STEP_SECONDS := 0.14
 
 const NAVY := Color("#080d1e")
 const PANEL := Color(0.035, 0.045, 0.09, 0.95)
@@ -93,9 +93,8 @@ class DieFace extends Control:
 		var rect := Rect2(Vector2(3, 3), size - Vector2(6, 6))
 		draw_style_box(_face_style(), rect)
 		if value <= 0:
-			var hint := Label.new()
-			# A native draw call keeps the slot light and avoids emoji/font drift.
-			draw_string(font, Vector2(size.x * 0.5 - 8, size.y * 0.5 + 8), "·", HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(0.35, 0.32, 0.26, 0.48))
+			# An em dash is visually distinct from every die pip pattern.
+			draw_string(font, Vector2(size.x * 0.5 - 18, size.y * 0.5 + 9), empty_marker(), HORIZONTAL_ALIGNMENT_LEFT, -1, 34, Color(0.35, 0.32, 0.26, 0.48))
 			return
 		for dot: Vector2 in _pip_positions(value):
 			draw_circle(Vector2(dot.x * size.x, dot.y * size.y), minf(size.x, size.y) * 0.075, ink)
@@ -126,6 +125,9 @@ class DieFace extends Control:
 			6: return [Vector2(left, top), Vector2(right, top), Vector2(left, middle), Vector2(right, middle), Vector2(left, bottom), Vector2(right, bottom)]
 		return []
 
+	func empty_marker() -> String:
+		return "—"
+
 class BoardOverlay extends Control:
 	var owner_view: FoxFireChaseView
 
@@ -140,17 +142,26 @@ class BoardOverlay extends Control:
 				var position := Vector2i(column, row)
 				var rect := owner_view.cell_rect(position)
 				var is_outer := BOARD_SCRIPT.is_outer_position(position)
-				var fill := Color(0.98, 0.72, 0.20, 0.15) if is_outer else Color(0.02, 0.04, 0.10, 0.20)
+				var fill := Color(0.98, 0.72, 0.20, 0.22) if is_outer else Color(0.015, 0.025, 0.07, 0.32)
 				draw_rect(rect, fill, true)
 				if is_outer:
-					draw_rect(rect, Color(1.0, 0.88, 0.42, 0.86), false, 4.0)
+					draw_rect(rect, Color(1.0, 0.88, 0.42, 0.94), false, 5.5)
 
 		var fires: Array = owner_view._fire_indices()
 		for raw_index: Variant in fires:
 			var cell := BOARD_SCRIPT.outer_position(int(raw_index))
-			var rect := owner_view.cell_rect(cell).grow(-7.0)
-			draw_rect(rect, Color(0.25, 0.80, 0.95, 0.22), true)
-			draw_rect(rect, Color(0.49, 0.93, 1.0, 0.96), false, 4.0)
+			var cell_rect := owner_view.cell_rect(cell)
+			draw_rect(cell_rect.grow(3.0), Color(0.30, 0.86, 1.0, 0.24), true)
+			draw_rect(cell_rect.grow(2.0), Color(0.53, 0.95, 1.0, 0.78), false, 7.0)
+			draw_rect(cell_rect.grow(-4.0), Color(0.18, 0.68, 0.96, 0.38), true)
+			draw_rect(cell_rect.grow(-5.0), Color(0.78, 0.98, 1.0, 1.0), false, 4.0)
+
+		# A short highlighted segment tells the eye which way the outer chase runs.
+		if BOARD_SCRIPT.is_outer_position(owner_view._last_cat_position):
+			var current := owner_view.board_cell_center(owner_view._last_cat_position)
+			var current_index := BOARD_SCRIPT.outer_index_for_position(owner_view._last_cat_position)
+			var next := owner_view.board_cell_center(BOARD_SCRIPT.outer_position(current_index + 1))
+			draw_line(current, next, Color(1.0, 0.92, 0.50, 0.92), 8.0, true)
 
 		for path: Array in [owner_view.last_cat_path, owner_view.last_fox_path]:
 			if path.size() < 2:
@@ -177,8 +188,10 @@ var cat_portrait: TextureRect
 var fox_portrait: TextureRect
 var distance_label: Label
 var advantage_label: Label
+var danger_label: Label
 var fox_preview_label: Label
 var goshuin_label: Label
+var reverse_card_label: Label
 var status_panel: Panel
 var status_label: Label
 var board_canvas: Control
@@ -218,6 +231,7 @@ var result_button: Button
 var last_event: Dictionary = {}
 var last_cat_path: Array = []
 var last_fox_path: Array = []
+var last_animation_sequence: Array[String] = []
 var _tutorial_page: int = 0
 var _slot_explainer_timer: float = 0.0
 var _action_banner_timer: float = 0.0
@@ -322,13 +336,15 @@ func show_result(result: Dictionary) -> void:
 	if result_overlay == null:
 		return
 	var victory := bool(result.get("victory", false))
-	result_title.text = "追陣、完成。" if victory else "狐火に追いつかれた"
+	var defeat_reason := str(result.get("defeat_reason", ""))
+	result_title.text = "追陣、完成。" if victory else ("白狐に一周先を取られた" if defeat_reason == "FOX_LAPPED_PLAYER" else "外周を塞がれた")
 	result_body.text = (
 		"白狐との距離を読み切った。\n御朱印の道が、次の旅を照らす。"
 		if victory
-		else "外周の火を越えられなかった。\n次はあと一手を早く。"
+		else ("白狐が一周先へ逃げ切った。\n次の周回はステージの最初から。" if defeat_reason == "FOX_LAPPED_PLAYER" else "狐火で進める外周がなくなった。\n次の周回はステージの最初から。")
 	)
 	result_art.visible = victory
+	result_button.text = "次の周回へ" if victory else "ステージの最初へ"
 	result_overlay.visible = true
 
 
@@ -337,19 +353,10 @@ func present_roll(event: Dictionary) -> void:
 	last_cat_path = event.get("cat_path", []) as Array
 	last_fox_path = event.get("fox_path", []) as Array
 	refresh()
-	var role := str(event.get("slot_role", ""))
-	if not role.is_empty():
-		slot_role_label.text = "%s  +%d" % [role, int(event.get("slot_bonus", 0))]
-		show_slot_explainer(role, int(event.get("slot_bonus", 0)))
-		_play_slot_completion_pulse()
-	else:
-		var face := int(event.get("face", _settled_face))
-		var player_move := int(event.get("player_move", face))
-		var fox_move := int(event.get("fox_face", 7 - face))
-		show_action_banner("出目 %d　猫%d歩／白狐%d歩" % [face, player_move, fox_move], GOLD)
-	if int(event.get("fox_fire_created", -1)) >= 0:
-		show_action_banner("狐火で外周が封鎖！", FIRE_BLUE, 1.8)
-		_play_sfx(&"warning")
+	var face := int(event.get("face", _settled_face))
+	var player_move := int(event.get("player_move", face))
+	var fox_move := int(event.get("fox_move", event.get("fox_face", 7 - face)))
+	show_action_banner("出目 %d　猫%+d／白狐%+d" % [face, player_move, fox_move], GOLD)
 	if str(event.get("fire_choice", "")) == "CLEANSE":
 		show_action_banner("御朱印で狐火を浄化！", TEAL, 1.8)
 		_play_sfx(&"reward")
@@ -357,22 +364,49 @@ func present_roll(event: Dictionary) -> void:
 		show_action_banner("中央の迂回路へ！", GOLD, 1.6)
 
 
+func present_slot_resolution(event: Dictionary) -> bool:
+	var role := str(event.get("slot_role", ""))
+	var completed_faces: Array = event.get("completed_slot_faces", []) as Array
+	if role.is_empty() or completed_faces.size() != 3:
+		return false
+	for index: int in range(slot_faces.size()):
+		slot_faces[index].set_value(int(completed_faces[index]), true)
+	slot_role_label.text = "3/3"
+	show_slot_explainer(role, int(event.get("slot_bonus", 0)))
+	_play_slot_completion_pulse()
+	return true
+
+
 func animate_turn(event: Dictionary) -> void:
 	if cat_sprite == null or fox_sprite == null:
 		return
 	var cat_path: Array = event.get("cat_path", []) as Array
 	var fox_path: Array = event.get("fox_path", []) as Array
+	last_animation_sequence.clear()
 	if reduced_motion:
+		last_animation_sequence.append("reduced_motion")
 		refresh()
 		return
 	var cat_start := _coerce_position(event.get("cat_start", _last_cat_position))
 	var fox_start := _coerce_position(event.get("fox_start", _last_fox_position))
 	cat_sprite.position = board_cell_center(cat_start) - cat_sprite.size * 0.5
 	fox_sprite.position = board_cell_center(fox_start) - fox_sprite.size * 0.5
-	for raw_position: Variant in fox_path:
-		await _tween_piece_to_cell(fox_sprite, _coerce_position(raw_position), 0.105)
 	for raw_position: Variant in cat_path:
-		await _tween_piece_to_cell(cat_sprite, _coerce_position(raw_position), 0.115)
+		last_animation_sequence.append("cat")
+		await _tween_piece_to_cell(cat_sprite, _coerce_position(raw_position), PIECE_STEP_SECONDS)
+	if bool(event.get("reverse_card_used", false)):
+		show_action_banner("反転札！ 白狐 %s%d" % ["−" if int(event.get("fox_move", 0)) < 0 else "+", absi(int(event.get("fox_move", 0)))], TEAL, 1.4)
+		_play_sfx(&"bonus")
+	for raw_position: Variant in fox_path:
+		last_animation_sequence.append("fox")
+		await _tween_piece_to_cell(fox_sprite, _coerce_position(raw_position), PIECE_STEP_SECONDS)
+	last_animation_sequence.append("effects")
+	if int(event.get("fox_fire_created", -1)) >= 0:
+		show_action_banner("狐火！ 外周が塞がれた", FIRE_BLUE, 1.8)
+		_play_sfx(&"warning")
+	if bool(event.get("reverse_card_acquired", false)):
+		show_action_banner("反転札GET！\n次のROLL、白狐が逆走", TEAL, 1.8)
+		_play_sfx(&"reward")
 	refresh()
 
 
@@ -396,7 +430,7 @@ func show_slot_explainer(role: String = "", bonus: int = -1) -> void:
 	else:
 		slot_explainer_label.text = "%s！　猫 +%dマス" % [role, maxi(bonus, 0)]
 		slot_explainer.visible = false
-		show_action_banner("%s！　猫 +%d" % [role, maxi(bonus, 0)], GOLD, 2.0)
+		show_action_banner("%s!　猫 +%dマス" % [role, maxi(bonus, 0)], GOLD, 2.0)
 		_play_sfx(&"bonus" if bonus > 0 else &"complete")
 
 
@@ -529,10 +563,15 @@ func _process(delta: float) -> void:
 		cat_sprite.texture = _cat_frame(int(Time.get_ticks_msec() / 170) % 4)
 		fox_sprite.texture = FOX_RUN_FRAMES[int(Time.get_ticks_msec() / 250) % FOX_RUN_FRAMES.size()]
 	if roll_die_icon != null and _roll_phase and not reduced_motion:
-		_roll_elapsed += delta * ROLL_SPEED_MULTIPLIER
+		_roll_elapsed += delta * _roll_speed_multiplier()
 		_rolling_face = DICE_PRESENTATION_SCRIPT.rolling_face_for_elapsed(_roll_elapsed)
 		roll_die_icon.present([_rolling_face], true, 0)
 		roll_die_icon.sync_rolling_elapsed(_roll_elapsed)
+
+
+func _roll_speed_multiplier() -> float:
+	var state := controller.get("state") as Object if controller != null else null
+	return clampf(float(_state_get(state, "roll_speed_scale", 0.82)), 0.8, 1.22) if state != null else 0.82
 
 
 func _build_composition() -> void:
@@ -632,20 +671,26 @@ func _build_top_hud() -> void:
 	fox_advantage_fill.size = Vector2(206, 50)
 	fox_advantage_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	advantage_bar.add_child(fox_advantage_fill)
+	advantage_bar.visible = false
 
-	advantage_label = _label("白狐リード　10マス", 19, INK, HORIZONTAL_ALIGNMENT_CENTER)
-	advantage_label.position = Vector2(158, 118)
+	advantage_label = _label("追いつくまで", 20, INK, HORIZONTAL_ALIGNMENT_CENTER)
+	advantage_label.position = Vector2(158, 108)
 	advantage_label.size = Vector2(404, 30)
 	advantage_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	design_root.add_child(advantage_label)
 
-	distance_label = _label("追いつくまで 10マス", 34, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
-	distance_label.position = Vector2(190, 146)
+	distance_label = _label("10マス", 42, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	distance_label.position = Vector2(190, 136)
 	distance_label.size = Vector2(340, 48)
 	distance_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.72))
 	distance_label.add_theme_constant_override("shadow_offset_x", 2)
 	distance_label.add_theme_constant_override("shadow_offset_y", 3)
 	design_root.add_child(distance_label)
+	danger_label = _label("", 17, VERMILION, HORIZONTAL_ALIGNMENT_CENTER)
+	danger_label.position = Vector2(170, 180)
+	danger_label.size = Vector2(380, 26)
+	danger_label.visible = false
+	design_root.add_child(danger_label)
 
 	preview_panel = Panel.new()
 	preview_panel.name = "PreviewPanel"
@@ -654,14 +699,19 @@ func _build_top_hud() -> void:
 	preview_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.035, 0.075, 0.94), TEAL_DARK, 14, 2))
 	preview_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	design_root.add_child(preview_panel)
-	fox_preview_label = _label("白狐 Lv1　狐火 0", 18, INK, HORIZONTAL_ALIGNMENT_LEFT)
+	fox_preview_label = _label("狐火 0", 17, INK, HORIZONTAL_ALIGNMENT_CENTER)
 	fox_preview_label.position = Vector2(194, 205)
-	fox_preview_label.size = Vector2(180, 30)
+	fox_preview_label.size = Vector2(112, 30)
 	design_root.add_child(fox_preview_label)
-	goshuin_label = _label("御朱印 0", 20, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
-	goshuin_label.position = Vector2(374, 205)
-	goshuin_label.size = Vector2(152, 30)
+	goshuin_label = _label("御朱印 0", 17, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	goshuin_label.position = Vector2(306, 205)
+	goshuin_label.size = Vector2(112, 30)
 	design_root.add_child(goshuin_label)
+	reverse_card_label = _label("", 16, TEAL, HORIZONTAL_ALIGNMENT_CENTER)
+	reverse_card_label.position = Vector2(418, 205)
+	reverse_card_label.size = Vector2(108, 30)
+	reverse_card_label.visible = false
+	design_root.add_child(reverse_card_label)
 
 
 func _build_board_pieces() -> void:
@@ -678,7 +728,7 @@ func _build_board_pieces() -> void:
 	cat_sprite.texture = _cat_frame(0)
 	cat_sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	cat_sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	cat_sprite.size = Vector2(94, 94)
+	cat_sprite.size = Vector2(112, 112)
 	cat_sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board_canvas.add_child(cat_sprite)
 	fox_sprite = TextureRect.new()
@@ -686,7 +736,7 @@ func _build_board_pieces() -> void:
 	fox_sprite.texture = FOX_RUN_FRAMES[0]
 	fox_sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	fox_sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	fox_sprite.size = Vector2(98, 98)
+	fox_sprite.size = Vector2(118, 118)
 	fox_sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board_canvas.add_child(fox_sprite)
 
@@ -718,34 +768,36 @@ func _build_bottom_controls() -> void:
 	tray.size = Vector2(636, 118)
 	tray.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot_panel.add_child(tray)
-	var slot_label := _label("SLOT", 22, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	var slot_label := _label("SLOT", 18, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
 	var slot_chip := Panel.new()
-	slot_chip.position = Vector2(12, 34)
-	slot_chip.size = Vector2(96, 62)
+	slot_chip.name = "SlotLabelChip"
+	slot_chip.position = Vector2(12, 38)
+	slot_chip.size = Vector2(70, 54)
 	slot_chip.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.03, 0.06, 0.88), GOLD_DARK, 10, 1))
 	slot_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot_panel.add_child(slot_chip)
-	slot_label.position = Vector2(18, 42)
-	slot_label.size = Vector2(84, 46)
+	slot_label.position = Vector2(14, 43)
+	slot_label.size = Vector2(66, 40)
 	slot_panel.add_child(slot_label)
 	for index: int in range(3):
 		var die := DieFace.new()
 		die.font = FONT
 		die.name = "DieFace%d" % index
-		die.position = Vector2(122 + index * 112, 20)
-		die.size = Vector2(94, 94)
+		die.position = Vector2(92 + index * 112, 13)
+		die.size = Vector2(104, 104)
 		die.set_value(0)
 		slot_panel.add_child(die)
 		slot_faces.append(die)
 	var role_chip := Panel.new()
-	role_chip.position = Vector2(454, 34)
-	role_chip.size = Vector2(184, 62)
+	role_chip.name = "SlotCountChip"
+	role_chip.position = Vector2(438, 38)
+	role_chip.size = Vector2(96, 54)
 	role_chip.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.03, 0.06, 0.88), GOLD_DARK, 10, 1))
 	role_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot_panel.add_child(role_chip)
-	slot_role_label = _label("SLOT 0 / 3", 20, INK, HORIZONTAL_ALIGNMENT_CENTER)
-	slot_role_label.position = Vector2(464, 42)
-	slot_role_label.size = Vector2(164, 46)
+	slot_role_label = _label("0/3", 20, INK, HORIZONTAL_ALIGNMENT_CENTER)
+	slot_role_label.position = Vector2(442, 43)
+	slot_role_label.size = Vector2(88, 40)
 	slot_panel.add_child(slot_role_label)
 
 	slot_explainer = Panel.new()
@@ -795,7 +847,7 @@ func _build_bottom_controls() -> void:
 	roll_die_icon.layout_min_height = 0.0
 	roll_die_icon.tray_surface_visible = false
 	roll_die_icon.high_contrast_pips = true
-	roll_die_icon.size = Vector2(144, 144)
+	roll_die_icon.size = Vector2(184, 184)
 	roll_die_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	roll_die_icon.position = board_cell_center(ROLL_DIE_CELL) - roll_die_icon.size * 0.5
 	roll_die_icon.z_index = 16
@@ -926,19 +978,21 @@ func _build_result() -> void:
 
 func _refresh_hud(state: Object) -> void:
 	var distance := maxi(int(state.get("fox_progress")) - int(state.get("cat_progress")), 0)
-	distance_label.text = "追いつくまで %dマス" % distance if distance > 0 else "白狐に追いついた！"
+	advantage_label.text = "追いつくまで" if distance > 0 else ""
+	distance_label.text = ("あと1マス！" if distance == 1 else "%dマス" % distance) if distance > 0 else "追いついた！"
 	var cat_share := clampf((20.0 - float(distance)) / 20.0, 0.08, 0.92)
 	var usable_width := 412.0
 	cat_advantage_fill.size.x = usable_width * cat_share
 	fox_advantage_fill.position.x = 4.0 + cat_advantage_fill.size.x
 	fox_advantage_fill.size.x = usable_width - cat_advantage_fill.size.x
-	advantage_label.text = (
-		"PLAYER　追いついた！" if distance <= 0
-		else ("PLAYER追撃中　あと%dマス" % distance if distance <= 5 else "白狐リード　%dマス" % distance)
-	)
-	var level := int(_state_get(state, "difficulty_level", 1))
-	fox_preview_label.text = "白狐 Lv%d　狐火 %d" % [level, _fire_indices().size()]
+	var rear_distance := BOARD_SCRIPT.OUTER_CELL_COUNT - distance
+	danger_label.visible = distance > 0 and rear_distance > 0 and rear_distance <= 3
+	danger_label.text = "⚠ あと%dマスで追いつかれる" % rear_distance if danger_label.visible else ""
+	fox_preview_label.text = "狐火 %d" % _fire_indices().size()
 	goshuin_label.text = "御朱印 %d" % int(_state_get(state, "goshuin_count", context.get("goshuin", 0)))
+	var reverse_count := clampi(int(_state_get(state, "reverse_card_count", 0)), 0, 1)
+	reverse_card_label.visible = reverse_count > 0
+	reverse_card_label.text = "反転札 ×1" if reverse_count > 0 else ""
 	_refresh_context_labels()
 	match int(_state_get(state, "phase", PHASE_PRE_BATTLE)):
 		PHASE_PRE_BATTLE: status_label.text = "先行を買って、追陣を始めよう"
@@ -955,12 +1009,10 @@ func _refresh_context_labels() -> void:
 		return
 	var coins := int(context.get("coins", 0))
 	var state := controller.get("state") as Object if controller != null else null
-	var count := int(_state_get(state, "head_start_count", 0)) if state != null else 0
-	var pre_battle := state == null or int(_state_get(state, "phase", 0)) == PHASE_PRE_BATTLE
-	head_start_button.visible = pre_battle
-	head_start_label.visible = pre_battle
-	head_start_button.disabled = coins < 3 or count >= 2 or not pre_battle
-	head_start_label.text = "%d coin　残り%d回" % [coins, maxi(0, 2 - count)]
+	# Boss preparation now comes from the shared Cairo COIN shop on the normal
+	# map. Keep the old direct-purchase controls hidden for save compatibility.
+	head_start_button.visible = false
+	head_start_label.visible = false
 
 
 func _board_source_to_display(source_position: Vector2) -> Vector2:
@@ -972,10 +1024,7 @@ func _refresh_slots(state: Object) -> void:
 	var faces: Array = _state_get(state, "slot_faces", []) as Array
 	for index: int in range(slot_faces.size()):
 		slot_faces[index].set_value(int(faces[index]) if index < faces.size() else 0, index == faces.size() - 1 and faces.size() > 0)
-	if faces.size() >= 3:
-		slot_role_label.text = "%s  +%d" % [str(_state_get(state, "last_slot_role", "MIX")), int(_state_get(state, "last_slot_bonus", 0))]
-	else:
-		slot_role_label.text = "SLOT %d / 3" % faces.size()
+	slot_role_label.text = "%d/3" % mini(faces.size(), 3)
 
 
 func _refresh_fire_sprites() -> void:
@@ -992,7 +1041,7 @@ func _refresh_fire_sprites() -> void:
 		sprite.texture = FIRE_TEXTURE
 		sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		sprite.size = Vector2(72, 80)
+		sprite.size = Vector2(88, 96)
 		sprite.position = board_cell_center(BOARD_SCRIPT.outer_position(fire_index)) - sprite.size * 0.5
 		sprite.modulate = Color(0.78, 0.98, 1.0, 0.96)
 		sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE

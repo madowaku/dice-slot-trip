@@ -14,7 +14,7 @@ func _record() -> void:
 	var state_name := OS.get_environment("DICE_QA_STATE")
 	var viewport_text := OS.get_environment("DICE_QA_VIEWPORT")
 	var rule_slide := clampi(int(OS.get_environment("DICE_QA_RULE_SLIDE")), 1, 4)
-	if output_path.is_empty() or not stage_text in ["amazon", "kyoto"] or not state_name in ["map", "branch", "overview", "boss", "boss_tutorial", "boss_input", "direction", "collision", "role_effect", "boss_rules", "boss_practice", "heart_roulette", "item", "event", "menu", "rolled", "risk", "revival", "perfect"]:
+	if output_path.is_empty() or not stage_text in ["amazon", "kyoto"] or not state_name in ["map", "branch", "overview", "boss", "chase", "boss_tutorial", "boss_input", "direction", "collision", "role_effect", "boss_rules", "boss_practice", "heart_roulette", "item", "coin", "event", "menu", "rolled", "risk", "revival", "perfect"]:
 		push_error("DICE_QA_OUTPUT, DICE_QA_STAGE, and DICE_QA_STATE are required")
 		quit(2)
 		return
@@ -66,6 +66,18 @@ func _record() -> void:
 		for _ignored: int in range(8):
 			await process_frame
 		screen.call("show_boss_for_qa")
+		for _ignored: int in range(8):
+			await process_frame
+	elif state_name == "chase":
+		if stage_text != "kyoto":
+			push_error("chase state is only supported for kyoto")
+			quit(2)
+			return
+		screen.call("_close_overview_map")
+		screen.call("_close_modal")
+		var chase_journey := screen.get("journey") as KyotoJourney
+		chase_journey.phase = StageJourneyBase.PHASE_BOSS
+		screen.call("_start_fox_fire_chase_boss", true, {})
 		for _ignored: int in range(8):
 			await process_frame
 	elif state_name == "boss_tutorial":
@@ -257,6 +269,16 @@ func _record() -> void:
 		for _ignored: int in range(8):
 			await process_frame
 		screen.call("_show_item_card")
+		for _ignored: int in range(8):
+			await process_frame
+	elif state_name == "coin":
+		screen.call("_close_overview_map")
+		for _ignored: int in range(8):
+			await process_frame
+		var coin_journey := screen.get("journey") as StageJourneyBase
+		if coin_journey != null:
+			coin_journey.coins = 20
+		screen.call("_show_coin_tool")
 		for _ignored: int in range(8):
 			await process_frame
 	elif state_name == "event":

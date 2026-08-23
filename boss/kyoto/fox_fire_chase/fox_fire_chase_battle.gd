@@ -9,6 +9,7 @@ signal coins_spent(amount: int)
 
 const ControllerScript = preload("res://boss/kyoto/fox_fire_chase/fox_fire_chase_controller.gd")
 const MAX_HEARTS: int = 3
+const SLOT_RESULT_HOLD_SECONDS := 1.4
 
 var _configured := false
 var _tutorial_seen := false
@@ -47,7 +48,8 @@ func configure_battle(
 	hp: int,
 	max_hp: int,
 	seed: int = 0,
-	restore_snapshot: Dictionary = {}
+	restore_snapshot: Dictionary = {},
+	supports: Dictionary = {}
 ) -> bool:
 	var controller := _controller()
 	if controller == null:
@@ -64,7 +66,7 @@ func configure_battle(
 	_pending_result = null
 	_restored = not restore_snapshot.is_empty()
 	_rng.seed = seed if seed != 0 else 0xF0CF1E
-	var configured_ok := _configure_controller(controller, maxi(lap, 1), goshuin_count, maxi(coins, 0), seed, restore_snapshot)
+	var configured_ok := _configure_controller(controller, maxi(lap, 1), goshuin_count, maxi(coins, 0), seed, restore_snapshot, supports)
 	if not configured_ok:
 		_configured = false
 		return false
@@ -184,6 +186,10 @@ func _on_roll_requested() -> void:
 	event["fox_start"] = fox_start
 	view.present_roll(event)
 	await view.animate_turn(event)
+	if view.present_slot_resolution(event) and not view.reduced_motion:
+		await get_tree().create_timer(SLOT_RESULT_HOLD_SECONDS).timeout
+		if not is_inside_tree():
+			return
 	_resolving_turn = false
 	if _pending_result != null:
 		view.show_result(_pending_result as Dictionary if _pending_result is Dictionary else {})
@@ -191,9 +197,12 @@ func _on_roll_requested() -> void:
 	if str(event.get("status", "")) == "FIRE_CHOICE":
 		view.show_fire_choice(int(event.get("pending_fire_index", -1)), int(event.get("goshuin_count", 0)))
 	elif str(event.get("status", "")) == "TURN_RESOLVED":
-		# Keep the loop immediate for touch play while still showing the resolved
-		# path for a frame.  The next roll button acknowledges it if needed.
-		view.status_label.text = "白狐も1マス進んだ　次のROLLへ"
+		# Movement presentation is the acknowledgement. Do not consume the next
+		# ROLL tap merely to leave TURN_RESOLVED: one tap must start the die.
+		_controller().call("acknowledge_turn")
+		view.refresh()
+		var fox_move := int(event.get("fox_move", event.get("fox_face", 1)))
+		view.status_label.text = "白狐 %s%d" % ["−" if fox_move < 0 else "+", absi(fox_move)]
 
 
 func _on_fire_choice_requested(choice: StringName) -> void:
@@ -202,6 +211,8 @@ func _on_fire_choice_requested(choice: StringName) -> void:
 	var state := _controller().get("state") as Object
 	var cat_start: Variant = state.get("cat_position") if state != null else Vector2i.ZERO
 	var fox_start: Variant = state.get("fox_position") if state != null else Vector2i.ZERO
+	var cat_path_start := int((_state_get(state, "current_turn_cat_path", []) as Array).size())
+	var fox_path_start := int((_state_get(state, "current_turn_fox_path", []) as Array).size())
 	_resolving_turn = true
 	var event: Dictionary = _controller().resolve_fire_choice(choice)
 	if not bool(event.get("ok", false)):
@@ -210,13 +221,22 @@ func _on_fire_choice_requested(choice: StringName) -> void:
 		return
 	event["cat_start"] = cat_start
 	event["fox_start"] = fox_start
+	event["cat_path"] = (event.get("cat_path", []) as Array).slice(cat_path_start)
+	event["fox_path"] = (event.get("fox_path", []) as Array).slice(fox_path_start)
 	event["fire_choice"] = str(choice)
 	_view().hide_fire_choice()
 	_view().present_roll(event)
 	await _view().animate_turn(event)
+	if _view().present_slot_resolution(event) and not _view().reduced_motion:
+		await get_tree().create_timer(SLOT_RESULT_HOLD_SECONDS).timeout
+		if not is_inside_tree():
+			return
 	_resolving_turn = false
 	if _pending_result != null:
 		_view().show_result(_pending_result as Dictionary if _pending_result is Dictionary else {})
+	elif str(event.get("status", "")) == "TURN_RESOLVED":
+		_controller().call("acknowledge_turn")
+		_view().refresh()
 
 
 func _on_fire_choice_requested_from_controller(outer_index: int, goshuin_count: int) -> void:
@@ -251,12 +271,13 @@ func _configure_controller(
 	goshuin_count: int,
 	coins: int,
 	seed: int,
-	restore_snapshot: Dictionary
+	restore_snapshot: Dictionary,
+	supports: Dictionary
 ) -> bool:
 	# Current controller API is kept as the first call for save compatibility.
 	# When the rules agent lands the extended host signature, the fallback below
 	# keeps this view wrapper usable without coupling UI to its exact arguments.
-	var ok := bool(controller.call("configure_battle", lap, goshuin_count, coins, seed, restore_snapshot))
+	var ok := bool(controller.call("configure_battle", lap, goshuin_count, coins, seed, restore_snapshot, supports))
 	if ok:
 		return true
 	return bool(controller.call("configure_battle", lap, goshuin_count, coins, 0, MAX_HEARTS, seed, restore_snapshot))

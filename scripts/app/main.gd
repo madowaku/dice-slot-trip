@@ -41,6 +41,7 @@ const PopupBookTransitionScript = preload("res://scripts/game/popup_book_transit
 const V06PlayScreenScene: PackedScene = preload("res://scenes/app/V06PlayScreen.tscn")
 const JourneyStageScreenScene: PackedScene = preload("res://scenes/app/JourneyStageScreen.tscn")
 const V06SessionSaveManagerScript = preload("res://scripts/game/v06_session_save_manager.gd")
+const JourneySaveManagerScript = preload("res://scripts/game/journey_save_manager.gd")
 const V06TravelEncyclopediaViewScript = preload("res://scripts/ui/v06_travel_encyclopedia_view.gd")
 const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 const UiThemeNamesScript = preload("res://scripts/ui/ui_theme_names.gd")
@@ -387,6 +388,8 @@ func _ready() -> void:
 		call_deferred("_qa_tourmap_die_capture", OS.get_environment("DICE_QA_CAPTURE_TOURMAP_DIE"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
 	elif OS.get_environment("DICE_QA_CAPTURE_STRAIGHT_TRAVEL") != "":
 		call_deferred("_qa_straight_travel_capture", OS.get_environment("DICE_QA_CAPTURE_STRAIGHT_TRAVEL"), OS.get_environment("DICE_QA_CAPTURE_PATH"))
+	elif OS.get_environment("DICE_QA_RESUME_ROLL") == "1":
+		call_deferred("_resume_roll_transaction")
 	elif not GameState.active_event_state.is_empty():
 		call_deferred("_resume_active_event")
 	elif GameState.pending_boss_handoff:
@@ -841,13 +844,60 @@ func _spacer(height: float) -> Control:
 func show_title() -> void:
 	get_node("/root/BgmManager").call("play_home")
 	var hit_layer := _make_title_page()
+	var can_continue: bool = _v06_save_manager().has_valid_save() \
+		or not JourneySaveManagerScript.saved_stage_ids().is_empty()
 	# These source-space rectangles sit exactly over the painted controls. Since
 	# the complete poster and hit layer share one fitted art rect, every aspect
 	# ratio keeps the visible UI and actual touch targets locked together.
 	_title_art_button(hit_layer, "はじめから", Rect2(274, 1117, 397, 126), show_stage_select)
-	_title_art_button(hit_layer, "つづきから", Rect2(278, 1257, 392, 126), _continue_v06_game, not _v06_save_manager().has_valid_save())
+	_title_art_button(hit_layer, "つづきから", Rect2(278, 1257, 392, 126), _continue_any_game, not can_continue)
 	_title_art_button(hit_layer, "図鑑", Rect2(228, 1379, 240, 126), show_encyclopedia)
 	_title_art_button(hit_layer, "設定", Rect2(476, 1379, 240, 126), _show_settings_modal)
+
+
+func _continue_any_game() -> void:
+	var candidates := _continue_candidates()
+	if candidates.is_empty():
+		return
+	if candidates.size() == 1:
+		_open_continue_candidate(candidates[0])
+		return
+	var modal := _make_modal()
+	modal.content.add_child(_title("旅の続き", 34))
+	for candidate: Dictionary in candidates:
+		var button := _button(str(candidate.get("label", "")), func() -> void: return, true)
+		button.name = "continue_%s" % str(candidate.get("id", ""))
+		button.pressed.connect(_open_continue_candidate.bind(candidate))
+		modal.content.add_child(button)
+	var back := _button("もどる", func() -> void:
+		_close_modal(modal.layer)
+	, false)
+	back.name = "continue_back"
+	modal.content.add_child(back)
+
+
+func _continue_candidates() -> Array[Dictionary]:
+	var candidates: Array[Dictionary] = []
+	if _v06_save_manager().has_valid_save():
+		candidates.append({
+			"id": "v06",
+			"label": "砂時計のカイロ　旅の途中",
+		})
+	for stage_id: StringName in JourneySaveManagerScript.saved_stage_ids():
+		var definition: Dictionary = STAGE_SELECT_DEFINITIONS.get(stage_id, {})
+		candidates.append({
+			"id": String(stage_id),
+			"label": "%s　旅の途中" % str(definition.get("card_title", definition.get("title", stage_id))),
+		})
+	return candidates
+
+
+func _open_continue_candidate(candidate: Dictionary) -> void:
+	match str(candidate.get("id", "")):
+		"v06":
+			_continue_v06_game()
+		_:
+			show_journey_stage(StringName(str(candidate.get("id", ""))), true)
 
 func _show_settings_modal() -> void:
 	var modal := _make_modal()
@@ -986,14 +1036,14 @@ func _start_selected_stage() -> void:
 		GameState.selected_stage_id = selected_stage_id
 		show_journey_stage(selected_stage_id)
 
-func show_journey_stage(selected_stage_id: StringName) -> void:
+func show_journey_stage(selected_stage_id: StringName, resume: bool = false) -> void:
 	_v06_exit_transition_pending = false
 	GameState.selected_stage_id = selected_stage_id
 	_clear()
 	var screen := JourneyStageScreenScene.instantiate() as JourneyStageScreen
 	screen.name = "JourneyStageScreen"
 	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	screen.configure_start_context(selected_stage_id)
+	screen.configure_start_context(selected_stage_id, resume)
 	screen.back_requested.connect(_on_journey_back_requested)
 	screen.encyclopedia_requested.connect(show_encyclopedia)
 	add_child(screen)
@@ -2393,25 +2443,37 @@ func _resolve_landing(tile_type: StringName, roles: Dictionary) -> void:
 				await _show_encounter_modal(roles.get("main", &"") == DiceLogicScript.PAIR, 2 if roles.get("main", &"") == DiceLogicScript.DOUBLE else 0)
 				return
 		&"ITEM":
-			var item_rewards := BoardModelScript.item_space_rewards_for_roll(rng.randi_range(0, 99), roles.get("main", &"") == DiceLogicScript.DOUBLE)
+			# ITEM-RECEIPT: rewards draw once from a seed derived from the durable
+			# transaction id, grants commit once behind a receipt flag, and the
+			# choice modal persists its own note before returning. Resuming an
+			# interrupted landing therefore replays presentation only.
+			var tx := GameState.roll_transaction
+			var item_effects: Array = tx.get("item_effects", [])
+			if item_effects.is_empty():
+				var reward_roll := BoardModelScript.stable_reward_roll("item:%s" % str(tx.get("transaction_id", "")))
+				for drawn_reward: StringName in BoardModelScript.item_space_rewards_for_roll(reward_roll, roles.get("main", &"") == DiceLogicScript.DOUBLE):
+					if drawn_reward == &"ITEM_CHOICE":
+						tx["item_has_choice"] = true
+						continue
+					item_effects.append({"type": String(drawn_reward)})
+				tx["item_effects"] = item_effects.duplicate(true)
+				tx["item_choice_note"] = str(tx.get("item_choice_note", ""))
+				SaveManager.save_now()
 			var item_notes: Array[String] = []
-			for reward: StringName in item_rewards:
-				match reward:
-					&"DICE_ADD_1":
-						# DOUBLE already moved the consumed 2-dice state to 3. Its
-						# guaranteed item-space die is that progression, not overflow.
-						if roles.get("main", &"") == DiceLogicScript.DOUBLE and GameState.current_dice_count == 3:
-							item_notes.append("追加ダイスでスロット準備")
-						else:
-							var before_dice := GameState.current_dice_count
-							var before_coins := GameState.coins
-							var after_dice := GameState.add_dice()
-							item_notes.append("追加ダイス %d→%d" % [before_dice, after_dice] if after_dice > before_dice else "余剰ダイスを旅コイン +%dへ変換" % (GameState.coins - before_coins))
-					&"ITEM":
-						GameState.inventory["pinpoint"] = int(GameState.inventory.get("pinpoint", 0)) + 1
-						item_notes.append("ピンポイントチケット")
-					&"ITEM_CHOICE":
-						item_notes.append(await _show_item_space_choice())
+			if bool(tx.get("item_grants_committed", false)):
+				item_notes.assign(tx.get("item_notes", []))
+			else:
+				for item_effect: Dictionary in item_effects:
+					var grant_note := _apply_item_space_grant(item_effect, roles)
+					if grant_note != "":
+						item_notes.append(grant_note)
+				tx["item_notes"] = item_notes.duplicate()
+				tx["item_grants_committed"] = true
+				SaveManager.save_now()
+			if bool(tx.get("item_has_choice", false)) and str(tx.get("item_choice_note", "")) == "":
+				await _show_item_space_choice()
+			if str(tx.get("item_choice_note", "")) != "":
+				item_notes.append(str(tx.get("item_choice_note")))
 			memo = "アイテムマス：" + "／".join(item_notes)
 			_refresh_dice_mode_buttons()
 		&"COIN":
@@ -2737,8 +2799,29 @@ func _show_item_space_choice() -> String:
 	var chosen := await _wait_for_action([pinpoint, fever])
 	var item_id := "pinpoint" if chosen == 0 else "fever"
 	GameState.inventory[item_id] = int(GameState.inventory.get(item_id, 0)) + 1
+	var choice_note := "2候補から%s" % ("ピンポイントチケット" if chosen == 0 else "フィーバーチケット")
+	# Durable receipt so a pause during this modal cannot re-offer and double-grant.
+	GameState.roll_transaction["item_choice_note"] = choice_note
+	SaveManager.save_now()
 	_close_modal(modal.layer)
-	return "2候補から%s" % ("ピンポイントチケット" if chosen == 0 else "フィーバーチケット")
+	return choice_note
+
+
+func _apply_item_space_grant(effect: Dictionary, roles: Dictionary) -> String:
+	match String(effect.get("type", "")):
+		"DICE_ADD_1":
+			# DOUBLE already moved the consumed 2-dice state to 3. Its guaranteed
+			# item-space die is that progression, not overflow.
+			if roles.get("main", &"") == DiceLogicScript.DOUBLE and GameState.current_dice_count == 3:
+				return "追加ダイスでスロット準備"
+			var before_dice := GameState.current_dice_count
+			var before_coins := GameState.coins
+			var after_dice := GameState.add_dice()
+			return "追加ダイス %d→%d" % [before_dice, after_dice] if after_dice > before_dice else "余剰ダイスを旅コイン +%dへ変換" % (GameState.coins - before_coins)
+		"ITEM":
+			GameState.inventory["pinpoint"] = int(GameState.inventory.get("pinpoint", 0)) + 1
+			return "ピンポイントチケット"
+	return ""
 
 func _show_risk_space_modal(roles: Dictionary = {}) -> String:
 	var base_dice_before := GameState.current_dice_count

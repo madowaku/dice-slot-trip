@@ -14,7 +14,10 @@ var failures: int = 0
 func _init() -> void:
 	_test_board_geometry_and_cell_ids()
 	_test_initial_distance_and_head_start()
-	_test_face_pair_and_fox_first_order()
+	_test_face_pair_and_sequential_paths()
+	_test_all_faces_use_one_committed_n()
+	_test_reverse_card_for_all_faces()
+	_test_reverse_card_with_goshuin_fire()
 	_test_fire_generation_and_detour()
 	_test_corner_fire_zero_loss()
 	_test_adjacent_fire_is_one_detour()
@@ -40,30 +43,93 @@ func _test_board_geometry_and_cell_ids() -> void:
 		_expect(BoardScript.position_from_cell_id(id) == position, "BOARD cell id roundtrips %s" % position)
 		_expect(BoardScript.outer_index_for_cell_id(id) >= 0, "BOARD outer cell id remains on ring")
 	_expect(BoardScript.outer_position(BoardScript.CAT_BASE_OUTER_INDEX) == Vector2i(2, 5), "BOARD cat starts in specification cell 14")
-	_expect(BoardScript.outer_position(BoardScript.FOX_START_OUTER_INDEX) == Vector2i(3, 0), "BOARD fox starts in specification cell 4")
+	_expect(BoardScript.outer_position(BoardScript.FOX_START_OUTER_INDEX) == Vector2i(1, 0), "BOARD fox starts eight cells ahead at Lv1")
 
 
 func _test_initial_distance_and_head_start() -> void:
 	var battle: FoxFireChaseController = ControllerScript.new()
 	_expect(battle.configure_battle(1, 3, 9, 909), "COIN battle configures before start")
-	_expect(battle.distance_to_fox() == 10, "START distance is ten outer cells")
-	_expect(battle.state.cat_position == Vector2i(2, 5) and battle.state.fox_position == Vector2i(3, 0), "START positions match the specification")
+	_expect(battle.distance_to_fox() == 8, "START distance is eight outer cells")
+	_expect(battle.state.cat_position == Vector2i(2, 5) and battle.state.fox_position == Vector2i(1, 0), "START positions match the Lv1 balance")
 	var first := battle.buy_head_start()
-	_expect(bool(first.get("ok", false)) and battle.distance_to_fox() == 9 and battle.state.cat_progress == 1, "COIN three buys one-cell head start")
+	_expect(bool(first.get("ok", false)) and battle.distance_to_fox() == 7 and battle.state.cat_progress == 1, "legacy direct COIN buys one-cell head start")
 	var second := battle.buy_head_start()
-	_expect(bool(second.get("ok", false)) and battle.distance_to_fox() == 8 and battle.state.cat_progress == 2, "COIN head start can be purchased twice")
+	_expect(bool(second.get("ok", false)) and battle.distance_to_fox() == 6 and battle.state.cat_progress == 2, "legacy direct COIN head start can be purchased twice")
+	var supported := ControllerScript.new()
+	_expect(supported.configure_battle(1, 0, 0, 910, {}, {"head_start": true, "shield": true, "sabotage": true}), "shared COIN boss supports configure")
+	_expect(supported.distance_to_fox() == 5 and supported.state.cat_progress == 3, "shared COIN head start advances cat by three")
+	_expect(supported.state.boss_shield_charges == 1 and supported.state.boss_stop_turns == 1, "shared COIN shield and sabotage are armed")
+	supported.free()
+	var sabotage := ControllerScript.new()
+	sabotage.configure_battle(1, 0, 0, 911, {}, {"sabotage": true})
+	sabotage.start_battle()
+	sabotage.commit_face(1)
+	_expect(sabotage.state.fox_progress == 8 and sabotage.state.boss_stop_turns == 0, "shared COIN sabotage skips the first white-fox move once")
+	sabotage.free()
+	var shield := ControllerScript.new()
+	shield.configure_battle(1, 0, 0, 912, {}, {"shield": true})
+	shield.start_battle()
+	var shielded_roll := shield.commit_face(6)
+	_expect(int(shielded_roll.get("fox_fire_created", -1)) == -1 and shield.state.fox_fire_indices.is_empty() and shield.state.boss_shield_charges == 0, "shared COIN shield cancels the first fox fire once")
+	shield.free()
 	_expect(not bool(battle.buy_head_start().get("ok", true)), "COIN head start is capped at two purchases")
 	battle.free()
 
 
-func _test_face_pair_and_fox_first_order() -> void:
+func _test_face_pair_and_sequential_paths() -> void:
 	var battle := _new_battle(1, 0, 22)
 	var event := battle.commit_face(2)
 	_expect(str(event.get("status", "")) == "TURN_RESOLVED", "ROLL commits a legal face")
 	_expect(int(event.get("fox_face", 0)) == 5 and int(event.get("face", 0)) == 2, "ROLL exposes standard die complement")
-	_expect(battle.state.fox_progress == 15 and battle.state.cat_progress == 2, "FOX moves by the back face before PLAYER")
-	_expect(battle.distance_to_fox() == 13, "ROLL keeps the displayed clockwise gap deterministic")
+	_expect(battle.state.cat_progress == 2 and battle.state.fox_progress == 13, "ROLL resolves cat face and complementary fox face from one N")
+	_expect(battle.distance_to_fox() == 11, "ROLL keeps the displayed clockwise gap deterministic")
 	_expect(battle.state.current_turn_fox_path.size() == 5 and battle.state.current_turn_cat_path.size() == 2, "ROLL returns one-cell paths for both pieces")
+	battle.free()
+
+
+func _test_all_faces_use_one_committed_n() -> void:
+	for face: int in range(1, 7):
+		var battle := _new_battle(1, 0, 120 + face)
+		var event := battle.commit_face(face)
+		_expect(int(event.get("face", 0)) == face and int(event.get("fox_face", 0)) == 7 - face, "FACE %d uses one N for player and complementary fox movement" % face)
+		_expect(battle.state.current_turn_cat_path.size() == face and battle.state.current_turn_fox_path.size() == 7 - face, "FACE %d returns one-cell paths matching the committed N" % face)
+		var visible_slot: Array = event.get("slot_faces", []) as Array
+		_expect(visible_slot == [face], "FACE %d stores the same committed N in SLOT" % face)
+		battle.free()
+
+
+func _test_reverse_card_for_all_faces() -> void:
+	for face: int in range(1, 7):
+		var battle := _new_battle(1, 0, 220 + face)
+		var acquired := battle.commit_face(1)
+		_expect(bool(acquired.get("reverse_card_acquired", false)) and battle.state.reverse_card_count == 1, "FACE one acquires one reverse card before follow-up %d" % face)
+		battle.acknowledge_turn()
+		var fox_before := battle.state.fox_progress
+		var event := battle.commit_face(face)
+		var fox_steps := 7 - face
+		_expect(bool(event.get("reverse_card_used", false)) and int(event.get("fox_move", 99)) == -fox_steps, "REVERSE face %d reports the signed complementary fox move" % face)
+		_expect(battle.state.fox_progress == fox_before - fox_steps and battle.state.current_turn_fox_path.size() == fox_steps, "REVERSE face %d moves the fox backward one cell at a time" % face)
+		_expect(int(event.get("face", 0)) == face and int(event.get("fox_face", 0)) == fox_steps, "REVERSE face %d keeps internal face, die complement, and movement sourced from one N" % face)
+		_expect(battle.state.reverse_card_count == (1 if face == 1 else 0), "REVERSE face %d consumes once and only face one reacquires" % face)
+		if face == 6:
+			_expect(int(event.get("fox_fire_created", -1)) >= 0 and not battle.state.fox_fire_indices.is_empty(), "REVERSE does not suppress face-six fox-fire generation")
+		battle.free()
+
+
+func _test_reverse_card_with_goshuin_fire() -> void:
+	var battle := _new_battle(1, 1, 299)
+	battle.state.cat_progress = 3
+	battle.state.cat_position = BoardScript.outer_position(BoardScript.CAT_BASE_OUTER_INDEX + 3)
+	battle.state.fox_progress = 20
+	battle.state.fox_position = BoardScript.outer_position(BoardScript.CAT_BASE_OUTER_INDEX + 20)
+	battle.state.fox_fire_indices = {17: true}
+	battle.state.reverse_card_count = 1
+	var choice := battle.commit_face(4)
+	_expect(str(choice.get("status", "")) == "FIRE_CHOICE" and not bool(choice.get("reverse_card_used", true)), "GOSHUIN choice pauses before reverse-card activation")
+	_expect(battle.state.reverse_card_count == 1 and battle.state.current_turn_fox_path.is_empty(), "GOSHUIN pause preserves the card and delays fox movement")
+	var resolved := battle.resolve_fire_choice(ControllerScript.CHOICE_CLEANSE)
+	_expect(bool(resolved.get("reverse_card_used", false)) and battle.state.fox_progress == 17 and battle.state.reverse_card_count == 0, "GOSHUIN resolution then applies the full reverse fox movement once")
+	_expect(battle.state.goshuin_count == 0 and not battle.state.fox_fire_indices.has(17), "REVERSE does not interfere with goshuin cleansing")
 	battle.free()
 
 
@@ -87,8 +153,8 @@ func _test_fire_generation_and_detour() -> void:
 
 	var fire_battle := _new_battle(1, 0, 34)
 	var fire_event := fire_battle.commit_face(6)
-	_expect(int(fire_event.get("fox_fire_created", -1)) == 3, "FACE six places fire at fox pre-move cell")
-	_expect(fire_battle.state.fox_progress == 11 and fire_battle.state.fox_fire_indices.has(3), "FACE six then advances fox by one")
+	_expect(int(fire_event.get("fox_fire_created", -1)) == 2, "FACE six places fire after the fox completes its one-cell move")
+	_expect(fire_battle.state.fox_progress == 9 and fire_battle.state.fox_fire_indices.has(2), "FACE six resolves movement before the board fire effect")
 	fire_battle.free()
 
 
@@ -191,10 +257,11 @@ func _test_shared_slot_bonuses() -> void:
 
 func _test_difficulty_bands() -> void:
 	var cases := [
-		[1, 1, 1.00], [3, 1, 1.00], [4, 2, 1.06], [6, 2, 1.06],
-		[7, 3, 1.12], [10, 3, 1.12], [11, 4, 1.18], [15, 4, 1.18],
-		[16, 5, 1.24], [20, 5, 1.24], [21, 6, 1.30], [25, 6, 1.30],
-		[26, 7, 1.36], [30, 7, 1.36], [31, 8, 1.42], [99, 8, 1.42],
+		[1, 1, 0.82], [3, 1, 0.82], [4, 2, 0.92], [6, 2, 0.92],
+		[7, 3, 1.02], [9, 3, 1.02], [10, 3, 1.12], [11, 4, 1.12], [12, 4, 1.12],
+		[13, 4, 1.22], [15, 4, 1.22], [16, 5, 1.22], [20, 5, 1.22],
+		[21, 6, 1.22], [25, 6, 1.22], [26, 7, 1.22], [30, 7, 1.22],
+		[31, 8, 1.22], [99, 8, 1.22],
 	]
 	for item: Array in cases:
 		var difficulty := DifficultyScript.for_lap(int(item[0]))
@@ -243,9 +310,9 @@ func _test_victory_and_defeat_boundaries() -> void:
 	var defeat := _new_battle(1, 0, 121)
 	defeat.state.cat_progress = 0
 	defeat.state.cat_position = BoardScript.outer_position(BoardScript.CAT_BASE_OUTER_INDEX)
-	defeat.state.fox_progress = 14
-	defeat.state.fox_position = BoardScript.outer_position(BoardScript.CAT_BASE_OUTER_INDEX + 14)
-	var lose_event := defeat.commit_face(1) # fox +6 reaches cat +20 before cat moves.
+	defeat.state.fox_progress = 15
+	defeat.state.fox_position = BoardScript.outer_position(BoardScript.CAT_BASE_OUTER_INDEX + 15)
+	var lose_event := defeat.commit_face(1) # cat +1, then fox +6 leaves a full-lap gap.
 	_expect(str(lose_event.get("status", "")) == "DEFEAT" and defeat.state.phase == ControllerScript.Phase.DEFEAT, "DEFEAT triggers when fox laps the outer progress")
 	_expect(str(defeat.result().get("defeat_reason", "")) == "FOX_LAPPED_PLAYER", "DEFEAT reason identifies fox lap")
 	defeat.free()

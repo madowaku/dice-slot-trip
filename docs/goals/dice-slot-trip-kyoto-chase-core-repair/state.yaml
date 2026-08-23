@@ -1,0 +1,59 @@
+version: 2
+
+goal:
+  title: "DICE SLOT TRIP Kyoto Chase Core Repair"
+  slug: "dice-slot-trip-kyoto-chase-core-repair"
+  kind: specific
+  tranche: "Repair the shared gameplay contracts requested for Kyoto and Fox Fire Chase."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: pm
+    assignee: PM
+    status: done
+    objective: "Continue the interrupted Kyoto/Fox Fire Chase implementation without overwriting the existing dirty worktree."
+    receipt:
+      result: done
+      summary: "Unified die result flow, added one-tap next-turn input, shared COIN purchases and translated boss supports, REST-only skill charge, deliberate missions, Lv1 lead 8, and Cairo-style loss reset."
+      evidence:
+        - "boss/kyoto/fox_fire_chase/fox_fire_chase_battle.gd"
+        - "boss/kyoto/fox_fire_chase/fox_fire_chase_controller.gd"
+        - "scripts/game/stage_journey_base.gd"
+        - "scripts/app/journey_stage_screen.gd"
+  - id: T999
+    type: pm
+    assignee: PM
+    status: done
+    objective: "Audit the requested gameplay contracts and regression evidence."
+    receipt:
+      result: complete
+      decision: complete
+      evidence:
+        - "Godot editor parse: pass"
+        - "Fox Fire Chase core/UI tests: failures=0"
+        - "Amazon/Kyoto stage and journey UI regression tests: pass"
+        - "Cairo COIN and MISSION tests: failures=0"
+        - "Resume/pause tests: failures=0"
+        - "Kyoto COIN shop 360x640 render: pass"
+
+checks:
+  dirty_fingerprint: "interrupted Kyoto visual work plus core repair tranche"
+  last_verification:
+    result: pass

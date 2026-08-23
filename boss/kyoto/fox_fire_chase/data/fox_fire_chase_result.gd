@@ -60,7 +60,7 @@ static func from_dictionary(data: Dictionary) -> FoxFireChaseResult:
 	result.defeat_reason = str(data.get("defeat_reason", ""))
 	result.lap = maxi(int(data.get("lap", 1)), 1)
 	result.kyoto_level = clampi(int(data.get("kyoto_level", 1)), 1, 8)
-	result.roll_speed_scale = clampf(float(data.get("roll_speed_scale", 1.0)), 1.0, 1.5)
+	result.roll_speed_scale = clampf(float(data.get("roll_speed_scale", 0.82)), 0.8, 1.5)
 	result.rolls_used = maxi(int(data.get("rolls_used", 0)), 0)
 	result.player_faces = []
 	for value: Variant in data.get("player_faces", []):

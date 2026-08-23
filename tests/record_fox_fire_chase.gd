@@ -56,16 +56,24 @@ func _capture() -> void:
 		frame.free()
 		quit()
 		return
+	var controller := battle.get_node("Controller")
+	var state := controller.get("state") as Object
+	var six_event: Dictionary = controller.call("commit_face", 6)
+	view.finish_die_roll(6)
+	view.present_roll(six_event)
+	view.action_banner.visible = false
+	for _frame: int in range(3):
+		await process_frame
+	_save_capture(frame, CAPTURE_DIR + "/dice-six-sync-720x1280.png")
+	state.set("slot_faces", [])
 	view.finish_die_roll(4)
-	view.present_roll({"face": 4, "fox_face": 3, "player_move": 7, "slot_role": "TRIPLE", "slot_bonus": 3, "cat_path": [], "fox_path": []})
+	view.present_roll({"face": 4, "fox_face": 3, "player_move": 7, "slot_role": "TRIPLE", "slot_bonus": 3, "completed_slot_faces": [4, 4, 4], "cat_path": [], "fox_path": []})
 	for _frame: int in range(3):
 		await process_frame
 	_save_capture(frame, CAPTURE_DIR + "/slot-triple-720x1280.png")
-	var controller := battle.get_node("Controller")
-	var state := controller.get("state") as Object
 	state.set("fox_fire_indices", {4: true})
 	view.refresh()
-	view.show_action_banner("狐火で外周が封鎖！", view.FIRE_BLUE, 2.0)
+	view.show_action_banner("狐火！ 外周が塞がれた", view.FIRE_BLUE, 2.0)
 	for _frame: int in range(3):
 		await process_frame
 	_save_capture(frame, CAPTURE_DIR + "/fox-fire-warning-720x1280.png")

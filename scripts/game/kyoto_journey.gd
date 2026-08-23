@@ -255,13 +255,17 @@ func _resolve_landing() -> void:
 			last_result.merge(item_result)
 			last_result["item_acquired"] = not bool(item_result.get("full", false))
 		"REST":
+			var rest_boost := 1 if bool(stage_flags.get(COIN_FLAG_NEXT_REST_BOOST, false)) else 0
+			if rest_boost > 0:
+				stage_flags.erase(COIN_FLAG_NEXT_REST_BOOST)
 			if hp < max_hp:
-				hp = mini(hp + 1, max_hp)
-				last_result.merge({"after_hp": hp, "text": "HP +1"})
+				var before_hp := hp
+				hp = mini(hp + 1 + rest_boost, max_hp)
+				last_result.merge({"after_hp": hp, "rest_boost_used": rest_boost > 0, "text": "HP +%d" % (hp - before_hp)})
 			else:
 				var before := skill_gauge()
 				stage_flags["skill_gauge"] = mini(before + 1, SKILL_GAUGE_MAX)
-				last_result.merge({"skill_bonus": int(stage_flags["skill_gauge"]) - before, "text": "HP FULL  SKILL +1" if before < SKILL_GAUGE_MAX else "HP / SKILL MAX"})
+				last_result.merge({"skill_bonus": int(stage_flags["skill_gauge"]) - before, "rest_boost_used": rest_boost > 0, "text": "HP FULL  SKILL +1" if before < SKILL_GAUGE_MAX else "HP / SKILL MAX"})
 		"RISK":
 			if consume_risk_shield():
 				last_result["item_guarded"] = true
@@ -292,6 +296,7 @@ func _resolve_landing() -> void:
 				phase = PHASE_BOSS
 				last_result["status"] = "BOSS_READY"
 				last_result["boss_route"] = str(stage_flags.get("kyoto_boss_route", ""))
+	record_journey_mission_landing(kind)
 	var life_result := resolve_life_if_needed()
 	if bool(life_result.get("run_over", false)):
 		last_result["status"] = "RUN_OVER"

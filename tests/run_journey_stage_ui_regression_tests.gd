@@ -87,6 +87,8 @@ func _exercise(stage_id: StringName) -> void:
 		await _check_aquafall_victory_modal(screen, journey)
 		await _check_journey_heart_roulette(screen, journey)
 		await _check_aquafall_late_lap_tutorial_skip(screen, journey)
+	else:
+		await _check_fox_fire_chase_chrome(screen, journey)
 
 	screen.queue_free()
 	await process_frame
@@ -1035,12 +1037,35 @@ func _check_slot_roles(screen: JourneyStageScreen, stage_id: StringName) -> void
 	var ascending: Array[int] = [1, 2, 3]
 	var descending: Array[int] = [3, 2, 1]
 	var shuffled: Array[int] = [1, 3, 2]
+	var pair: Array[int] = [2, 2, 5]
 	_expect(screen.call("_completed_slot_role", ascending) == "STRAIGHT",
 		"%s ascending ordered dice resolve STRAIGHT" % String(stage_id))
 	_expect(screen.call("_completed_slot_role", descending) == "STRAIGHT",
 		"%s descending ordered dice resolve STRAIGHT" % String(stage_id))
 	_expect(str(screen.call("_completed_slot_role", shuffled)).is_empty(),
 		"%s shuffled consecutive dice remain MIX like Cairo" % String(stage_id))
+	_expect(screen.call("_completed_slot_role", pair) == "PAIR",
+		"%s exactly two matching dice resolve PAIR" % String(stage_id))
+	if stage_id == StageCatalog.STAGE_KYOTO:
+		var journey := screen.get("journey") as StageJourneyBase
+		var previous_mission: Dictionary = (journey.stage_flags.get("journey_mission", {}) as Dictionary).duplicate(true)
+		var previous_gauge := journey.skill_gauge()
+		journey.stage_flags["journey_mission"] = {
+			"id": "journey_pair4", "kind": "slot", "short_text": "PAIRを4回作る",
+			"target": 4, "target_role": "PAIR", "reward_coins": 12, "icon_kind": "slot",
+			"progress": 0, "completed": false, "reward_claimed": false, "last_coins": journey.coins,
+		}
+		var pair_slots: Array[int] = [2, 2, 5]
+		screen.set("roll_slots", pair_slots)
+		screen.call("_show_slot_result_or_reach")
+		var mission := journey.journey_mission_state()
+		var mission_progress := screen.get("mission_progress_label") as Label
+		_expect(int(mission.get("progress", 0)) == 1 and mission_progress != null and mission_progress.text.contains("進捗 1/4"),
+			"Kyoto PAIR updates the visible journey MISSION immediately")
+		journey.stage_flags["journey_mission"] = previous_mission
+		journey.stage_flags["skill_gauge"] = previous_gauge
+		screen.set("roll_slots", [])
+		screen.call("_refresh_all")
 
 
 func _check_fox_fire_role_charge(screen: JourneyStageScreen, journey: StageJourneyBase) -> void:
@@ -1052,8 +1077,8 @@ func _check_fox_fire_role_charge(screen: JourneyStageScreen, journey: StageJourn
 	var straight_gauge := journey.skill_gauge()
 	screen.call("_on_fox_fire_slot_role_completed", "TRIPLE")
 	var triple_gauge := journey.skill_gauge()
-	_expect(pair_gauge == 1 and straight_gauge == 3 and triple_gauge == StageJourneyBase.SKILL_GAUGE_MAX,
-		"Kyoto boss roles reuse the normal-map skill charge effects")
+	_expect(pair_gauge == 0 and straight_gauge == 0 and triple_gauge == 0,
+		"Kyoto SLOT roles no longer charge the REST-based skill gauge")
 	journey.stage_flags["skill_gauge"] = previous_gauge
 
 
@@ -1065,6 +1090,10 @@ func _check_three_roll_cycle(screen: JourneyStageScreen, journey: StageJourneyBa
 	screen.set("map_movement_active", false)
 	screen.set("roll_animation_active", false)
 	screen.call("_begin_map_roll")
+	var rolling_status := screen.get("status_label") as Label
+	var rolling_button := screen.get("roll_button") as BaseButton
+	_expect(rolling_status != null and rolling_status.text == "ダイス回転中" and rolling_button != null and not rolling_button.tooltip_text.contains("タップで止める"),
+		"%s rolling state omits the unreadable tap-to-stop copy" % String(stage_id))
 	var reset_slots: Array = screen.get("roll_slots")
 	var labels: Array = screen.get("roll_slot_labels")
 	var label_texts: Array[String] = []
@@ -1077,6 +1106,45 @@ func _check_three_roll_cycle(screen: JourneyStageScreen, journey: StageJourneyBa
 	# Do not leave the continuously rotating 3D die active for later geometry checks.
 	screen.set("map_roll_active", false)
 	screen.call("_refresh_roll_slots")
+
+
+func _check_fox_fire_chase_chrome(screen: JourneyStageScreen, journey: StageJourneyBase) -> void:
+	screen.call("_close_modal")
+	journey.phase = StageJourneyBase.PHASE_BOSS
+	screen.call("_start_fox_fire_chase_boss", true, {})
+	for _ignored: int in range(4):
+		await process_frame
+	var chase := screen.get("kyoto_chase_scene") as Control
+	var chrome: Array[Control] = [
+		screen.get("top_hud") as Control,
+		screen.get("stage_band") as Control,
+		screen.get("mission_band") as Control,
+		screen.get("content_host") as Control,
+		screen.get("controls_box") as Control,
+	]
+	var all_hidden := chase != null and chase.visible
+	for control: Control in chrome:
+		all_hidden = all_hidden and control != null and not control.is_visible_in_tree()
+	_expect(all_hidden, "狐火追陣 hides every normal-map HUD band while the boss screen is active")
+	screen.call("_set_fox_fire_chase_chrome_visible", true)
+	var all_restored := true
+	for control: Control in chrome:
+		all_restored = all_restored and control != null and control.is_visible_in_tree()
+	_expect(all_restored, "狐火追陣 restores normal-map HUD bands when the boss screen closes")
+	if is_instance_valid(chase):
+		chase.queue_free()
+	screen.set("kyoto_chase_scene", null)
+	var lap_before := journey.lap
+	journey.coins = 9
+	journey.add_item(1)
+	journey.stage_flags["skill_gauge"] = 2
+	journey.current_space_id = "main:90"
+	journey.phase = StageJourneyBase.PHASE_BOSS
+	screen.call("_return_from_fox_fire_chase_defeat", "テスト敗北。")
+	_expect(journey.lap == lap_before + 1 and journey.current_space_id == (journey as KyotoJourney).course.start_space_id() and journey.phase == StageJourneyBase.PHASE_READY,
+		"狐火追陣 defeat advances LAP and returns to the first normal-map space")
+	_expect(journey.coins == 0 and journey.item_count() == 0 and journey.skill_gauge() == 0,
+		"狐火追陣 defeat resets COIN, ITEM, and SKILL charge")
 
 
 func _check_route_preview_and_player_anchor(screen: JourneyStageScreen, journey: StageJourneyBase, stage_id: StringName) -> void:
@@ -1234,6 +1302,30 @@ func _check_kyoto_detour_geometry(screen: JourneyStageScreen, journey: KyotoJour
 				card_ids[str((child as Control).get_meta("space_id", ""))] = true
 		_expect(visible_route_nodes.is_empty() and row != null and row.get_child_count() == 7 and card_ids.size() == 7,
 			"Kyoto %s shortcut stays readable as seven unique cards without background node clutter" % route_id)
+	var movement_samples: Array[Dictionary] = [
+		{"label": "main", "start": "main:33", "path": ["main:34", "main:35", "main:36", "main:37", "main:38", "main:39"]},
+		{"label": "shortcut", "start": "main:33", "path": ["gion_shortcut:S1", "gion_shortcut:S2", "gion_shortcut:S3", "gion_shortcut:S4", "main:42", "main:43"]},
+	]
+	for sample: Dictionary in movement_samples:
+		for remaining_steps: int in range(1, 7):
+			var full_path: Array = sample.get("path", []) as Array
+			var movement_path: Array[String] = []
+			for path_index: int in range(remaining_steps):
+				movement_path.append(str(full_path[path_index]))
+			screen.call("_refresh_kyoto_horizon_for_movement", str(sample.get("start", "")), movement_path)
+			await process_frame
+			screen.call("_layout_kyoto_card_horizon")
+			await process_frame
+			screen.call("_sync_kyoto_horizon_anchors")
+			var map_layer := screen.get("map_node_layer") as Control
+			var cat := screen.get("map_player") as Control
+			var all_card_anchored := map_layer != null and cat != null
+			for path_space: String in movement_path:
+				var anchor := map_layer.get_node_or_null("space_%s" % path_space.replace(":", "_")) as Control if map_layer != null else null
+				var cat_position := screen.call("_map_player_position_for_space", path_space) as Vector2
+				all_card_anchored = all_card_anchored and anchor != null and bool(anchor.get_meta("kyoto_horizon_anchor", false))
+				all_card_anchored = all_card_anchored and cat_position.x >= -0.5 and cat_position.y >= -0.5 and cat_position.x + cat.size.x <= map_layer.size.x + 0.5 and cat_position.y + cat.size.y <= map_layer.size.y + 0.5
+			_expect(all_card_anchored, "Kyoto %s branch remainder %d keeps every explorer hop on a visible card anchor" % [str(sample.get("label", "")), remaining_steps])
 	journey.current_space_id = original_space
 	screen.call("_render_map")
 	for _ignored: int in range(4):
