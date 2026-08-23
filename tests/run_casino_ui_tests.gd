@@ -4,6 +4,7 @@ const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const RACE_SCENE: PackedScene = preload("res://scenes/casino/DiceRace.tscn")
 const CAIRO_SCENE: PackedScene = preload("res://scenes/casino/CairoCasinoPlayScreen.tscn")
+const MAIN_SCENE: PackedScene = preload("res://scenes/app/Main.tscn")
 
 var failures := 0
 var assertions := 0
@@ -56,6 +57,19 @@ func _run() -> void:
 	_expect(cairo.has_method("_bank_cairo_completed_lap"), "casino-aware Cairo scene exposes the lap banking hook")
 	_expect(cairo.session_for_test() != null, "casino-aware Cairo scene initializes the established V06 session")
 	cairo.queue_free()
+	await process_frame
+
+	var main := MAIN_SCENE.instantiate()
+	root.add_child(main)
+	await process_frame
+	main.call("show_stage_select")
+	await process_frame
+	var vegas := main.find_child("city_lasvegas", true, false) as Button
+	_expect(vegas != null, "stage select places Las Vegas inside the world-map postcard layer")
+	_expect(main.find_child("CasinoEntryButton", true, false) == null, "stage select no longer uses the detached casino footer button")
+	var chip_badge := vegas.find_child("CasinoChipBadge", true, false) as Label if vegas != null else null
+	_expect(chip_badge != null and "100" in chip_badge.text, "Las Vegas postcard shows the persistent CHIP balance")
+	main.queue_free()
 	await process_frame
 
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(CasinoBankScript.SAVE_PATH))
