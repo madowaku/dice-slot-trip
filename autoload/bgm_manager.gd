@@ -10,6 +10,9 @@ const TRACK_AMAZON_BOSS: StringName = &"amazon_boss"
 const TRACK_KYOTO_PREVIEW: StringName = &"kyoto_preview"
 const TRACK_KYOTO_NORMAL: StringName = &"kyoto_normal"
 const TRACK_KYOTO_BOSS: StringName = &"kyoto_boss"
+const TRACK_LASVEGAS_PREVIEW: StringName = &"lasvegas_preview"
+const TRACK_LASVEGAS_MAIN: StringName = &"lasvegas_main"
+const TRACK_DICE_RACE: StringName = &"dice_race"
 const CROSSFADE_SECONDS := 0.8
 const BGM_LINEAR_GAIN := 0.32
 const SILENT_DB := -80.0
@@ -25,6 +28,9 @@ const TRACKS: Dictionary = {
 	TRACK_KYOTO_PREVIEW: preload("res://assets/audio/bgm/kyoto/古都、路地裏にて.mp3"),
 	TRACK_KYOTO_NORMAL: preload("res://assets/audio/bgm/kyoto/雅なフィールド.mp3"),
 	TRACK_KYOTO_BOSS: preload("res://assets/audio/bgm/kyoto/お稲荷様.mp3"),
+	TRACK_LASVEGAS_PREVIEW: preload("res://assets/audio/bgm/lasvegas/カジノ.mp3"),
+	TRACK_LASVEGAS_MAIN: preload("res://assets/audio/bgm/lasvegas/ジャックポット.mp3"),
+	TRACK_DICE_RACE: preload("res://assets/audio/bgm/lasvegas/ミニマルダービー.mp3"),
 }
 
 var _players: Array[AudioStreamPlayer] = []
@@ -90,6 +96,18 @@ func play_kyoto_normal() -> void:
 
 func play_kyoto_boss() -> void:
 	play_track(TRACK_KYOTO_BOSS)
+
+
+func play_lasvegas_preview() -> void:
+	play_track(TRACK_LASVEGAS_PREVIEW)
+
+
+func play_lasvegas_main() -> void:
+	play_track(TRACK_LASVEGAS_MAIN)
+
+
+func play_dice_race() -> void:
+	play_track(TRACK_DICE_RACE)
 
 
 func play_track(track: StringName) -> void:

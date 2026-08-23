@@ -932,30 +932,36 @@ func _render_stage_select() -> void:
 	var cairo_definition := _stage_select_definition(STAGE_CAIRO)
 	_add_city_postcard(map_area, "NEWYORK", str(newyork_definition.card_title), Vector2(12, 28), Vector2(164, 116), false, _preview_stage.bind(STAGE_NEWYORK), NEWYORK_CITY_CARD, stage_preview_id == STAGE_NEWYORK, str(newyork_definition.boss_label), str(newyork_definition.description))
 	_add_city_postcard(map_area, "VENICE", str(venice_definition.card_title), Vector2(186, 28), Vector2(164, 116), false, _preview_stage.bind(STAGE_VENICE), VENICE_CITY_CARD, stage_preview_id == STAGE_VENICE, str(venice_definition.boss_label), str(venice_definition.description))
-	_add_city_postcard(map_area, "KYOTO", str(kyoto_definition.card_title), Vector2(466, 22), Vector2(184, 134), true, _preview_stage.bind(STAGE_KYOTO), KYOTO_CITY_CARD, stage_preview_id == STAGE_KYOTO, str(kyoto_definition.boss_label), str(kyoto_definition.description))
+	_add_city_postcard(map_area, "KYOTO", str(kyoto_definition.card_title), Vector2(478, 250), Vector2(184, 134), true, _preview_stage.bind(STAGE_KYOTO), KYOTO_CITY_CARD, stage_preview_id == STAGE_KYOTO, str(kyoto_definition.boss_label), str(kyoto_definition.description))
 	_add_city_postcard(map_area, "SINGAPORE", str(singapore_definition.card_title), Vector2(472, 292), Vector2(178, 122), false, _preview_stage.bind(STAGE_SINGAPORE), SINGAPORE_CITY_CARD, stage_preview_id == STAGE_SINGAPORE, str(singapore_definition.boss_label), str(singapore_definition.description))
-	_add_city_postcard(map_area, "AMAZON", str(amazon_definition.card_title), Vector2(24, 286), Vector2(214, 146), true, _preview_stage.bind(STAGE_AMAZON), AMAZON_CITY_CARD, stage_preview_id == STAGE_AMAZON, str(amazon_definition.boss_label), str(amazon_definition.description))
-	_add_city_postcard(map_area, "CAIRO", str(cairo_definition.card_title), Vector2(238, 158), Vector2(228, 164), true, _preview_stage.bind(STAGE_CAIRO), CAIRO_CITY_CARD, stage_preview_id == STAGE_CAIRO, str(cairo_definition.boss_label), str(cairo_definition.description))
+	_add_city_postcard(map_area, "AMAZON", str(amazon_definition.card_title), Vector2(24, 520), Vector2(214, 146), true, _preview_stage.bind(STAGE_AMAZON), AMAZON_CITY_CARD, stage_preview_id == STAGE_AMAZON, str(amazon_definition.boss_label), str(amazon_definition.description))
+	_add_city_postcard(map_area, "CAIRO", str(cairo_definition.card_title), Vector2(246, 370), Vector2(228, 164), true, _preview_stage.bind(STAGE_CAIRO), CAIRO_CITY_CARD, stage_preview_id == STAGE_CAIRO, str(cairo_definition.boss_label), str(cairo_definition.description))
 	GameState.ensure_boss_data()
 	var preview_definition := _stage_select_definition(stage_preview_id)
 	var preview_unlocked := bool(preview_definition.get("unlocked", false))
 	var route_panel := PanelContainer.new()
+	route_panel.name = "StageSelectDetailPanel"
 	route_panel.add_theme_stylebox_override("panel", _premium_panel(Color(0.19, 0.14, 0.10, 0.88), GOLD, 18))
 	var route_box := VBoxContainer.new()
 	route_box.add_theme_constant_override("separation", 4)
 	var route := _body("選択中：%s　｜　%s" % [str(preview_definition.title), str(preview_definition.route)], UiTokensScript.FONT_CAPTION)
+	route.name = "StageSelectDetailTitle"
 	route.add_theme_color_override("font_color", Color("#fce7ba"))
 	route_box.add_child(route)
 	var description := _body(str(preview_definition.description), UiTokensScript.FONT_MAP_CAPTION)
+	description.name = "StageSelectDetailDescription"
 	description.add_theme_color_override("font_color", Color("#e8d4ae"))
 	route_box.add_child(description)
 	var boss := _body(str(preview_definition.boss_label), UiTokensScript.FONT_MAP_CAPTION)
+	boss.name = "StageSelectDetailMeta"
 	boss.add_theme_color_override("font_color", Color("#ffd67b") if preview_unlocked else Color("#d9b986"))
 	route_box.add_child(boss)
 	route_panel.add_child(route_box)
 	page.add_child(route_panel)
 	if preview_unlocked:
-		page.add_child(_button("探検猫で出発", _start_selected_stage, true))
+		var start_cta := _button("探検猫で出発", _start_selected_stage, true)
+		start_cta.name = "StageSelectPrimaryCta"
+		page.add_child(start_cta)
 	else:
 		var locked_cta := _button("未解放・旅の準備中", Callable(), true)
 		locked_cta.name = "stage_locked_cta"

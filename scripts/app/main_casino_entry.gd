@@ -3,12 +3,28 @@ extends "res://scripts/app/main.gd"
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const CASINO_HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const CAIRO_CASINO_PLAY_SCENE: PackedScene = preload("res://scenes/casino/CairoCasinoPlayScreen.tscn")
+const LAS_VEGAS_CITY_CARD: Texture2D = preload("res://assets/art/city_cards/lasvegas-city-card.png")
+const LAS_VEGAS_DESTINATION: StringName = &"lasvegas_casino"
 
 var casino_hub_overlay: Control
+var selected_special_destination: StringName = &""
 
 func _render_stage_select() -> void:
 	super._render_stage_select()
+	_hide_unreleased_city_postcards()
 	_add_las_vegas_postcard()
+	_apply_special_destination_details()
+
+func _preview_stage(stage_id: StringName) -> void:
+	selected_special_destination = &""
+	super._preview_stage(stage_id)
+
+func _hide_unreleased_city_postcards() -> void:
+	for postcard_name: String in ["city_newyork", "city_venice", "city_singapore"]:
+		var postcard := root_stack.find_child(postcard_name, true, false) as Control
+		if postcard != null:
+			postcard.visible = false
+			postcard.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 func _add_las_vegas_postcard() -> void:
 	if not is_instance_valid(root_stack):
@@ -26,12 +42,12 @@ func _add_las_vegas_postcard() -> void:
 		map_area,
 		"LASVEGAS",
 		"きらめきのラスベガス",
-		Vector2(18, 158),
-		Vector2(178, 120),
+		Vector2(24, 210),
+		Vector2(206, 126),
 		true,
-		_open_casino_hub,
-		_las_vegas_card_texture(),
-		false,
+		_select_las_vegas,
+		LAS_VEGAS_CITY_CARD,
+		selected_special_destination == LAS_VEGAS_DESTINATION,
 		"DICE RACE",
 		"CHIPを賭けて、目押しで推しレーサーを応援。"
 	)
@@ -40,6 +56,8 @@ func _add_las_vegas_postcard() -> void:
 		var caption := node as Label
 		if caption != null and "きらめきのラスベガス" in caption.text:
 			caption.text = "きらめきのラスベガス\n● カジノへ"
+			caption.autowrap_mode = TextServer.AUTOWRAP_OFF
+			caption.add_theme_font_size_override("font_size", 16)
 
 	var badge := Label.new()
 	badge.name = "CasinoChipBadge"
@@ -58,21 +76,35 @@ func _add_las_vegas_postcard() -> void:
 	badge.z_index = 8
 	entry.add_child(badge)
 
-func _las_vegas_card_texture() -> Texture2D:
-	# Temporary production-safe art until a dedicated Las Vegas postcard is
-	# authored. Keeping this procedural means the map never shows a blank card,
-	# and swapping to a PNG later is a one-line preload change.
-	var gradient := Gradient.new()
-	gradient.set_color(0, Color("#24143c"))
-	gradient.set_color(1, Color("#d89232"))
-	gradient.add_point(0.48, Color("#6d285a"))
-	var texture := GradientTexture2D.new()
-	texture.gradient = gradient
-	texture.width = 256
-	texture.height = 160
-	texture.fill_from = Vector2(0.08, 0.08)
-	texture.fill_to = Vector2(0.92, 0.92)
-	return texture
+func _select_las_vegas() -> void:
+	selected_special_destination = LAS_VEGAS_DESTINATION
+	get_node("/root/BgmManager").call("play_lasvegas_preview")
+	_render_stage_select()
+
+func _apply_special_destination_details() -> void:
+	if selected_special_destination != LAS_VEGAS_DESTINATION:
+		return
+	var title := root_stack.find_child("StageSelectDetailTitle", true, false) as Label
+	var description := root_stack.find_child("StageSelectDetailDescription", true, false) as Label
+	var meta := root_stack.find_child("StageSelectDetailMeta", true, false) as Label
+	var cta := root_stack.find_child("StageSelectPrimaryCta", true, false) as Button
+	if cta == null:
+		cta = root_stack.find_child("stage_locked_cta", true, false) as Button
+	if title != null:
+		title.text = "選択中：きらめきのラスベガス ｜ CASINO"
+	if description != null:
+		description.text = "CHIPを使ってミニゲームや景品交換を楽しむ夜の街。"
+	if meta != null:
+		meta.text = "CHIP残高：%d" % CasinoBankScript.balance()
+	if cta != null:
+		var cta_parent := cta.get_parent()
+		var cta_index := cta.get_index()
+		cta_parent.remove_child(cta)
+		cta.queue_free()
+		var casino_cta := _button("カジノへ", _open_casino_hub, true)
+		casino_cta.name = "StageSelectPrimaryCta"
+		cta_parent.add_child(casino_cta)
+		cta_parent.move_child(casino_cta, cta_index)
 
 func _open_casino_hub() -> void:
 	if is_instance_valid(casino_hub_overlay):
@@ -86,7 +118,12 @@ func _close_casino_hub() -> void:
 	if is_instance_valid(casino_hub_overlay):
 		casino_hub_overlay.queue_free()
 	casino_hub_overlay = null
-	call_deferred("show_stage_select")
+	call_deferred("_restore_stage_select_from_casino")
+
+func _restore_stage_select_from_casino() -> void:
+	show_stage_select()
+	if selected_special_destination == LAS_VEGAS_DESTINATION:
+		get_node("/root/BgmManager").call("play_lasvegas_preview")
 
 func show_v06_game(stage_id: StringName = &"", character_id: StringName = &"", resume_data: Dictionary = {}) -> void:
 	# Mirror the parent host contract, changing only the Cairo PackedScene so the

@@ -16,6 +16,7 @@ var card_data: Array[Dictionary] = []
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	get_node("/root/BgmManager").call("play_lasvegas_main")
 	card_data = _load_cards()
 	_build_ui()
 	_refresh()
@@ -134,6 +135,7 @@ func _close_dice_race() -> void:
 		child.queue_free()
 	race_host.visible = false
 	hub_root.visible = true
+	get_node("/root/BgmManager").call("play_lasvegas_main")
 	_refresh()
 
 func _load_cards() -> Array[Dictionary]:
