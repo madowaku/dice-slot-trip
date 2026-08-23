@@ -8,21 +8,67 @@ var casino_hub_overlay: Control
 
 func _render_stage_select() -> void:
 	super._render_stage_select()
-	_add_casino_entry_button()
+	_add_las_vegas_postcard()
 
-func _add_casino_entry_button() -> void:
+func _add_las_vegas_postcard() -> void:
 	if not is_instance_valid(root_stack):
 		return
-	if root_stack.has_node("CasinoEntryButton"):
+	var map_area := root_stack.find_child("WorldMapPostcards", true, false) as Control
+	if not is_instance_valid(map_area):
 		return
-	var entry := _button(
-		"LAS VEGAS CASINO　　CHIP %d" % CasinoBankScript.balance(),
+	if map_area.has_node("city_lasvegas"):
+		return
+
+	# North America has an open pocket between the New York and Amazon cards.
+	# Keep Las Vegas inside the same authored postcard map instead of treating
+	# the casino as an unrelated button below the normal stage-select flow.
+	var entry := _add_city_postcard(
+		map_area,
+		"LASVEGAS",
+		"きらめきのラスベガス",
+		Vector2(18, 158),
+		Vector2(178, 120),
+		true,
 		_open_casino_hub,
-		true
+		_las_vegas_card_texture(),
+		false,
+		"DICE RACE",
+		"CHIPを賭けて、目押しで推しレーサーを応援。"
 	)
-	entry.name = "CasinoEntryButton"
-	entry.custom_minimum_size.y = 58
-	root_stack.add_child(entry)
+	entry.tooltip_text = "LAS VEGAS CASINO\nCHIP %d\nDICE RACE" % CasinoBankScript.balance()
+
+	var badge := Label.new()
+	badge.name = "CasinoChipBadge"
+	badge.text = "CHIP %d" % CasinoBankScript.balance()
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge.add_theme_font_size_override("font_size", 13)
+	badge.add_theme_color_override("font_color", Color("#fff1b6"))
+	badge.add_theme_color_override("font_outline_color", Color("#352033"))
+	badge.add_theme_constant_override("outline_size", 5)
+	badge.anchor_left = 0.53
+	badge.anchor_right = 0.95
+	badge.anchor_top = 0.06
+	badge.anchor_bottom = 0.27
+	badge.z_index = 8
+	entry.add_child(badge)
+
+func _las_vegas_card_texture() -> Texture2D:
+	# Temporary production-safe art until a dedicated Las Vegas postcard is
+	# authored. Keeping this procedural means the map never shows a blank card,
+	# and swapping to a PNG later is a one-line preload change.
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color("#24143c"))
+	gradient.set_color(1, Color("#d89232"))
+	gradient.add_point(0.48, Color("#6d285a"))
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.width = 256
+	texture.height = 160
+	texture.fill_from = Vector2(0.08, 0.08)
+	texture.fill_to = Vector2(0.92, 0.92)
+	return texture
 
 func _open_casino_hub() -> void:
 	if is_instance_valid(casino_hub_overlay):
