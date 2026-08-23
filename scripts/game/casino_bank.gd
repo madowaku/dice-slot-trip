@@ -5,6 +5,9 @@ const SAVE_PATH := "user://dice_slot_trip_casino.json"
 const SAVE_VERSION := 2
 const COIN_TO_CHIP_RATE := 2
 const CLEAR_CHIP_BONUS := 5
+const LEGACY_CARD_ALIASES := {
+	"dice_racer_crocodile": "dice_racer_rabbit",
+}
 
 static func default_data() -> Dictionary:
 	return {
@@ -80,8 +83,6 @@ static func stage_clear_conversion_once(conversion_key: String, remaining_trip_c
 	var gained := int(receipt.get("gained_chip", 0))
 	data["chips"] = before + gained
 	keys.append(key)
-	# Keep a bounded ledger; old keys only exist to reject replay of completed
-	# result screens and do not need to grow forever.
 	while keys.size() > 256:
 		keys.pop_front()
 	data["conversion_keys"] = keys
@@ -114,7 +115,7 @@ static func _conversion_receipt(remaining_trip_coin: int, cleared_boss: bool, pe
 	}
 
 static func own_card(card_id: String, cost: int) -> bool:
-	var id := card_id.strip_edges()
+	var id := _normalize_card_id(card_id)
 	if id.is_empty():
 		return false
 	var data := load_data()
@@ -138,13 +139,17 @@ static func record_dice_race(won: bool, payout: int) -> void:
 	data["dice_race_best_payout"] = maxi(int(data.get("dice_race_best_payout", 0)), maxi(0, payout))
 	save_data(data)
 
+static func _normalize_card_id(card_id: String) -> String:
+	var id := card_id.strip_edges()
+	return str(LEGACY_CARD_ALIASES.get(id, id))
+
 static func _normalize(source: Dictionary) -> Dictionary:
 	var data := default_data()
 	data["chips"] = maxi(0, int(source.get("chips", 0)))
 	var cards: Array = source.get("owned_cards", [])
 	var unique_cards: Array[String] = []
 	for card: Variant in cards:
-		var id := str(card).strip_edges()
+		var id := _normalize_card_id(str(card))
 		if not id.is_empty() and id not in unique_cards:
 			unique_cards.append(id)
 	data["owned_cards"] = unique_cards
