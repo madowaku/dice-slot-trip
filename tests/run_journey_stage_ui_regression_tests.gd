@@ -60,6 +60,7 @@ func _exercise(stage_id: StringName) -> void:
 	if journey == null:
 		screen.queue_free()
 		return
+	_check_stage_audio_contract(screen, stage_id)
 	_check_hud(screen, journey, stage_id)
 	await _check_item_card(screen, journey, stage_id)
 	await _check_skill_ready_discovery(screen, journey, stage_id)
@@ -96,6 +97,38 @@ func _exercise(stage_id: StringName) -> void:
 
 	screen.queue_free()
 	await process_frame
+
+
+func _check_stage_audio_contract(screen: JourneyStageScreen, stage_id: StringName) -> void:
+	# UiSfxManager is global; the active journey reasserts its stage immediately
+	# before every semantic cue so deferred teardown from a prior screen cannot
+	# select the wrong world pack.
+	screen.call("_emit_journey_feedback", V06FeedbackController.EVENT_BUTTON)
+	var ui_sfx := root.get_node_or_null("UiSfxManager")
+	var expected_pack := &"organic" if stage_id == StageCatalog.STAGE_AMAZON else &"zen"
+	_expect(ui_sfx != null and ui_sfx.call("current_stage") == stage_id and ui_sfx.call("current_stage_pack") == expected_pack,
+		"%s journey selects its authored world SFX pack" % String(stage_id))
+	var feedback := screen.get("journey_feedback") as V06FeedbackController
+	_expect(feedback != null, "%s journey owns Cairo-compatible semantic feedback" % String(stage_id))
+	if feedback == null:
+		return
+	var before := feedback.feedback_receipt()
+	var before_counts := before.get("event_counts", {}) as Dictionary
+	screen.call("_emit_map_landing_feedback", "COIN", {})
+	screen.call("_emit_map_landing_feedback", "EVENT", {})
+	screen.call("_emit_map_landing_feedback", "RISK", {"item_guarded": true})
+	screen.call("_emit_map_landing_feedback", "RISK", {})
+	feedback.emit_feedback(V06FeedbackController.EVENT_ROLL_STOP)
+	var after := feedback.feedback_receipt()
+	var counts := after.get("event_counts", {}) as Dictionary
+	_expect(int(counts.get("reward", 0)) == int(before_counts.get("reward", 0)) + 2,
+		"%s COIN and EVENT landings use the shared reward cue" % String(stage_id))
+	_expect(int(counts.get("blocked", 0)) == int(before_counts.get("blocked", 0)) + 1,
+		"%s guarded RISK uses the shared blocked cue" % String(stage_id))
+	_expect(int(counts.get("damage", 0)) == int(before_counts.get("damage", 0)) + 1,
+		"%s unguarded RISK uses the shared damage cue" % String(stage_id))
+	_expect(int(counts.get("roll_stop", 0)) == int(before_counts.get("roll_stop", 0)) + 1,
+		"%s die stop uses Cairo's shared lock feedback" % String(stage_id))
 
 
 func _check_amazon_branch_choices(screen: JourneyStageScreen, journey: StageJourneyBase) -> void:

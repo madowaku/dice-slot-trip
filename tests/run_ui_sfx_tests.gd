@@ -22,6 +22,12 @@ func _run() -> void:
 	var cairo_receipt: Dictionary = ui_sfx.call("receipt")
 	_expect(str(cairo_receipt.get("last_cue", "")) == "reward" and str(cairo_receipt.get("last_pack", "")) == "organic", "world cue uses the active stage pack")
 
+	ui_sfx.call("set_stage", &"amazon_suiu_falls")
+	_expect(ui_sfx.call("current_stage_pack") == &"organic", "Amazon shares Cairo's organic world pack")
+	_expect(bool(ui_sfx.call("play_world_sfx", &"warning")), "Amazon damage cue plays")
+	var amazon_receipt: Dictionary = ui_sfx.call("receipt")
+	_expect(str(amazon_receipt.get("last_cue", "")) == "warning" and str(amazon_receipt.get("last_pack", "")) == "organic", "Amazon world cue uses organic")
+
 	_expect(bool(ui_sfx.call("play_common_ui_sfx", &"select")), "common select cue plays")
 	var common_receipt: Dictionary = ui_sfx.call("receipt")
 	_expect(str(common_receipt.get("last_pack", "")) == "soft", "common control cue stays on the soft pack")

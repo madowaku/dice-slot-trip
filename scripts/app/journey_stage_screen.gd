@@ -38,6 +38,7 @@ const SKILL_CARD_ICON: Texture2D = preload("res://assets/art/v08/cards/skill-car
 const MENU_ICON: Texture2D = preload("res://assets/art/ui/common/menu-gear-v1.png")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 const DICE_PRESENTATION := preload("res://scripts/game/dice_presentation_3d.gd")
+const JOURNEY_FEEDBACK_SCRIPT := preload("res://scripts/ui/v06_feedback_controller.gd")
 const BOSS_MAP_EMBLEM_SCRIPT := preload("res://scripts/ui/boss_map_emblem.gd")
 const DICE_ROLL_SE: AudioStream = preload("res://assets/audio/dice/roll_01.wav")
 const DICE_LAND_SE: AudioStream = preload("res://assets/audio/dice/land_01.wav")
@@ -150,6 +151,7 @@ var selected_fox_die := -1
 var idle_frame := 0
 var idle_timer: Timer
 var dice_se_player: AudioStreamPlayer
+var journey_feedback: V06FeedbackController
 var roll_animation_active := false
 var map_roll_active := false
 var map_roll_elapsed := 0.0
@@ -416,6 +418,10 @@ func _build_shell() -> void:
 	dice_se_player = AudioStreamPlayer.new()
 	dice_se_player.name = "JourneyDiceSE"
 	add_child(dice_se_player)
+	journey_feedback = JOURNEY_FEEDBACK_SCRIPT.new() as V06FeedbackController
+	journey_feedback.name = "JourneyFeedback"
+	add_child(journey_feedback)
+	_sync_journey_feedback_settings()
 
 
 func _start_journey() -> void:
@@ -424,6 +430,8 @@ func _start_journey() -> void:
 	else:
 		stage_id = StageCatalog.STAGE_AMAZON
 		journey = AmazonJourney.new()
+	_set_journey_sfx_stage()
+	_sync_journey_feedback_settings()
 	var title := stage_band.find_child("StageTitle", true, false) as Label
 	title.text = journey.stage_name
 	_render_map()
@@ -1971,7 +1979,7 @@ func _stop_map_roll() -> void:
 		roll_caption_label.visible = false
 	if is_instance_valid(map_dice):
 		map_dice.present([face], false, 1)
-	_play_dice_se(DICE_LAND_SE)
+	_emit_journey_feedback(V06FeedbackController.EVENT_ROLL_STOP)
 	roll_slots.append(face)
 	_refresh_roll_slots()
 	var hp_before := journey.hp
@@ -2067,6 +2075,7 @@ func _show_slot_result_or_reach() -> void:
 	if roll_slots.size() == 3:
 		pending_slot_role = _completed_slot_role(roll_slots)
 		if not pending_slot_role.is_empty():
+			_emit_journey_feedback(V06FeedbackController.EVENT_LEVEL_UP)
 			status_label.text = "%s！　3投の役がそろった" % pending_slot_role
 			status_label.add_theme_font_size_override("font_size", 27)
 			_flash_roll_slots(3, Color("#ffd96a"))
@@ -2278,9 +2287,11 @@ func _play_map_landing_effect(result: Dictionary) -> void:
 	if stage_id == StageCatalog.STAGE_KYOTO and not goshuin_passed.is_empty() and _current_space_kind() == "GOSHUIN":
 		# The checkpoint stamp already owns the landing pause and copy. Do not
 		# stack a generic special-tile card over the seal animation.
+		_emit_journey_feedback(V06FeedbackController.EVENT_REWARD)
 		status_label.text = _landing_effect_text(result)
 		return
 	var landing_kind := "FLOW" if int(result.get("flow_chain", 0)) > 0 else _current_space_kind()
+	_emit_map_landing_feedback(landing_kind, result)
 	status_label.text = _landing_effect_text(result)
 	var effect_card: PanelContainer
 	if is_instance_valid(map_node_layer) and is_instance_valid(map_player):
@@ -2467,6 +2478,43 @@ func _play_dice_se(stream: AudioStream) -> void:
 	dice_se_player.volume_db = -80.0 if volume <= 0.0 else linear_to_db(volume)
 	dice_se_player.stream = stream
 	dice_se_player.play()
+
+
+func _sync_journey_feedback_settings() -> void:
+	if not is_instance_valid(journey_feedback):
+		return
+	var game_state := get_node_or_null("/root/GameState")
+	var se_volume := float(game_state.get("se_volume")) if game_state != null else 1.0
+	var dice_muted := bool(game_state.get("dice_se_muted")) if game_state != null else false
+	var haptics_enabled := bool(game_state.get("haptics_enabled")) if game_state != null else true
+	journey_feedback.set_levels(1.0, se_volume, dice_muted)
+	journey_feedback.set_haptics_enabled(haptics_enabled)
+
+
+func _emit_journey_feedback(event: StringName) -> void:
+	_set_journey_sfx_stage()
+	if is_instance_valid(journey_feedback):
+		journey_feedback.emit_feedback(event)
+
+
+func _set_journey_sfx_stage() -> void:
+	var ui_sfx := get_node_or_null("/root/UiSfxManager")
+	if ui_sfx != null:
+		ui_sfx.call("set_stage", stage_id)
+
+
+func _emit_map_landing_feedback(kind: String, result: Dictionary) -> void:
+	match kind:
+		"RISK":
+			_emit_journey_feedback(
+				V06FeedbackController.EVENT_BLOCKED
+				if bool(result.get("item_guarded", false))
+				else V06FeedbackController.EVENT_DAMAGE
+			)
+		"COIN", "REST", "ITEM", "EVENT", "FLOW", "GOSHUIN":
+			_emit_journey_feedback(V06FeedbackController.EVENT_REWARD)
+		"BOSS":
+			_emit_journey_feedback(V06FeedbackController.EVENT_MISSION_COMPLETE)
 
 
 func _after_journey_action() -> void:
@@ -2709,8 +2757,10 @@ func _show_item_card() -> void:
 			return
 		var result := journey.use_item(choice_id)
 		if bool(result.get("ok", false)):
+			_emit_journey_feedback(V06FeedbackController.EVENT_REWARD)
 			status_label.text = str(result.get("text", "アイテムを使った。"))
 		else:
+			_emit_journey_feedback(V06FeedbackController.EVENT_BLOCKED)
 			status_label.text = "今は使えない：%s" % _item_error_text(str(result.get("error", "UNKNOWN")))
 		_refresh_all()
 	, art)
@@ -2764,10 +2814,12 @@ func _show_coin_tool(feedback: String = "") -> void:
 				break
 		var purchase := journey.purchase_coin_action(choice_id)
 		if bool(purchase.get("ok", false)):
+			_emit_journey_feedback(V06FeedbackController.EVENT_REWARD)
 			status_label.text = "%sを準備した。" % selected_name
 			_refresh_all()
 			_show_coin_tool("%s　準備OK" % selected_name)
 		else:
+			_emit_journey_feedback(V06FeedbackController.EVENT_BLOCKED)
 			var error := str(purchase.get("error", "UNKNOWN"))
 			var error_text: String = str({
 				"COIN_ACTION_ALREADY_ACTIVE": "すでに準備済みです。",
@@ -2818,6 +2870,7 @@ func _show_amazon_coin_tool(feedback: String = "") -> void:
 				break
 		var purchase := amazon.purchase_coin_action(choice_id)
 		if bool(purchase.get("ok", false)):
+			_emit_journey_feedback(V06FeedbackController.EVENT_REWARD)
 			status_label.text = "%sを準備した。" % selected_name
 			_refresh_all()
 			_show_amazon_coin_tool("%s　準備OK" % selected_name)
@@ -2826,6 +2879,7 @@ func _show_amazon_coin_tool(feedback: String = "") -> void:
 		if error == "AQUAFALL_LOADOUT_FULL":
 			_show_amazon_replace_modal(choice_id, selected_name)
 			return
+		_emit_journey_feedback(V06FeedbackController.EVENT_BLOCKED)
 		var error_text: String = str({
 			"COIN_ACTION_ALREADY_ACTIVE": "すでに装備中です。",
 			"NOT_ENOUGH_COINS": "コインが足りません。",
@@ -2854,10 +2908,12 @@ func _show_amazon_replace_modal(new_product_id: String, new_product_name: String
 				return
 			var purchase := amazon.purchase_coin_action(new_product_id, choice_id)
 			if bool(purchase.get("ok", false)):
+				_emit_journey_feedback(V06FeedbackController.EVENT_REWARD)
 				status_label.text = "%sを装備した。" % new_product_name
 				_refresh_all()
 				_show_amazon_coin_tool("%s　準備OK" % new_product_name)
 			else:
+				_emit_journey_feedback(V06FeedbackController.EVENT_BLOCKED)
 				_show_amazon_coin_tool("装備を交換できませんでした。")
 	,
 		ICON_COIN
@@ -2883,6 +2939,11 @@ func _show_skill_tool() -> void:
 			if choice_id == "close":
 				return
 			var result := journey.arm_skill_face(int(choice_id))
+			_emit_journey_feedback(
+				V06FeedbackController.EVENT_LEVEL_UP
+				if bool(result.get("ok", false))
+				else V06FeedbackController.EVENT_BLOCKED
+			)
 			status_label.text = str(result.get("text", "スキルを準備した")) if bool(result.get("ok", false)) else _journey_result_text(result)
 			_refresh_all()
 		, SKILL_CARD_ICON)
@@ -2937,6 +2998,7 @@ func _show_menu_tool() -> void:
 	se_slider.value = se_value
 	se_slider.value_changed.connect(func(value: float) -> void:
 		if game_state != null: game_state.set("se_volume", value / 100.0)
+		_sync_journey_feedback_settings()
 		se_label.text = "SE音量　%d%%" % roundi(value)
 	)
 	box.add_child(se_slider)
@@ -5887,6 +5949,7 @@ func _button(text_value: String, callback: Callable, primary: bool) -> Button:
 	button.add_theme_stylebox_override("hover", _panel(accent.lightened(0.12) if primary else Color(0.23, 0.21, 0.18, 0.98), Color("#ffe08a"), 14, 3))
 	button.add_theme_stylebox_override("pressed", _panel(accent.darkened(0.12), Color("#ffe08a"), 14, 3))
 	button.add_theme_stylebox_override("disabled", _panel(Color(0.18, 0.18, 0.17, 0.82), Color("#54514b"), 14, 1))
+	button.pressed.connect(_emit_journey_feedback.bind(V06FeedbackController.EVENT_BUTTON))
 	if callback.is_valid():
 		button.pressed.connect(callback)
 	return button
