@@ -1,0 +1,228 @@
+version: 2
+
+goal:
+  title: "Amazon 瀑流 COIN装備ショップ"
+  slug: "amazon-aquafall-coin-loadout"
+  kind: specific
+  tranche: "4商品、装備2枠、購入/交換、瀑流効果、save/load、UIと回帰検証"
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+  orchestrator_model: "gpt-5.6-sol"
+  preferred_worker_model: "gpt-5.6-luna max"
+  reviewer_model: "gpt-5.6-terra high"
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: high
+    objective: "既存COINショップ、Amazon/Aquafall状態、ターン順、衝突、障害物生成、save/load、UIテスト境界を特定する。"
+    inputs:
+      - scripts/app/journey_stage_screen.gd
+      - scripts/game/aquafall_battle.gd
+      - scripts/game/amazon_journey.gd
+      - scripts/game/stage_journey_base.gd
+      - tests
+    constraints:
+      - "Read-only."
+      - "現行のユーザー差分を戻さない。"
+      - "商品効果を入れる安全なターン境界を具体的に示す。"
+    expected_output:
+      - "既存ショップ構造"
+      - "状態所有とsnapshot境界"
+      - "4効果の最小挿入点"
+      - "allowed_files候補"
+      - "テスト計画"
+    receipt:
+      result: done
+      summary: "既存共通ショップはStageJourneyBase。AmazonJourney.stage_flagsに2枠loadoutを限定し、boss開始時AquafallBattleへ原子的移管、battle snapshotでlive効果を所有する境界が安全。"
+      evidence:
+        - "scripts/app/journey_stage_screen.gd:_show_coin_tool,_open_choice_modal,_start_aquafall_boss"
+        - "scripts/game/stage_journey_base.gd:coin_action_catalog,purchase_coin_action,snapshot,restore"
+        - "scripts/game/amazon_journey.gd:stage_flags"
+        - "scripts/game/aquafall_battle.gd:configure,choose_direction,_resolve_hit,spawn_obstacles,snapshot,restore"
+      candidate_files:
+        - scripts/game/amazon_journey.gd
+        - scripts/game/aquafall_battle.gd
+        - scripts/app/journey_stage_screen.gd
+        - tests/run_amazon_kyoto_stage_tests.gd
+        - tests/run_journey_stage_ui_regression_tests.gd
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Scout証拠から商品状態、購入/装備UX、消費タイミング、ボス効果、save/loadの安全な実装境界を決定する。"
+    inputs:
+      - "T001 receipt"
+    constraints:
+      - "Do not implement."
+      - "既存Aquafallゲーム内容を再設計しない。"
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+    receipt:
+      result: done
+      decision: "AmazonJourney専用loadout＋Aquafall battle snapshotに限定して実装。StageJourneyBase/JSON/Kyoto/Cairo/V06は変更禁止。"
+      next_allowed_task: T003
+      allowed_files:
+        - scripts/game/amazon_journey.gd
+        - scripts/game/aquafall_battle.gd
+        - scripts/app/journey_stage_screen.gd
+        - tests/run_amazon_kyoto_stage_tests.gd
+        - tests/run_journey_stage_ui_regression_tests.gd
+      effect_contract:
+        - "Rope: configure後にheight+3、board/RNG不変。"
+        - "Shield: water_run後、water_guard前に最初のeligible hitを1回無効。"
+        - "Stake: WAIT_ROLL使用、次のchoose_direction全hopで下降のみ停止。"
+        - "Compass: WAIT_DIRECTION使用、left/rightの次WAIT_ROLL盤面をsnapshot cloneで予告。"
+      verify:
+        - "Godot --headless --editor --path . --quit"
+        - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+        - "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+        - "Godot --headless --path . --script tests/run_tests.gd"
+        - "git diff --check"
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Judge境界内で4商品、装備2枠、ショップ、瀑流効果、save/loadを実装する。"
+    allowed_files:
+      - scripts/game/amazon_journey.gd
+      - scripts/game/aquafall_battle.gd
+      - scripts/app/journey_stage_screen.gd
+      - tests/run_amazon_kyoto_stage_tests.gd
+      - tests/run_journey_stage_ui_regression_tests.gd
+    verify:
+      - "Godot --headless --editor --path . --quit"
+      - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+      - "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+      - "Godot --headless --path . --script tests/run_tests.gd"
+      - "git diff --check"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "既存Aquafallルールの意味変更が必要になる。"
+      - "商品使用タイミングが曖昧でUX判断が必要になる。"
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - scripts/game/amazon_journey.gd
+        - scripts/game/aquafall_battle.gd
+        - scripts/app/journey_stage_screen.gd
+        - tests/run_amazon_kyoto_stage_tests.gd
+        - tests/run_journey_stage_ui_regression_tests.gd
+      summary: "Amazon専用4商品/2枠/atomic replace、Aquafall4効果とsnapshot、ショップ交換、杭/Compass ghost UIを実装。"
+      commands:
+        - cmd: "Godot --headless --editor --path . --quit"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Amazon通常/ボス、save/load、京都回帰、720x1280を検証し限定修正する。"
+    allowed_files:
+      - scripts/game/amazon_journey.gd
+      - scripts/game/aquafall_battle.gd
+      - scripts/app/journey_stage_screen.gd
+      - tests/run_amazon_kyoto_stage_tests.gd
+      - tests/run_journey_stage_ui_regression_tests.gd
+    verify:
+      - "Godot --headless --editor --path . --quit"
+      - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+      - "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+      - "Godot --headless --path . --script tests/run_tests.gd"
+      - "git diff --check"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "京都/Cairoへ状態またはUIが漏れる。"
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - scripts/app/journey_stage_screen.gd
+        - tests/run_journey_stage_ui_regression_tests.gd
+      summary: "Terra reviewの3指摘（Compass実配置、Stake visual停止、Shield予測）と日本語装備名を限定修正。"
+      commands:
+        - cmd: "Godot --headless --editor --path . --quit"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "実装と検証を4商品・2枠・save/load・非回帰の完成条件へ照合する。"
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "Required Workerがqueued/activeなら完了を拒否する。"
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt:
+      result: complete
+      summary: "4商品・2枠・atomic replace・save/load・正確な瀑流効果・UI・非回帰の完成条件を満たす。"
+      evidence:
+        - "Godot 4.7 editor parse exit 0"
+        - "Amazon/Kyoto stage tests passed=true"
+        - "Journey UI regression failures=0"
+        - "Full core tests failures=0 (Cairo coverage含む)"
+        - "git diff --check pass"
+      known_warning: "UI regression終了時に既存のObjectDB/resource teardown警告が出るが、assertion failureなし・exit 0。"
+
+checks:
+  dirty_fingerprint: "Existing Amazon UI parity diff, goal docs, QA images, casino/playtest untracked files; preserve all unrelated changes."
+  last_verification:
+    result: pass
+    task: T004
+    commands:
+      - "Godot headless editor parse"
+      - "Amazon/Kyoto stage tests"
+      - "Journey stage UI regression tests"
+      - "Full core test suite"
+      - "git diff --check"

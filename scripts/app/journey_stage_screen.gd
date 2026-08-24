@@ -134,6 +134,7 @@ var map_dice: DicePresentation3D
 var route_preview_row: HBoxContainer
 var travel_tray_root: Control
 var primary_roll_controls: Control
+var travel_tray_uses_horizon_layout := false
 var roll_caption_label: Label
 var local_view_y_min := 0.0
 var local_view_y_max := 1.0
@@ -271,7 +272,7 @@ func _process(delta: float) -> void:
 
 
 func _build_shell() -> void:
-	var is_kyoto_ui := stage_id == StageCatalog.STAGE_KYOTO
+	var is_horizon_ui := _uses_horizon_ui()
 	root_layer = Control.new()
 	root_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(root_layer)
@@ -301,7 +302,7 @@ func _build_shell() -> void:
 	margin.add_child(vertical)
 	top_hud = PanelContainer.new()
 	top_hud.name = "HudPanel"
-	top_hud.custom_minimum_size.y = 200 if is_kyoto_ui else 128
+	top_hud.custom_minimum_size.y = 200 if is_horizon_ui else 128
 	top_hud.add_theme_stylebox_override("panel", _panel(_stage_ink(0.96), GOLD, 16, 3))
 	var hud := VBoxContainer.new()
 	hud.add_theme_constant_override("separation", 4)
@@ -316,11 +317,11 @@ func _build_shell() -> void:
 	hud.add_child(stats)
 	var info := HBoxContainer.new()
 	info.add_theme_constant_override("separation", 5)
-	var coin_chip := _cairo_coin_hud() if is_kyoto_ui else _info_value_chip("コイン", "0")
+	var coin_chip := _cairo_coin_hud() if is_horizon_ui else _info_value_chip("コイン", "0")
 	coin_info_chip = coin_chip["chip"] as PanelContainer
 	coins_label = coin_chip["value"] as Label
 	var survival_chip := _survival_chip()
-	var progress_chip := _cairo_progress_hud() if is_kyoto_ui else _info_value_chip("現在", "1/90")
+	var progress_chip := _cairo_progress_hud() if is_horizon_ui else _info_value_chip("現在", "1/90")
 	progress_info_chip = progress_chip["chip"] as PanelContainer
 	progress_label = progress_chip["value"] as Label
 	coin_info_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -331,9 +332,9 @@ func _build_shell() -> void:
 	info.add_child(progress_info_chip)
 	overview_button = _button("全体マップ", _show_overview_map, false)
 	overview_button.name = "MapButton"
-	overview_button.custom_minimum_size = Vector2(112, 96) if is_kyoto_ui else Vector2(104, 55)
-	overview_button.add_theme_font_size_override("font_size", 17 if is_kyoto_ui else 15)
-	if is_kyoto_ui:
+	overview_button.custom_minimum_size = Vector2(112, 96) if is_horizon_ui else Vector2(104, 55)
+	overview_button.add_theme_font_size_override("font_size", 17 if is_horizon_ui else 15)
+	if is_horizon_ui:
 		overview_button.add_theme_color_override("font_color", INK)
 		overview_button.add_theme_color_override("font_hover_color", INK)
 		overview_button.add_theme_color_override("font_pressed_color", INK)
@@ -346,7 +347,7 @@ func _build_shell() -> void:
 	vertical.add_child(top_hud)
 	stage_band = PanelContainer.new()
 	stage_band.name = "StageBand"
-	stage_band.custom_minimum_size.y = 48 if is_kyoto_ui else 54
+	stage_band.custom_minimum_size.y = 48 if is_horizon_ui else 54
 	stage_band.add_theme_stylebox_override("panel", _panel(PAPER, GOLD, 10, 2))
 	var stage_row := HBoxContainer.new()
 	var stage_title := _label("", 22, INK)
@@ -369,14 +370,14 @@ func _build_shell() -> void:
 	mission_band = PanelContainer.new()
 	mission_band.name = "MissionBand"
 	mission_value_labels.clear()
-	mission_band.custom_minimum_size.y = 120 if is_kyoto_ui else 74
+	mission_band.custom_minimum_size.y = 120 if is_horizon_ui else 74
 	mission_band.add_theme_stylebox_override("panel", _panel(PAPER, GOLD, 10, 2))
 	var mission_row := HBoxContainer.new()
 	mission_row.add_theme_constant_override("separation", 4)
-	var mission_title := _label("MISSION", 22 if is_kyoto_ui else 14, INK, HORIZONTAL_ALIGNMENT_CENTER)
-	mission_title.custom_minimum_size.x = 118 if is_kyoto_ui else 62
+	var mission_title := _label("MISSION", 22 if is_horizon_ui else 14, INK, HORIZONTAL_ALIGNMENT_CENTER)
+	mission_title.custom_minimum_size.x = 118 if is_horizon_ui else 62
 	mission_row.add_child(mission_title)
-	if is_kyoto_ui:
+	if is_horizon_ui:
 		mission_row.add_child(_journey_mission_cell())
 	else:
 		mission_row.add_child(_mission_cell("無傷", "継続中", ICON_REST))
@@ -392,7 +393,7 @@ func _build_shell() -> void:
 	vertical.add_child(content_host)
 	var status_panel := PanelContainer.new()
 	status_panel.name = "MessageBand"
-	status_panel.custom_minimum_size.y = 72 if is_kyoto_ui else 52
+	status_panel.custom_minimum_size.y = 72 if is_horizon_ui else 52
 	status_panel.add_theme_stylebox_override("panel", _panel(Color("#2e1e17"), GOLD, 9, 2))
 	# Keep the operation band reserved for live movement/effect feedback. The
 	# antique die already communicates the idle action, so no duplicate
@@ -404,7 +405,7 @@ func _build_shell() -> void:
 	vertical.add_child(status_panel)
 	controls_box = VBoxContainer.new()
 	controls_box.name = "ControlsBox"
-	controls_box.custom_minimum_size.y = 335 if is_kyoto_ui else 326
+	controls_box.custom_minimum_size.y = 335 if is_horizon_ui else 326
 	controls_box.add_theme_constant_override("separation", 7)
 	vertical.add_child(controls_box)
 	idle_timer = Timer.new()
@@ -432,6 +433,7 @@ func _start_journey() -> void:
 
 
 func _render_map() -> void:
+	_apply_amazon_shell_phase_layout(false)
 	if is_instance_valid(top_hud):
 		top_hud.modulate = Color.WHITE
 	if is_instance_valid(stage_band):
@@ -490,14 +492,14 @@ func _render_map() -> void:
 	map_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_frame.add_theme_stylebox_override("panel", _panel(Color(0, 0, 0, 0), GOLD, 8, 2))
 	content_host.add_child(map_frame)
-	# The Cairo-style Kyoto horizon makes the seven cards authoritative in
-	# normal play. Route-line legend and the full 99-node topology belong to the
-	# dedicated 全体マップ, where both remain available.
-	if stage_id != StageCatalog.STAGE_KYOTO:
+	# The Cairo-style horizon makes the seven cards authoritative in normal play
+	# for both Kyoto and Amazon. Route-line legend and the full topology belong
+	# to the dedicated 全体マップ, where both remain available.
+	if not _uses_horizon_ui():
 		_add_route_legend(content_host)
 	var route_preview := PanelContainer.new()
 	route_preview.name = "LocalRoutePreview"
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if _uses_horizon_ui():
 		# Kyoto's normal-play map uses a Cairo-style card horizon as the primary
 		# route readout. It is laid out from the content size below so the same
 		# design coordinates scale cleanly to the 360x640 capture.
@@ -511,7 +513,7 @@ func _render_map() -> void:
 		route_preview.offset_right = -10
 		route_preview.offset_bottom = -8
 		route_preview.add_theme_stylebox_override("panel", _panel(Color(0.96, 0.90, 0.75, 0.93), GOLD, 12, 2))
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if _uses_horizon_ui():
 		var horizon_style := _panel(Color(0.96, 0.90, 0.75, 0.97), GOLD, 14, 3)
 		horizon_style.content_margin_left = 5
 		horizon_style.content_margin_right = 5
@@ -523,7 +525,7 @@ func _render_map() -> void:
 	route_preview_row.add_theme_constant_override("separation", 4)
 	route_preview.add_child(route_preview_row)
 	content_host.add_child(route_preview)
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if _uses_horizon_ui():
 		var layout_callable := Callable(self, "_layout_kyoto_card_horizon")
 		if not content_host.resized.is_connected(layout_callable):
 			content_host.resized.connect(layout_callable)
@@ -535,7 +537,7 @@ func _render_map() -> void:
 	map_dice.tray_surface_visible = false
 	map_dice.high_contrast_pips = true
 	content_host.add_child(map_dice)
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if _uses_horizon_ui():
 		map_dice.set_anchors_preset(Control.PRESET_TOP_LEFT)
 		map_dice.custom_minimum_size = Vector2(KYOTO_HORIZON_DIE_SIZE, KYOTO_HORIZON_DIE_SIZE)
 		map_dice.size = Vector2(KYOTO_HORIZON_DIE_SIZE, KYOTO_HORIZON_DIE_SIZE)
@@ -550,7 +552,7 @@ func _render_map() -> void:
 		map_dice.offset_right = 80 + dice_x_offset
 		map_dice.offset_bottom = -124
 	map_dice.present([1], false, 1)
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if _uses_horizon_ui():
 		call_deferred("_layout_kyoto_card_horizon")
 	_update_local_view_window()
 	call_deferred("_apply_background_camera")
@@ -559,7 +561,7 @@ func _render_map() -> void:
 
 
 func _layout_kyoto_card_horizon() -> void:
-	if stage_id != StageCatalog.STAGE_KYOTO:
+	if not _uses_horizon_ui():
 		return
 	if not is_instance_valid(content_host) or not is_instance_valid(route_preview_row) or not is_instance_valid(map_dice):
 		return
@@ -590,6 +592,7 @@ func _layout_kyoto_card_horizon() -> void:
 		var tile := child as Control
 		if tile == null:
 			continue
+		tile.set_meta("horizon_card_height", card_height)
 		tile.custom_minimum_size.y = card_height
 		var tile_content := tile.get_node_or_null("TileContent") as Control
 		if tile_content != null:
@@ -606,6 +609,17 @@ func _layout_kyoto_card_horizon() -> void:
 		row_y + panel_height + KYOTO_HORIZON_GAP
 	)
 	call_deferred("_sync_kyoto_horizon_anchors")
+	# HBoxContainer applies its final child rects on the next layout pass. A
+	# second pass keeps the invisible map anchors aligned after a narrow mobile
+	# viewport grows the cards from their minimum height.
+	call_deferred("_sync_kyoto_horizon_anchors_late")
+
+
+func _sync_kyoto_horizon_anchors_late() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if is_inside_tree():
+		_sync_kyoto_horizon_anchors()
 
 
 func _show_stage_intro() -> void:
@@ -996,13 +1010,14 @@ func _build_boss_roll_tray() -> void:
 
 
 func _build_roll_tray(roll_callback: Callable, include_tools: bool) -> void:
-	var is_kyoto_ui := stage_id == StageCatalog.STAGE_KYOTO and include_tools
+	var is_horizon_ui := _uses_horizon_ui() and include_tools
+	travel_tray_uses_horizon_layout = is_horizon_ui
 	var tray := PanelContainer.new()
 	tray.name = "TravelRollTray"
-	tray.custom_minimum_size.y = 220 if is_kyoto_ui else 248
+	tray.custom_minimum_size.y = 220 if is_horizon_ui else 248
 	tray.add_theme_stylebox_override("panel", _panel(Color("#f2dfb6"), GOLD, 14, 2))
 	var tray_root := Control.new()
-	tray_root.custom_minimum_size.y = 212 if is_kyoto_ui else 240
+	tray_root.custom_minimum_size.y = 212 if is_horizon_ui else 240
 	travel_tray_root = tray_root
 	primary_roll_controls = Control.new()
 	primary_roll_controls.name = "PrimaryRollControls"
@@ -1076,7 +1091,7 @@ func _layout_travel_controls() -> void:
 		return
 	var available_width := maxf(travel_tray_root.size.x, 1.0)
 	var available_height := maxf(travel_tray_root.size.y, 1.0)
-	var scale_factor := minf(1.0, minf(available_width / SLOT_DESIGN_SIZE.x, available_height / SLOT_DESIGN_SIZE.y)) if stage_id == StageCatalog.STAGE_KYOTO else minf(1.0, available_width / SLOT_DESIGN_SIZE.x)
+	var scale_factor := minf(1.0, minf(available_width / SLOT_DESIGN_SIZE.x, available_height / SLOT_DESIGN_SIZE.y)) if travel_tray_uses_horizon_layout else minf(1.0, available_width / SLOT_DESIGN_SIZE.x)
 	primary_roll_controls.scale = Vector2.ONE * scale_factor
 	primary_roll_controls.position = Vector2(
 		maxf((available_width - SLOT_DESIGN_SIZE.x * scale_factor) * 0.5, 0.0),
@@ -1087,8 +1102,8 @@ func _layout_travel_controls() -> void:
 func _build_tool_dock() -> void:
 	var dock := PanelContainer.new()
 	dock.name = "ToolDock"
-	dock.custom_minimum_size.y = 108 if stage_id == StageCatalog.STAGE_KYOTO else 72
-	dock.add_theme_stylebox_override("panel", _panel(Color("#f1dfb8") if stage_id == StageCatalog.STAGE_KYOTO else Color("#ead4a5"), GOLD, 12, 2))
+	dock.custom_minimum_size.y = 108 if _uses_horizon_ui() else 72
+	dock.add_theme_stylebox_override("panel", _panel(Color("#f1dfb8") if _uses_horizon_ui() else Color("#ead4a5"), GOLD, 12, 2))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 5)
 	item_card_button = _tool_button("アイテム\n0/3", ITEM_CARD_ICON, _show_item_card)
@@ -1107,9 +1122,9 @@ func _build_tool_dock() -> void:
 
 func _tool_button(text_value: String, icon: Texture2D, callback: Callable) -> Button:
 	var button := _button(text_value, callback, false)
-	button.custom_minimum_size = Vector2(0, 100 if stage_id == StageCatalog.STAGE_KYOTO else 68)
-	button.add_theme_font_size_override("font_size", 16 if stage_id == StageCatalog.STAGE_KYOTO else 14)
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	button.custom_minimum_size = Vector2(0, 100 if _uses_horizon_ui() else 68)
+	button.add_theme_font_size_override("font_size", 16 if _uses_horizon_ui() else 14)
+	if _uses_horizon_ui():
 		button.add_theme_color_override("font_color", INK)
 		button.add_theme_color_override("font_hover_color", INK)
 		button.add_theme_color_override("font_pressed_color", INK)
@@ -1122,8 +1137,8 @@ func _tool_button(text_value: String, icon: Texture2D, callback: Callable) -> Bu
 	icon_view.texture = icon
 	icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	var tool_icon_size := 36.0 if stage_id == StageCatalog.STAGE_KYOTO else 30.0
-	icon_view.position = Vector2(9, 13) if stage_id == StageCatalog.STAGE_KYOTO else Vector2(10, 10)
+	var tool_icon_size := 36.0 if _uses_horizon_ui() else 30.0
+	icon_view.position = Vector2(9, 13) if _uses_horizon_ui() else Vector2(10, 10)
 	icon_view.size = Vector2.ONE * tool_icon_size
 	icon_view.custom_minimum_size = Vector2.ONE * tool_icon_size
 	icon_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1136,7 +1151,7 @@ func _route_tile(text_value: String, kind: String, current: bool, space_id_value
 	tile.set_meta("space_id", space_id_value)
 	tile.set_meta("kind", kind)
 	tile.set_meta("current", current)
-	var is_kyoto_horizon := stage_id == StageCatalog.STAGE_KYOTO
+	var is_kyoto_horizon := _uses_horizon_ui()
 	var tile_height := KYOTO_HORIZON_CARD_HEIGHT if is_kyoto_horizon else 66.0
 	tile.custom_minimum_size = Vector2(0, tile_height)
 	tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1247,13 +1262,13 @@ func _refresh_route_preview_for_space(space_id_value: String) -> void:
 			preview_space = next_space
 		route_preview_row.add_child(_route_tile("+%d" % step, _space_kind(preview_space), false, preview_space))
 	_set_route_preview_motion_marker(space_id_value)
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if _uses_horizon_ui():
 		call_deferred("_layout_kyoto_card_horizon")
 		call_deferred("_sync_kyoto_horizon_anchors")
 
 
 func _refresh_kyoto_horizon_for_movement(start_space: String, movement_path: Array[String]) -> void:
-	if stage_id != StageCatalog.STAGE_KYOTO or not is_instance_valid(route_preview_row):
+	if not _uses_horizon_ui() or not is_instance_valid(route_preview_row):
 		return
 	for child: Node in route_preview_row.get_children():
 		route_preview_row.remove_child(child)
@@ -1281,7 +1296,7 @@ func _refresh_kyoto_horizon_for_movement(start_space: String, movement_path: Arr
 func _set_route_preview_motion_marker(space_id_value: String) -> void:
 	if not is_instance_valid(route_preview_row):
 		return
-	var is_kyoto_horizon := stage_id == StageCatalog.STAGE_KYOTO
+	var is_kyoto_horizon := _uses_horizon_ui()
 	for child: Node in route_preview_row.get_children():
 		var tile := child as PanelContainer
 		if tile == null:
@@ -1308,7 +1323,9 @@ func _set_route_preview_motion_marker(space_id_value: String) -> void:
 				motion_player.modulate = Color(1.0, 1.0, 1.0, 0.0) if is_kyoto_horizon else Color.WHITE
 	if is_kyoto_horizon and is_instance_valid(map_player) and not map_movement_active:
 		map_player.visible = true
-		_position_map_player()
+		if journey != null:
+			map_player.position = _map_player_position_for_space(journey.current_space_id)
+			map_player.move_to_front()
 
 
 func _next_preview_space_id(space_id_value: String) -> String:
@@ -1366,7 +1383,11 @@ func _mission_cell(title_text: String, value_text: String, icon: Texture2D) -> C
 
 
 func _journey_mission_cell() -> Control:
-	var mission := journey.journey_mission_state() if journey != null else {}
+	var is_amazon_discovery := stage_id == StageCatalog.STAGE_AMAZON
+	# Amazon's representative card is presentation-only. Do not call the shared
+	# mission accessor here: it lazily creates stage_flags.journey_mission and
+	# would change Amazon save data without any matching Amazon progress hooks.
+	var mission := {} if is_amazon_discovery or journey == null else journey.journey_mission_state()
 	var cell := PanelContainer.new()
 	cell.name = "JourneyMissionCell"
 	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1375,7 +1396,7 @@ func _journey_mission_cell() -> Control:
 	row.add_theme_constant_override("separation", 8)
 	mission_icon_view = TextureRect.new()
 	mission_icon_view.name = "MissionIcon"
-	mission_icon_view.texture = _journey_mission_icon(str(mission.get("icon_kind", "dice")))
+	mission_icon_view.texture = ICON_EVENT if is_amazon_discovery else _journey_mission_icon(str(mission.get("icon_kind", "dice")))
 	mission_icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	mission_icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	mission_icon_view.custom_minimum_size = Vector2(56, 56)
@@ -1384,10 +1405,14 @@ func _journey_mission_cell() -> Control:
 	var copy := VBoxContainer.new()
 	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	copy.add_theme_constant_override("separation", 0)
-	mission_caption_label = _label(str(mission.get("short_text", "旅の目標")), 20, INK)
+	mission_caption_label = _label("発見" if is_amazon_discovery else str(mission.get("short_text", "旅の目標")), 20, INK)
 	mission_caption_label.name = "MissionCaption"
-	mission_progress_label = _label("進捗 0/1　報酬 COIN ×12", 20, _stage_accent())
+	mission_progress_label = _label("進捗 0/5　報酬 COIN ×12" if is_amazon_discovery else "進捗 0/1　報酬 COIN ×12", 20, _stage_accent())
 	mission_progress_label.name = "MissionProgress"
+	if is_amazon_discovery:
+		# Keep the existing mission_value_labels contract available to QA and
+		# callers while rendering one Cairo-style representative card.
+		mission_value_labels["発見"] = mission_progress_label
 	copy.add_child(mission_caption_label)
 	copy.add_child(mission_progress_label)
 	row.add_child(copy)
@@ -1403,6 +1428,24 @@ func _journey_mission_icon(icon_kind: String) -> Texture2D:
 		_: return DICE_ART
 
 
+func _amazon_route_label(space_id_value: String) -> String:
+	if stage_id != StageCatalog.STAGE_AMAZON or journey == null:
+		return "本線"
+	var amazon := journey as AmazonJourney
+	if amazon == null:
+		return "本線"
+	var space := amazon.course.space(space_id_value)
+	var route_id := str(space.get("route", "main"))
+	if route_id.is_empty() or route_id == "main":
+		return "本線"
+	for group: Dictionary in amazon.course.route_groups():
+		if str(group.get("id", "")) == route_id:
+			var label := str(group.get("label", ""))
+			if not label.is_empty():
+				return label
+	return "本線"
+
+
 func _populate_map_nodes() -> void:
 	if not is_instance_valid(map_node_layer):
 		return
@@ -1410,7 +1453,7 @@ func _populate_map_nodes() -> void:
 	for child: Node in map_node_layer.get_children():
 		map_node_layer.remove_child(child)
 		child.queue_free()
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if _uses_horizon_ui():
 		_build_kyoto_map_nodes()
 	else:
 		_build_amazon_map_nodes()
@@ -1419,15 +1462,15 @@ func _populate_map_nodes() -> void:
 	map_player.texture = _cat_frame(0)
 	map_player.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	map_player.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	var player_size := Vector2(KYOTO_HORIZON_CAT_SIZE, KYOTO_HORIZON_CAT_SIZE) if stage_id == StageCatalog.STAGE_KYOTO else Vector2(60, 60)
+	var player_size := Vector2(KYOTO_HORIZON_CAT_SIZE, KYOTO_HORIZON_CAT_SIZE) if _uses_horizon_ui() else Vector2(60, 60)
 	map_player.custom_minimum_size = player_size
 	map_player.size = player_size
-	map_player.z_index = 20 if stage_id == StageCatalog.STAGE_KYOTO else 5
+	map_player.z_index = 20 if _uses_horizon_ui() else 5
 	map_player.visible = true
 	map_player.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_node_layer.add_child(map_player)
 	_position_map_player()
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if _uses_horizon_ui():
 		call_deferred("_sync_kyoto_horizon_anchors")
 
 
@@ -1456,7 +1499,7 @@ func _build_kyoto_map_nodes() -> void:
 
 
 func _sync_kyoto_horizon_anchors() -> void:
-	if stage_id != StageCatalog.STAGE_KYOTO or not is_instance_valid(map_node_layer) or not is_instance_valid(route_preview_row):
+	if not _uses_horizon_ui() or not is_instance_valid(map_node_layer) or not is_instance_valid(route_preview_row):
 		return
 	for child: Node in map_node_layer.get_children():
 		if child.name.begins_with("space_") and bool(child.get_meta("kyoto_horizon_anchor", false)):
@@ -1492,9 +1535,12 @@ func _sync_kyoto_horizon_anchors() -> void:
 			# placing the 112px visible cat on the lower half of the card with a
 			# five-pixel bottom inset.
 			anchor.size = Vector2(KYOTO_HORIZON_ANCHOR_SIZE, KYOTO_HORIZON_ANCHOR_SIZE)
+			var anchor_card_height := tile_rect.size.y
+			if stage_id == StageCatalog.STAGE_AMAZON:
+				anchor_card_height = float(tile.get_meta("horizon_card_height", tile_rect.size.y))
 			anchor.position = tile_local_position + Vector2(
 				(tile_rect.size.x - KYOTO_HORIZON_ANCHOR_SIZE) * 0.5,
-				tile_rect.size.y - KYOTO_HORIZON_ANCHOR_SIZE
+				anchor_card_height - KYOTO_HORIZON_ANCHOR_SIZE
 			)
 		else:
 			anchor.position = tile_local_position
@@ -1509,7 +1555,14 @@ func _sync_kyoto_horizon_anchors() -> void:
 	if anchor_count == 0 and route_preview_row.get_child_count() > 0:
 		call_deferred("_sync_kyoto_horizon_anchors")
 	elif is_instance_valid(map_player) and not map_movement_active:
-		_position_map_player()
+		# Avoid the local-camera recursion in _position_map_player while the
+		# current card is being rebuilt. The anchor we just measured is already in
+		# map_node_layer coordinates, so place the cat directly on that card.
+		if _uses_horizon_ui():
+			map_player.position = _map_player_position_for_space(journey.current_space_id)
+			map_player.move_to_front()
+		else:
+			_position_map_player()
 
 
 func _add_amazon_overview_route_lines(amazon: AmazonJourney, layer_size: Vector2) -> void:
@@ -1731,13 +1784,17 @@ func _icon_for_kind(kind: String) -> Texture2D:
 		"REST": return ICON_REST
 		"RISK": return ICON_RISK
 		"SPECIAL", "JUNCTION", "GOSHUIN", "ITEM", "BOSS": return ICON_SPECIAL
+		"FLOW": return ICON_NORMAL
 	return ICON_NORMAL
 
 
 func _icon_modulate_for_kind(kind: String) -> Color:
 	# The generated Cairo footprints are white line art. A dark earth-brown
 	# tint keeps NORMAL readable on the cream route tile and the pale map medals,
-	# while leaving the stage-specific icons in their original colors.
+	# while leaving the stage-specific icons in their original colors. Amazon's
+	# FLOW reuses the common footprint glyph with a blue-green current tint.
+	if kind == "FLOW":
+		return Color("#238f92")
 	return Color("#604a35") if kind == "NORMAL" else Color.WHITE
 
 
@@ -1848,7 +1905,7 @@ func _map_player_position_for_space(space_id_value: String) -> Vector2:
 		return Vector2.ZERO
 	var target := map_node_layer.get_node_or_null("space_%s" % space_id_value.replace(":", "_")) as Control
 	if target != null:
-		if stage_id == StageCatalog.STAGE_KYOTO and bool(target.get_meta("kyoto_horizon_anchor", false)):
+		if _uses_horizon_ui() and bool(target.get_meta("kyoto_horizon_anchor", false)):
 			# Keep the card label clear and plant the explorer over the semantic
 			# medal, matching Cairo's current-card silhouette.
 			return target.position + Vector2(
@@ -2085,7 +2142,7 @@ func _animate_journey_movement(start_space: String, result: Dictionary) -> void:
 	var final_space := journey.current_space_id
 	if str(result.get("status", "")) != "CHOICE_REQUIRED" and not final_space.is_empty() and (path.is_empty() or path.back() != final_space):
 		path.append(final_space)
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if _uses_horizon_ui():
 		# The visible seven cards are the only screen-space authority. Rebuild a
 		# transient current-to-+6 horizon from the chosen path before measuring any
 		# hop target, so branch route coordinates can never leak into presentation.
@@ -2123,7 +2180,7 @@ func _animate_journey_movement(start_space: String, result: Dictionary) -> void:
 	await _play_map_landing_effect(result)
 	await _animate_map_camera_follow(final_space)
 	_refresh_route_preview_for_space(final_space)
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if _uses_horizon_ui():
 		await get_tree().process_frame
 		if not is_inside_tree():
 			return
@@ -2360,7 +2417,7 @@ func _animate_map_camera_follow(space_id: String) -> void:
 
 
 func _rebuild_kyoto_horizon_after_camera(space_id: String) -> void:
-	if stage_id != StageCatalog.STAGE_KYOTO or not is_instance_valid(route_preview_row):
+	if not _uses_horizon_ui() or not is_instance_valid(route_preview_row):
 		_refresh_route_preview_for_space(space_id)
 		return
 	var route_preview := route_preview_row.get_parent() as Control
@@ -2388,7 +2445,7 @@ func _set_map_camera_min(value: float) -> void:
 	local_view_y_max = local_view_y_min + _map_window_size()
 	_apply_background_camera()
 	if is_instance_valid(map_node_layer):
-		if stage_id == StageCatalog.STAGE_KYOTO:
+		if _uses_horizon_ui():
 			# The Kyoto card horizon is a stable UI layer. Let the scenic portrait
 			# crop follow the landing, while the single visible cat stays anchored to
 			# the corresponding card instead of drifting beneath the row.
@@ -2680,6 +2737,9 @@ func _show_event_card_preview() -> void:
 
 
 func _show_coin_tool(feedback: String = "") -> void:
+	if stage_id == StageCatalog.STAGE_AMAZON:
+		_show_amazon_coin_tool(feedback)
+		return
 	var entries := journey.coin_action_catalog(stage_id == StageCatalog.STAGE_KYOTO)
 	var choices: Array[Dictionary] = []
 	for entry: Dictionary in entries:
@@ -2716,6 +2776,101 @@ func _show_coin_tool(feedback: String = "") -> void:
 			}.get(error, "購入できませんでした。"))
 			_show_coin_tool(error_text)
 	, ICON_COIN)
+
+
+func _show_amazon_coin_tool(feedback: String = "") -> void:
+	var amazon := journey as AmazonJourney
+	if amazon == null:
+		return
+	var entries := amazon.coin_action_catalog(false)
+	var loadout := amazon.aquafall_loadout_snapshot()
+	var choices: Array[Dictionary] = []
+	for entry: Dictionary in entries:
+		var entry_id := str(entry.get("id", ""))
+		var active := bool(entry.get("active", false))
+		var cost := int(entry.get("cost", 0))
+		var category := str(entry.get("category", "旅の道具"))
+		var suffix := "装備中" if active and category == "ボスの準備" else ("準備済み" if active else "購入")
+		var label := "%s　%s\n%s　%d COIN" % [str(entry.get("name", entry_id)), suffix, str(entry.get("effect_text", "")), cost]
+		if category == "ボスの準備":
+			label = "[%s] %s" % [category, label]
+		choices.append({
+			"id": entry_id,
+			"label": label,
+			"requires": {} if active else {"coin_gte": cost},
+		})
+	choices.append({"id": "close", "label": "閉じる"})
+	var body := "TRIP COIN　%d\n旅用品は通常マップ、ボス用品は瀑流で有効。\nボス装備　%d/%d" % [amazon.coins, loadout.size(), AmazonJourney.AQUAFALL_LOADOUT_MAX]
+	if not loadout.is_empty():
+		var equipped_names: Array[String] = []
+		for product_id: String in loadout:
+			equipped_names.append(_amazon_product_name(product_id))
+		body += "\n装備中：" + "、".join(equipped_names)
+	if not feedback.is_empty():
+		body += "\n\n%s" % feedback
+	_open_choice_modal("Amazon COINショップ", body, choices, func(choice_id: String) -> void:
+		if choice_id == "close":
+			return
+		var selected_name := choice_id
+		for entry: Dictionary in entries:
+			if str(entry.get("id", "")) == choice_id:
+				selected_name = str(entry.get("name", choice_id))
+				break
+		var purchase := amazon.purchase_coin_action(choice_id)
+		if bool(purchase.get("ok", false)):
+			status_label.text = "%sを準備した。" % selected_name
+			_refresh_all()
+			_show_amazon_coin_tool("%s　準備OK" % selected_name)
+			return
+		var error := str(purchase.get("error", "UNKNOWN"))
+		if error == "AQUAFALL_LOADOUT_FULL":
+			_show_amazon_replace_modal(choice_id, selected_name)
+			return
+		var error_text: String = str({
+			"COIN_ACTION_ALREADY_ACTIVE": "すでに装備中です。",
+			"NOT_ENOUGH_COINS": "コインが足りません。",
+			"COIN_ACTION_NOT_AVAILABLE": "今は購入できません。",
+		}.get(error, "購入できませんでした。"))
+		_show_amazon_coin_tool(error_text)
+	, ICON_COIN)
+
+
+func _show_amazon_replace_modal(new_product_id: String, new_product_name: String) -> void:
+	var amazon := journey as AmazonJourney
+	if amazon == null:
+		return
+	var loadout := amazon.aquafall_loadout_snapshot()
+	var choices: Array[Dictionary] = []
+	for old_product_id: String in loadout:
+		choices.append({"id": old_product_id, "label": "%sを外して%sを装備" % [_amazon_product_name(old_product_id), new_product_name]})
+	choices.append({"id": "close", "label": "戻る"})
+	_open_choice_modal(
+		"ボス装備の交換",
+		"装備は2個まで。外す装備を選んでください。\n外した装備は戻りません。",
+		choices,
+		func(choice_id: String) -> void:
+			if choice_id == "close":
+				_show_amazon_coin_tool()
+				return
+			var purchase := amazon.purchase_coin_action(new_product_id, choice_id)
+			if bool(purchase.get("ok", false)):
+				status_label.text = "%sを装備した。" % new_product_name
+				_refresh_all()
+				_show_amazon_coin_tool("%s　準備OK" % new_product_name)
+			else:
+				_show_amazon_coin_tool("装備を交換できませんでした。")
+	,
+		ICON_COIN
+	)
+
+
+func _amazon_product_name(product_id: String) -> String:
+	match product_id:
+		AmazonJourney.AQUAFALL_LOG_SHIELD: return "流木よけの盾"
+		AmazonJourney.AQUAFALL_HEAD_START_ROPE: return "先行ロープ"
+		AmazonJourney.AQUAFALL_RIVER_STAKE: return "川止めの杭"
+		AmazonJourney.AQUAFALL_WATER_COMPASS: return "水読みのコンパス"
+	return product_id
 
 
 func _show_skill_tool() -> void:
@@ -3646,7 +3801,7 @@ func _apply_aquafall_practice_motion(progress: float, cat: Control, from_positio
 			logs[log_index].position = log_positions[log_index] + Vector2(0.0, row_step * t)
 
 
-func _start_aquafall_boss() -> void:
+func _start_aquafall_boss(restore_snapshot: Dictionary = {}) -> void:
 	map_roll_active = false
 	map_roll_elapsed = 0.0
 	map_movement_active = false
@@ -3661,6 +3816,10 @@ func _start_aquafall_boss() -> void:
 	aquafall_animation_step = 0
 	aquafall_animation_total = 0
 	roll_slots.clear()
+	# Amazon's normal map uses the shared horizon chrome, while Aquafall keeps
+	# its original arena budget. Restore the compact shell minima before the
+	# five-lane field is measured; _render_map restores normal-map dimensions.
+	_apply_amazon_shell_phase_layout(true)
 	if is_instance_valid(top_hud):
 		top_hud.modulate = Color(1.0, 1.0, 1.0, 0.46)
 	if is_instance_valid(stage_band):
@@ -3668,7 +3827,25 @@ func _start_aquafall_boss() -> void:
 	if is_instance_valid(mission_band):
 		mission_band.modulate = Color(1.0, 1.0, 1.0, 0.52)
 	amazon_boss = AquafallBattle.new()
-	amazon_boss.configure(journey.lap, journey.hp, journey.max_hp, rng.randi())
+	var amazon := journey as AmazonJourney
+	var loadout: Array[String] = []
+	if restore_snapshot.is_empty() and amazon != null:
+		loadout = amazon.aquafall_loadout_snapshot()
+	var configured := amazon_boss.configure(journey.lap, journey.hp, journey.max_hp, rng.randi(), loadout)
+	# Aquafall.configure reports false for a zero-HP terminal snapshot, but the
+	# board is still valid for restoring the defeat surface.  Only reject a
+	# failed setup when the journey itself is alive and should enter gameplay.
+	if not configured and restore_snapshot.is_empty():
+		amazon_boss = null
+		return
+	if not restore_snapshot.is_empty():
+		if not amazon_boss.restore(restore_snapshot):
+			amazon_boss = null
+			return
+	elif amazon != null:
+		# Transfer is committed only after configure succeeds.  A failed boss
+		# setup therefore leaves the purchased loadout available for retry.
+		amazon.consume_aquafall_loadout()
 	var previous_waterfall_level := int(journey.stage_flags.get("aquafall_last_waterfall_level", 0))
 	journey.stage_flags["aquafall_last_waterfall_level"] = amazon_boss.waterfall_level
 	if previous_waterfall_level > 0 and amazon_boss.waterfall_level > previous_waterfall_level:
@@ -3678,7 +3855,10 @@ func _start_aquafall_boss() -> void:
 	var bgm := get_node_or_null("/root/BgmManager")
 	if bgm != null:
 		bgm.call("play_amazon_boss")
-	_render_aquafall_boss()
+	# Container minima settle on the next layout pass. Build the lane geometry
+	# afterwards so it measures the restored compact boss arena, not the normal
+	# horizon shell from the previous frame.
+	call_deferred("_render_aquafall_boss")
 
 
 func _render_aquafall_boss() -> void:
@@ -3810,7 +3990,19 @@ func _render_aquafall_boss() -> void:
 		settled_face = roll_slots.back()
 	map_dice.present([settled_face], amazon_boss_roll_active, 0 if amazon_boss_roll_active else 1)
 	_build_boss_roll_tray()
+	if amazon_boss.phase == AquafallBattle.PHASE_WAIT_ROLL and not amazon_boss_move_active and amazon_boss.shop_item_available(AquafallBattle.SHOP_RIVER_STAKE):
+		var stake_button := _button("このターンの丸太下降を止める（ROLL前）", _aquafall_use_stake, true)
+		stake_button.name = "AquafallRiverStakeButton"
+		stake_button.custom_minimum_size.y = 54
+		stake_button.tooltip_text = "川止めの杭"
+		controls_box.add_child(stake_button)
 	if amazon_boss.phase == AquafallBattle.PHASE_WAIT_DIRECTION and not amazon_boss_move_active:
+		if amazon_boss.shop_item_available(AquafallBattle.SHOP_WATER_COMPASS):
+			var compass_button := _button("水読みを使う", _aquafall_use_compass, true)
+			compass_button.name = "AquafallWaterCompassButton"
+			compass_button.custom_minimum_size.y = 54
+			compass_button.tooltip_text = "水読みのコンパス"
+			controls_box.add_child(compass_button)
 		var row := HBoxContainer.new()
 		row.name = "AquafallDirectionRow"
 		row.add_theme_constant_override("separation", 10)
@@ -3829,7 +4021,109 @@ func _render_aquafall_boss() -> void:
 		row.add_child(left)
 		row.add_child(right)
 		controls_box.add_child(row)
+		var compass_preview := amazon_boss.compass_preview()
+		if not compass_preview.is_empty():
+			_add_aquafall_compass_preview(lane_area, compass_preview, arena_size, side_margin, info_top + info_height + 6.0)
 	_refresh_all()
+
+
+func _aquafall_use_stake() -> void:
+	if amazon_boss == null or amazon_boss_move_active:
+		return
+	var result := amazon_boss.use_river_stake()
+	status_label.text = str(result.get("text", "川止めの杭は使えない。")) if bool(result.get("ok", false)) else "今は使えない。"
+	_render_aquafall_boss()
+
+
+func _aquafall_use_compass() -> void:
+	if amazon_boss == null or amazon_boss_move_active:
+		return
+	var result := amazon_boss.use_water_compass()
+	status_label.text = "左右の次ターン予告を表示した。" if bool(result.get("ok", false)) else "今は水読みを使えない。"
+	_render_aquafall_boss()
+
+
+func _add_aquafall_compass_preview(lane_area: Control, preview: Dictionary, arena_size: Vector2, side_margin: float, top: float) -> void:
+	var root := Control.new()
+	root.name = "AquafallCompassPreview"
+	root.set_meta("preview", preview.duplicate(true))
+	root.position = Vector2(side_margin, top)
+	root.size = Vector2(maxf(arena_size.x - side_margin * 2.0, 220.0), 74.0)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.z_index = 12
+	lane_area.add_child(root)
+	var direction_index := 0
+	for direction_name: String in ["left", "right"]:
+		var direction_preview := preview.get(direction_name, {}) as Dictionary
+		var panel := Panel.new()
+		panel.name = "AquafallCompassPreview%s" % ("Left" if direction_name == "left" else "Right")
+		panel.position = Vector2(float(direction_index) * (root.size.x * 0.5 + 4.0), 0.0)
+		panel.size = Vector2(root.size.x * 0.5 - 4.0, root.size.y)
+		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_theme_stylebox_override("panel", _panel(Color(0.02, 0.12, 0.14, 0.72), Color("#75e1d0"), 10, 1))
+		root.add_child(panel)
+		var title := _label("水読み %s　次ターン 高さ%d　レーン%d" % ["←" if direction_name == "left" else "→", int(direction_preview.get("height", 0)), int(direction_preview.get("lane", 0))], 11, Color("#d8fff5"), HORIZONTAL_ALIGNMENT_CENTER)
+		title.position = Vector2(2.0, 2.0)
+		title.size = Vector2(panel.size.x - 4.0, 22.0)
+		panel.add_child(title)
+		var lanes_row := HBoxContainer.new()
+		lanes_row.name = "AquafallCompassPreview%sLanes" % ("Left" if direction_name == "left" else "Right")
+		lanes_row.position = Vector2(5.0, 28.0)
+		lanes_row.size = Vector2(panel.size.x - 10.0, 40.0)
+		lanes_row.add_theme_constant_override("separation", 2)
+		panel.add_child(lanes_row)
+		for lane_value: int in range(1, 6):
+			var lane_panel := Panel.new()
+			lane_panel.name = "AquafallCompassPreview%sLane%d" % ["Left" if direction_name == "left" else "Right", lane_value]
+			lane_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			lane_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var destination := int(direction_preview.get("lane", 0)) == lane_value
+			lane_panel.add_theme_stylebox_override("panel", _panel(Color(0.20, 0.72, 0.66, 0.48) if destination else Color(0.08, 0.24, 0.26, 0.58), Color("#f0cc62") if destination else Color("#75e1d0"), 5, 1))
+			var obstacle_copy := _aquafall_compass_lane_copy(direction_preview, lane_value, destination)
+			var lane_label := _label(obstacle_copy, 8, Color("#f5f3d6"), HORIZONTAL_ALIGNMENT_CENTER)
+			lane_label.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+			lane_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			lane_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			lane_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			lane_panel.add_child(lane_label)
+			lanes_row.add_child(lane_panel)
+		direction_index += 1
+
+
+func _aquafall_compass_lane_copy(direction_preview: Dictionary, lane_value: int, destination: bool) -> String:
+	var board: Array = []
+	# Battle previews expose both names for save/version compatibility. Prefer the
+	# explicit board when it contains rows, but fall back to obstacles when an
+	# older preview carries an empty board alias.
+	var raw_board: Variant = direction_preview.get("board", [])
+	if not raw_board is Array or (raw_board as Array).is_empty():
+		raw_board = direction_preview.get("obstacles", [])
+	if raw_board is Array:
+		board = raw_board
+	var entries: Array[String] = []
+	for raw_obstacle: Variant in board:
+		if not raw_obstacle is Dictionary:
+			continue
+		var obstacle := raw_obstacle as Dictionary
+		var lanes: Array = obstacle.get("lanes", []) as Array
+		var obstacle_type := str(obstacle.get("type", obstacle.get("log_type", "small_log"))).to_lower()
+		if lanes.is_empty():
+			if obstacle_type in ["large", "large_log", "giant", "giant_log"]:
+				var lane_from := int(obstacle.get("lane_from", obstacle.get("lane", 1)))
+				var lane_to := int(obstacle.get("lane_to", lane_from))
+				for occupied_lane: int in range(lane_from, lane_to + 1):
+					lanes.append(occupied_lane)
+			else:
+				lanes.append(int(obstacle.get("lane", 1)))
+		if lane_value not in lanes:
+			continue
+		var type_copy := "大" if obstacle_type in ["large", "large_log", "giant", "giant_log"] else "小"
+		var distance := int(obstacle.get("steps_until_contact", obstacle.get("relative_height", 0)))
+		entries.append("%s丸太\n距離%d" % [type_copy, maxi(distance, 0)])
+	if entries.is_empty():
+		return "着地" if destination else "空"
+	var copy := "\n".join(entries)
+	return ("◎ " if destination else "") + copy
 
 
 func _aquafall_info_text(height_value: int, lane_value: int, remaining_jumps: int = -1, face_value: int = 0, hp_value: int = -1) -> String:
@@ -4178,6 +4472,7 @@ func _animate_aquafall_direction(path: Array[int], contact_details: Array = []) 
 	var projected_hp := amazon_boss.hp
 	var projected_guard := amazon_boss.water_guard_charges
 	var immune := amazon_boss.water_run_rolls > 0
+	var projected_shop_shield := amazon_boss != null and bool(amazon_boss.aquafall_shop.get("shield_available", false))
 	for step_index: int in range(path.size()):
 		await _animate_aquafall_step(path[step_index], step_index, path.size())
 		if not is_inside_tree():
@@ -4192,6 +4487,11 @@ func _animate_aquafall_direction(path: Array[int], contact_details: Array = []) 
 		var blocked_count := 0
 		for _contact: Dictionary in step_contacts:
 			if immune:
+				blocked_count += 1
+			elif projected_shop_shield:
+				# Match AquafallBattle._resolve_hit: STRAIGHT immunity first,
+				# then the one-use shop shield, then PAIR water guard.
+				projected_shop_shield = false
 				blocked_count += 1
 			elif projected_guard > 0:
 				projected_guard -= 1
@@ -4243,6 +4543,11 @@ func _animate_aquafall_step(target_lane: int, step_index: int, total_steps: int)
 	var side_margin := float(lane_area.get_meta("side_margin", 24.0))
 	var lane_width := float(lane_area.get_meta("lane_width", 80.0))
 	var row_step := float(lane_area.get_meta("row_step", 40.0))
+	# The river stake freezes obstacle descent for the whole committed turn.
+	# Capture the live charge before the hop begins; Aquafall disarms it only
+	# after choose_direction resolves all hops, so every visual step in this
+	# animation must use the frozen value.
+	var stake_armed := amazon_boss != null and bool(amazon_boss.aquafall_shop.get("stake_armed", false))
 	var from_position := cat.position
 	var base_y := float(cat.get_meta("base_y", from_position.y))
 	var to_position := Vector2(side_margin + (target_lane - 1) * lane_width + (lane_width - cat.size.x) * 0.5, base_y)
@@ -4278,7 +4583,7 @@ func _animate_aquafall_step(target_lane: int, step_index: int, total_steps: int)
 	# tweens happened to begin on different scheduler ticks.
 	var step_tween := create_tween()
 	step_tween.tween_method(
-		_apply_aquafall_step_motion.bind(cat, from_position, to_position, moving_logs, log_start_positions, row_step, current_line, gauge_from_y, gauge_to_y),
+		_apply_aquafall_step_motion.bind(cat, from_position, to_position, moving_logs, log_start_positions, 0.0 if stake_armed else row_step, current_line, gauge_from_y, gauge_to_y),
 		0.0,
 		1.0,
 		AQUAFALL_STEP_SECONDS
@@ -4289,15 +4594,21 @@ func _animate_aquafall_step(target_lane: int, step_index: int, total_steps: int)
 	aquafall_visual_lane = target_lane
 	aquafall_visual_height = mini(amazon_boss.height + step_index + 1, amazon_boss.goal_height)
 	aquafall_animation_step = step_index + 1
+	# A queued boss/map rebuild can free the old explorer while this hop is
+	# awaiting its tween. Keep the async visual continuation harmless in that
+	# case; the next render creates the authoritative sprite.
+	if not is_instance_valid(cat):
+		return
 	cat.position = to_position
 	cat.scale = Vector2.ONE
 	for log_index: int in range(moving_logs.size()):
 		if is_instance_valid(moving_logs[log_index]):
-			moving_logs[log_index].position = log_start_positions[log_index] + Vector2(0.0, row_step)
+			moving_logs[log_index].position = log_start_positions[log_index] + Vector2(0.0, 0.0 if stake_armed else row_step)
 	if is_instance_valid(current_line):
 		current_line.position.y = gauge_to_y
-	for obstacle: Dictionary in aquafall_visual_obstacles:
-		obstacle["relative_height"] = int(obstacle.get("relative_height", 0)) - 1
+	if not stake_armed:
+		for obstacle: Dictionary in aquafall_visual_obstacles:
+			obstacle["relative_height"] = int(obstacle.get("relative_height", 0)) - 1
 	info = lane_area.get_node_or_null("AquafallInfo") as Label
 	if info != null:
 		info.text = _aquafall_info_text(aquafall_visual_height, aquafall_visual_lane, total_steps - step_index - 1, amazon_boss.pending_face)
@@ -4306,7 +4617,7 @@ func _animate_aquafall_step(target_lane: int, step_index: int, total_steps: int)
 		await get_tree().create_timer(AQUAFALL_STEP_PAUSE_SECONDS).timeout
 
 
-func _apply_aquafall_step_motion(progress: float, cat: Control, from_position: Vector2, to_position: Vector2, moving_logs: Array[Control], log_start_positions: Array[Vector2], row_step: float, current_line: Control, gauge_from_y: float, gauge_to_y: float) -> void:
+func _apply_aquafall_step_motion(progress: float, cat: Variant, from_position: Vector2, to_position: Vector2, moving_logs: Array, log_start_positions: Array, row_step: float, current_line: Variant, gauge_from_y: float, gauge_to_y: float) -> void:
 	var t := clampf(progress, 0.0, 1.0)
 	if is_instance_valid(cat):
 		cat.position = from_position.lerp(to_position, t) + Vector2(0.0, -sin(t * PI) * AQUAFALL_HOP_ARC)
@@ -5064,16 +5375,18 @@ func _refresh_all() -> void:
 	var traveled := int(journey.cumulative_score) + int(journey.score)
 	score_label.text = str(traveled)
 	best_label.text = str(maxi(traveled, int(best_label.text)))
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if _uses_horizon_ui():
 		_refresh_journey_mission()
 		progress_label.text = _space_number_text()
-		var boss_route := str(journey.stage_flags.get("kyoto_boss_route", ""))
-		var goshuin_copy := "御朱印 %d/4" % (journey as KyotoJourney).goshuin_count()
-		stage_route_label.text = ("追陣" if boss_route == "direct" else ("六路陣" if boss_route == "foxfire" else "本線")) + "　" + goshuin_copy
+		if stage_id == StageCatalog.STAGE_KYOTO:
+			var boss_route := str(journey.stage_flags.get("kyoto_boss_route", ""))
+			var goshuin_copy := "御朱印 %d/4" % (journey as KyotoJourney).goshuin_count()
+			stage_route_label.text = ("追陣" if boss_route == "direct" else ("六路陣" if boss_route == "foxfire" else "本線")) + "　" + goshuin_copy
+		else:
+			stage_route_label.text = _amazon_route_label(journey.current_space_id)
 	else:
 		progress_label.text = _space_number_text()
 		stage_route_label.text = "本線　滝の支流"
-		_set_mission_value("発見", "%d/5" % mini(int(journey.stage_flags.get("mission_event_count", 0)), 5))
 	if is_instance_valid(roll_button):
 		# A rolling die must remain tappable so the player can lock the face. The
 		# control is disabled only after the stop tap, while hops/effect/camera are
@@ -5102,7 +5415,18 @@ func _refresh_all() -> void:
 
 
 func _refresh_journey_mission() -> void:
-	if journey == null or stage_id != StageCatalog.STAGE_KYOTO:
+	if journey == null:
+		return
+	if stage_id == StageCatalog.STAGE_AMAZON:
+		var discovered := clampi(int(journey.stage_flags.get("mission_event_count", 0)), 0, 5)
+		if is_instance_valid(mission_caption_label):
+			mission_caption_label.text = "発見"
+		if is_instance_valid(mission_progress_label):
+			mission_progress_label.text = "進捗 %d/5　報酬 COIN ×12" % discovered
+		if is_instance_valid(mission_icon_view):
+			mission_icon_view.texture = ICON_EVENT
+		return
+	if stage_id != StageCatalog.STAGE_KYOTO:
 		return
 	var mission := journey.sync_journey_mission()
 	if is_instance_valid(mission_caption_label):
@@ -5114,6 +5438,48 @@ func _refresh_journey_mission() -> void:
 		mission_progress_label.text = "✓ CLEAR!　獲得 COIN +%d" % mission_reward if bool(mission.get("completed", false)) else "進捗 %d/%d　報酬 COIN ×%d" % [mission_progress, mission_target, mission_reward]
 	if is_instance_valid(mission_icon_view):
 		mission_icon_view.texture = _journey_mission_icon(str(mission.get("icon_kind", "dice")))
+
+
+func _apply_amazon_shell_phase_layout(boss_layout: bool) -> void:
+	if stage_id != StageCatalog.STAGE_AMAZON:
+		return
+	var horizon_layout := not boss_layout
+	if is_instance_valid(top_hud):
+		top_hud.custom_minimum_size.y = 200.0 if horizon_layout else 128.0
+	if is_instance_valid(stage_band):
+		stage_band.custom_minimum_size.y = 48.0 if horizon_layout else 54.0
+	if is_instance_valid(mission_band):
+		mission_band.custom_minimum_size.y = 120.0 if horizon_layout else 74.0
+	var message_band := root_layer.find_child("MessageBand", true, false) as PanelContainer if is_instance_valid(root_layer) else null
+	if is_instance_valid(message_band):
+		message_band.custom_minimum_size.y = 72.0 if horizon_layout else 52.0
+	if is_instance_valid(controls_box):
+		controls_box.custom_minimum_size.y = 335.0 if horizon_layout else 326.0
+	if is_instance_valid(overview_button):
+		overview_button.custom_minimum_size = Vector2(112, 96) if horizon_layout else Vector2(104, 55)
+		overview_button.add_theme_font_size_override("font_size", 17 if horizon_layout else 15)
+	if is_instance_valid(coin_info_chip):
+		coin_info_chip.custom_minimum_size = Vector2(104, 96) if horizon_layout else Vector2(0, 54)
+	if is_instance_valid(progress_info_chip):
+		progress_info_chip.custom_minimum_size = Vector2(148, 96) if horizon_layout else Vector2(0, 54)
+	var survival_chip := root_layer.find_child("SurvivalStack", true, false) as PanelContainer if is_instance_valid(root_layer) else null
+	if is_instance_valid(survival_chip):
+		survival_chip.custom_minimum_size = Vector2(124, 96) if horizon_layout else Vector2(0, 54)
+	if is_instance_valid(coins_label):
+		coins_label.add_theme_font_size_override("font_size", 26 if horizon_layout else 24)
+	if is_instance_valid(progress_label):
+		progress_label.add_theme_font_size_override("font_size", 46 if horizon_layout else 24)
+	for value_label: Label in [score_label, best_label, lap_label]:
+		if not is_instance_valid(value_label):
+			continue
+		value_label.add_theme_font_size_override("font_size", 40 if horizon_layout else 25)
+		var stat_box := value_label.get_parent() as VBoxContainer
+		if stat_box != null:
+			stat_box.add_theme_constant_override("separation", -2 if horizon_layout else 0)
+			if stat_box.get_child_count() > 0:
+				var caption := stat_box.get_child(0) as Label
+				if caption != null:
+					caption.add_theme_font_size_override("font_size", 16 if horizon_layout else 13)
 
 
 func _set_mission_value(title_text: String, value_text: String) -> void:
@@ -5285,20 +5651,7 @@ func _restore_saved_state() -> void:
 		var boss_snapshot := payload.get("boss", {}) as Dictionary
 		if journey.phase == StageJourneyBase.PHASE_BOSS and not boss_snapshot.is_empty():
 			if stage_id == StageCatalog.STAGE_AMAZON:
-				amazon_boss = AquafallBattle.new()
-				amazon_boss.configure(journey.lap, journey.hp, journey.max_hp)
-				amazon_boss.restore(boss_snapshot)
-				roll_slots = amazon_boss.roll_faces.duplicate()
-				var bgm := get_node_or_null("/root/BgmManager")
-				if bgm != null:
-					bgm.call("play_amazon_boss")
-				if is_instance_valid(top_hud):
-					top_hud.modulate = Color(1.0, 1.0, 1.0, 0.46)
-				if is_instance_valid(stage_band):
-					stage_band.modulate = Color(1.0, 1.0, 1.0, 0.68)
-				if is_instance_valid(mission_band):
-					mission_band.modulate = Color(1.0, 1.0, 1.0, 0.52)
-				_render_aquafall_boss()
+				_start_aquafall_boss(boss_snapshot)
 			else:
 				var kyoto := journey as KyotoJourney
 				if kyoto != null:
@@ -5365,10 +5718,14 @@ func _clear_content() -> void:
 
 func _clear_controls() -> void:
 	for child: Node in controls_box.get_children():
+		# Detach before queueing so a synchronously rebuilt Aquafall action keeps
+		# its stable name even while the old control awaits deferred deletion.
+		controls_box.remove_child(child)
 		child.queue_free()
 	roll_button = null
 	travel_tray_root = null
 	primary_roll_controls = null
+	travel_tray_uses_horizon_layout = false
 
 
 func _request_back() -> void:
@@ -5395,9 +5752,9 @@ func _stat_chip(text_value: String) -> Label:
 
 func _hud_stat(caption: String, value: String) -> Label:
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", -2 if stage_id == StageCatalog.STAGE_KYOTO else 0)
-	var title := _label(caption, 16 if stage_id == StageCatalog.STAGE_KYOTO else 13, Color("#d9c6a0") if stage_id == StageCatalog.STAGE_KYOTO else Color("#e4d5b8"), HORIZONTAL_ALIGNMENT_CENTER)
-	var number := _label(value, 40 if stage_id == StageCatalog.STAGE_KYOTO else 25, Color("#f9df8d"), HORIZONTAL_ALIGNMENT_CENTER)
+	box.add_theme_constant_override("separation", -2 if _uses_horizon_ui() else 0)
+	var title := _label(caption, 16 if _uses_horizon_ui() else 13, Color("#d9c6a0") if _uses_horizon_ui() else Color("#e4d5b8"), HORIZONTAL_ALIGNMENT_CENTER)
+	var number := _label(value, 40 if _uses_horizon_ui() else 25, Color("#f9df8d"), HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(title)
 	box.add_child(number)
 	return number
@@ -5454,7 +5811,7 @@ func _cairo_progress_hud() -> Dictionary:
 	chip.name = "ProgressStack"
 	chip.custom_minimum_size = Vector2(148, 96)
 	chip.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-	var value := _label("1/90", 46, Color("#fff0c1"), HORIZONTAL_ALIGNMENT_CENTER)
+	var value := _label("1/%d" % (120 if stage_id == StageCatalog.STAGE_AMAZON else 90), 46, Color("#fff0c1"), HORIZONTAL_ALIGNMENT_CENTER)
 	value.add_theme_color_override("font_outline_color", Color(0.05, 0.08, 0.09, 0.92))
 	value.add_theme_constant_override("outline_size", 4)
 	chip.add_child(value)
@@ -5464,8 +5821,8 @@ func _cairo_progress_hud() -> Dictionary:
 func _survival_chip() -> PanelContainer:
 	var chip := PanelContainer.new()
 	chip.name = "SurvivalStack"
-	chip.custom_minimum_size = Vector2(124, 96) if stage_id == StageCatalog.STAGE_KYOTO else Vector2(0, 54)
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	chip.custom_minimum_size = Vector2(124, 96) if _uses_horizon_ui() else Vector2(0, 54)
+	if _uses_horizon_ui():
 		chip.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	else:
 		chip.add_theme_stylebox_override("panel", _panel(Color(0.14, 0.13, 0.11, 0.92), Color("#796b50"), 8, 1))
@@ -5507,6 +5864,10 @@ func _heart_text(current: int) -> String:
 
 func _stage_accent() -> Color:
 	return KYOTO_RED if stage_id == StageCatalog.STAGE_KYOTO else AMAZON_TEAL
+
+
+func _uses_horizon_ui() -> bool:
+	return stage_id == StageCatalog.STAGE_KYOTO or stage_id == StageCatalog.STAGE_AMAZON
 
 
 func _stage_ink(alpha: float = 1.0) -> Color:

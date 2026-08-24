@@ -1,0 +1,250 @@
+version: 2
+
+goal:
+  title: "Amazon 通常マップ 京都・カイロ UI 統一"
+  slug: "amazon-kyoto-cairo-ui-parity"
+  kind: specific
+  tranche: "現状調査、限定実装、Amazon固有挙動確認、京都・カイロ回帰、視覚比較、完成監査"
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+  requested_worker_model: "stealth/ox-alpha"
+  orchestrator_model: "gpt-5.6-sol"
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: high
+    objective: "京都・カイロ・Amazon通常画面の実装差分、共通関数、Amazon固有境界、検証コマンドを特定する。"
+    inputs:
+      - scripts/app/journey_stage_screen.gd
+      - scripts/game/stage_journey_base.gd
+      - scripts/game/amazon_journey.gd
+      - scripts/game/amazon_course_model.gd
+      - data/stages/amazon_suiu_falls_course.json
+      - tests
+    constraints:
+      - "Read-only."
+      - "京都を正解見本として具体的な関数・条件分岐を特定する。"
+      - "ユーザーの未追跡ファイルを変更しない。"
+    expected_output:
+      - "画面構築と更新処理のマップ"
+      - "最小変更ファイル候補"
+      - "Amazon固有挙動の保護点"
+      - "実行可能なテスト・キャプチャ手順"
+    receipt:
+      result: done
+      summary: "Amazonも共通処理で現在地+前方6を生成済み。旧UI差はjourney_stage_screen.gdのKyoto限定ゲート、Amazon全ノード描画、3分割MISSION、縮小カード/操作部が中心。ゲームモデルとJSONは無変更でよい。"
+      evidence:
+        - "scripts/app/journey_stage_screen.gd:_build_shell,_render_map,_route_tile,_populate_map_nodes,_refresh_all"
+        - "scripts/app/journey_stage_screen_kyoto_readability.gd:_route_tile"
+        - "scripts/game/amazon_journey.gd:_resolve_landing,_resolve_flow"
+        - "tests/run_journey_stage_ui_regression_tests.gd"
+        - "tests/record_amazon_kyoto_screens.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_tests.gd"
+          status: pass
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Scout証拠から回帰リスクの低い実装境界と検証条件を決定する。"
+    inputs:
+      - "T001 receipt"
+    constraints:
+      - "Do not implement."
+      - "大規模リファクタリングを選ばない。"
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+    receipt:
+      result: done
+      decision: "Amazon通常画面の表示層だけを単一bounded sliceで実装する。ゲーム/JSON/Scene/assets/ボスは変更禁止。"
+      next_allowed_task: T003
+      allowed_files:
+        - scripts/app/journey_stage_screen.gd
+        - scripts/app/journey_stage_screen_kyoto_readability.gd
+        - tests/run_journey_stage_ui_regression_tests.gd
+      verify:
+        - "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+        - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+        - "Godot --headless --path . --script tests/run_tests.gd"
+        - "git diff --check"
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Judgeが指定した限定差分でAmazon通常画面を京都・カイロUIへ統一する。"
+    allowed_files:
+      - scripts/app/journey_stage_screen.gd
+      - scripts/app/journey_stage_screen_kyoto_readability.gd
+      - tests/run_journey_stage_ui_regression_tests.gd
+    verify:
+      - "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+      - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+      - "Godot --headless --path . --script tests/run_tests.gd"
+      - "git diff --check"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Amazon固有ゲーム内容またはボス内容の変更が必要になる。"
+      - "京都・カイロ共通挙動が曖昧で安全に横展開できない。"
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - scripts/app/journey_stage_screen.gd
+        - scripts/app/journey_stage_screen_kyoto_readability.gd
+        - tests/run_journey_stage_ui_regression_tests.gd
+      summary: "Amazon通常画面をhorizon HUD/7カード/anchor/共通tray・tool dock/代表MISSION/動的route label/FLOW glyphへ統一し、通常画面のlegendと全ルートノードを除去。"
+      commands:
+        - cmd: "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      audit_note: "Sol review found normal-layout scaling leaked into Amazon boss tray and an unrelated boss assertion was relaxed; T004 will correct before acceptance."
+
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Amazon固有挙動、ダイス、HP/LIFE、ITEM、京都・カイロ回帰を検証し、必要な限定修正を行う。"
+    allowed_files:
+      - scripts/app/journey_stage_screen.gd
+      - scripts/app/journey_stage_screen_kyoto_readability.gd
+      - tests/run_journey_stage_ui_regression_tests.gd
+    verify:
+      - "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+      - "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+      - "Godot --headless --path . --script tests/run_tests.gd"
+      - "git diff --check"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "ボス専用ゲーム内容の変更が必要になる。"
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - scripts/app/journey_stage_screen.gd
+        - scripts/app/journey_stage_screen_kyoto_readability.gd
+        - tests/run_journey_stage_ui_regression_tests.gd
+      summary: "Sol/Terra監査でmission save副作用、boss tray/layout漏れ、boss resume/deferred測定、route fallbackを修正。Terra最終Approve。"
+      commands:
+        - cmd: "Godot --headless --path . --script tests/run_journey_stage_ui_regression_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd"
+          status: pass
+        - cmd: "Godot --headless --path . --script tests/run_tests.gd"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      audit:
+        reviewer: "gpt-5.6-terra high"
+        decision: approve
+        notes:
+          - "Amazon boss new/resume paths restore compact shell and defer arena measurement."
+          - "Amazon representative mission does not create generic mission save state."
+
+  - id: T005
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "720x1280基準でAmazon・京都・カイロ通常画面を同条件確認し、可能なら横並び比較成果物を作成する。"
+    inputs:
+      - "T003 receipt"
+      - "T004 receipt"
+    constraints:
+      - "ゲーム内容を変更しない。"
+      - "既存キャプチャ基盤を優先する。"
+    expected_output:
+      - "各ステージのキャプチャまたは取得不能理由"
+      - "視覚差分所見"
+    receipt:
+      result: done
+      summary: "Amazon/Kyoto/Cairoを720x1280で撮影し、Amazon-Kyoto-Cairo横並び比較を生成。AmazonとKyotoの通常UI parityを目視確認。"
+      artifacts:
+        - artifacts/qa/amazon-kyoto-cairo-ui-parity/amazon-map-720x1280.png
+        - artifacts/qa/amazon-kyoto-cairo-ui-parity/kyoto-map-720x1280.png
+        - artifacts/qa/amazon-kyoto-cairo-ui-parity/cairo-map-720x1280.png
+        - artifacts/qa/amazon-kyoto-cairo-ui-parity/amazon-kyoto-cairo-comparison-2160x1280.png
+      visual_result:
+        - "Amazon: HUD、MISSION、7カード、中央ダイス、tray/ROLL、下部4ボタンに重なり・画面外なし。"
+        - "Kyoto: 同条件キャプチャ正常。"
+        - "Cairo: 720x1280撮影成功。ただし専用V06回帰スイートはcapture envなしでも既存15 failures。tracked Cairo/V06 diffなし。"
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "変更差分と検証証拠をユーザーの完成条件へ照合し、完了可否を監査する。"
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "Required Workerがqueued/activeなら完了を拒否する。"
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt:
+      result: done
+      decision: complete
+      summary: "Amazon通常画面は京都と同じ製品UI文法へ収束。表示層3ファイルのみの差分でAmazon固有ゲームモデル/JSON/ボス内容を維持し、UI/core/視覚比較証拠が揃った。"
+      evidence:
+        - "journey_stage_ui failures=0"
+        - "amazon_kyoto_stage passed=true"
+        - "core failures=0"
+        - "git diff --check pass"
+        - artifacts/qa/amazon-kyoto-cairo-ui-parity/amazon-kyoto-cairo-comparison-2160x1280.png
+      known_issues:
+        - "Cairo/V06 tracked diffなしだが既存baseline: play 15, mission 1, boss 7 failures。course testはpass。"
+
+checks:
+  dirty_fingerprint: "pre-existing untracked casino/playtest and uid files; preserve"
+  last_verification:
+    result: pass_with_unrelated_baseline_failures
+    task: T005
+    commands:
+      - "run_journey_stage_ui_regression_tests.gd: failures=0"
+      - "run_amazon_kyoto_stage_tests.gd: passed=true"
+      - "run_tests.gd: failures=0"
+      - "git diff --check: pass"
+      - "run_v06_course_model_tests.gd: failures=0"
+      - "run_v06_play_screen_tests.gd: existing failures=15, no V06 diff"
+      - "run_v06_mission_tests.gd: existing failures=1, no V06 diff"
+      - "run_v06_boss_play_screen_tests.gd: existing failures=7, no V06 diff"

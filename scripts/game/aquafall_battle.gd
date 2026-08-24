@@ -33,6 +33,11 @@ const DEFAULT_LEVEL_CONFIG := {
 	"max_deadly_streak": 1,
 	"pattern_weights": {"easy": 70, "normal": 30, "hard": 0, "deadly": 0},
 }
+const SHOP_LOG_SHIELD := "aquafall_log_shield"
+const SHOP_HEAD_START_ROPE := "aquafall_head_start_rope"
+const SHOP_RIVER_STAKE := "aquafall_river_stake"
+const SHOP_WATER_COMPASS := "aquafall_water_compass"
+const SHOP_PRODUCT_IDS := [SHOP_LOG_SHIELD, SHOP_HEAD_START_ROPE, SHOP_RIVER_STAKE, SHOP_WATER_COMPASS]
 
 var phase: StringName = PHASE_WAIT_ROLL
 var lane := 3
@@ -69,9 +74,10 @@ var last_preview_table: Dictionary = {}
 var hard_streak := 0
 var deadly_streak := 0
 var debug_logs: Array[Dictionary] = []
+var aquafall_shop: Dictionary = {}
 
 
-func configure(current_lap: int, current_hp: int, current_max_hp: int, seed_value: int = 0) -> bool:
+func configure(current_lap: int, current_hp: int, current_max_hp: int, seed_value: int = 0, loadout: Variant = []) -> bool:
 	if not FileAccess.file_exists(DATA_PATH):
 		return false
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(DATA_PATH))
@@ -108,6 +114,7 @@ func configure(current_lap: int, current_hp: int, current_max_hp: int, seed_valu
 	hard_streak = 0
 	deadly_streak = 0
 	debug_logs.clear()
+	aquafall_shop = _new_shop_state(loadout)
 	rng.seed = seed_value if seed_value != 0 else hash("aquafall:%d" % lap)
 	generation_rules = DEFAULT_GENERATION_RULES.duplicate(true)
 	var parsed_slot_rules: Variant = (parsed as Dictionary).get("slot_rules", {})
@@ -121,6 +128,12 @@ func configure(current_lap: int, current_hp: int, current_max_hp: int, seed_valu
 	_normalize_level_config()
 	stats = {"roll_count": 0, "left_count": 0, "right_count": 0, "small_log_hits": 0, "large_log_hits": 0, "pair_count": 0, "straight_count": 0, "triple_count": 0, "spawn_count": 0}
 	spawn_obstacles()
+	# The rope changes only the starting height.  Applying it after the initial
+	# board is generated preserves both the authored board and RNG sequence.
+	if bool(aquafall_shop.get("rope_available", false)):
+		height = mini(height + 3, goal_height)
+		aquafall_shop["rope_available"] = false
+		aquafall_shop["rope_applied"] = true
 	return hp > 0
 
 
@@ -325,6 +338,7 @@ func double_danger_count(board: Array = obstacles, start_lane: int = -1) -> int:
 func _simulate_direction(board: Array, start_lane: int, dice: int, direction: int) -> Dictionary:
 	var safe_dice := clampi(dice, 0, 6)
 	var path := reflect_path(start_lane, direction, safe_dice, lane_count)
+	var stake_active := bool(aquafall_shop.get("stake_armed", false))
 	var preview_obstacles: Array[Dictionary] = []
 	for raw_obstacle: Variant in board:
 		if raw_obstacle is Dictionary:
@@ -334,7 +348,8 @@ func _simulate_direction(board: Array, start_lane: int, dice: int, direction: in
 	for step_index: int in range(path.size()):
 		var next_lane: int = path[step_index]
 		for obstacle: Dictionary in preview_obstacles:
-			_set_obstacle_steps(obstacle, _obstacle_steps(obstacle) - 1)
+			if not stake_active:
+				_set_obstacle_steps(obstacle, _obstacle_steps(obstacle) - 1)
 		for obstacle: Dictionary in preview_obstacles:
 			if _is_large_log(obstacle) and _obstacle_steps(obstacle) == 0 and _lane_overlaps(obstacle, next_lane):
 				contacts.append("large_log")
@@ -436,21 +451,96 @@ func request_roll(face: int) -> Dictionary:
 	}
 
 
+func use_river_stake() -> Dictionary:
+	if phase != PHASE_WAIT_ROLL:
+		return {"ok": false, "error": "STAKE_NOT_AVAILABLE", "phase": String(phase)}
+	if not bool(aquafall_shop.get("stake_available", false)):
+		return {"ok": false, "error": "STAKE_NOT_AVAILABLE", "phase": String(phase)}
+	aquafall_shop["stake_available"] = false
+	aquafall_shop["stake_armed"] = true
+	aquafall_shop["stake_used"] = true
+	return {"ok": true, "status": "STAKE_ARMED", "text": "川止めの杭を使った。このターンは丸太が下降しない。"}
+
+
+# Alias kept for callers that name the item by its short UI label.
+func use_stake() -> Dictionary:
+	return use_river_stake()
+
+
+func use_water_compass() -> Dictionary:
+	if phase != PHASE_WAIT_DIRECTION:
+		return {"ok": false, "error": "COMPASS_NOT_AVAILABLE", "phase": String(phase)}
+	if not bool(aquafall_shop.get("compass_available", false)):
+		return {"ok": false, "error": "COMPASS_NOT_AVAILABLE", "phase": String(phase)}
+	# Charge consumption is the only live gameplay mutation besides storing the
+	# preview.  Each branch is simulated by a restored clone so live RNG,
+	# obstacles, phase, height, and lane remain byte-for-byte unchanged.
+	aquafall_shop["compass_available"] = false
+	aquafall_shop["compass_used"] = true
+	var live_snapshot := snapshot()
+	var previews: Dictionary = {}
+	for direction_name: String in ["left", "right"]:
+		var direction := -1 if direction_name == "left" else 1
+		var clone := AquafallBattle.new()
+		if not clone.configure(lap, hp, max_hp, 1, []):
+			continue
+		clone.restore(live_snapshot)
+		var turn := clone.choose_direction(direction)
+		var next_snapshot := clone.snapshot()
+		previews[direction_name] = {
+			"status": str(turn.get("status", "")),
+			"phase": String(clone.phase),
+			"next_phase": String(clone.phase),
+			"next_wait_roll": clone.phase == PHASE_WAIT_ROLL,
+			"lane": clone.lane,
+			"height": clone.height,
+			"hp": clone.hp,
+			"obstacles": clone.obstacles.duplicate(true),
+			"board": clone.obstacles.duplicate(true),
+			"result": turn.duplicate(true),
+			"snapshot": next_snapshot,
+		}
+	aquafall_shop["preview"] = previews
+	return {"ok": true, "status": "COMPASS_PREVIEW", "preview": previews.duplicate(true), "phase": String(phase)}
+
+
+func use_compass() -> Dictionary:
+	return use_water_compass()
+
+
+func compass_preview() -> Dictionary:
+	return (aquafall_shop.get("preview", {}) as Dictionary).duplicate(true)
+
+
+func shop_item_available(product_id: String) -> bool:
+	match product_id:
+		SHOP_LOG_SHIELD: return bool(aquafall_shop.get("shield_available", false))
+		SHOP_HEAD_START_ROPE: return bool(aquafall_shop.get("rope_available", false))
+		SHOP_RIVER_STAKE: return bool(aquafall_shop.get("stake_available", false))
+		SHOP_WATER_COMPASS: return bool(aquafall_shop.get("compass_available", false))
+	return false
+
+
 func choose_direction(direction: int) -> Dictionary:
 	if phase != PHASE_WAIT_DIRECTION or direction == 0:
 		return {"ok": false, "error": "DIRECTION_NOT_AVAILABLE"}
+	# A compass ghost belongs only to the pending direction decision.  Once the
+	# player commits either side, remove it before resolving the real turn.
+	aquafall_shop["preview"] = {}
 	last_role = ""
 	last_role_effect = ""
 	slot_cleared_logs_this_turn = false
 	damage_this_roll = 0
 	var active_water_run := water_run_rolls > 0
+	var active_stake := bool(aquafall_shop.get("stake_armed", false))
 	var left_preview := _simulate_direction(obstacles, lane, pending_face, -1)
 	var right_preview := _simulate_direction(obstacles, lane, pending_face, 1)
 	var path := reflect_path(lane, direction, pending_face, lane_count)
 	for next_lane: int in path:
 		lane = next_lane
 		for obstacle: Dictionary in obstacles:
-			_set_obstacle_steps(obstacle, _obstacle_steps(obstacle) - 1)
+			if not active_stake:
+				_set_obstacle_steps(obstacle, _obstacle_steps(obstacle) - 1)
 			if _is_large_log(obstacle) and _obstacle_steps(obstacle) == 0 and _lane_overlaps(obstacle, lane):
 				_resolve_hit("large_log", active_water_run)
 	height = mini(height + pending_face, goal_height)
@@ -469,6 +559,8 @@ func choose_direction(direction: int) -> Dictionary:
 	_record_debug_turn(left_preview, right_preview, direction, damage_this_roll)
 	if active_water_run:
 		water_run_rolls = maxi(water_run_rolls - 1, 0)
+	if active_stake:
+		aquafall_shop["stake_armed"] = false
 	roll_faces.append(pending_face)
 	if roll_faces.size() == 3:
 		_resolve_slot()
@@ -488,6 +580,13 @@ func choose_direction(direction: int) -> Dictionary:
 func _resolve_hit(obstacle_type: String, immune: bool) -> void:
 	stats["%s_hits" % obstacle_type] = int(stats.get("%s_hits" % obstacle_type, 0)) + 1
 	if immune:
+		return
+	# Shop protection sits after the role's water-run immunity and before the
+	# PAIR water guard.  It therefore absorbs only the first eligible contact,
+	# while a STRAIGHT remains free to pass without consuming the shop shield.
+	if bool(aquafall_shop.get("shield_available", false)):
+		aquafall_shop["shield_available"] = false
+		aquafall_shop["shield_used"] = true
 		return
 	if water_guard_charges > 0:
 		water_guard_charges -= 1
@@ -858,6 +957,55 @@ func _lane_range(from_lane: int, to_lane: int) -> Array[int]:
 	return lanes
 
 
+func _new_shop_state(loadout: Variant = []) -> Dictionary:
+	var normalized: Array[String] = []
+	var raw_loadout: Variant = loadout
+	if loadout is Dictionary:
+		raw_loadout = (loadout as Dictionary).get("loadout", (loadout as Dictionary).get("items", []))
+	if not raw_loadout is Array:
+		raw_loadout = []
+	for value: Variant in raw_loadout:
+		var product_id := str(value)
+		if product_id in SHOP_PRODUCT_IDS and product_id not in normalized:
+			normalized.append(product_id)
+		if normalized.size() >= 2:
+			break
+	return {
+		"loadout": normalized,
+		"shield_available": SHOP_LOG_SHIELD in normalized,
+		"shield_used": false,
+		"rope_available": SHOP_HEAD_START_ROPE in normalized,
+		"rope_applied": false,
+		"stake_available": SHOP_RIVER_STAKE in normalized,
+		"stake_armed": false,
+		"stake_used": false,
+		"compass_available": SHOP_WATER_COMPASS in normalized,
+		"compass_used": false,
+		"preview": {},
+	}
+
+
+func _normalize_shop_state(raw: Variant) -> Dictionary:
+	var source := raw as Dictionary if raw is Dictionary else {}
+	var loadout_raw: Variant = source.get("loadout", [])
+	var loadout: Array = []
+	if loadout_raw is Array:
+		for value: Variant in loadout_raw:
+			var product_id := str(value)
+			if product_id in SHOP_PRODUCT_IDS and product_id not in loadout:
+				loadout.append(product_id)
+			if loadout.size() >= 2:
+				break
+	var normalized := _new_shop_state(loadout)
+	for key: String in ["shield_available", "shield_used", "rope_available", "rope_applied", "stake_available", "stake_armed", "stake_used", "compass_available", "compass_used"]:
+		if source.has(key):
+			normalized[key] = bool(source.get(key, normalized.get(key, false)))
+	var raw_preview: Variant = source.get("preview", {})
+	if raw_preview is Dictionary:
+		normalized["preview"] = (raw_preview as Dictionary).duplicate(true)
+	return normalized
+
+
 func _turn_receipt(path: Array[int], status: String) -> Dictionary:
 	return {"ok": true, "status": status, "path": path, "role": last_role, "role_effect": last_role_effect, "snapshot": snapshot()}
 
@@ -877,6 +1025,7 @@ func snapshot() -> Dictionary:
 		"current_pattern_metrics": _snapshot_pattern_metrics(),
 		"hard_streak": hard_streak, "deadly_streak": deadly_streak,
 		"debug_logs": debug_logs.duplicate(true),
+		"aquafall_shop": _normalize_shop_state(aquafall_shop),
 		# RandomNumberGenerator.state is a 64-bit value. Persist it as text so
 		# JSON round-trips cannot round it through a double and change the next
 		# obstacle sequence after resume.
@@ -925,6 +1074,7 @@ func restore(data: Dictionary) -> bool:
 	current_pattern_metrics = (restored_metrics as Dictionary).duplicate(true) if restored_metrics is Dictionary else {}
 	hard_streak = maxi(int(data.get("hard_streak", 0)), 0)
 	deadly_streak = maxi(int(data.get("deadly_streak", 0)), 0)
+	aquafall_shop = _normalize_shop_state(data.get("aquafall_shop", {}))
 	debug_logs.clear()
 	var restored_debug: Variant = data.get("debug_logs", [])
 	if restored_debug is Array:

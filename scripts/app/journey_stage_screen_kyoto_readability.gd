@@ -88,7 +88,10 @@ func _emit_cairo_feedback(event: StringName) -> void:
 
 func _route_tile(text_value: String, kind: String, current: bool, space_id_value: String = "") -> PanelContainer:
 	var tile := super._route_tile(text_value, kind, current, space_id_value)
-	if stage_id != StageCatalog.STAGE_KYOTO:
+	# Amazon now uses the same local horizon card dimensions. Keep this compact
+	# icon treatment scoped to the two horizon stages; Cairo/other stages retain
+	# their existing route-tile semantics and feedback guards.
+	if stage_id != StageCatalog.STAGE_KYOTO and stage_id != StageCatalog.STAGE_AMAZON:
 		return tile
 
 	var tile_content := tile.get_node_or_null("TileContent") as Control
@@ -120,8 +123,12 @@ func _style_current_kind_badge(kind_badge: PanelContainer, kind: String) -> void
 	kind_badge.anchor_bottom = 0.0
 	kind_badge.offset_left = -KYOTO_CURRENT_ICON_SIZE * 0.5
 	kind_badge.offset_right = KYOTO_CURRENT_ICON_SIZE * 0.5
-	kind_badge.offset_top = KYOTO_CURRENT_ICON_TOP
-	kind_badge.offset_bottom = KYOTO_CURRENT_ICON_TOP + KYOTO_CURRENT_ICON_SIZE
+	# Amazon's portrait card reserves a slightly taller lower landing area for
+	# the Explorer Cat after the first camera crop; lift its badge just enough to
+	# keep the semantic icon clear of the sprite while retaining Cairo geometry.
+	var badge_top := 30.0 if stage_id == StageCatalog.STAGE_AMAZON else KYOTO_CURRENT_ICON_TOP
+	kind_badge.offset_top = badge_top
+	kind_badge.offset_bottom = badge_top + KYOTO_CURRENT_ICON_SIZE
 	kind_badge.z_index = 38
 	kind_badge.add_theme_stylebox_override(
 		"panel",
@@ -188,12 +195,14 @@ func _fit_horizon_medal_icon(medal: PanelContainer, kind: String) -> void:
 
 
 func _uses_text_semantic_icon(kind: String) -> bool:
-	return kind in ["REST", "JUNCTION", "BYPASS_FORK", "BOSS_FORK"]
+	return kind in ["REST", "FLOW", "JUNCTION", "BYPASS_FORK", "BOSS_FORK"]
 
 
 func _semantic_glyph_text(kind: String) -> String:
 	if kind == "REST":
 		return "♥"
+	if kind == "FLOW":
+		return "≈"
 	if kind in ["JUNCTION", "BYPASS_FORK", "BOSS_FORK"]:
 		return "Y"
 	return ""

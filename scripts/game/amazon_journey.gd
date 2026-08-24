@@ -3,6 +3,18 @@ extends StageJourneyBase
 
 const COURSE_PATH := "res://data/stages/amazon_suiu_falls_course.json"
 
+# Amazon's waterfall preparation is intentionally owned by AmazonJourney.  The
+# generic StageJourneyBase shop still supplies the two travel tools, but its
+# three legacy boss flags must never leak into the Amazon save schema.
+const AQUAFALL_LOADOUT_FLAG := "aquafall_loadout"
+const AQUAFALL_LOADOUT_MAX := 2
+const AQUAFALL_LOG_SHIELD := "aquafall_log_shield"
+const AQUAFALL_HEAD_START_ROPE := "aquafall_head_start_rope"
+const AQUAFALL_RIVER_STAKE := "aquafall_river_stake"
+const AQUAFALL_WATER_COMPASS := "aquafall_water_compass"
+const AQUAFALL_PRODUCT_IDS := [AQUAFALL_LOG_SHIELD, AQUAFALL_HEAD_START_ROPE, AQUAFALL_RIVER_STAKE, AQUAFALL_WATER_COMPASS]
+const AQUAFALL_LEGACY_FLAGS := [COIN_FLAG_BOSS_SHIELD, COIN_FLAG_BOSS_HEAD_START, COIN_FLAG_BOSS_SABOTAGE]
+
 var course := AmazonCourseModel.new()
 var course_ready := false
 
@@ -18,6 +30,7 @@ func _init() -> void:
 		"item_count": 0,
 		"item_inventory": {},
 		"mission_event_count": 0,
+		AQUAFALL_LOADOUT_FLAG: [],
 	}
 	course_ready = course.load_file(COURSE_PATH)
 	current_space_id = course.start_space_id() if course_ready else "main:1"
@@ -344,5 +357,126 @@ func _reject(error: String) -> Dictionary:
 
 func start_next_lap() -> void:
 	super.start_next_lap()
+	clear_aquafall_loadout()
+	_clear_legacy_aquafall_flags()
 	current_space_id = course.start_space_id()
 	discovered[current_space_id] = true
+
+
+func coin_action_catalog(kyoto_boss_copy: bool = false) -> Array[Dictionary]:
+	# Keep the common travel products and replace only the generic boss products
+	# with Amazon's four waterfall preparations.  Kyoto/Cairo callers never
+	# instantiate this class, so the optional argument is retained solely for
+	# the shared screen API.
+	var catalog: Array[Dictionary] = []
+	for definition: Dictionary in super.coin_action_catalog(kyoto_boss_copy):
+		if str(definition.get("category", "")) == "旅の道具":
+			catalog.append(definition)
+	var loadout := aquafall_loadout_snapshot()
+	var products := [
+		{"id": AQUAFALL_LOG_SHIELD, "name": "流木よけの盾", "category": "ボスの準備", "cost": 3, "effect_text": "最初の衝突を1回だけ無効", "timing": "瀑流で有効", "use_rule": "最初の衝突で自動発動・1回で消費"},
+		{"id": AQUAFALL_HEAD_START_ROPE, "name": "先行ロープ", "category": "ボスの準備", "cost": 4, "effect_text": "開始位置を+3段", "timing": "瀑流開始時に有効", "use_rule": "開始時に自動適用・1回で消費"},
+		{"id": AQUAFALL_RIVER_STAKE, "name": "川止めの杭", "category": "ボスの準備", "cost": 5, "effect_text": "好きな1ターン、丸太が下降しない", "timing": "瀑流のWAIT_ROLLで有効", "use_rule": "ROLL前に手動使用・1回で消費"},
+		{"id": AQUAFALL_WATER_COMPASS, "name": "水読みのコンパス", "category": "ボスの準備", "cost": 4, "effect_text": "次ターンの丸太配置を1回予告", "timing": "瀑流のWAIT_DIRECTIONで有効", "use_rule": "方向選択前に手動使用・1回で消費"},
+	]
+	for product: Dictionary in products:
+		var entry := product.duplicate(true)
+		entry["active"] = str(entry.get("id", "")) in loadout
+		entry["equipped"] = entry["active"]
+		catalog.append(entry)
+	return catalog
+
+
+func purchase_coin_action(action_id: String, replace_id: String = "") -> Dictionary:
+	# The two travel tools remain exactly the StageJourneyBase contract.
+	if action_id in ["risk_insurance", "rest_boost"]:
+		return super.purchase_coin_action(action_id)
+	if action_id not in AQUAFALL_PRODUCT_IDS:
+		# Do not allow the old generic boss flags to be reintroduced through an
+		# old UI or a stale script call.
+		return {"ok": false, "error": "UNKNOWN_COIN_ACTION"}
+	if phase != PHASE_READY:
+		return {"ok": false, "error": "COIN_ACTION_NOT_AVAILABLE", "phase": String(phase)}
+	_normalize_aquafall_loadout()
+	var loadout := aquafall_loadout_snapshot()
+	if action_id in loadout:
+		return {"ok": false, "error": "COIN_ACTION_ALREADY_ACTIVE", "action_id": action_id, "loadout": loadout}
+	var cost := aquafall_product_cost(action_id)
+	if coins < cost:
+		return {"ok": false, "error": "NOT_ENOUGH_COINS", "cost": cost, "coins": coins, "loadout": loadout}
+	if loadout.size() >= AQUAFALL_LOADOUT_MAX:
+		if replace_id.is_empty():
+			return {"ok": false, "error": "AQUAFALL_LOADOUT_FULL", "action_id": action_id, "loadout": loadout, "max": AQUAFALL_LOADOUT_MAX}
+		if replace_id == action_id or replace_id not in loadout:
+			return {"ok": false, "error": "AQUAFALL_REPLACE_INVALID", "action_id": action_id, "replace_id": replace_id, "loadout": loadout}
+	# All validation is complete before this atomic mutation.  A replacement
+	# spends the new product's price and never refunds the removed product.
+	coins -= cost
+	if loadout.size() >= AQUAFALL_LOADOUT_MAX:
+		loadout.erase(replace_id)
+	loadout.append(action_id)
+	stage_flags[AQUAFALL_LOADOUT_FLAG] = loadout
+	return {"ok": true, "status": "AQUAFALL_LOADOUT_PURCHASED", "action_id": action_id, "replaced_id": replace_id, "cost": cost, "coins": coins, "loadout": loadout.duplicate(true)}
+
+
+func aquafall_product_cost(product_id: String) -> int:
+	match product_id:
+		AQUAFALL_LOG_SHIELD: return 3
+		AQUAFALL_HEAD_START_ROPE: return 4
+		AQUAFALL_RIVER_STAKE: return 5
+		AQUAFALL_WATER_COMPASS: return 4
+	return 0
+
+
+func aquafall_loadout_snapshot() -> Array[String]:
+	_normalize_aquafall_loadout()
+	var result: Array[String] = []
+	for value: Variant in stage_flags.get(AQUAFALL_LOADOUT_FLAG, []):
+		result.append(str(value))
+	return result
+
+
+func consume_aquafall_loadout() -> Array[String]:
+	var result := aquafall_loadout_snapshot()
+	clear_aquafall_loadout()
+	_clear_legacy_aquafall_flags()
+	return result
+
+
+func clear_aquafall_loadout() -> void:
+	stage_flags[AQUAFALL_LOADOUT_FLAG] = []
+	_clear_legacy_aquafall_flags()
+
+
+func _clear_legacy_aquafall_flags() -> void:
+	for flag: String in AQUAFALL_LEGACY_FLAGS:
+		stage_flags.erase(flag)
+
+
+func _normalize_aquafall_loadout() -> void:
+	var raw: Variant = stage_flags.get(AQUAFALL_LOADOUT_FLAG, [])
+	var normalized: Array[String] = []
+	if raw is Array:
+		for value: Variant in raw:
+			var product_id := str(value)
+			if product_id in AQUAFALL_PRODUCT_IDS and product_id not in normalized:
+				normalized.append(product_id)
+			if normalized.size() >= AQUAFALL_LOADOUT_MAX:
+				break
+	elif raw is Dictionary:
+		for key: Variant in (raw as Dictionary).keys():
+			var product_id := str(key)
+			if bool((raw as Dictionary).get(key, false)) and product_id in AQUAFALL_PRODUCT_IDS and product_id not in normalized:
+				normalized.append(product_id)
+			if normalized.size() >= AQUAFALL_LOADOUT_MAX:
+				break
+	stage_flags[AQUAFALL_LOADOUT_FLAG] = normalized
+	_clear_legacy_aquafall_flags()
+
+
+func restore(data: Dictionary) -> bool:
+	var ok := super.restore(data)
+	if not ok:
+		return false
+	_normalize_aquafall_loadout()
+	return true

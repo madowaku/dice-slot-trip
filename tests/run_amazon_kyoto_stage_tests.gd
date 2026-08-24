@@ -17,6 +17,7 @@ func _init() -> void:
 	_test_shared_travel_resources()
 	_test_kyoto_defeat_lap_reset_contract()
 	_test_shared_coin_shop()
+	_test_amazon_aquafall_shop()
 	_test_shared_random_mission()
 	_test_item_spaces_and_inventory()
 	_test_amazon_events()
@@ -151,6 +152,78 @@ func _test_shared_coin_shop() -> void:
 	_expect(not bool(journey.purchase_coin_action("risk_insurance").get("ok", true)), "an active COIN product cannot be purchased twice")
 	var supports := journey.consume_boss_supports()
 	_expect(bool(supports.get("head_start", false)) and not bool(journey.boss_support_snapshot().get("head_start", true)), "boss COIN support transfers once into the battle")
+
+
+func _test_amazon_aquafall_shop() -> void:
+	var amazon := AmazonJourneyScript.new()
+	var catalog := amazon.coin_action_catalog(false)
+	_expect(catalog.size() == 6, "Amazon exposes two travel tools and four Aquafall products")
+	var expected_prices := {
+		AmazonJourneyScript.AQUAFALL_LOG_SHIELD: 3,
+		AmazonJourneyScript.AQUAFALL_HEAD_START_ROPE: 4,
+		AmazonJourneyScript.AQUAFALL_RIVER_STAKE: 5,
+		AmazonJourneyScript.AQUAFALL_WATER_COMPASS: 4,
+	}
+	for product_id: String in AmazonJourneyScript.AQUAFALL_PRODUCT_IDS:
+		var found := {}
+		for entry: Dictionary in catalog:
+			if str(entry.get("id", "")) == product_id:
+				found = entry
+				break
+		_expect(not found.is_empty() and int(found.get("cost", -1)) == int(expected_prices[product_id]), "Amazon product %s keeps its price" % product_id)
+	amazon.coins = 20
+	var first := amazon.purchase_coin_action(AmazonJourneyScript.AQUAFALL_LOG_SHIELD)
+	var second := amazon.purchase_coin_action(AmazonJourneyScript.AQUAFALL_HEAD_START_ROPE)
+	_expect(bool(first.get("ok", false)) and bool(second.get("ok", false)) and amazon.aquafall_loadout_snapshot().size() == 2 and amazon.coins == 13, "Amazon Aquafall products spend coins and fill two slots")
+	var duplicate_before := amazon.snapshot()
+	var duplicate := amazon.purchase_coin_action(AmazonJourneyScript.AQUAFALL_LOG_SHIELD)
+	_expect(not bool(duplicate.get("ok", true)) and amazon.snapshot().get("coins", -1) == duplicate_before.get("coins", -2) and amazon.aquafall_loadout_snapshot() == duplicate_before.get("stage_flags", {}).get(AmazonJourneyScript.AQUAFALL_LOADOUT_FLAG, []), "Amazon rejects duplicate loadout purchase without mutation")
+	var full_before := amazon.snapshot()
+	var full := amazon.purchase_coin_action(AmazonJourneyScript.AQUAFALL_RIVER_STAKE)
+	_expect(not bool(full.get("ok", true)) and str(full.get("error", "")) == "AQUAFALL_LOADOUT_FULL" and amazon.snapshot().get("coins", -1) == full_before.get("coins", -2), "Amazon full loadout asks for an atomic replacement")
+	var replacement := amazon.purchase_coin_action(AmazonJourneyScript.AQUAFALL_RIVER_STAKE, AmazonJourneyScript.AQUAFALL_LOG_SHIELD)
+	_expect(bool(replacement.get("ok", false)) and amazon.coins == 8 and AmazonJourneyScript.AQUAFALL_RIVER_STAKE in amazon.aquafall_loadout_snapshot() and AmazonJourneyScript.AQUAFALL_LOG_SHIELD not in amazon.aquafall_loadout_snapshot(), "Amazon replacement spends new price without refund")
+	var no_coin := AmazonJourneyScript.new()
+	var no_coin_before := no_coin.snapshot()
+	var denied := no_coin.purchase_coin_action(AmazonJourneyScript.AQUAFALL_LOG_SHIELD)
+	_expect(not bool(denied.get("ok", true)) and no_coin.snapshot() == no_coin_before, "Amazon no-coin purchase is side-effect free")
+	var encoded: Variant = JSON.parse_string(JSON.stringify(amazon.snapshot()))
+	var restored := AmazonJourneyScript.new()
+	_expect(encoded is Dictionary and restored.restore(encoded as Dictionary) and restored.aquafall_loadout_snapshot() == amazon.aquafall_loadout_snapshot() and restored.coins == amazon.coins, "Amazon Aquafall loadout survives JSON restore")
+	restored.stage_flags[StageJourneyBase.COIN_FLAG_BOSS_SHIELD] = true
+	restored.stage_flags[StageJourneyBase.COIN_FLAG_BOSS_HEAD_START] = true
+	restored.stage_flags[StageJourneyBase.COIN_FLAG_BOSS_SABOTAGE] = true
+	restored.restore(restored.snapshot())
+	_expect(not restored.stage_flags.has(StageJourneyBase.COIN_FLAG_BOSS_SHIELD) and not restored.stage_flags.has(StageJourneyBase.COIN_FLAG_BOSS_HEAD_START) and not restored.stage_flags.has(StageJourneyBase.COIN_FLAG_BOSS_SABOTAGE), "Amazon restore removes legacy generic boss flags")
+
+	var rope_plain := Aquafall.new()
+	var rope := Aquafall.new()
+	rope_plain.configure(1, 3, 3, 501)
+	rope.configure(1, 3, 3, 501, [AmazonJourneyScript.AQUAFALL_HEAD_START_ROPE])
+	_expect(rope_plain.obstacles == rope.obstacles and rope_plain.rng.state == rope.rng.state and rope.height == mini(rope_plain.height + 3, rope.goal_height), "Aquafall rope changes height after board generation without changing RNG")
+	var shield := Aquafall.new()
+	shield.configure(1, 3, 3, 502, [AmazonJourneyScript.AQUAFALL_LOG_SHIELD])
+	shield.obstacles = [{"type": "large_log", "lanes": [2], "relative_height": 1}, {"type": "large_log", "lanes": [2], "relative_height": 1}]
+	shield.request_roll(1)
+	shield.choose_direction(-1)
+	_expect(shield.hp == 2 and not bool(shield.aquafall_shop.get("shield_available", true)), "Aquafall shield blocks only the first eligible collision")
+	var stake := Aquafall.new()
+	stake.configure(1, 3, 3, 503, [AmazonJourneyScript.AQUAFALL_RIVER_STAKE])
+	stake.obstacles = [{"type": "small_log", "lanes": [2], "relative_height": 2}]
+	var stake_use := stake.use_river_stake()
+	stake.request_roll(1)
+	var stake_result := stake.choose_direction(-1)
+	_expect(bool(stake_use.get("ok", false)) and int(stake.obstacles[0].get("relative_height", -1)) == 2 and str(stake_result.get("status", "")) == "TURN_RESOLVED" and not bool(stake.aquafall_shop.get("stake_armed", true)), "Aquafall stake skips descent for the turn and disarms after it")
+	var compass := Aquafall.new()
+	compass.configure(1, 3, 3, 504, [AmazonJourneyScript.AQUAFALL_WATER_COMPASS])
+	compass.obstacles = [{"type": "large_log", "lanes": [2], "relative_height": 2}]
+	compass.request_roll(1)
+	var before_compass := compass.snapshot()
+	var compass_use := compass.use_water_compass()
+	var after_compass := compass.snapshot()
+	_expect(bool(compass_use.get("ok", false)) and (compass_use.get("preview", {}) as Dictionary).has("left") and (compass_use.get("preview", {}) as Dictionary).has("right") and compass.rng.state == int(str(before_compass.get("rng_state", "0"))) and compass.lane == int(before_compass.get("lane", -1)) and compass.height == int(before_compass.get("height", -1)), "Aquafall compass previews both directions without mutating live board or RNG")
+	compass.choose_direction(1)
+	_expect((compass.aquafall_shop.get("preview", {}) as Dictionary).is_empty() and compass.phase != Aquafall.PHASE_WAIT_DIRECTION, "Aquafall compass preview clears after actual direction")
 
 
 func _test_kyoto_defeat_lap_reset_contract() -> void:

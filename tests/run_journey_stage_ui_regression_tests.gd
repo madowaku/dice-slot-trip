@@ -63,6 +63,8 @@ func _exercise(stage_id: StringName) -> void:
 	_check_hud(screen, journey, stage_id)
 	await _check_item_card(screen, journey, stage_id)
 	await _check_skill_ready_discovery(screen, journey, stage_id)
+	if stage_id == StageCatalog.STAGE_AMAZON:
+		await _check_amazon_shop_ui(screen, journey as AmazonJourney)
 	if stage_id == StageCatalog.STAGE_KYOTO:
 		await _check_kyoto_goshuin_stamp(screen, journey)
 	_check_normal_icon(screen, stage_id)
@@ -82,7 +84,9 @@ func _exercise(stage_id: StringName) -> void:
 	if stage_id == StageCatalog.STAGE_AMAZON:
 		await _check_aquafall_rules_modal(screen)
 		await _check_aquafall_boss_roll_surface(screen, journey)
+		await _check_aquafall_stake_visual(screen, journey)
 		await _check_aquafall_collision_feedback(screen, journey)
+		await _check_aquafall_shield_feedback(screen, journey)
 		await _check_aquafall_role_effects(screen, journey)
 		await _check_aquafall_victory_modal(screen, journey)
 		await _check_journey_heart_roulette(screen, journey)
@@ -128,6 +132,27 @@ func _check_amazon_branch_choices(screen: JourneyStageScreen, journey: StageJour
 	_expect(amazon.phase != StageJourneyBase.PHASE_BRANCH and amazon.current_space_id != "main:20",
 		"Amazon first route choice advances past the junction")
 	screen.call("_close_modal")
+
+
+func _check_amazon_shop_ui(screen: JourneyStageScreen, amazon: AmazonJourney) -> void:
+	if amazon == null:
+		return
+	amazon.clear_aquafall_loadout()
+	amazon.coins = 20
+	amazon.purchase_coin_action(AmazonJourney.AQUAFALL_LOG_SHIELD)
+	amazon.purchase_coin_action(AmazonJourney.AQUAFALL_HEAD_START_ROPE)
+	screen.call("_show_coin_tool")
+	await process_frame
+	var modal := screen.get("active_modal") as Control
+	var copy := _all_label_text(modal)
+	_expect(modal != null and copy.contains("Amazon COINショップ") and copy.contains("ボス装備　2/2"), "Amazon shop shows the four waterfall products and two-slot loadout count")
+	_expect(copy.contains("流木よけの盾") and copy.contains("先行ロープ") and not copy.contains(AmazonJourney.AQUAFALL_LOG_SHIELD) and not copy.contains(AmazonJourney.AQUAFALL_HEAD_START_ROPE),
+		"Amazon shop renders equipped products with Japanese names instead of raw IDs")
+	var buttons := modal.find_children("*", "Button", true, false) if modal != null else []
+	_expect(buttons.size() >= 6, "Amazon shop keeps travel tools, four boss tools, and close action tappable")
+	screen.call("_close_modal")
+	amazon.clear_aquafall_loadout()
+	amazon.coins = 0
 	amazon.current_space_id = "main:20"
 	amazon.phase = StageJourneyBase.PHASE_READY
 	amazon.pending_event.clear()
@@ -211,7 +236,7 @@ func _check_boss_marker(screen: JourneyStageScreen, journey: StageJourneyBase, s
 	var marker: Control = null
 	if layer != null:
 		marker = layer.get_node_or_null("space_%s" % boss_space.replace(":", "_")) as Control
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	if stage_id == StageCatalog.STAGE_KYOTO or stage_id == StageCatalog.STAGE_AMAZON:
 		var row := screen.get("route_preview_row") as HBoxContainer
 		var boss_card: Control = null
 		if row != null:
@@ -228,8 +253,8 @@ func _check_boss_marker(screen: JourneyStageScreen, journey: StageJourneyBase, s
 					card_emblem_found = true
 					break
 		_expect(boss_card != null and boss_card.get_global_rect().size.y >= 116.0,
-			"Kyoto boss destination remains large in the current-to-+6 horizon")
-		_expect(card_emblem_found, "Kyoto boss card uses the shared crown emblem")
+			"%s boss destination remains large in the current-to-+6 horizon" % String(stage_id))
+		_expect(card_emblem_found, "%s boss card uses the shared crown emblem" % String(stage_id))
 		return
 	_expect(marker != null and marker.size.x >= 64.0 and marker.size.y >= 64.0,
 		"%s boss map marker is larger than ordinary route markers" % String(stage_id))
@@ -441,6 +466,9 @@ func _check_overview_and_event_choices(screen: JourneyStageScreen, stage_id: Str
 
 func _check_aquafall_boss_roll_surface(screen: JourneyStageScreen, journey: StageJourneyBase) -> void:
 	journey.phase = StageJourneyBase.PHASE_BOSS
+	var amazon := journey as AmazonJourney
+	if amazon != null:
+		amazon.stage_flags[AmazonJourney.AQUAFALL_LOADOUT_FLAG] = [AmazonJourney.AQUAFALL_RIVER_STAKE, AmazonJourney.AQUAFALL_WATER_COMPASS]
 	screen.call("_start_aquafall_boss")
 	for _ignored: int in range(4):
 		await process_frame
@@ -454,6 +482,10 @@ func _check_aquafall_boss_roll_surface(screen: JourneyStageScreen, journey: Stag
 	var info := screen.find_child("AquafallInfo", true, false) as Control
 	var gauge := screen.find_child("AquafallHeightGauge", true, false) as Control
 	var step_counter := screen.find_child("AquafallStepCounter", true, false) as Label
+	var stake_button := screen.find_child("AquafallRiverStakeButton", true, false) as Button
+	_expect(boss != null and boss.shop_item_available(AquafallBattle.SHOP_RIVER_STAKE), "amazon boss transfer keeps river-stake availability live")
+	_expect(stake_button != null and stake_button.get_global_rect().position.y >= 0.0 and stake_button.get_global_rect().end.y <= 1280.0,
+		"amazon boss exposes a touch-sized river-stake action inside the 720x1280 viewport")
 	var height_ticks := screen.find_children("AquafallHeightTick_*", "ColorRect", true, false)
 	var log_nodes := screen.find_children("AquafallLog_*", "Panel", true, false)
 	_expect(player != null and dice.get_global_rect().size.x <= 124.0 and dice.get_global_rect().size.y <= 124.0,
@@ -507,6 +539,25 @@ func _check_aquafall_boss_roll_surface(screen: JourneyStageScreen, journey: Stag
 			direction_buttons.append(button)
 	_expect(boss.phase == AquafallBattle.PHASE_WAIT_DIRECTION and direction_buttons.size() == 2,
 		"amazon boss stop reveals exactly two left/right direction buttons")
+	var compass_button := screen.find_child("AquafallWaterCompassButton", true, false) as Button
+	_expect(compass_button != null and not compass_button.disabled and compass_button.get_global_rect().end.y <= 1280.0,
+		"amazon boss exposes the water-compass action during WAIT_DIRECTION")
+	if compass_button != null and not compass_button.disabled:
+		compass_button.emit_signal("pressed")
+		for _ignored: int in range(4):
+			await process_frame
+		var compass_preview := screen.find_child("AquafallCompassPreview", true, false) as Control
+		var ghost_lanes := screen.find_children("AquafallCompassPreview*Lane*", "Panel", true, false)
+		_expect(compass_preview != null and ghost_lanes.size() == 10,
+			"amazon water compass renders left/right five-lane ghost panels")
+		var ghost_copy := _all_label_text(compass_preview)
+		_expect(ghost_copy.contains("丸太") and ghost_copy.contains("距離") and (ghost_copy.contains("大") or ghost_copy.contains("小")),
+			"amazon water compass ghosts show predicted log type and contact distance per lane")
+		direction_buttons.clear()
+		for button_name: String in ["AquafallLeftButton", "AquafallRightButton"]:
+			var refreshed_button := screen.find_child(button_name, true, false) as Button
+			if refreshed_button != null:
+				direction_buttons.append(refreshed_button)
 	for value: Node in direction_buttons:
 		var button := value as Button
 		_expect((button.text.contains("左へ") or button.text.contains("右へ")) and button.text.contains("歩") and not button.text.contains("安全") and not button.text.contains("流木接触"),
@@ -603,6 +654,47 @@ func _check_aquafall_boss_roll_surface(screen: JourneyStageScreen, journey: Stag
 	screen.call("_render_map")
 
 
+func _check_aquafall_stake_visual(screen: JourneyStageScreen, journey: StageJourneyBase) -> void:
+	var amazon := journey as AmazonJourney
+	if amazon == null:
+		return
+	journey.phase = StageJourneyBase.PHASE_BOSS
+	journey.hp = StageJourneyBase.MAX_HEARTS
+	amazon.stage_flags[AmazonJourney.AQUAFALL_LOADOUT_FLAG] = [AmazonJourney.AQUAFALL_RIVER_STAKE]
+	screen.call("_start_aquafall_boss")
+	for _ignored: int in range(5):
+		await process_frame
+	var boss := screen.get("amazon_boss") as AquafallBattle
+	var stake_button := screen.find_child("AquafallRiverStakeButton", true, false) as Button
+	_expect(boss != null and stake_button != null, "amazon stake visual fixture exposes the equipped river-stake action")
+	if boss == null or stake_button == null:
+		screen.call("_render_map")
+		return
+	stake_button.emit_signal("pressed")
+	for _ignored: int in range(4):
+		await process_frame
+	boss.obstacles = [{"type": "small_log", "lanes": [2], "relative_height": 2}]
+	boss.request_roll(1)
+	screen.call("_render_aquafall_boss")
+	for _ignored: int in range(4):
+		await process_frame
+	var lane_area := screen.get("aquafall_lane_layer") as Control
+	var log := lane_area.find_child("AquafallLog_0_0", true, false) as Control if lane_area != null else null
+	var before_y := log.position.y if log != null else 0.0
+	screen.set("aquafall_visual_lane", boss.lane)
+	screen.set("aquafall_visual_height", boss.height)
+	screen.set("aquafall_visual_obstacles", boss.obstacles.duplicate(true))
+	screen.call("_animate_aquafall_step", 2, 0, 1)
+	for _ignored: int in range(60):
+		await process_frame
+	var visual_obstacles := screen.get("aquafall_visual_obstacles") as Array
+	var after_y := log.position.y if is_instance_valid(log) else before_y
+	var visual_height := int((visual_obstacles[0] as Dictionary).get("relative_height", -1)) if not visual_obstacles.is_empty() else -1
+	_expect(absf(after_y - before_y) <= 0.5 and visual_height == 2,
+		"river stake keeps waterfall logs and visual distance fixed during every animated hop")
+	screen.call("_render_map")
+
+
 func _check_aquafall_collision_feedback(screen: JourneyStageScreen, journey: StageJourneyBase) -> void:
 	journey.phase = StageJourneyBase.PHASE_BOSS
 	journey.hp = 3
@@ -636,6 +728,53 @@ func _check_aquafall_collision_feedback(screen: JourneyStageScreen, journey: Sta
 			await process_frame
 	_expect(saw_contact_feedback and journey.hp == 2 and boss.hp == 2,
 		"amazon large-log contact visibly damages at the matching hop and persists to journey HP (saw=%s journey=%d boss=%d status=%s)" % [saw_contact_feedback, journey.hp, boss.hp, last_status])
+	screen.call("_render_map")
+
+
+func _check_aquafall_shield_feedback(screen: JourneyStageScreen, journey: StageJourneyBase) -> void:
+	var amazon := journey as AmazonJourney
+	if amazon == null:
+		return
+	journey.phase = StageJourneyBase.PHASE_BOSS
+	journey.hp = StageJourneyBase.MAX_HEARTS
+	amazon.clear_aquafall_loadout()
+	amazon.stage_flags[AmazonJourney.AQUAFALL_LOADOUT_FLAG] = [AmazonJourney.AQUAFALL_LOG_SHIELD]
+	screen.call("_start_aquafall_boss")
+	for _ignored: int in range(4):
+		await process_frame
+	var boss := screen.get("amazon_boss") as AquafallBattle
+	if boss == null:
+		_expect(false, "amazon shield feedback fixture creates a boss")
+		return
+	boss.lane = 3
+	boss.obstacles = [{"type": "large_log", "lanes": [2], "relative_height": 1}]
+	boss.request_roll(1)
+	screen.call("_render_aquafall_boss")
+	for _ignored: int in range(4):
+		await process_frame
+	screen.call("_aquafall_direction", -1)
+	var saw_block_feedback := false
+	var saw_damage_feedback := false
+	for _ignored: int in range(180):
+		await process_frame
+		var status := screen.get("status_label") as Label
+		if status != null:
+			saw_block_feedback = saw_block_feedback or status.text.contains("大丸太を防いだ")
+			saw_damage_feedback = saw_damage_feedback or status.text.contains("♥−1")
+		if not bool(screen.get("amazon_boss_move_active")):
+			break
+	if bool(screen.get("amazon_boss_move_active")):
+		await create_timer(1.5).timeout
+		for _ignored: int in range(30):
+			await process_frame
+			var status := screen.get("status_label") as Label
+			if status != null:
+				saw_block_feedback = saw_block_feedback or status.text.contains("大丸太を防いだ")
+				saw_damage_feedback = saw_damage_feedback or status.text.contains("♥−1")
+			if not bool(screen.get("amazon_boss_move_active")):
+				break
+	_expect(saw_block_feedback and not saw_damage_feedback and journey.hp == 3 and boss.hp == 3 and not boss.shop_item_available(AquafallBattle.SHOP_LOG_SHIELD),
+		"amazon shop shield blocks the first animated contact without red HP loss (blocked=%s damage=%s journey=%d boss=%d)" % [saw_block_feedback, saw_damage_feedback, journey.hp, boss.hp])
 	screen.call("_render_map")
 
 
@@ -908,12 +1047,17 @@ func _check_hud(screen: JourneyStageScreen, journey: StageJourneyBase, stage_id:
 		screen.call("_refresh_all")
 		_expect(progress_value.text == "48/120",
 			"%s route progress converts stream:48 into 48/120" % String(stage_id))
+		var amazon_route_label := screen.get("stage_route_label") as Label
+		_expect(amazon_route_label != null and amazon_route_label.text == "渓流ルート",
+			"Amazon stage band resolves stream:48 to the authored 渓流ルート label")
 		journey.stage_flags["mission_event_count"] = 3
 		screen.call("_refresh_all")
-		var amazon_mission_labels := screen.get("mission_value_labels") as Dictionary
-		var discovery_label := amazon_mission_labels.get("発見", null) as Label
-		_expect(discovery_label != null and discovery_label.text == "3/5",
-			"Amazon 発見 mission reflects EVENT landing count")
+		var amazon_mission_caption := screen.get("mission_caption_label") as Label
+		var amazon_mission_progress := screen.get("mission_progress_label") as Label
+		_expect(amazon_mission_caption != null and amazon_mission_caption.text == "発見"
+			and amazon_mission_progress != null and amazon_mission_progress.text.contains("3/5")
+			and amazon_mission_progress.text.contains("報酬 COIN ×12"),
+			"Amazon representative MISSION card reflects mission_event_count and reward")
 		journey.current_space_id = "main:1"
 		screen.call("_refresh_all")
 	else:
@@ -1154,12 +1298,17 @@ func _check_route_preview_and_player_anchor(screen: JourneyStageScreen, journey:
 		return
 	var test_space := _first_semantic_main_space(journey)
 	journey.current_space_id = test_space
+	# Branch fixtures may leave their hop tween finishing on the same frame as
+	# this geometry probe; the probe itself is an idle-card layout check.
+	screen.set("map_movement_active", false)
 	screen.call("_update_local_view_window")
 	screen.call("_apply_background_camera")
 	screen.call("_populate_map_nodes")
 	for _ignored: int in range(3):
 		await process_frame
 	screen.call("_refresh_route_preview_for_space", test_space)
+	for _ignored: int in range(3):
+		await process_frame
 
 	var row := screen.get("route_preview_row") as HBoxContainer
 	_expect(row != null and row.get_child_count() == 7,
@@ -1168,19 +1317,20 @@ func _check_route_preview_and_player_anchor(screen: JourneyStageScreen, journey:
 	var layer_edges := screen.get("map_node_layer") as Control
 	var main_edges := layer_edges.find_children("LocalRouteMain", "Line2D", true, false) if layer_edges != null else []
 	var side_edges := layer_edges.find_children("LocalRouteSide", "Line2D", true, false) if layer_edges != null else []
-	if stage_id == StageCatalog.STAGE_KYOTO:
+	var horizon_ui := stage_id == StageCatalog.STAGE_KYOTO or stage_id == StageCatalog.STAGE_AMAZON
+	if horizon_ui:
 		_expect(legend == null and main_edges.is_empty() and side_edges.is_empty(),
-			"Kyoto normal play leaves full-route topology to 全体マップ")
+			"%s normal play leaves full-route topology to 全体マップ" % String(stage_id))
 		var horizon := row.get_parent() as Control if row != null else null
 		var die := screen.get("map_dice") as Control
 		var first_tile := row.get_child(0) as Control if row != null and row.get_child_count() > 0 else null
 		var number_label := _first_label(row.get_child(1)) if row != null and row.get_child_count() > 1 else null
 		_expect(horizon != null and horizon.get_global_rect().size.y >= 204.0 and first_tile != null and first_tile.get_global_rect().size.y >= 184.0,
-			"Kyoto promotes current through +6 into tall Cairo-style cards")
+			"%s promotes current through +6 into tall Cairo-style cards" % String(stage_id))
 		_expect(number_label != null and number_label.get_theme_font_size("font_size") >= 32,
-			"Kyoto makes +1 through +6 the dominant card labels")
+			"%s makes +1 through +6 the dominant card labels" % String(stage_id))
 		_expect(die != null and die.size.x >= 152.0 and absf(die.get_global_rect().get_center().x - 360.0) <= 8.0 and die.get_global_rect().get_center().y > horizon.get_global_rect().get_center().y,
-			"Kyoto centers an enlarged map die below the seven readable cards")
+			"%s centers an enlarged map die below the seven readable cards" % String(stage_id))
 	else:
 		_expect(legend != null and _all_label_text(legend).contains("本線") and _all_label_text(legend).contains("脇道"),
 			"%s normal map shows a main/detour route legend" % String(stage_id))
@@ -1210,20 +1360,20 @@ func _check_route_preview_and_player_anchor(screen: JourneyStageScreen, journey:
 		var moving_player := (row.get_child(1) as Control).get_meta("motion_player") as TextureRect
 		_expect(moving_player != null and moving_player.visible,
 			"%s moving route tile retains its explorer marker state" % String(stage_id))
-		if stage_id == StageCatalog.STAGE_KYOTO:
+		if horizon_ui:
 			_expect(moving_player.modulate.a == 0.0,
-				"Kyoto uses one large map-layer explorer instead of a duplicate mini cat")
+				"%s uses one large map-layer explorer instead of a duplicate mini cat" % String(stage_id))
 			var current_badge := (row.get_child(0) as Control).find_child("CurrentKindBadge", true, false) as Control
 			var current_badge_icon := current_badge.find_child("KindIcon", true, false) as TextureRect if current_badge != null else null
 			var current_player := screen.get("map_player") as Control
 			_expect(current_badge != null and current_badge_icon != null and current_badge_icon.texture == expected_icon and current_player != null and current_badge.get_global_rect().end.y <= current_player.get_global_rect().position.y + 1.0,
-				"Kyoto keeps the current-space icon above and clear of the large explorer")
+				"%s keeps the current-space icon above and clear of the large explorer" % String(stage_id))
 			_expect(current_badge.position.y <= 52.0,
-				"Kyoto raises the current-space icon away from the explorer")
+				"%s raises the current-space icon away from the explorer" % String(stage_id))
 			var future_icon_center := (row.get_child(1) as Control).find_child("CompactKindIconCenter", true, false) as Control
 			var future_icon_margin := (row.get_child(1) as Control).find_child("CompactKindIconMargin", true, false) as Control
 			_expect(future_icon_center != null and future_icon_margin != null and future_icon_center.get_global_rect().get_center().y < future_icon_margin.get_global_rect().get_center().y,
-				"Kyoto raises future landing icons within their tiles")
+				"%s raises future landing icons within their tiles" % String(stage_id))
 
 	var player := screen.get("map_player") as Control
 	var layer := screen.get("map_node_layer") as Control
@@ -1238,16 +1388,16 @@ func _check_route_preview_and_player_anchor(screen: JourneyStageScreen, journey:
 		var normalized := screen.call("_map_normalized_for_space", test_space) as Vector2
 		unanchored = Vector2(normalized.x * layer.size.x, normalized.y * layer.size.y) - player.size * 0.5
 	var anchored := screen.call("_map_player_position_for_space", test_space) as Vector2
-	if stage_id == StageCatalog.STAGE_KYOTO and marker != null and bool(marker.get_meta("kyoto_horizon_anchor", false)):
+	if horizon_ui and marker != null and bool(marker.get_meta("kyoto_horizon_anchor", false)):
 		var current_tile := row.get_child(0) as Control if row != null and row.get_child_count() > 0 else null
 		var card_bottom_anchor := marker.position + Vector2(
 			(marker.size.x - player.size.x) * 0.5,
 			marker.size.y - player.size.y - 6.0
 		)
 		_expect(anchored.distance_to(card_bottom_anchor) < 0.75 and player.size.x >= 112.0,
-			"Kyoto uses a larger explorer and bottom-anchors it over the current-card medal")
+			"%s uses a larger explorer and bottom-anchors it over the current-card medal" % String(stage_id))
 		_expect(current_tile != null and player.get_global_rect().get_center().y > current_tile.get_global_rect().get_center().y,
-			"Kyoto keeps the explorer in the lower half of the current card")
+			"%s keeps the explorer in the lower half of the current card" % String(stage_id))
 	else:
 		_expect(anchored.distance_to(unanchored + Vector2(0.0, -22.0)) < 0.75,
 			"%s traveler uses a foot anchor instead of covering the map medal" % String(stage_id))
