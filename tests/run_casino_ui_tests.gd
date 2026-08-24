@@ -1,6 +1,7 @@
 extends SceneTree
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
+const OrientationScript = preload("res://scripts/game/dice_race_orientation.gd")
 const RaceScript = preload("res://scripts/game/dice_race_model.gd")
 const HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const RACE_SCENE: PackedScene = preload("res://scenes/casino/DiceRace.tscn")
@@ -50,27 +51,84 @@ func _run() -> void:
 	await process_frame
 	_expect(race is DiceRaceScreen, "Dice Race scene instantiates its screen script")
 	_expect(bgm.current_track() == &"dice_race", "Dice Race starts its dedicated race BGM")
+	var ui_sfx := root.get_node_or_null("UiSfxManager")
+	_expect(ui_sfx != null and ui_sfx.call("current_stage_pack") == &"arcade", "Dice Race selects the Las Vegas arcade SFX pack")
+	var sfx_before_select: Dictionary = ui_sfx.call("receipt") if ui_sfx != null else {}
+	race.call("_select_racer", race.selected_racer)
+	var sfx_after_select: Dictionary = ui_sfx.call("receipt") if ui_sfx != null else {}
+	_expect(int(sfx_after_select.get("play_count", 0)) == int(sfx_before_select.get("play_count", 0)) + 1 and str(sfx_after_select.get("last_cue", "")) == "select" and str(sfx_after_select.get("last_pack", "")) == "soft", "racer selection plays one restrained common select cue")
 	_expect(race.orientations.size() == 24, "Dice Race UI receives all 24 physical orientations")
 	_expect(race.roll_button != null and race.start_button != null, "Dice Race exposes start and roll controls")
 	_expect(race.racer_nodes.size() == 6, "Dice Race creates six racer markers")
 	_expect(race.racer_nodes.has("rabbit") and not race.racer_nodes.has("crocodile"), "Dice Race UI uses the final rabbit lineup")
-	_expect(race.assignment_cards.size() == 6 and race.die_face_label != null, "Dice Race builds the six-card die assignment console")
+	_expect(race.direction_plates.size() == 6 and race.die_face_label != null, "Dice Race builds six fixed direction plates around the die")
+	_expect(race.opposite_pair_labels.size() == 3, "Dice Race shows the three opposite-face pairs")
+	for racer_id: String in RaceScript.RACERS:
+		var plate: Dictionary = race.direction_plates.get(racer_id, {})
+		var portrait := plate.get("portrait") as TextureRect
+		_expect(str(plate.get("direction", "")) == str(OrientationScript.RACER_DIRECTION[racer_id]), "%s keeps its physical die direction" % racer_id)
+		if portrait != null:
+			_expect(portrait.texture != null, "%s visible direction plate uses its official racer art" % racer_id)
+		var marker := race.racer_nodes.get(racer_id) as Control
+		_expect(marker != null and marker.find_child("RacerShadow", true, false) != null, "%s has a grounded course shadow" % racer_id)
+		var course_portrait := marker.find_child("RacerPortrait", true, false) as TextureRect if marker != null else null
+		_expect(course_portrait != null and course_portrait.texture != null, "%s runs directly on the course as official art" % racer_id)
+		_expect(marker.find_children("*", "PanelContainer", true, false).is_empty(), "%s is not boxed inside a course card" % racer_id)
+	var unselected_plate := (race.direction_plates.get("rabbit", {}) as Dictionary).panel as PanelContainer
+	var plate_style := unselected_plate.get_theme_stylebox("panel") as StyleBoxFlat
+	_expect(plate_style != null and plate_style.border_width_left == 0, "non-BET die directions stay out of boxed-card chrome")
+	_expect(race.opposite_pair_panels[0].get_theme_stylebox("panel").border_width_left == 0, "non-selected opposite-face pairs stay out of boxed-card chrome")
 	_expect(race.ranking_cards.size() == 3, "Dice Race builds the compact top-three ranking strip")
 	_expect(race.track_view != null and race.minimap != null, "Dice Race builds a vertical race viewport and full-course minimap")
+	_expect(race.dice_presentation != null and race.dice_presentation.dice_race_face_layout, "Dice Race builds a dedicated three-face physical die")
 	_expect(race.cashout_overlay != null and not race.cashout_overlay.visible, "Dice Race keeps the CASH OUT decision in a hidden modal overlay until offered")
-	_expect(race.track_view.logical_y_for_test(0) > race.track_view.logical_y_for_test(24), "vertical course places START below GOAL")
+	_expect(race.track_view.logical_y_for_test(0) > race.track_view.logical_y_for_test(9), "vertical course places progress toward GOAL upward")
+	_expect(race.track_view.visible_range_for_test() == Vector2(0, 9), "course opens on a readable nine-space window")
 	_expect(race.track_view.gimmick_markers.keys().all(func(space: int) -> bool: return space in [5, 10, 15, 20]) and race.track_view.gimmick_markers.size() == 4, "vertical course exposes all four fixed gimmick spaces")
+	_expect(race.track_view.find_child("StartGate", true, false) != null, "course exposes a physical START gate")
+	_expect(race.track_view.find_child("GoalGate", true, false) != null, "course exposes a physical GOAL gate")
+	for gimmick_space: int in [5, 10, 15, 20]:
+		var object := race.track_view.gimmick_markers.get(gimmick_space) as Control
+		_expect(object != null and object.find_child("GimmickVisual", true, false) != null, "space %d uses a course object rather than a text-only label" % gimmick_space)
+	var known_assignments: Dictionary = OrientationScript.values_for_racers(OrientationScript.base_orientation())
+	race.current_assignments = known_assignments.duplicate()
+	race.call("_refresh_assignment_ui")
+	race.call("_refresh_physical_die", 0.0)
+	var expected_pose: Quaternion = OrientationScript.quaternion_for_orientation(OrientationScript.base_orientation())
+	var rendered_pose: Quaternion = race.dice_presentation.physical_orientation_for_test()
+	_expect(absf(expected_pose.dot(rendered_pose)) > 0.999, "three-face die renders the exact physical orientation behind the assignment labels")
+	for pair: Array in race.OPPOSITE_RACER_PAIRS:
+		_expect(int(known_assignments[pair[0]]) + int(known_assignments[pair[1]]) == 7, "%s and %s display an opposite-face total of seven" % [pair[0], pair[1]])
+	_expect("現在の目 %d" % int(known_assignments[race.selected_racer]) in race.target_value_label.text, "BET racer exposes its live die value")
+	_expect(race.opposite_pair_panels[1].modulate.a > race.opposite_pair_panels[0].modulate.a, "only the BET racer's opposite pair receives full emphasis")
 	_expect(race.setup_view.visible and not race.race_view.visible, "Dice Race opens in the pre-race betting view")
 	race.call("_start_race")
 	await process_frame
 	_expect(not race.setup_view.visible and race.race_view.visible, "RACE START replaces setup controls with the active race view")
-	var camera_positions := {}
+	var bet_marker := race.racer_nodes.get(race.selected_racer) as Control
+	var bet_ring := bet_marker.find_child("BetHighlight", true, false) as Panel
+	_expect(bet_ring != null and bet_ring.visible, "RACE START highlights the supported racer with a gold ring")
+	var bet_crown := bet_marker.find_child("BetCrown", true, false) as Label
+	_expect(bet_crown != null and bet_crown.visible, "RACE START marks the supported racer with a small course badge")
+	race.orientation_index = 0
+	race.current_assignments = known_assignments.duplicate()
+	race.call("_refresh_assignment_ui")
+	race.call("_on_roll_stop")
+	race.call("_on_roll_stop")
+	await create_timer(0.4).timeout
+	_expect(race.last_stop_feedback_assignments == known_assignments, "STOP feedback uses the exact stopped physical orientation")
+	_expect((race.race.get("last_assignments", {}) as Dictionary) == known_assignments, "STOP applies the same assignments to race logic without a hidden redraw")
+	_expect(race.stop_feedback_count_for_test == 1, "one STOP creates one six-direction feedback burst")
+	var stop_sfx: Dictionary = ui_sfx.call("receipt") if ui_sfx != null else {}
+	_expect(str(stop_sfx.get("last_cue", "")) == "progress-step" and str(stop_sfx.get("last_pack", "")) == "arcade", "ordinary STOP resolution plays one Las Vegas progress cue")
+	var moved_positions := {}
 	for racer_id: String in RaceScript.RACERS:
-		camera_positions[racer_id] = 2
-	camera_positions[race.selected_racer] = 13
-	race.track_view.set_race_state(camera_positions, race.selected_racer, true)
+		moved_positions[racer_id] = 2
+	moved_positions[race.selected_racer] = 23
+	race.track_view.set_race_state(moved_positions, race.selected_racer, true)
 	await create_timer(0.45).timeout
-	_expect(race.track_view.camera_basis_racer == race.selected_racer and race.track_view.camera_section_for_test() == 2, "course camera follows the BET racer into the 12-18 section")
+	_expect(race.track_view.camera_section_for_test() == 3 and race.track_view.visible_range_for_test().is_equal_approx(Vector2(15, 24)), "course follows the BET racer into the final nine-space window")
+	_expect(race.minimap.camera_range.is_equal_approx(Vector2(15, 24)), "full-course minimap mirrors the visible race window")
 	race.call("_show_bet_select")
 	_expect(race.setup_view.visible and not race.race_view.visible, "returning to setup restores the betting view")
 	CasinoBankScript.add_chips(race.selected_bet)

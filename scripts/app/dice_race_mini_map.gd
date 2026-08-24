@@ -14,12 +14,13 @@ const GIMMICKS := {5: "5 火", 10: "10 水", 15: "15 丸", 20: "20 火"}
 var race_positions: Dictionary = {}
 var selected_racer := "duck"
 var wager_active := false
+var camera_range := Vector2(0, 9)
 var _labels: Dictionary = {}
 
 
 func _ready() -> void:
 	name = "RaceMiniMap"
-	custom_minimum_size.x = 112
+	custom_minimum_size.x = 82
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_labels()
 	resized.connect(_layout_labels)
@@ -33,11 +34,20 @@ func set_race_state(positions: Dictionary, bet_racer: String, active: bool) -> v
 	queue_redraw()
 
 
+func set_camera_range(value: Vector2) -> void:
+	camera_range = value
+	queue_redraw()
+
+
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color("#201d35"), true)
-	draw_rect(Rect2(Vector2(1, 1), size - Vector2(2, 2)), Color("#8c78aa"), false, 2)
-	var x := 24.0
+	draw_rect(Rect2(Vector2.ZERO, size), Color("#171221"), true)
+	draw_rect(Rect2(Vector2(1, 1), size - Vector2(2, 2)), Color("#bd9345"), false, 2)
+	var x := 18.0
 	draw_line(Vector2(x, 38), Vector2(x, size.y - 38), Color("#e5c775"), 5)
+	var camera_top := _position_to_y(int(camera_range.y))
+	var camera_bottom := _position_to_y(int(camera_range.x))
+	draw_rect(Rect2(5, camera_top, size.x - 10, camera_bottom - camera_top), Color(1.0, 0.82, 0.35, 0.12), true)
+	draw_rect(Rect2(5, camera_top, size.x - 10, camera_bottom - camera_top), Color("#f2bf4c"), false, 2)
 	for position: int in GIMMICKS:
 		var y := _position_to_y(position)
 		draw_circle(Vector2(x, y), 6, Color("#f3d07b"))
@@ -65,8 +75,8 @@ func _build_labels() -> void:
 func _layout_labels() -> void:
 	for position: int in _labels:
 		var label := _labels[position] as Label
-		label.position = Vector2(40, _position_to_y(position) - 15)
-		label.size = Vector2(size.x - 44, 30)
+		label.position = Vector2(32, _position_to_y(position) - 15)
+		label.size = Vector2(size.x - 35, 30)
 	queue_redraw()
 
 

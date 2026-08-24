@@ -8,6 +8,7 @@ const OrientationScript = preload("res://scripts/game/dice_race_orientation.gd")
 const RaceScript = preload("res://scripts/game/dice_race_model.gd")
 const TrackViewScript = preload("res://scripts/app/dice_race_track_view.gd")
 const MiniMapScript = preload("res://scripts/app/dice_race_mini_map.gd")
+const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 
 const RACER_LABELS := {
@@ -17,14 +18,6 @@ const RACER_LABELS := {
 	"duck": "アヒル",
 	"dinosaur": "恐竜",
 	"robot": "ロボット",
-}
-const RACER_SHORT := {
-	"camel": "05",
-	"rabbit": "01",
-	"fox": "03",
-	"duck": "04",
-	"dinosaur": "02",
-	"robot": "06",
 }
 const RACER_COLORS := {
 	"camel": Color("#3979bf"),
@@ -46,6 +39,15 @@ const RACER_ART_PATHS := {
 }
 const BET_AMOUNTS := [10, 20, 50]
 const SPIN_STEP_SECONDS := 0.085
+const DIRECTION_LABELS := {
+	"top": "上", "bottom": "下", "front": "手前",
+	"back": "奥", "left": "左", "right": "右",
+}
+const OPPOSITE_RACER_PAIRS := [
+	["fox", "rabbit", "↕"],
+	["duck", "dinosaur", "↔"],
+	["camel", "robot", "↔"],
+]
 
 const GOLD := Color("#f2bf4c")
 const GOLD_LIGHT := Color("#ffe6a0")
@@ -54,8 +56,6 @@ const CREAM := Color("#fff0cf")
 const NAVY := Color("#171932")
 const NAVY_2 := Color("#25234a")
 const RED := Color("#9f322b")
-const TRACK := Color("#d7a960")
-const TRACK_LIGHT := Color("#edca85")
 
 var orientations: Array[Dictionary] = []
 var race: Dictionary = {}
@@ -77,12 +77,21 @@ var ranking_label: Label
 var assignment_label: Label
 var target_value_label: Label
 var die_face_label: Label
+var die_panel: Control
+var dice_presentation: DicePresentation3D
+var dice_console: PanelContainer
 var track: Control
 var track_view: DiceRaceTrackView
 var minimap: DiceRaceMiniMap
 var racer_nodes := {}
 var assignment_cards := {}
+var direction_plates := {}
+var opposite_pair_labels: Array[Label] = []
+var opposite_pair_panels: Array[PanelContainer] = []
+var last_stop_feedback_assignments := {}
+var stop_feedback_count_for_test := 0
 var ranking_cards: Array[Label] = []
+var ranking_portraits: Array[TextureRect] = []
 var roll_button: Button
 var start_button: Button
 var cashout_row: HBoxContainer
@@ -95,10 +104,14 @@ var race_view: VBoxContainer
 var cashout_overlay: Control
 var racer_buttons := {}
 var amount_buttons := {}
+var bet_portrait: TextureRect
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	get_node("/root/BgmManager").call("play_dice_race")
+	var ui_sfx := get_node_or_null("/root/UiSfxManager")
+	if ui_sfx != null:
+		ui_sfx.call("set_stage", &"las_vegas")
 	orientations = OrientationScript.all_orientations()
 	_build_ui()
 	_show_bet_select()
@@ -112,6 +125,7 @@ func _process(delta: float) -> void:
 		orientation_index = next_index
 		current_assignments = OrientationScript.values_for_racers(orientations[orientation_index])
 		_refresh_assignment_ui()
+		_refresh_physical_die(0.0)
 
 func _build_ui() -> void:
 	var bg := ColorRect.new()
@@ -120,7 +134,7 @@ func _build_ui() -> void:
 	add_child(bg)
 
 	var glow := ColorRect.new()
-	glow.color = Color("#31406a")
+	glow.color = Color("#36213e")
 	glow.anchor_right = 1.0
 	glow.anchor_bottom = 0.46
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -143,10 +157,10 @@ func _build_ui() -> void:
 	_build_header(root)
 	_build_status_row(root)
 
-	status_label = _label("賭けるレーサーを選ぼう", 17, Color.WHITE)
+	status_label = _label("勝たせたいレーサーを選ぼう", 16, Color.WHITE)
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	status_label.custom_minimum_size.y = 42
+	status_label.custom_minimum_size.y = 34
 	root.add_child(status_label)
 
 	setup_view = VBoxContainer.new()
@@ -168,15 +182,15 @@ func _build_ui() -> void:
 
 	roll_button = _button("ROLL", true)
 	roll_button.name = "RollStopButton"
-	roll_button.custom_minimum_size.y = 68
-	roll_button.add_theme_font_size_override("font_size", 27)
+	roll_button.custom_minimum_size.y = 92
+	roll_button.add_theme_font_size_override("font_size", 32)
 	roll_button.pressed.connect(_on_roll_stop)
 	race_view.add_child(roll_button)
 
 	var back := _button("カジノへ戻る")
 	back.name = "CasinoBackButton"
 	back.custom_minimum_size.y = 48
-	back.pressed.connect(func() -> void: back_requested.emit())
+	back.pressed.connect(_on_back_pressed)
 	root.add_child(back)
 
 	_build_cashout()
@@ -207,8 +221,9 @@ func _build_status_row(root: VBoxContainer) -> void:
 	row.custom_minimum_size.y = 48
 	row.add_theme_constant_override("separation", 7)
 	root.add_child(row)
-	var bet_box := _hud_box("BET")
+	var bet_box := _hud_box("BET", selected_racer)
 	bet_label = bet_box.label
+	bet_portrait = bet_box.portrait
 	row.add_child(bet_box.panel)
 	var roll_box := _hud_box("ROLL")
 	roll_count_label = roll_box.label
@@ -217,7 +232,7 @@ func _build_status_row(root: VBoxContainer) -> void:
 	win_label.visible = false
 	row.add_child(win_label)
 
-func _hud_box(caption: String) -> Dictionary:
+func _hud_box(caption: String, portrait_racer: String = "") -> Dictionary:
 	var panel := PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", _panel(Color("#f6d995"), Color("#a96b2e"), 14, 2))
@@ -227,10 +242,23 @@ func _hud_box(caption: String) -> Dictionary:
 	var cap := _label(caption, 13, Color("#70451d"))
 	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(cap)
+	var value_row := HBoxContainer.new()
+	value_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	value_row.add_theme_constant_override("separation", 3)
+	box.add_child(value_row)
+	var portrait: TextureRect = null
+	if not portrait_racer.is_empty():
+		portrait = TextureRect.new()
+		portrait.name = "BetPortrait"
+		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		portrait.custom_minimum_size = Vector2(24, 24)
+		portrait.texture = _racer_art(portrait_racer)
+		value_row.add_child(portrait)
 	var value := _label("-", 18, INK)
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(value)
-	return {"panel": panel, "label": value}
+	value_row.add_child(value)
+	return {"panel": panel, "label": value, "portrait": portrait}
 
 func _build_course_overview(root: VBoxContainer) -> void:
 	var overview := PanelContainer.new()
@@ -257,13 +285,14 @@ func _build_course_overview(root: VBoxContainer) -> void:
 func _build_track(root: VBoxContainer) -> void:
 	var track_frame := PanelContainer.new()
 	track_frame.name = "VerticalRaceViewport"
-	track_frame.custom_minimum_size.y = 326
+	track_frame.custom_minimum_size.y = 560
 	track_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	track_frame.add_theme_stylebox_override("panel", _panel(Color("#8b633a"), GOLD, 20, 3))
+	track_frame.size_flags_stretch_ratio = 1.6
+	track_frame.add_theme_stylebox_override("panel", _panel(Color.TRANSPARENT, Color.TRANSPARENT, 0, 0))
 	root.add_child(track_frame)
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	row.add_theme_constant_override("separation", 5)
 	track_frame.add_child(row)
 	track_view = TrackViewScript.new()
 	track_view.name = "RaceTrack"
@@ -275,54 +304,9 @@ func _build_track(root: VBoxContainer) -> void:
 	minimap = MiniMapScript.new()
 	minimap.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	row.add_child(minimap)
-
-func _add_edge_flag(text: String, x_anchor: float, color: Color) -> void:
-	var panel := PanelContainer.new()
-	panel.anchor_left = x_anchor
-	panel.anchor_right = x_anchor
-	panel.anchor_top = 0.035
-	panel.offset_right = 74
-	panel.offset_bottom = 40
-	panel.add_theme_stylebox_override("panel", _panel(color, Color("#f7d06b"), 9, 2))
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var label := _label(text, 13, Color.WHITE)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	panel.add_child(label)
-	track.add_child(panel)
-
-func _make_racer_marker(racer_id: String) -> Control:
-	var panel := PanelContainer.new()
-	panel.name = "Racer_%s" % racer_id
-	panel.custom_minimum_size = Vector2(86, 58)
-	panel.size = Vector2(86, 58)
-	panel.z_index = 5
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_theme_stylebox_override("panel", _panel(Color(1, 0.94, 0.79, 0.97), RACER_COLORS[racer_id], 13, 3))
-	var row := HBoxContainer.new()
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_theme_constant_override("separation", 2)
-	panel.add_child(row)
-	var art := _racer_art(racer_id)
-	if art != null:
-		var portrait := TextureRect.new()
-		portrait.texture = art
-		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		portrait.custom_minimum_size = Vector2(52, 48)
-		portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(portrait)
-	else:
-		var fallback := _label(RACER_SHORT[racer_id], 17, Color.WHITE)
-		fallback.custom_minimum_size = Vector2(42, 42)
-		fallback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		fallback.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		fallback.add_theme_stylebox_override("normal", _panel(RACER_COLORS[racer_id], RACER_COLORS[racer_id].lightened(0.25), 21, 1))
-		row.add_child(fallback)
-	var name := _label(RACER_LABELS[racer_id], 11, INK)
-	name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.add_child(name)
-	return panel
+	track_view.visible_range_changed.connect(minimap.set_camera_range)
+	minimap.set_camera_range(track_view.visible_range_for_test())
+	track_view.rank_changed.connect(_on_track_rank_changed)
 
 func _racer_art(racer_id: String) -> Texture2D:
 	var path := str(RACER_ART_PATHS.get(racer_id, ""))
@@ -332,8 +316,8 @@ func _racer_art(racer_id: String) -> Texture2D:
 
 func _build_ranking(root: VBoxContainer) -> void:
 	var ranking_panel := PanelContainer.new()
-	ranking_panel.custom_minimum_size.y = 38
-	ranking_panel.add_theme_stylebox_override("panel", _panel(Color("#28223e"), Color("#775d94"), 13, 2))
+	ranking_panel.custom_minimum_size.y = 42
+	ranking_panel.add_theme_stylebox_override("panel", _panel(Color("#17122100"), Color.TRANSPARENT, 0, 0))
 	root.add_child(ranking_panel)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 5)
@@ -342,10 +326,21 @@ func _build_ranking(root: VBoxContainer) -> void:
 		var place := PanelContainer.new()
 		place.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var border: Color = [GOLD, Color("#c8cbd1"), Color("#c98754")][i]
-		place.add_theme_stylebox_override("panel", _panel(Color("#3b3152"), border, 10, 2))
-		var label := _label("%d位 -" % (i + 1), 12, Color.WHITE)
+		place.add_theme_stylebox_override("panel", _panel(Color("#30233e"), border, 8, 2))
+		var place_row := HBoxContainer.new()
+		place_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		place_row.add_theme_constant_override("separation", 3)
+		place.add_child(place_row)
+		var portrait := TextureRect.new()
+		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		portrait.custom_minimum_size = Vector2(22, 22)
+		place_row.add_child(portrait)
+		ranking_portraits.append(portrait)
+		var label := _label("%d位" % (i + 1), 12, Color.WHITE)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		place.add_child(label)
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		place_row.add_child(label)
 		ranking_cards.append(label)
 		row.add_child(place)
 	ranking_label = _label("", 1, Color.TRANSPARENT)
@@ -353,55 +348,138 @@ func _build_ranking(root: VBoxContainer) -> void:
 	root.add_child(ranking_label)
 
 func _build_dice_console(root: VBoxContainer) -> void:
-	var console := PanelContainer.new()
-	console.custom_minimum_size.y = 144
-	console.add_theme_stylebox_override("panel", _panel(NAVY_2, Color("#695b9c"), 18, 2))
-	root.add_child(console)
+	dice_console = PanelContainer.new()
+	dice_console.name = "DiceDirectionConsole"
+	dice_console.custom_minimum_size.y = 330
+	dice_console.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	dice_console.size_flags_stretch_ratio = 1.0
+	dice_console.add_theme_stylebox_override("panel", _panel(Color("#171221"), Color("#7a5a31"), 12, 1))
+	root.add_child(dice_console)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
-	console.add_child(box)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 4)
+	dice_console.add_child(box)
 
-	target_value_label = _label("アヒルを狙え", 15, GOLD_LIGHT)
+	target_value_label = _label("BET・%s　現在の目 ?" % RACER_LABELS[selected_racer], 18, GOLD_LIGHT)
 	target_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(target_value_label)
 
 	var middle := HBoxContainer.new()
-	middle.add_theme_constant_override("separation", 8)
+	middle.alignment = BoxContainer.ALIGNMENT_CENTER
+	middle.add_theme_constant_override("separation", 6)
 	box.add_child(middle)
 
-	var die := PanelContainer.new()
-	die.custom_minimum_size = Vector2(104, 92)
-	die.add_theme_stylebox_override("panel", _panel(Color("#fff5df"), GOLD, 25, 4))
-	die_face_label = _label("?", 52, Color("#2d211a"))
-	die_face_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	die_face_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	die.add_child(die_face_label)
-	middle.add_child(die)
+	var compass := VBoxContainer.new()
+	compass.name = "DieDirectionCompass"
+	compass.custom_minimum_size.x = 430
+	compass.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	compass.add_theme_constant_override("separation", 2)
+	middle.add_child(compass)
 
-	var assignment_grid := GridContainer.new()
-	assignment_grid.columns = 2
-	assignment_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	assignment_grid.add_theme_constant_override("h_separation", 4)
-	assignment_grid.add_theme_constant_override("v_separation", 3)
-	middle.add_child(assignment_grid)
-	for racer_id: String in RaceScript.RACERS:
-		assignment_grid.add_child(_make_assignment_card(racer_id))
+	var top_center := CenterContainer.new()
+	top_center.add_child(_make_direction_plate("fox", "top", Vector2(144, 44)))
+	compass.add_child(top_center)
 
-	assignment_label = _label("STOPした向きで全員の出目が決まる", 11, Color("#d8d3ef"))
+	var compass_middle := HBoxContainer.new()
+	compass_middle.alignment = BoxContainer.ALIGNMENT_CENTER
+	compass_middle.add_theme_constant_override("separation", 4)
+	compass_middle.add_child(_make_direction_plate("camel", "left", Vector2(86, 142), true))
+	die_panel = CenterContainer.new()
+	die_panel.name = "PhysicalDie"
+	die_panel.custom_minimum_size = Vector2(230, 170)
+	dice_presentation = DicePresentationScript.new()
+	dice_presentation.name = "RacePhysicalDie3D"
+	dice_presentation.overlay_compact = true
+	dice_presentation.compact_single = true
+	dice_presentation.tray_surface_visible = false
+	dice_presentation.high_contrast_pips = true
+	dice_presentation.dice_race_face_layout = true
+	dice_presentation.custom_minimum_size = Vector2(230, 170)
+	die_panel.add_child(dice_presentation)
+	die_face_label = _label("?", 1, Color.TRANSPARENT)
+	die_face_label.visible = false
+	die_panel.add_child(die_face_label)
+	compass_middle.add_child(die_panel)
+	compass_middle.add_child(_make_direction_plate("robot", "right", Vector2(86, 142), true))
+	compass.add_child(compass_middle)
+
+	var bottom_center := CenterContainer.new()
+	bottom_center.add_child(_make_direction_plate("duck", "front", Vector2(144, 44)))
+	compass.add_child(bottom_center)
+
+	var pairs := VBoxContainer.new()
+	pairs.name = "OppositeFacePairs"
+	pairs.custom_minimum_size.x = 190
+	pairs.add_theme_constant_override("separation", 4)
+	middle.add_child(pairs)
+	var pairs_title := _label("↔ 7", 15, GOLD_LIGHT)
+	pairs_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pairs.add_child(pairs_title)
+	for pair: Array in OPPOSITE_RACER_PAIRS:
+		pairs.add_child(_make_opposite_pair_row(str(pair[0]), str(pair[1]), str(pair[2])))
+	_make_hidden_direction_target("rabbit", "bottom", pairs)
+	_make_hidden_direction_target("dinosaur", "back", pairs)
+
+	assignment_label = _label("止まった向きの数字で進む", 13, Color("#bdb4cb"))
 	assignment_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	assignment_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(assignment_label)
 
-func _make_assignment_card(racer_id: String) -> PanelContainer:
+func _make_direction_plate(racer_id: String, direction: String, minimum: Vector2, vertical := false) -> PanelContainer:
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size.y = 29
-	panel.add_theme_stylebox_override("panel", _panel(Color("#f6e9ce"), Color("#8b735d"), 10, 1))
-	var label := _label("%s  ?" % RACER_LABELS[racer_id], 11, INK)
+	panel.name = "Direction_%s" % direction
+	panel.custom_minimum_size = minimum
+	panel.add_theme_stylebox_override("panel", _panel(Color.TRANSPARENT, Color.TRANSPARENT, 10, 0))
+	var content: BoxContainer = VBoxContainer.new() if vertical else HBoxContainer.new()
+	content.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.add_theme_constant_override("separation", 1 if vertical else 3)
+	panel.add_child(content)
+	var portrait := TextureRect.new()
+	portrait.name = "Portrait"
+	portrait.texture = _racer_art(racer_id)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.custom_minimum_size = Vector2(44, 44)
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(portrait)
+	var caption := _label("%s %s" % [DIRECTION_LABELS[direction], RACER_LABELS[racer_id]], 12, Color("#fff2d2"))
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	content.add_child(caption)
+	var value := _label("?", 24, Color("#fff2d2"))
+	value.name = "DirectionValue"
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	content.add_child(value)
+	var entry := {"panel": panel, "label": value, "caption": caption, "portrait": portrait, "direction": direction}
+	direction_plates[racer_id] = entry
+	assignment_cards[racer_id] = entry
+	return panel
+
+func _make_opposite_pair_row(first_id: String, second_id: String, arrow: String) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size.y = 54
+	panel.add_theme_stylebox_override("panel", _panel(Color.TRANSPARENT, Color.TRANSPARENT, 8, 0))
+	var label := _label("%s ? %s ? %s" % [RACER_LABELS[first_id], arrow, RACER_LABELS[second_id]], 12, Color("#fff2d2"))
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	panel.add_child(label)
-	assignment_cards[racer_id] = {"panel": panel, "label": label}
+	opposite_pair_labels.append(label)
+	opposite_pair_panels.append(panel)
 	return panel
+
+func _make_hidden_direction_target(racer_id: String, direction: String, parent: Control) -> void:
+	var target := Control.new()
+	target.name = "Direction_%s_Target" % direction
+	target.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(target)
+	direction_plates[racer_id] = {
+		"panel": opposite_pair_panels[0 if racer_id == "rabbit" else 1],
+		"label": opposite_pair_labels[0 if racer_id == "rabbit" else 1],
+		"portrait": null,
+		"direction": direction,
+		"compact_pair": true,
+	}
+	assignment_cards[racer_id] = direction_plates[racer_id]
 
 func _build_bet_panel(root: VBoxContainer) -> void:
 	bet_panel = VBoxContainer.new()
@@ -415,6 +493,8 @@ func _build_bet_panel(root: VBoxContainer) -> void:
 	for racer_id: String in RaceScript.RACERS:
 		var button := _button(RACER_LABELS[racer_id])
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.icon = _racer_art(racer_id)
+		button.add_theme_constant_override("icon_max_width", 30)
 		button.pressed.connect(_select_racer.bind(racer_id))
 		racer_grid.add_child(button)
 		racer_buttons[racer_id] = button
@@ -484,11 +564,13 @@ func _show_bet_select() -> void:
 
 func _select_racer(racer_id: String) -> void:
 	selected_racer = racer_id
+	_play_ui_sfx(&"select", false)
 	_refresh_bet_buttons()
 	_refresh_assignment_ui()
 
 func _select_bet(amount: int) -> void:
 	selected_bet = amount
+	_play_ui_sfx(&"select", false)
 	_refresh_bet_buttons()
 
 func _refresh_bet_buttons() -> void:
@@ -498,6 +580,8 @@ func _refresh_bet_buttons() -> void:
 		button.disabled = false
 		button.text = ("● " if racer_id == selected_racer else "") + RACER_LABELS[racer_id]
 		_apply_button_state(button, racer_id == selected_racer)
+	if bet_portrait != null:
+		bet_portrait.texture = _racer_art(selected_racer)
 	for amount: int in amount_buttons:
 		var button := amount_buttons[amount] as Button
 		button.disabled = chips < amount
@@ -509,8 +593,10 @@ func _refresh_bet_buttons() -> void:
 
 func _start_race() -> void:
 	if not CasinoBankScript.spend_chips(selected_bet):
+		_play_ui_sfx(&"blocked", false)
 		_refresh_bet_buttons()
 		return
+	_play_ui_sfx(&"start", false)
 	race = RaceScript.new_race(selected_racer, selected_bet)
 	wager_committed = true
 	result_recorded = false
@@ -530,19 +616,31 @@ func _on_roll_stop() -> void:
 		return
 	if not spinning:
 		spinning = true
+		_play_ui_sfx(&"start", false)
 		roll_button.text = "STOP!"
 		_apply_roll_button_style(true)
 		status_label.text = "%sに欲しい数字を狙え！" % RACER_LABELS[selected_racer]
 		return
 	spinning = false
+	_play_ui_sfx(&"stop", false)
 	roll_button.text = "ROLL"
+	roll_button.disabled = true
 	_apply_roll_button_style(false)
 	current_assignments = OrientationScript.values_for_racers(orientations[orientation_index])
+	var stopped_assignments := current_assignments.duplicate()
 	var was_photo_finish := not (race.get("photo_finish_candidates", []) as Array).is_empty()
 	race = RaceScript.apply_roll(race, current_assignments)
+	_play_roll_result_sfx()
 	status_label.text = "PHOTO FINISH判定！" if was_photo_finish else _movement_summary()
 	_refresh_all(true)
+	_refresh_physical_die(0.18)
+	_play_stop_assignment_feedback(stopped_assignments)
+	await get_tree().create_timer(0.34).timeout
+	if not is_inside_tree():
+		return
 	_after_roll_resolution()
+	if not bool(race.get("finished", false)) and not bool(race.get("cashout_offered", false)):
+		roll_button.disabled = false
 
 func _after_roll_resolution() -> void:
 	if bool(race.get("finished", false)):
@@ -562,6 +660,7 @@ func _take_cashout() -> void:
 	var amount := RaceScript.cashout_offer(race)
 	race = RaceScript.take_cashout(race)
 	CasinoBankScript.add_chips(amount)
+	_play_ui_sfx(&"reward", true)
 	cashout_overlay.visible = false
 	roll_button.disabled = false
 	status_label.text = "%d CHIPでCASH OUT。レースは最後まで見届けよう。" % amount
@@ -569,6 +668,7 @@ func _take_cashout() -> void:
 
 func _ride_on() -> void:
 	race = RaceScript.ride_on(race)
+	_play_ui_sfx(&"streak", true)
 	cashout_overlay.visible = false
 	roll_button.disabled = false
 	status_label.text = "RIDE ON！ 優勝なら%d CHIP。" % int(round(float(selected_bet) * RaceScript.WIN_MULTIPLIER))
@@ -578,6 +678,7 @@ func _finish_race() -> void:
 	roll_button.disabled = true
 	var winner := str(race.get("winner", ""))
 	var payout := RaceScript.winning_payout(race)
+	_play_ui_sfx(&"complete" if winner == selected_racer else &"error", true)
 	if payout > 0:
 		CasinoBankScript.add_chips(payout)
 		status_label.text = "%s WIN！ %d CHIP獲得！" % [RACER_LABELS.get(winner, winner), payout]
@@ -597,11 +698,35 @@ func _finish_race() -> void:
 	_refresh_all()
 
 func _restart_after_result() -> void:
+	_play_ui_sfx(&"retry", false)
 	if not roll_button.pressed.is_connected(_on_roll_stop):
 		roll_button.pressed.connect(_on_roll_stop)
 	roll_button.text = "ROLL"
 	_apply_roll_button_style(false)
 	_show_bet_select()
+
+func _on_back_pressed() -> void:
+	_play_ui_sfx(&"back", false)
+	back_requested.emit()
+
+
+func _on_track_rank_changed(racer_id: String, previous_rank: int, next_rank: int) -> void:
+	if wager_committed and racer_id == selected_racer and next_rank < previous_rank:
+		_play_ui_sfx(&"streak", true)
+
+func _play_roll_result_sfx() -> void:
+	var move: Dictionary = (race.get("last_movements", {}) as Dictionary).get(selected_racer, {})
+	if bool(move.get("blocked_by_log", false)) or str(move.get("gimmick", "")) == "foxfire":
+		_play_ui_sfx(&"warning", true)
+	elif str(move.get("gimmick", "")) == "rapid":
+		_play_ui_sfx(&"bonus", true)
+	else:
+		_play_ui_sfx(&"progress-step", true)
+
+func _play_ui_sfx(cue: StringName, world_specific: bool) -> void:
+	var ui_sfx := get_node_or_null("/root/UiSfxManager")
+	if ui_sfx != null:
+		ui_sfx.call("play_ui_sfx", cue, world_specific)
 
 func _movement_summary() -> String:
 	var move: Dictionary = (race.get("last_movements", {}) as Dictionary).get(selected_racer, {})
@@ -624,33 +749,104 @@ func _refresh_all(animate_track: bool = false) -> void:
 	var payout := RaceScript.winning_payout(race)
 	win_label.text = "%d" % payout if payout > 0 else ("×4" if wager_committed else "-")
 	_refresh_assignment_ui()
+	_refresh_physical_die(0.0)
 	_refresh_ranking()
 	call_deferred("_refresh_track", animate_track)
 
 func _refresh_assignment_ui() -> void:
 	if current_assignments.is_empty():
-		target_value_label.text = "%sを狙え" % RACER_LABELS[selected_racer]
+		target_value_label.text = "BET・%s　現在の目 ?" % RACER_LABELS[selected_racer]
 		die_face_label.text = "?"
-		assignment_label.text = "ROLLすると6体へ1〜6が一度ずつ配られる"
+		assignment_label.text = "6レーサーがサイコロの6方向を担当"
 		for racer_id: String in assignment_cards:
 			_update_assignment_card(racer_id, 0)
+		_refresh_opposite_pairs()
 		return
 	var target_value := int(current_assignments.get(selected_racer, 0))
-	target_value_label.text = "%s ← %d" % [RACER_LABELS[selected_racer], target_value]
+	target_value_label.text = "BET・%s　現在の目 %d" % [RACER_LABELS[selected_racer], target_value]
 	die_face_label.text = str(target_value)
 	for racer_id: String in RaceScript.RACERS:
 		_update_assignment_card(racer_id, int(current_assignments.get(racer_id, 0)))
-	assignment_label.text = "STOPした瞬間の向きで6体すべての出目が決まる"
+	_refresh_opposite_pairs()
+	assignment_label.text = "反対面の合計は7。STOPした向きの数字で進む"
 
 func _update_assignment_card(racer_id: String, value: int) -> void:
 	if not assignment_cards.has(racer_id):
 		return
 	var entry: Dictionary = assignment_cards[racer_id]
+	if bool(entry.get("compact_pair", false)):
+		return
 	var panel := entry.panel as PanelContainer
 	var label := entry.label as Label
-	label.text = "%s  %s" % [RACER_LABELS[racer_id], "?" if value <= 0 else str(value)]
+	label.text = "?" if value <= 0 else str(value)
 	var selected := racer_id == selected_racer
-	panel.add_theme_stylebox_override("panel", _panel(Color("#fff0cf") if selected else Color("#f1e4cf"), GOLD if selected else Color("#806d5d"), 10, 3 if selected else 1))
+	panel.add_theme_stylebox_override("panel", _panel(
+		Color(1.0, 0.90, 0.60, 0.12) if selected else Color.TRANSPARENT,
+		GOLD if selected else Color.TRANSPARENT, 10, 2 if selected else 0))
+	label.add_theme_color_override("font_color", GOLD_LIGHT if selected else Color("#d8cfc4"))
+
+func _refresh_opposite_pairs() -> void:
+	for index: int in mini(OPPOSITE_RACER_PAIRS.size(), opposite_pair_labels.size()):
+		var pair: Array = OPPOSITE_RACER_PAIRS[index]
+		var first_id := str(pair[0])
+		var second_id := str(pair[1])
+		var first_value := int(current_assignments.get(first_id, 0))
+		var second_value := int(current_assignments.get(second_id, 0))
+		var first_text := "?" if first_value <= 0 else str(first_value)
+		var second_text := "?" if second_value <= 0 else str(second_value)
+		opposite_pair_labels[index].text = "%s%s %s %s%s" % [
+			RACER_LABELS[first_id], first_text, str(pair[2]), second_text, RACER_LABELS[second_id]
+		]
+		var selected_pair := selected_racer in [first_id, second_id]
+		var panel := opposite_pair_panels[index]
+		panel.modulate = Color.WHITE if selected_pair else Color(0.62, 0.60, 0.68, 0.72)
+		panel.add_theme_stylebox_override("panel", _panel(
+			Color(1.0, 0.86, 0.45, 0.08) if selected_pair else Color.TRANSPARENT,
+			Color(GOLD, 0.55) if selected_pair else Color.TRANSPARENT, 8, 2 if selected_pair else 0))
+		opposite_pair_labels[index].add_theme_color_override("font_color", GOLD_LIGHT if selected_pair else Color("#c7bdcd"))
+
+func _refresh_physical_die(duration: float) -> void:
+	if not is_instance_valid(dice_presentation) or orientations.is_empty():
+		return
+	if dice_presentation.dice_roots.is_empty():
+		call_deferred("_refresh_physical_die", duration)
+		return
+	var orientation: Dictionary = orientations[orientation_index]
+	dice_presentation.set_single_physical_orientation(
+		OrientationScript.quaternion_for_orientation(orientation), duration)
+
+func _play_stop_assignment_feedback(assignments: Dictionary) -> void:
+	last_stop_feedback_assignments = assignments.duplicate()
+	stop_feedback_count_for_test += 1
+	if not is_instance_valid(dice_console) or not is_instance_valid(die_panel):
+		return
+	var console_inverse := dice_console.get_global_transform().affine_inverse()
+	var start: Vector2 = console_inverse * (die_panel.global_position + die_panel.size * 0.5)
+	for racer_id: String in RaceScript.RACERS:
+		if not direction_plates.has(racer_id):
+			continue
+		var target_panel := (direction_plates[racer_id] as Dictionary).panel as PanelContainer
+		var target: Vector2 = console_inverse * (target_panel.global_position + target_panel.size * 0.5)
+		var flying := _label(str(int(assignments.get(racer_id, 0))), 20, GOLD_LIGHT)
+		flying.custom_minimum_size = Vector2(28, 28)
+		flying.size = Vector2(28, 28)
+		flying.position = start - flying.size * 0.5
+		flying.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		flying.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		flying.z_index = 30
+		flying.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		dice_console.add_child(flying)
+		var flight := create_tween().set_parallel(true)
+		flight.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		flight.tween_property(flying, "position", target - flying.size * 0.5, 0.30)
+		flight.tween_property(flying, "scale", Vector2(1.25, 1.25), 0.20)
+		flight.tween_property(flying, "modulate:a", 0.0, 0.18).set_delay(0.12)
+		flight.chain().tween_callback(flying.queue_free)
+	var selected_panel := (direction_plates[selected_racer] as Dictionary).panel as Control
+	selected_panel.pivot_offset = selected_panel.size * 0.5
+	var pulse := create_tween()
+	pulse.tween_property(selected_panel, "scale", Vector2(1.12, 1.12), 0.14)
+	pulse.tween_property(selected_panel, "scale", Vector2.ONE, 0.18)
 
 func _refresh_ranking() -> void:
 	if race.is_empty():
@@ -665,7 +861,9 @@ func _refresh_ranking() -> void:
 		var text := "%d位 %s  %d" % [i + 1, RACER_LABELS[id], pos]
 		plain_parts.append(text)
 		if i < ranking_cards.size():
-			ranking_cards[i].text = text
+			ranking_cards[i].text = "%d位 %s" % [i + 1, RACER_LABELS[id]]
+			if i < ranking_portraits.size():
+				ranking_portraits[i].texture = _racer_art(id)
 	ranking_label.text = " / ".join(plain_parts)
 
 func _refresh_track(animate_track: bool = false) -> void:
@@ -675,7 +873,8 @@ func _refresh_track(animate_track: bool = false) -> void:
 	for id: String in RaceScript.RACERS:
 		positions[id] = int((race.get("racers", {}).get(id, {}) as Dictionary).get("position", 0))
 	track_view.set_race_state(positions, selected_racer, wager_committed, animate_track)
-	minimap.set_race_state(positions, selected_racer, wager_committed)
+	if is_instance_valid(minimap):
+		minimap.set_race_state(positions, selected_racer, wager_committed)
 
 func _apply_roll_button_style(stopping: bool) -> void:
 	var fill := Color("#c83c32") if stopping else GOLD
@@ -683,24 +882,6 @@ func _apply_roll_button_style(stopping: bool) -> void:
 	roll_button.add_theme_stylebox_override("normal", _panel(fill, border, 12, 3))
 	roll_button.add_theme_stylebox_override("hover", _panel(fill.lightened(0.10), GOLD_LIGHT, 12, 3))
 	roll_button.add_theme_color_override("font_color", Color.WHITE if stopping else INK)
-
-func _add_track_marker(space: int, text: String, color: Color) -> void:
-	var panel := PanelContainer.new()
-	var anchor := 0.075 + 0.84 * (float(space) / float(RaceScript.GOAL))
-	panel.anchor_left = anchor
-	panel.anchor_right = anchor
-	panel.anchor_top = 0.04
-	panel.offset_left = -26
-	panel.offset_right = 26
-	panel.offset_bottom = 54
-	panel.z_index = 3
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_theme_stylebox_override("panel", _panel(color, Color("#fff0b8"), 12, 2))
-	var label := _label(text, 12, Color.WHITE)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	panel.add_child(label)
-	track.add_child(panel)
 
 func _label(text: String, size: int, color: Color) -> Label:
 	var label := Label.new()

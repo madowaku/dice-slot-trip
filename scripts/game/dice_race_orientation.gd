@@ -10,6 +10,14 @@ const RACER_DIRECTION := {
 	"camel": "left",
 	"robot": "right",
 }
+const DIRECTION_VECTORS := {
+	"top": Vector3.UP,
+	"bottom": Vector3.DOWN,
+	"front": Vector3.BACK,
+	"back": Vector3.FORWARD,
+	"left": Vector3.LEFT,
+	"right": Vector3.RIGHT,
+}
 
 static func base_orientation() -> Dictionary:
 	return {
@@ -42,6 +50,19 @@ static func values_for_racers(orientation: Dictionary) -> Dictionary:
 	for racer_id: String in RACER_DIRECTION:
 		assignments[racer_id] = int(orientation.get(RACER_DIRECTION[racer_id], 0))
 	return assignments
+
+static func quaternion_for_orientation(orientation: Dictionary) -> Quaternion:
+	# DICE RACE starts with 1 on top, 2 at the front, and 4 at the right.
+	var x_axis := _direction_for_value(orientation, 4)
+	var y_axis := _direction_for_value(orientation, 1)
+	var z_axis := _direction_for_value(orientation, 2)
+	return Basis(x_axis, y_axis, z_axis).get_rotation_quaternion().normalized()
+
+static func _direction_for_value(orientation: Dictionary, value: int) -> Vector3:
+	for direction: String in DIRECTIONS:
+		if int(orientation.get(direction, 0)) == value:
+			return DIRECTION_VECTORS[direction]
+	return Vector3.ZERO
 
 static func is_valid_orientation(orientation: Dictionary) -> bool:
 	var values: Array[int] = []

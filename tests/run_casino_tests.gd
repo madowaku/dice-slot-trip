@@ -3,6 +3,7 @@ extends SceneTree
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const OrientationScript = preload("res://scripts/game/dice_race_orientation.gd")
 const RaceScript = preload("res://scripts/game/dice_race_model.gd")
+const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 
 var failures := 0
 var assertions := 0
@@ -51,6 +52,12 @@ func _test_orientation_contract() -> void:
 	for orientation: Dictionary in orientations:
 		_expect(OrientationScript.is_valid_orientation(orientation), "every generated orientation is physically valid")
 		keys[OrientationScript.orientation_key(orientation)] = true
+		var quaternion := OrientationScript.quaternion_for_orientation(orientation)
+		_expect(is_equal_approx(Basis(quaternion).determinant(), 1.0), "every race die pose is a proper cube rotation")
+		for direction: String in OrientationScript.DIRECTIONS:
+			var value := int(orientation[direction])
+			var rendered_direction: Vector3 = quaternion * DicePresentationScript.race_face_normal(value)
+			_expect(rendered_direction.is_equal_approx(OrientationScript.DIRECTION_VECTORS[direction]), "3D face %d renders at %s" % [value, direction])
 	_expect(keys.size() == 24, "all 24 orientations are unique")
 	var base: Dictionary = OrientationScript.values_for_racers(OrientationScript.base_orientation())
 	_expect(int(base.fox) == 1 and int(base.rabbit) == 6, "fox and rabbit use opposite top/bottom faces")

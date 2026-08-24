@@ -30,6 +30,9 @@ var roll_clock_external: Array[bool] = []
 var base_positions: Array[Vector3] = []
 var settle_start_positions: Array[Vector3] = []
 var settle_start_orientations: Array[Quaternion] = []
+var explicit_orientation_enabled: Array[bool] = []
+var explicit_orientation_targets: Array[Quaternion] = []
+var explicit_settle_durations: Array[float] = []
 var active_count := 0
 var next_lock_index := -1
 var animation_time := 0.0
@@ -41,6 +44,7 @@ var tray_rim: MeshInstance3D
 @export var tray_surface_visible := true
 @export var render_enabled := true
 @export var high_contrast_pips := false
+@export var dice_race_face_layout := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -63,8 +67,8 @@ func _build_world() -> void:
 	var env := Environment.new(); env.background_mode = Environment.BG_COLOR; env.background_color = Color(0, 0, 0, 0); env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR; env.ambient_light_color = Color("#d7e0dd"); env.ambient_light_energy = 0.36
 	environment.environment = env; world_root.add_child(environment)
 
-	camera = Camera3D.new(); camera.name = "DiceCamera"; camera.fov = 30.0
-	camera.position = Vector3(0, 5.4, 8.0) if compact_single else Vector3(0, 6.2, 9.8)
+	camera = Camera3D.new(); camera.name = "DiceCamera"; camera.fov = 27.0 if dice_race_face_layout else 30.0
+	camera.position = Vector3(4.6, 5.6, 8.0) if dice_race_face_layout else (Vector3(0, 5.4, 8.0) if compact_single else Vector3(0, 6.2, 9.8))
 	camera.look_at_from_position(camera.position, Vector3(0, 0.48, 0)); world_root.add_child(camera)
 	var key := DirectionalLight3D.new(); key.name = "WarmKey"; key.light_color = Color("#ffe1ad"); key.light_energy = 1.02; key.shadow_enabled = true; key.rotation_degrees = Vector3(-52, -28, 0); world_root.add_child(key)
 	var fill := OmniLight3D.new(); fill.name = "SoftFill"; fill.light_color = Color("#bcd9dc"); fill.light_energy = 0.45; fill.omni_range = 12.0; fill.position = Vector3(-4, 4, 5); world_root.add_child(fill)
@@ -126,8 +130,12 @@ func _build_die(index: int) -> void:
 	_collect_face_pips(pip_transforms, 6, Vector3.DOWN, Vector3.RIGHT, Vector3.FORWARD)
 	_collect_face_pips(pip_transforms, 2, Vector3.BACK, Vector3.RIGHT, Vector3.UP)
 	_collect_face_pips(pip_transforms, 5, Vector3.FORWARD, Vector3.LEFT, Vector3.UP)
-	_collect_face_pips(pip_transforms, 3, Vector3.RIGHT, Vector3.FORWARD, Vector3.UP)
-	_collect_face_pips(pip_transforms, 4, Vector3.LEFT, Vector3.BACK, Vector3.UP)
+	if dice_race_face_layout:
+		_collect_face_pips(pip_transforms, 3, Vector3.LEFT, Vector3.BACK, Vector3.UP)
+		_collect_face_pips(pip_transforms, 4, Vector3.RIGHT, Vector3.FORWARD, Vector3.UP)
+	else:
+		_collect_face_pips(pip_transforms, 3, Vector3.RIGHT, Vector3.FORWARD, Vector3.UP)
+		_collect_face_pips(pip_transforms, 4, Vector3.LEFT, Vector3.BACK, Vector3.UP)
 	var pips := MultiMeshInstance3D.new(); pips.name = "SixFacePips"
 	var multi := MultiMesh.new(); multi.transform_format = MultiMesh.TRANSFORM_3D; multi.instance_count = pip_transforms.size()
 	var pip_radius := 0.12 if high_contrast_pips else 0.105
@@ -135,7 +143,7 @@ func _build_die(index: int) -> void:
 	for pip_index: int in range(pip_transforms.size()): multi.set_instance_transform(pip_index, pip_transforms[pip_index])
 	var pip_material := StandardMaterial3D.new(); pip_material.albedo_color = Color("#120d08") if high_contrast_pips else PIP_COLOR; pip_material.roughness = 0.78
 	pips.multimesh = multi; pips.material_override = pip_material; die.add_child(pips)
-	dice_roots.append(die); die_states.append(DieState.READY); face_values.append(1); settle_elapsed.append(SETTLE_DURATION); roll_elapsed.append(0.0); roll_clock_external.append(false); base_positions.append(Vector3.ZERO); settle_start_positions.append(Vector3.ZERO); settle_start_orientations.append(Quaternion.IDENTITY)
+	dice_roots.append(die); die_states.append(DieState.READY); face_values.append(1); settle_elapsed.append(SETTLE_DURATION); roll_elapsed.append(0.0); roll_clock_external.append(false); base_positions.append(Vector3.ZERO); settle_start_positions.append(Vector3.ZERO); settle_start_orientations.append(Quaternion.IDENTITY); explicit_orientation_enabled.append(false); explicit_orientation_targets.append(Quaternion.IDENTITY); explicit_settle_durations.append(SETTLE_DURATION)
 
 func _collect_face_pips(transforms: Array[Transform3D], value: int, normal: Vector3, horizontal: Vector3, vertical: Vector3) -> void:
 	var patterns: Array = [[], [Vector2.ZERO], [Vector2(-1, -1), Vector2(1, 1)], [Vector2(-1, -1), Vector2.ZERO, Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2.ZERO, Vector2(-1, 1), Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 0), Vector2(1, 0), Vector2(-1, 1), Vector2(1, 1)]]
@@ -150,6 +158,16 @@ static func face_normal(value: int) -> Vector3:
 		2: return Vector3.BACK
 		3: return Vector3.RIGHT
 		4: return Vector3.LEFT
+		5: return Vector3.FORWARD
+		6: return Vector3.DOWN
+	return Vector3.UP
+
+static func race_face_normal(value: int) -> Vector3:
+	match clampi(value, 1, 6):
+		1: return Vector3.UP
+		2: return Vector3.BACK
+		3: return Vector3.LEFT
+		4: return Vector3.RIGHT
 		5: return Vector3.FORWARD
 		6: return Vector3.DOWN
 	return Vector3.UP
@@ -238,6 +256,7 @@ func present(values: Array[int], rolling: bool, locked_count: int) -> void:
 		base_positions[index] = layout[index]
 		var new_value := clampi(values[index], 1, 6)
 		face_values[index] = new_value
+		explicit_orientation_enabled[index] = false
 		if rolling and index >= locked_count:
 			if die_states[index] != DieState.ROLLING:
 				roll_elapsed[index] = 0.0
@@ -270,6 +289,43 @@ func flip_to_face(value: int) -> void:
 	settle_elapsed[0] = 0.0
 	die_states[0] = DieState.SETTLING
 
+func set_single_physical_orientation(orientation: Quaternion, duration := SETTLE_DURATION) -> void:
+	var target := orientation.normalized()
+	if active_count < 1:
+		present([_top_face_for_current_layout(target)], false, 1)
+	var die := dice_roots[0]
+	explicit_orientation_enabled[0] = true
+	explicit_orientation_targets[0] = target
+	explicit_settle_durations[0] = maxf(duration, 0.0)
+	face_values[0] = _top_face_for_current_layout(target)
+	if duration <= 0.0:
+		die.quaternion = target
+		die.position = base_positions[0]
+		die_states[0] = DieState.LOCKED
+		settle_elapsed[0] = explicit_settle_durations[0]
+		return
+	settle_start_positions[0] = die.position
+	settle_start_orientations[0] = die.quaternion
+	settle_elapsed[0] = 0.0
+	die_states[0] = DieState.SETTLING
+
+func physical_orientation_for_test() -> Quaternion:
+	if active_count < 1:
+		return Quaternion.IDENTITY
+	return dice_roots[0].quaternion
+
+func _top_face_for_current_layout(orientation: Quaternion) -> int:
+	if not dice_race_face_layout:
+		return top_face_for_orientation(orientation)
+	var best_face := 1
+	var best_dot := -INF
+	for face: int in range(1, 7):
+		var dot := (orientation * race_face_normal(face)).dot(Vector3.UP)
+		if dot > best_dot:
+			best_dot = dot
+			best_face = face
+	return best_face
+
 func _process(delta: float) -> void:
 	animation_time += delta
 	for index: int in range(active_count):
@@ -283,13 +339,15 @@ func _process(delta: float) -> void:
 				die.position = base_positions[index] + Vector3(0.0, rolling_lift_for_elapsed(roll_time, index), 0.0)
 			DieState.SETTLING:
 				settle_elapsed[index] += delta
-				var t := clampf(settle_elapsed[index] / SETTLE_DURATION, 0.0, 1.0)
+				var duration := explicit_settle_durations[index] if explicit_orientation_enabled[index] else SETTLE_DURATION
+				var t := clampf(settle_elapsed[index] / maxf(duration, 0.001), 0.0, 1.0)
 				var eased := 1.0 - pow(1.0 - t, 3.0)
-				die.quaternion = settle_start_orientations[index].slerp(orientation_quaternion_for_face(face_values[index]), eased).normalized()
+				var target_orientation := explicit_orientation_targets[index] if explicit_orientation_enabled[index] else orientation_quaternion_for_face(face_values[index])
+				die.quaternion = settle_start_orientations[index].slerp(target_orientation, eased).normalized()
 				die.position = settle_start_positions[index].lerp(base_positions[index], eased) + Vector3(0, sin(t * PI) * 0.16, 0)
 				if t >= 1.0: die_states[index] = DieState.LOCKED
 			_:
-				die.quaternion = orientation_quaternion_for_face(face_values[index])
+				die.quaternion = explicit_orientation_targets[index] if explicit_orientation_enabled[index] else orientation_quaternion_for_face(face_values[index])
 				die.position = base_positions[index]
 		var highlighted := index == next_lock_index
 		var base_scale := 1.58 if compact_single else (1.48 if active_count == 1 else 1.24)
