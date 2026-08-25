@@ -33,6 +33,15 @@ const GIMMICKS := {
 	20: {"kind": "foxfire", "text": "-2", "color": Color("#b93d32")},
 }
 const TRACK_BACKGROUND_PATH := "res://assets/casino/dice_race/ui/desert-track-bg-v1.png"
+const GATE_ART_PATHS := {
+	"StartGate": "res://assets/casino/dice_race/ui/start-gate.png",
+	"GoalGate": "res://assets/casino/dice_race/ui/goal-arch.png",
+}
+const GIMMICK_ART_PATHS := {
+	"foxfire": "res://assets/casino/dice_race/ui/foxfire-gimmick.png",
+	"rapid": "res://assets/casino/dice_race/ui/rapid-gimmick.png",
+	"log": "res://assets/casino/dice_race/ui/log-gimmick.png",
+}
 const RACER_LANE_SLOTS := {
 	"camel": -0.38, "rabbit": 0.30, "fox": -0.22,
 	"duck": 0.14, "dinosaur": -0.06, "robot": 0.42,
@@ -222,6 +231,8 @@ func _build_course() -> void:
 	_goal_gate = _make_race_gate("GOAL", "GoalGate", Color("#9f322b"))
 	add_child(_start_label)
 	add_child(_goal_label)
+	_start_label.visible = false
+	_goal_label.visible = false
 	add_child(_start_gate)
 	add_child(_goal_gate)
 
@@ -234,6 +245,7 @@ func _build_course() -> void:
 		var tag := _milestone_label(str(data.text), data.color)
 		tag.name = "GimmickTag_%d" % position
 		add_child(tag)
+		tag.visible = false
 		gimmick_tags[position] = tag
 
 	for racer_id: String in RACERS:
@@ -368,14 +380,10 @@ func _layout_course(animate_racers: bool = false) -> void:
 			tick.position = Vector2(center_x - lane_width * 0.5 - 58, _position_to_y(float(position)) - 16)
 			tick.size = Vector2(44, 32)
 
-	_layout_milestone(_start_label, 0, center_x, lane_width)
-	_layout_milestone(_goal_label, GOAL, center_x, lane_width)
 	_layout_race_gate(_start_gate, 0, lane_left, lane_right)
 	_layout_race_gate(_goal_gate, GOAL, lane_left, lane_right)
 	for position: int in gimmick_markers:
 		_layout_gimmick_object(gimmick_markers[position] as Control, position, center_x)
-	for position: int in gimmick_tags:
-		_layout_milestone(gimmick_tags[position] as Label, position, center_x, lane_width)
 	_layout_racers(center_x, lane_width, animate_racers)
 
 
@@ -410,57 +418,61 @@ func _set_goal_light(active: bool) -> void:
 	_goal_light_tween.tween_property(_final_stretch, "modulate", target, 0.22)
 
 
-func _make_race_gate(text: String, node_name: String, color: Color) -> Control:
+func _make_race_gate(text: String, node_name: String, _color: Color) -> Control:
 	var gate := Control.new()
 	gate.name = node_name
 	gate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var body := Panel.new()
-	body.name = "GateBody"
-	body.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	body.add_theme_stylebox_override("panel", _panel(Color(color, 0.88), Color("#fff0b8"), 10, 2))
-	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	gate.add_child(body)
+	gate.set_meta("gate_height", 90.0 if node_name == "GoalGate" else 72.0)
+	var art := TextureRect.new()
+	art.name = "GateArt"
+	art.texture = load(str(GATE_ART_PATHS.get(node_name, ""))) as Texture2D
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	gate.add_child(art)
 	var label := Label.new()
+	label.name = "GateLabel"
 	label.text = text
 	label.add_theme_font_override("font", FONT)
-	label.add_theme_font_size_override("font_size", 14)
-	label.add_theme_color_override("font_color", Color.WHITE)
+	label.add_theme_font_size_override("font_size", 20 if node_name == "GoalGate" else 16)
+	label.add_theme_color_override("font_color", Color("#fff1c4"))
+	label.add_theme_color_override("font_outline_color", Color("#3b1a14" if node_name == "GoalGate" else "#10284b"))
+	label.add_theme_constant_override("outline_size", 4)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	gate.add_child(label)
 	return gate
 
 
-func _make_gimmick_object(kind: String, caption: String, color: Color) -> Control:
+func _make_gimmick_object(kind: String, caption: String, _color: Color) -> Control:
 	var object := Control.new()
 	object.name = "GimmickObject"
-	object.custom_minimum_size = Vector2(66, 36)
-	object.size = Vector2(66, 36)
+	object.custom_minimum_size = Vector2(144, 104)
+	object.size = Vector2(144, 104)
 	object.pivot_offset = object.size * 0.5
 	object.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var visual := Panel.new()
+	var visual := TextureRect.new()
 	visual.name = "GimmickVisual"
+	visual.texture = load(str(GIMMICK_ART_PATHS.get(kind, ""))) as Texture2D
+	visual.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	visual.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	visual.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	match kind:
-		"foxfire":
-			visual.add_theme_stylebox_override("panel", _panel(Color(color, 0.82), Color("#ffcf8d"), 18, 2))
-		"rapid":
-			visual.add_theme_stylebox_override("panel", _panel(Color(color, 0.78), Color("#bfe9ff"), 10, 2))
-		"log":
-			visual.add_theme_stylebox_override("panel", _panel(Color(color), Color("#e8c48a"), 16, 2))
-		_:
-			visual.add_theme_stylebox_override("panel", _panel(Color(color), Color.WHITE, 10, 2))
 	visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	object.add_child(visual)
 	var label := Label.new()
 	label.name = "GimmickCaption"
 	label.text = caption
 	label.add_theme_font_override("font", FONT)
-	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", Color.WHITE)
+	label.add_theme_font_size_override("font_size", 10)
+	label.add_theme_color_override("font_color", Color("#fff3c8"))
+	label.add_theme_color_override("font_outline_color", Color("#281620"))
+	label.add_theme_constant_override("outline_size", 4)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	object.add_child(label)
 	return object
@@ -472,8 +484,16 @@ func _layout_race_gate(gate: Control, position: int, lane_left: float, lane_righ
 	gate.visible = _position_is_visible(float(position))
 	if not gate.visible:
 		return
-	gate.position = Vector2(lane_left, _position_to_y(float(position)) - 15.0)
-	gate.size = Vector2(lane_right - lane_left, 30.0)
+	var gate_height := float(gate.get_meta("gate_height", 48.0))
+	var gate_y := _position_to_y(float(position))
+	if position == 0:
+		gate_y -= gate_height + 20.0
+	elif position == GOAL:
+		gate_y -= 8.0
+	else:
+		gate_y -= gate_height * 0.5
+	gate.position = Vector2(lane_left - 12.0, gate_y)
+	gate.size = Vector2(lane_right - lane_left + 24.0, gate_height)
 
 
 func _layout_gimmick_object(marker: Control, position: int, center_x: float) -> void:
@@ -505,7 +525,12 @@ func _layout_racers(center_x: float, lane_width: float, animate_racers: bool) ->
 		var stable_offset := float(RACER_LANE_SLOTS.get(racer_id, 0.0)) * lane_width
 		var cluster_nudge := (float(peer_index) - float(peers.size() - 1) * 0.5) * 8.0
 		var offset := stable_offset + cluster_nudge
-		var target := Vector2(center_x + offset - marker.size.x * 0.5, _position_to_y(float(position)) - marker.size.y * 0.5)
+		var racer_top_limit := 88.0 if position >= GOAL else 2.0
+		var target_y := clampf(
+			_position_to_y(float(position)) - marker.size.y * 0.5,
+			racer_top_limit,
+			maxf(2.0, size.y - marker.size.y - 2.0))
+		var target := Vector2(center_x + offset - marker.size.x * 0.5, target_y)
 		_base_positions[racer_id] = target
 		if animate_racers and marker.position != target:
 			var movement := create_tween().set_parallel(true)

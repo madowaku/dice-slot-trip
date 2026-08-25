@@ -88,12 +88,17 @@ func _run() -> void:
 	_expect(race.track_view.logical_y_for_test(0) > race.track_view.logical_y_for_test(9), "vertical course places progress toward GOAL upward")
 	_expect(race.track_view.visible_range_for_test() == Vector2(0, 9), "course opens on a readable nine-space window")
 	_expect(race.track_view.gimmick_markers.keys().all(func(space: int) -> bool: return space in [5, 10, 15, 20]) and race.track_view.gimmick_markers.size() == 4, "vertical course exposes all four fixed gimmick spaces")
-	_expect(race.track_view.find_child("StartGate", true, false) != null, "course exposes a physical START gate")
-	_expect(race.track_view.find_child("GoalGate", true, false) != null, "course exposes a physical GOAL gate")
+	var start_gate := race.track_view.find_child("StartGate", true, false) as Control
+	var goal_gate := race.track_view.find_child("GoalGate", true, false) as Control
+	var start_art := start_gate.find_child("GateArt", true, false) as TextureRect if start_gate != null else null
+	var goal_art := goal_gate.find_child("GateArt", true, false) as TextureRect if goal_gate != null else null
+	_expect(start_art != null and start_art.texture != null, "course exposes the painted START gate art")
+	_expect(goal_art != null and goal_art.texture != null, "course exposes the painted GOAL arch art")
 	_expect(race.track_view.find_child("FinalStretch", true, false) != null, "course exposes a dedicated final-stretch light")
 	for gimmick_space: int in [5, 10, 15, 20]:
 		var object := race.track_view.gimmick_markers.get(gimmick_space) as Control
-		_expect(object != null and object.find_child("GimmickVisual", true, false) != null, "space %d uses a course object rather than a text-only label" % gimmick_space)
+		var visual := object.find_child("GimmickVisual", true, false) as TextureRect if object != null else null
+		_expect(visual != null and visual.texture != null, "space %d uses painted gimmick art rather than a text-only label" % gimmick_space)
 	var known_assignments: Dictionary = OrientationScript.values_for_racers(OrientationScript.base_orientation())
 	race.current_assignments = known_assignments.duplicate()
 	race.call("_refresh_assignment_ui")

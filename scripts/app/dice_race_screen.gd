@@ -988,6 +988,8 @@ func _play_stop_assignment_feedback(assignments: Dictionary) -> void:
 		var flying := _label(str(int(assignments.get(racer_id, 0))), 20, GOLD_LIGHT)
 		flying.custom_minimum_size = Vector2(28, 28)
 		flying.size = Vector2(28, 28)
+		target.x = clampf(target.x, flying.size.x * 0.5 + 4.0, dice_console.size.x - flying.size.x * 0.5 - 4.0)
+		target.y = clampf(target.y, flying.size.y * 0.5 + 4.0, dice_console.size.y - flying.size.y * 0.5 - 4.0)
 		flying.position = start - flying.size * 0.5
 		flying.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		flying.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
