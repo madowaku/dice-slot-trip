@@ -80,6 +80,9 @@ func _run() -> void:
 	_expect(race.opposite_pair_panels[0].get_theme_stylebox("panel").border_width_left == 0, "non-selected opposite-face pairs stay out of boxed-card chrome")
 	_expect(race.ranking_cards.size() == 3, "Dice Race builds the compact top-three ranking strip")
 	_expect(race.track_view != null and race.minimap != null, "Dice Race builds a vertical race viewport and full-course minimap")
+	var setup_course_art := race.find_child("SetupCourseArt", true, false) as TextureRect
+	var live_course_art := race.track_view.find_child("CourseArt", true, false) as TextureRect
+	_expect(setup_course_art != null and setup_course_art.texture != null and live_course_art != null and live_course_art.texture != null, "setup and live race share the production desert course art")
 	_expect(race.dice_presentation != null and race.dice_presentation.dice_race_face_layout, "Dice Race builds a dedicated three-face physical die")
 	_expect(race.cashout_overlay != null and not race.cashout_overlay.visible, "Dice Race keeps the CASH OUT decision in a hidden modal overlay until offered")
 	_expect(race.track_view.logical_y_for_test(0) > race.track_view.logical_y_for_test(9), "vertical course places progress toward GOAL upward")
@@ -87,6 +90,7 @@ func _run() -> void:
 	_expect(race.track_view.gimmick_markers.keys().all(func(space: int) -> bool: return space in [5, 10, 15, 20]) and race.track_view.gimmick_markers.size() == 4, "vertical course exposes all four fixed gimmick spaces")
 	_expect(race.track_view.find_child("StartGate", true, false) != null, "course exposes a physical START gate")
 	_expect(race.track_view.find_child("GoalGate", true, false) != null, "course exposes a physical GOAL gate")
+	_expect(race.track_view.find_child("FinalStretch", true, false) != null, "course exposes a dedicated final-stretch light")
 	for gimmick_space: int in [5, 10, 15, 20]:
 		var object := race.track_view.gimmick_markers.get(gimmick_space) as Control
 		_expect(object != null and object.find_child("GimmickVisual", true, false) != null, "space %d uses a course object rather than a text-only label" % gimmick_space)
@@ -99,7 +103,7 @@ func _run() -> void:
 	_expect(absf(expected_pose.dot(rendered_pose)) > 0.999, "three-face die renders the exact physical orientation behind the assignment labels")
 	for pair: Array in race.OPPOSITE_RACER_PAIRS:
 		_expect(int(known_assignments[pair[0]]) + int(known_assignments[pair[1]]) == 7, "%s and %s display an opposite-face total of seven" % [pair[0], pair[1]])
-	_expect("現在の目 %d" % int(known_assignments[race.selected_racer]) in race.target_value_label.text, "BET racer exposes its live die value")
+	_expect(str(race.RACER_LABELS.get(race.selected_racer, "")) in race.target_value_label.text and str(int(known_assignments[race.selected_racer])) in race.target_value_label.text, "BET racer exposes its live die value")
 	_expect(race.opposite_pair_panels[1].modulate.a > race.opposite_pair_panels[0].modulate.a, "only the BET racer's opposite pair receives full emphasis")
 	_expect(race.setup_view.visible and not race.race_view.visible, "Dice Race opens in the pre-race betting view")
 	race.call("_start_race")
@@ -110,6 +114,11 @@ func _run() -> void:
 	_expect(bet_ring != null and bet_ring.visible, "RACE START highlights the supported racer with a gold ring")
 	var bet_crown := bet_marker.find_child("BetCrown", true, false) as Label
 	_expect(bet_crown != null and bet_crown.visible, "RACE START marks the supported racer with a small course badge")
+	var start_centers: Array[float] = []
+	for racer_id: String in RaceScript.RACERS:
+		var start_marker := race.racer_nodes.get(racer_id) as Control
+		start_centers.append(start_marker.position.x + start_marker.size.x * 0.5)
+	_expect(start_centers.max() - start_centers.min() >= 150.0, "six racers spread across stable lanes when clustered at START")
 	race.orientation_index = 0
 	race.current_assignments = known_assignments.duplicate()
 	race.call("_refresh_assignment_ui")
@@ -125,10 +134,26 @@ func _run() -> void:
 	for racer_id: String in RaceScript.RACERS:
 		moved_positions[racer_id] = 2
 	moved_positions[race.selected_racer] = 23
+	for racer_id: String in RaceScript.RACERS:
+		(race.race.racers.get(racer_id, {}) as Dictionary)["position"] = moved_positions[racer_id]
 	race.track_view.set_race_state(moved_positions, race.selected_racer, true)
 	await create_timer(0.45).timeout
 	_expect(race.track_view.camera_section_for_test() == 3 and race.track_view.visible_range_for_test().is_equal_approx(Vector2(15, 24)), "course follows the BET racer into the final nine-space window")
 	_expect(race.minimap.camera_range.is_equal_approx(Vector2(15, 24)), "full-course minimap mirrors the visible race window")
+	race.call("_maybe_show_final_stretch")
+	await create_timer(0.08).timeout
+	var banner := race.race_fx_layer.find_child("FinalStretchBanner", true, false) as Label
+	_expect(banner != null and banner.text == "FINAL STRETCH!", "entering the final course section raises one race-air banner")
+	race.call("_play_overtake_fx", 2, 1)
+	await process_frame
+	_expect(race.race_fx_layer.find_child("OvertakeSpark", true, false) != null, "BET racer overtake emits gold sparks")
+	race.race.set("finished", true)
+	race.race.set("winner", race.selected_racer)
+	race.race.set("bet_active", true)
+	race.call("_finish_race")
+	await create_timer(0.08).timeout
+	_expect(race.race_fx_layer.find_child("WinCard", true, false) != null, "selected-racer victory shows the reward card")
+	_expect(race.race_fx_layer.find_child("ConfettiPiece", true, false) != null, "victory adds restrained gold confetti")
 	race.call("_show_bet_select")
 	_expect(race.setup_view.visible and not race.race_view.visible, "returning to setup restores the betting view")
 	CasinoBankScript.add_chips(race.selected_bet)
@@ -154,7 +179,7 @@ func _run() -> void:
 	_expect(vegas != null, "stage select places Las Vegas inside the world-map postcard layer")
 	_expect(main.find_child("CasinoEntryButton", true, false) == null, "stage select no longer uses the detached casino footer button")
 	var chip_badge := vegas.find_child("CasinoChipBadge", true, false) as Label if vegas != null else null
-	_expect(chip_badge != null and "100" in chip_badge.text, "Las Vegas postcard shows the persistent CHIP balance")
+	_expect(chip_badge != null and str(CasinoBankScript.balance()) in chip_badge.text, "Las Vegas postcard shows the persistent CHIP balance")
 	var vegas_art: TextureRect
 	if vegas != null:
 		var vegas_art_nodes := vegas.find_children("*", "TextureRect", true, false)

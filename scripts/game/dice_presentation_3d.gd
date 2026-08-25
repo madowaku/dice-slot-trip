@@ -67,8 +67,8 @@ func _build_world() -> void:
 	var env := Environment.new(); env.background_mode = Environment.BG_COLOR; env.background_color = Color(0, 0, 0, 0); env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR; env.ambient_light_color = Color("#d7e0dd"); env.ambient_light_energy = 0.36
 	environment.environment = env; world_root.add_child(environment)
 
-	camera = Camera3D.new(); camera.name = "DiceCamera"; camera.fov = 27.0 if dice_race_face_layout else 30.0
-	camera.position = Vector3(4.6, 5.6, 8.0) if dice_race_face_layout else (Vector3(0, 5.4, 8.0) if compact_single else Vector3(0, 6.2, 9.8))
+	camera = Camera3D.new(); camera.name = "DiceCamera"; camera.fov = 24.0 if dice_race_face_layout else 30.0
+	camera.position = Vector3(3.9, 4.8, 6.6) if dice_race_face_layout else (Vector3(0, 5.4, 8.0) if compact_single else Vector3(0, 6.2, 9.8))
 	camera.look_at_from_position(camera.position, Vector3(0, 0.48, 0)); world_root.add_child(camera)
 	var key := DirectionalLight3D.new(); key.name = "WarmKey"; key.light_color = Color("#ffe1ad"); key.light_energy = 1.02; key.shadow_enabled = true; key.rotation_degrees = Vector3(-52, -28, 0); world_root.add_child(key)
 	var fill := OmniLight3D.new(); fill.name = "SoftFill"; fill.light_color = Color("#bcd9dc"); fill.light_energy = 0.45; fill.omni_range = 12.0; fill.position = Vector3(-4, 4, 5); world_root.add_child(fill)

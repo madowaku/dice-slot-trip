@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: portrait mobile game race-track background, consumed behind live Godot Control nodes
+Primary request: create an empty premium DICE RACE desert casino course background matching the supplied product UI reference
+Scene/backdrop: a vertical sandy race lane running from the bottom START area toward a brighter top GOAL area, with subtle canyon rocks and sparse palms and cacti at the outer edges, plus a deep Las Vegas midnight-purple vignette beyond the lane
+Style/medium: polished hand-painted 2D mobile game environment, warm parchment sand, crisp readable shapes, premium paid-game finish
+Composition/framing: portrait 9:16, straight-on slightly elevated view; broad clean central lane occupying about 72 percent width; outer scenery stays near the edges; center remains uncluttered for six animated racers and live hazard markers
+Lighting/mood: warm casino spotlight on the lane, darker purple edge vignette, restrained gold highlights, stronger glow near the goal end
+Color palette: parchment gold, oxblood red accents only in tiny environmental details, midnight plum, warm brass
+Materials/textures: subtle sand grain, stitched parchment lane edges, carved stone and painted wood accents
+Constraints: no text, letters, numbers, dice, characters, animals, robots, hazard icons, start or goal sign, UI panels, border frame, or watermark; background only; preserve generous empty playable space

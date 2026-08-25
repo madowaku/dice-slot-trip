@@ -32,7 +32,13 @@ const GIMMICKS := {
 	15: {"kind": "log", "text": "STOP", "color": Color("#765334")},
 	20: {"kind": "foxfire", "text": "-2", "color": Color("#b93d32")},
 }
+const TRACK_BACKGROUND_PATH := "res://assets/casino/dice_race/ui/desert-track-bg-v1.png"
+const RACER_LANE_SLOTS := {
+	"camel": -0.38, "rabbit": 0.30, "fox": -0.22,
+	"duck": 0.14, "dinosaur": -0.06, "robot": 0.42,
+}
 const GOLD := Color("#f2bf4c")
+const FINAL_STRETCH_SPACE := 18
 
 var racer_nodes: Dictionary = {}
 var gimmick_markers: Dictionary = {}
@@ -49,6 +55,7 @@ var _previous_positions := {}
 var _portraits: Dictionary = {}
 var _last_ranks: Dictionary = {}
 var _lane: Panel
+var _course_background: TextureRect
 var _arena_glow: Panel
 var _spotlight: Panel
 var _left_rail: Panel
@@ -62,6 +69,7 @@ var _goal_label: Label
 var _visuals: Dictionary = {}
 var gimmick_tags: Dictionary = {}
 var _base_positions: Dictionary = {}
+var _goal_light_tween: Tween
 
 
 func _ready() -> void:
@@ -95,6 +103,9 @@ func set_race_state(positions: Dictionary, bet_racer: String, active: bool, anim
 	else:
 		_layout_course(animate)
 	_detect_rank_changes()
+	var stretch_active := int(race_positions.get(bet_racer, 0)) >= FINAL_STRETCH_SPACE or (
+		not race_positions.is_empty() and int(race_positions.values().max()) >= FINAL_STRETCH_SPACE)
+	_set_goal_light(stretch_active and active)
 
 
 func reset_camera() -> void:
@@ -103,6 +114,7 @@ func reset_camera() -> void:
 	camera_section = 0
 	camera_min_position = SECTION_MINIMUMS[0]
 	_layout_course()
+	_set_goal_light(false)
 	visible_range_changed.emit(visible_range_for_test())
 
 
@@ -149,8 +161,17 @@ func _build_course() -> void:
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(backdrop)
 
+	_course_background = TextureRect.new()
+	_course_background.name = "CourseArt"
+	_course_background.texture = load(TRACK_BACKGROUND_PATH) as Texture2D
+	_course_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_course_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_course_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_course_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_course_background)
+
 	_arena_glow = Panel.new()
-	_arena_glow.add_theme_stylebox_override("panel", _panel(Color("#43235580"), Color.TRANSPARENT, 0, 0))
+	_arena_glow.add_theme_stylebox_override("panel", _panel(Color("#43235538"), Color.TRANSPARENT, 0, 0))
 	_arena_glow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_arena_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_arena_glow)
@@ -162,14 +183,14 @@ func _build_course() -> void:
 
 	_lane = Panel.new()
 	_lane.name = "RaceLane"
-	_lane.add_theme_stylebox_override("panel", _panel(Color("#d9a55e"), Color("#f6d68f"), 20, 3))
+	_lane.add_theme_stylebox_override("panel", _panel(Color("#d9a55e18"), Color("#f6d68f88"), 20, 2))
 	_lane.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_lane)
 
 	_left_rail = Panel.new()
-	_left_rail.add_theme_stylebox_override("panel", _panel(Color("#8c5c31"), GOLD, 3, 1))
+	_left_rail.add_theme_stylebox_override("panel", _panel(Color("#8c5c3170"), Color("#f2bf4ca0"), 3, 1))
 	_right_rail = Panel.new()
-	_right_rail.add_theme_stylebox_override("panel", _panel(Color("#8c5c31"), GOLD, 3, 1))
+	_right_rail.add_theme_stylebox_override("panel", _panel(Color("#8c5c3170"), Color("#f2bf4ca0"), 3, 1))
 	_center_line = ColorRect.new()
 	_center_line.color = Color(1.0, 0.94, 0.75, 0.16)
 	for node: Control in [_left_rail, _right_rail, _center_line]:
@@ -177,6 +198,8 @@ func _build_course() -> void:
 		add_child(node)
 
 	_final_stretch = Panel.new()
+	_final_stretch.name = "FinalStretch"
+	_final_stretch.modulate = Color(0.78, 0.74, 0.82, 0.72)
 	_final_stretch.add_theme_stylebox_override("panel", _panel(Color("#9f322b30"), GOLD, 8, 1))
 	_final_stretch.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_final_stretch)
@@ -306,7 +329,7 @@ func _refresh_racer_styles() -> void:
 		var portrait := _portraits.get(racer_id) as TextureRect
 		if portrait != null:
 			portrait.pivot_offset = portrait.size * 0.5
-			portrait.scale = Vector2.ONE * (1.07 if selected else 1.0)
+			portrait.scale = Vector2.ONE * (1.13 if selected else 1.0)
 
 
 func _layout_course(animate_racers: bool = false) -> void:
@@ -353,7 +376,7 @@ func _layout_course(animate_racers: bool = false) -> void:
 		_layout_gimmick_object(gimmick_markers[position] as Control, position, center_x)
 	for position: int in gimmick_tags:
 		_layout_milestone(gimmick_tags[position] as Label, position, center_x, lane_width)
-	_layout_racers(center_x, animate_racers)
+	_layout_racers(center_x, lane_width, animate_racers)
 
 
 func _detect_rank_changes() -> void:
@@ -374,6 +397,17 @@ func _layout_milestone(label: Label, position: int, center_x: float, lane_width:
 		return
 	label.position = Vector2(center_x + lane_width * 0.5 + 12, _position_to_y(float(position)) - 27)
 	label.size = Vector2(minf(160, size.x - label.position.x - 8), 54)
+
+
+func _set_goal_light(active: bool) -> void:
+	if _final_stretch == null:
+		return
+	if _goal_light_tween != null:
+		_goal_light_tween.kill()
+		_goal_light_tween = null
+	var target := Color.WHITE if active else Color(0.78, 0.74, 0.82, 0.72)
+	_goal_light_tween = create_tween()
+	_goal_light_tween.tween_property(_final_stretch, "modulate", target, 0.22)
 
 
 func _make_race_gate(text: String, node_name: String, color: Color) -> Control:
@@ -449,7 +483,7 @@ func _layout_gimmick_object(marker: Control, position: int, center_x: float) -> 
 	marker.position = Vector2(center_x - marker.size.x * 0.5, _position_to_y(float(position)) - marker.size.y * 0.5)
 
 
-func _layout_racers(center_x: float, animate_racers: bool) -> void:
+func _layout_racers(center_x: float, lane_width: float, animate_racers: bool) -> void:
 	var groups: Dictionary = {}
 	for racer_id: String in RACERS:
 		var position := int(race_positions.get(racer_id, 0))
@@ -467,13 +501,18 @@ func _layout_racers(center_x: float, animate_racers: bool) -> void:
 			continue
 		var peers: Array = groups[position]
 		var peer_index := peers.find(racer_id)
-		var offset := (float(peer_index) - float(peers.size() - 1) * 0.5) * 46.0
+		var selected := wager_active and racer_id == selected_racer
+		var stable_offset := float(RACER_LANE_SLOTS.get(racer_id, 0.0)) * lane_width
+		var cluster_nudge := (float(peer_index) - float(peers.size() - 1) * 0.5) * 8.0
+		var offset := stable_offset + cluster_nudge
 		var target := Vector2(center_x + offset - marker.size.x * 0.5, _position_to_y(float(position)) - marker.size.y * 0.5)
 		_base_positions[racer_id] = target
 		if animate_racers and marker.position != target:
 			var movement := create_tween().set_parallel(true)
 			movement.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
 			movement.tween_property(marker, "position", target, clampf(0.26 + float(distance) * 0.045, 0.30, 0.52))
+			if selected:
+				marker.z_index = 12
 			var visual := _visuals[racer_id] as Control
 			visual.scale = Vector2.ONE
 			var bounce := create_tween()
@@ -482,6 +521,7 @@ func _layout_racers(center_x: float, animate_racers: bool) -> void:
 			bounce.tween_property(visual, "scale", Vector2.ONE, 0.20)
 		else:
 			marker.position = target
+		marker.z_index = 12 if selected else 8
 
 
 func _position_is_visible(position: float) -> bool:
