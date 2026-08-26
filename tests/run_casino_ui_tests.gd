@@ -84,7 +84,7 @@ func _run() -> void:
 	var live_course_art := race.track_view.find_child("CourseArt", true, false) as TextureRect
 	_expect(setup_course_art != null and setup_course_art.texture != null and live_course_art != null and live_course_art.texture != null, "setup and live race share the production desert course art")
 	_expect(race.dice_presentation != null and race.dice_presentation.dice_race_face_layout, "Dice Race builds a dedicated three-face physical die")
-	_expect(race.cashout_overlay != null and not race.cashout_overlay.visible, "Dice Race keeps the CASH OUT decision in a hidden modal overlay until offered")
+	_expect(race.find_child("CashOutOverlay", true, false) == null, "STANDARD Dice Race ships without a CASH OUT interruption")
 	_expect(race.track_view.logical_y_for_test(0) > race.track_view.logical_y_for_test(9), "vertical course places progress toward GOAL upward")
 	_expect(race.track_view.visible_range_for_test() == Vector2(0, 9), "course opens on a readable nine-space window")
 	_expect(race.track_view.gimmick_markers.keys().all(func(space: int) -> bool: return space in [5, 10, 15, 20]) and race.track_view.gimmick_markers.size() == 4, "vertical course exposes all four fixed gimmick spaces")
@@ -110,7 +110,7 @@ func _run() -> void:
 		_expect(int(known_assignments[pair[0]]) + int(known_assignments[pair[1]]) == 7, "%s and %s display an opposite-face total of seven" % [pair[0], pair[1]])
 	_expect(str(race.RACER_LABELS.get(race.selected_racer, "")) in race.target_value_label.text and str(int(known_assignments[race.selected_racer])) in race.target_value_label.text, "BET racer exposes its live die value")
 	_expect(race.opposite_pair_panels[1].modulate.a > race.opposite_pair_panels[0].modulate.a, "only the BET racer's opposite pair receives full emphasis")
-	_expect(not race.assignment_label.visible, "the live dice console removes its redundant instruction sentence")
+	_expect(race.assignment_label.visible, "the dice console reserves one short live-race commentary line")
 	_expect("1" in race.opposite_pair_labels[0].text and "6" in race.opposite_pair_labels[0].text and "キツネ" not in race.opposite_pair_labels[0].text and "ウサギ" not in race.opposite_pair_labels[0].text, "non-BET opposite pairs collapse to numbers only")
 	var fox_caption := (race.direction_plates.get("fox", {}) as Dictionary).caption as Label
 	_expect(fox_caption.text == "上" and "キツネ" not in fox_caption.text, "direction plates let racer art replace duplicate small names")
@@ -118,6 +118,8 @@ func _run() -> void:
 	race.call("_start_race")
 	await process_frame
 	_expect(not race.setup_view.visible and race.race_view.visible, "RACE START replaces setup controls with the active race view")
+	_expect(race.race_fx_layer.find_child("YourBetBanner", true, false) != null, "RACE START announces the supported racer once")
+	_expect("GOALまで" in race.assignment_label.text, "live commentary exposes the supported racer's goal distance")
 	var bet_marker := race.racer_nodes.get(race.selected_racer) as Control
 	var bet_ring := bet_marker.find_child("BetHighlight", true, false) as Panel
 	_expect(bet_ring != null and bet_ring.visible, "RACE START highlights the supported racer with a gold ring")
@@ -139,27 +141,26 @@ func _run() -> void:
 	_expect(race.stop_feedback_count_for_test == 1, "one STOP creates one six-direction feedback burst")
 	var stop_sfx: Dictionary = ui_sfx.call("receipt") if ui_sfx != null else {}
 	_expect(str(stop_sfx.get("last_cue", "")) == "progress-step" and str(stop_sfx.get("last_pack", "")) == "arcade", "ordinary STOP resolution plays one Las Vegas progress cue")
-	var chips_before_cashout := CasinoBankScript.balance()
 	race.race["cashout_offered"] = true
 	race.race["cashout_amount"] = RaceScript.cashout_offer(race.race)
 	race.call("_after_roll_resolution")
 	await process_frame
-	_expect(race.cashout_overlay.visible and race.cashout_row.visible, "three rolls reveal the CASH OUT choices instead of a blocking empty modal")
-	_expect(not race.cashout_button.disabled and not race.ride_on_button.disabled, "both CASH OUT decisions are interactive")
-	race.ride_on_button.pressed.emit()
+	_expect(not bool(race.race.get("cashout_offered", true)) and race.find_child("CashOutOverlay", true, false) == null, "roll three continues automatically without a CASH OUT decision")
+	_expect("まだ届く" in race.status_label.text, "roll three keeps the race temperature up")
+	var burst_assignments := known_assignments.duplicate()
+	burst_assignments[race.selected_racer] = 6
+	race.call("_play_stop_assignment_feedback", burst_assignments)
 	await process_frame
-	_expect(not race.cashout_overlay.visible and not bool(race.race.get("cashout_offered", true)) and not race.roll_button.disabled, "RIDE ON returns to the live race")
-	race.race["cashout_offered"] = true
-	race.race["cashout_amount"] = RaceScript.cashout_offer(race.race)
-	race.call("_after_roll_resolution")
-	race.cashout_button.pressed.emit()
-	await process_frame
-	var cashout_received := CasinoBankScript.balance() - chips_before_cashout
-	_expect(cashout_received > 0 and bool(race.race.get("cashout_taken", false)), "CASH OUT credits CHIP and closes the decision")
-	_expect(not race.cashout_overlay.visible and not race.roll_button.disabled, "CASH OUT returns to the live race view")
-	CasinoBankScript.spend_chips(cashout_received)
-	race.race["bet_active"] = true
-	race.race["cashout_taken"] = false
+	_expect(race.race_fx_layer.find_child("SelectedRollBurst", true, false) != null, "a five or six on the BET face gets a large result burst")
+	var gap_positions := {}
+	for racer_id: String in RaceScript.RACERS:
+		gap_positions[racer_id] = 2
+	gap_positions[race.selected_racer] = 3
+	gap_positions["fox" if race.selected_racer != "fox" else "rabbit"] = 5
+	for racer_id: String in RaceScript.RACERS:
+		(race.race.racers.get(racer_id, {}) as Dictionary)["position"] = gap_positions[racer_id]
+	race.call("_refresh_all", false)
+	_expect("先頭まで 2" in race.assignment_label.text, "live commentary exposes the gap to the leader")
 	var moved_positions := {}
 	for racer_id: String in RaceScript.RACERS:
 		moved_positions[racer_id] = 2

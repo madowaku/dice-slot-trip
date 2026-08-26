@@ -95,7 +95,7 @@ func _configure_mode(screen: DiceRaceScreen, mode: String) -> void:
 			screen.track_view.set_winner_presentation("rabbit")
 			screen.call("_play_win_fx", screen.RACER_ART_PATHS["rabbit"], "ウサギ", 80)
 			screen.status_label.text = "ウサギ WIN！ 80 CHIP獲得！"
-		"cashout":
+		"cashout", "roll3":
 			screen.race["roll_count"] = 3
 			screen.race["cashout_offered"] = true
 			screen.race["cashout_amount"] = 36
