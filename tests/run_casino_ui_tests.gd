@@ -110,6 +110,10 @@ func _run() -> void:
 		_expect(int(known_assignments[pair[0]]) + int(known_assignments[pair[1]]) == 7, "%s and %s display an opposite-face total of seven" % [pair[0], pair[1]])
 	_expect(str(race.RACER_LABELS.get(race.selected_racer, "")) in race.target_value_label.text and str(int(known_assignments[race.selected_racer])) in race.target_value_label.text, "BET racer exposes its live die value")
 	_expect(race.opposite_pair_panels[1].modulate.a > race.opposite_pair_panels[0].modulate.a, "only the BET racer's opposite pair receives full emphasis")
+	_expect(not race.assignment_label.visible, "the live dice console removes its redundant instruction sentence")
+	_expect("1" in race.opposite_pair_labels[0].text and "6" in race.opposite_pair_labels[0].text and "キツネ" not in race.opposite_pair_labels[0].text and "ウサギ" not in race.opposite_pair_labels[0].text, "non-BET opposite pairs collapse to numbers only")
+	var fox_caption := (race.direction_plates.get("fox", {}) as Dictionary).caption as Label
+	_expect(fox_caption.text == "上" and "キツネ" not in fox_caption.text, "direction plates let racer art replace duplicate small names")
 	_expect(race.setup_view.visible and not race.race_view.visible, "Dice Race opens in the pre-race betting view")
 	race.call("_start_race")
 	await process_frame
@@ -135,6 +139,27 @@ func _run() -> void:
 	_expect(race.stop_feedback_count_for_test == 1, "one STOP creates one six-direction feedback burst")
 	var stop_sfx: Dictionary = ui_sfx.call("receipt") if ui_sfx != null else {}
 	_expect(str(stop_sfx.get("last_cue", "")) == "progress-step" and str(stop_sfx.get("last_pack", "")) == "arcade", "ordinary STOP resolution plays one Las Vegas progress cue")
+	var chips_before_cashout := CasinoBankScript.balance()
+	race.race["cashout_offered"] = true
+	race.race["cashout_amount"] = RaceScript.cashout_offer(race.race)
+	race.call("_after_roll_resolution")
+	await process_frame
+	_expect(race.cashout_overlay.visible and race.cashout_row.visible, "three rolls reveal the CASH OUT choices instead of a blocking empty modal")
+	_expect(not race.cashout_button.disabled and not race.ride_on_button.disabled, "both CASH OUT decisions are interactive")
+	race.ride_on_button.pressed.emit()
+	await process_frame
+	_expect(not race.cashout_overlay.visible and not bool(race.race.get("cashout_offered", true)) and not race.roll_button.disabled, "RIDE ON returns to the live race")
+	race.race["cashout_offered"] = true
+	race.race["cashout_amount"] = RaceScript.cashout_offer(race.race)
+	race.call("_after_roll_resolution")
+	race.cashout_button.pressed.emit()
+	await process_frame
+	var cashout_received := CasinoBankScript.balance() - chips_before_cashout
+	_expect(cashout_received > 0 and bool(race.race.get("cashout_taken", false)), "CASH OUT credits CHIP and closes the decision")
+	_expect(not race.cashout_overlay.visible and not race.roll_button.disabled, "CASH OUT returns to the live race view")
+	CasinoBankScript.spend_chips(cashout_received)
+	race.race["bet_active"] = true
+	race.race["cashout_taken"] = false
 	var moved_positions := {}
 	for racer_id: String in RaceScript.RACERS:
 		moved_positions[racer_id] = 2
@@ -155,10 +180,16 @@ func _run() -> void:
 	race.race.set("finished", true)
 	race.race.set("winner", race.selected_racer)
 	race.race.set("bet_active", true)
+	(race.race.racers.get(race.selected_racer, {}) as Dictionary)["position"] = RaceScript.GOAL
+	moved_positions[race.selected_racer] = RaceScript.GOAL
+	race.track_view.set_race_state(moved_positions, race.selected_racer, true)
 	race.call("_finish_race")
 	await create_timer(0.08).timeout
-	_expect(race.race_fx_layer.find_child("WinCard", true, false) != null, "selected-racer victory shows the reward card")
+	var win_card := race.race_fx_layer.find_child("WinCard", true, false) as Control
+	_expect(win_card != null, "selected-racer victory shows the reward card")
 	_expect(race.race_fx_layer.find_child("ConfettiPiece", true, false) != null, "victory adds restrained gold confetti")
+	_expect(bet_marker.z_index == 18, "the GOAL racer moves to the course foreground")
+	_expect(win_card != null and not win_card.get_global_rect().intersects(bet_marker.get_global_rect()), "the reward card no longer covers the GOAL racer")
 	race.call("_show_bet_select")
 	_expect(race.setup_view.visible and not race.race_view.visible, "returning to setup restores the betting view")
 	CasinoBankScript.add_chips(race.selected_bet)

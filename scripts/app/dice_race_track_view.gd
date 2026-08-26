@@ -79,6 +79,7 @@ var _visuals: Dictionary = {}
 var gimmick_tags: Dictionary = {}
 var _base_positions: Dictionary = {}
 var _goal_light_tween: Tween
+var _winner_racer: String = ""
 
 
 func _ready() -> void:
@@ -120,11 +121,19 @@ func set_race_state(positions: Dictionary, bet_racer: String, active: bool, anim
 func reset_camera() -> void:
 	if _camera_tween != null:
 		_camera_tween.kill()
+	_winner_racer = ""
 	camera_section = 0
 	camera_min_position = SECTION_MINIMUMS[0]
+	_refresh_racer_styles()
 	_layout_course()
 	_set_goal_light(false)
 	visible_range_changed.emit(visible_range_for_test())
+
+
+func set_winner_presentation(racer_id: String) -> void:
+	_winner_racer = racer_id if racer_id in RACERS else ""
+	_refresh_racer_styles()
+	_layout_course()
 
 
 func camera_section_for_test() -> int:
@@ -330,18 +339,19 @@ func _make_racer_marker(racer_id: String) -> Control:
 func _refresh_racer_styles() -> void:
 	for racer_id: String in RACERS:
 		var selected := wager_active and racer_id == selected_racer
+		var winner := racer_id == _winner_racer
 		var marker := racer_nodes.get(racer_id) as Control
 		if marker != null:
 			var ring := marker.find_child("BetHighlight", true, false) as Panel
 			if ring != null:
-				ring.visible = selected
+				ring.visible = selected or winner
 			var crown := marker.find_child("BetCrown", true, false) as Label
 			if crown != null:
-				crown.visible = selected
+				crown.visible = selected or winner
 		var portrait := _portraits.get(racer_id) as TextureRect
 		if portrait != null:
 			portrait.pivot_offset = portrait.size * 0.5
-			portrait.scale = Vector2.ONE * (1.13 if selected else 1.0)
+			portrait.scale = Vector2.ONE * (1.18 if winner else (1.13 if selected else 1.0))
 
 
 func _layout_course(animate_racers: bool = false) -> void:
@@ -525,7 +535,7 @@ func _layout_racers(center_x: float, lane_width: float, animate_racers: bool) ->
 		var stable_offset := float(RACER_LANE_SLOTS.get(racer_id, 0.0)) * lane_width
 		var cluster_nudge := (float(peer_index) - float(peers.size() - 1) * 0.5) * 8.0
 		var offset := stable_offset + cluster_nudge
-		var racer_top_limit := 88.0 if position >= GOAL else 2.0
+		var racer_top_limit := 118.0 if position >= GOAL else 2.0
 		var target_y := clampf(
 			_position_to_y(float(position)) - marker.size.y * 0.5,
 			racer_top_limit,
@@ -536,8 +546,8 @@ func _layout_racers(center_x: float, lane_width: float, animate_racers: bool) ->
 			var movement := create_tween().set_parallel(true)
 			movement.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
 			movement.tween_property(marker, "position", target, clampf(0.26 + float(distance) * 0.045, 0.30, 0.52))
-			if selected:
-				marker.z_index = 12
+			if selected or racer_id == _winner_racer:
+				marker.z_index = 18 if racer_id == _winner_racer else 12
 			var visual := _visuals[racer_id] as Control
 			visual.scale = Vector2.ONE
 			var bounce := create_tween()
@@ -546,7 +556,7 @@ func _layout_racers(center_x: float, lane_width: float, animate_racers: bool) ->
 			bounce.tween_property(visual, "scale", Vector2.ONE, 0.20)
 		else:
 			marker.position = target
-		marker.z_index = 12 if selected else 8
+			marker.z_index = 18 if racer_id == _winner_racer else (12 if selected else 8)
 
 
 func _position_is_visible(position: float) -> bool:

@@ -92,15 +92,14 @@ func _configure_mode(screen: DiceRaceScreen, mode: String) -> void:
 			await create_timer(0.42).timeout
 			for overtake: Node in screen.race_fx_layer.find_children("OvertakeBanner", "Label", true, false):
 				overtake.queue_free()
+			screen.track_view.set_winner_presentation("rabbit")
 			screen.call("_play_win_fx", screen.RACER_ART_PATHS["rabbit"], "ウサギ", 80)
 			screen.status_label.text = "ウサギ WIN！ 80 CHIP獲得！"
 		"cashout":
 			screen.race["roll_count"] = 3
+			screen.race["cashout_offered"] = true
 			screen.race["cashout_amount"] = 36
-			screen.cashout_label.text = "3投終了　今なら 36 CHIP"
-			screen.cashout_overlay.visible = true
-			screen.roll_button.disabled = true
-			screen.status_label.text = "降りる？ それとも優勝まで乗る？"
+			screen.call("_after_roll_resolution")
 
 
 func _configure_active_race(screen: DiceRaceScreen) -> void:

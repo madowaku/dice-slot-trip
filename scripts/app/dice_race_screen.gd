@@ -461,6 +461,7 @@ func _build_dice_console(root: VBoxContainer) -> void:
 	assignment_label = _label("止まった向きの数字で進む", 15, Color("#bdb4cb"))
 	assignment_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	assignment_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	assignment_label.visible = false
 	box.add_child(assignment_label)
 
 func _make_direction_plate(racer_id: String, direction: String, minimum: Vector2, vertical := false) -> PanelContainer:
@@ -480,7 +481,7 @@ func _make_direction_plate(racer_id: String, direction: String, minimum: Vector2
 	portrait.custom_minimum_size = Vector2(44, 44)
 	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(portrait)
-	var caption := _label("%s %s" % [DIRECTION_LABELS[direction], RACER_LABELS[racer_id]], 14, Color("#fff2d2"))
+	var caption := _label(str(DIRECTION_LABELS[direction]), 15, Color("#fff2d2"))
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	content.add_child(caption)
 	var value := _label("?", 28, Color("#fff2d2"))
@@ -585,9 +586,13 @@ func _build_cashout() -> void:
 	box.add_child(cashout_label)
 	box.add_child(cashout_row)
 	cashout_button = _button("CASH OUT")
+	cashout_button.custom_minimum_size = Vector2(132, 58)
+	cashout_button.add_theme_font_size_override("font_size", 17)
 	cashout_button.pressed.connect(_take_cashout)
 	cashout_row.add_child(cashout_button)
 	ride_on_button = _button("RIDE ON!", true)
+	ride_on_button.custom_minimum_size = Vector2(132, 58)
+	ride_on_button.add_theme_font_size_override("font_size", 17)
 	ride_on_button.pressed.connect(_ride_on)
 	cashout_row.add_child(ride_on_button)
 
@@ -697,9 +702,13 @@ func _after_roll_resolution() -> void:
 		return
 	if bool(race.get("cashout_offered", false)):
 		cashout_overlay.visible = true
+		cashout_row.visible = true
+		cashout_button.disabled = false
+		ride_on_button.disabled = false
 		roll_button.disabled = true
 		cashout_label.text = "3投終了　今なら %d CHIP" % int(race.get("cashout_amount", 0))
 		status_label.text = "降りる？ それとも優勝まで乗る？"
+		ride_on_button.call_deferred("grab_focus")
 
 func _take_cashout() -> void:
 	var amount := RaceScript.cashout_offer(race)
@@ -707,6 +716,7 @@ func _take_cashout() -> void:
 	CasinoBankScript.add_chips(amount)
 	_play_ui_sfx(&"reward", true)
 	cashout_overlay.visible = false
+	cashout_row.visible = false
 	roll_button.disabled = false
 	status_label.text = "%d CHIPでCASH OUT。レースは最後まで見届けよう。" % amount
 	_refresh_all()
@@ -715,13 +725,16 @@ func _ride_on() -> void:
 	race = RaceScript.ride_on(race)
 	_play_ui_sfx(&"streak", true)
 	cashout_overlay.visible = false
+	cashout_row.visible = false
 	roll_button.disabled = false
 	status_label.text = "RIDE ON！ 優勝なら%d CHIP。" % int(round(float(selected_bet) * RaceScript.WIN_MULTIPLIER))
 
-func _finish_race():
+func _finish_race() -> void:
 	spinning = false
 	roll_button.disabled = true
 	var winner := str(race.get("winner", ""))
+	if is_instance_valid(track_view):
+		track_view.set_winner_presentation(winner)
 	var payout := RaceScript.winning_payout(race)
 	_play_ui_sfx(&"complete" if winner == selected_racer else &"error", true)
 	if payout > 0:
@@ -843,7 +856,7 @@ func _spawn_spark() -> void:
 	flight.chain().tween_callback(spark.queue_free)
 
 
-func _play_win_fx(winner_art: Variant, winner_label: Variant, payout: int):
+func _play_win_fx(winner_art: Variant, winner_label: Variant, payout: int) -> void:
 	if race_fx_layer == null:
 		return
 	var card := PanelContainer.new()
@@ -865,7 +878,7 @@ func _play_win_fx(winner_art: Variant, winner_label: Variant, payout: int):
 	card.reset_size()
 	card.position = Vector2(
 		(race_fx_layer.size.x - card.size.x) * 0.5,
-		maxf(104.0, race_fx_layer.size.y * 0.20))
+		maxf(236.0, race_fx_layer.size.y * 0.33))
 	card.pivot_offset = card.size * 0.5
 	card.scale = Vector2(0.84, 0.84)
 	var entrance := create_tween()
@@ -912,9 +925,8 @@ func _refresh_all(animate_track: bool = false) -> void:
 
 func _refresh_assignment_ui() -> void:
 	if current_assignments.is_empty():
-		target_value_label.text = "BET・%s　現在の目 ?" % RACER_LABELS[selected_racer]
+		target_value_label.text = "%s · ?" % RACER_LABELS[selected_racer]
 		die_face_label.text = "?"
-		assignment_label.text = "6レーサーがサイコロの6方向を担当"
 		for racer_id: String in assignment_cards:
 			_update_assignment_card(racer_id, 0)
 		_refresh_opposite_pairs()
@@ -956,6 +968,13 @@ func _refresh_opposite_pairs() -> void:
 			second_text, RACER_LABELS[second_id],
 		]
 		var selected_pair := selected_racer in [first_id, second_id]
+		if selected_pair:
+			opposite_pair_labels[index].text = "%s%s %s %s%s" % [
+				RACER_LABELS[first_id], first_text, str(pair[2]),
+				second_text, RACER_LABELS[second_id],
+			]
+		else:
+			opposite_pair_labels[index].text = "%s %s %s" % [first_text, str(pair[2]), second_text]
 		var panel := opposite_pair_panels[index]
 		panel.modulate = Color.WHITE if selected_pair else Color(0.62, 0.60, 0.68, 0.72)
 		panel.add_theme_stylebox_override("panel", _panel(
