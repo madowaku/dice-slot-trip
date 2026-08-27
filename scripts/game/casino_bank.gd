@@ -2,7 +2,7 @@ extends RefCounted
 class_name CasinoBank
 
 const SAVE_PATH := "user://dice_slot_trip_casino.json"
-const SAVE_VERSION := 2
+const SAVE_VERSION := 3
 const COIN_TO_CHIP_RATE := 2
 const CLEAR_CHIP_BONUS := 5
 const LEGACY_CARD_ALIASES := {
@@ -18,6 +18,9 @@ static func default_data() -> Dictionary:
 		"dice_race_play_count": 0,
 		"dice_race_win_count": 0,
 		"dice_race_best_payout": 0,
+		"dice_roulette_play_count": 0,
+		"dice_roulette_win_count": 0,
+		"dice_roulette_best_payout": 0,
 	}
 
 static func load_data() -> Dictionary:
@@ -57,6 +60,32 @@ static func spend_chips(amount: int) -> bool:
 		return false
 	data["chips"] = current - cost
 	return save_data(data)
+
+static func settle_dice_roulette(wager: int, payout: int) -> Dictionary:
+	var stake := maxi(0, wager)
+	var reward := maxi(0, payout)
+	if stake <= 0:
+		return {"ok": false, "reason": "invalid_wager", "balance": balance()}
+	var data := load_data()
+	var before := int(data.get("chips", 0))
+	if before < stake:
+		return {"ok": false, "reason": "insufficient_chips", "balance": before}
+	var after := before - stake + reward
+	data["chips"] = maxi(0, after)
+	data["dice_roulette_play_count"] = int(data.get("dice_roulette_play_count", 0)) + 1
+	if reward > stake:
+		data["dice_roulette_win_count"] = int(data.get("dice_roulette_win_count", 0)) + 1
+	data["dice_roulette_best_payout"] = maxi(int(data.get("dice_roulette_best_payout", 0)), reward)
+	if not save_data(data):
+		return {"ok": false, "reason": "save_failed", "balance": before}
+	return {
+		"ok": true,
+		"balance_before": before,
+		"wager": stake,
+		"payout": reward,
+		"profit": reward - stake,
+		"balance_after": after,
+	}
 
 static func stage_clear_conversion(remaining_trip_coin: int, cleared_boss: bool = true) -> Dictionary:
 	return _conversion_receipt(remaining_trip_coin, cleared_boss, true)
@@ -165,4 +194,7 @@ static func _normalize(source: Dictionary) -> Dictionary:
 	data["dice_race_play_count"] = maxi(0, int(source.get("dice_race_play_count", 0)))
 	data["dice_race_win_count"] = maxi(0, int(source.get("dice_race_win_count", 0)))
 	data["dice_race_best_payout"] = maxi(0, int(source.get("dice_race_best_payout", 0)))
+	data["dice_roulette_play_count"] = maxi(0, int(source.get("dice_roulette_play_count", 0)))
+	data["dice_roulette_win_count"] = maxi(0, int(source.get("dice_roulette_win_count", 0)))
+	data["dice_roulette_best_payout"] = maxi(0, int(source.get("dice_roulette_best_payout", 0)))
 	return data
