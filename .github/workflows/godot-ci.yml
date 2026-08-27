@@ -48,3 +48,6 @@ jobs:
 
       - name: Smoke test casino scenes
         run: godot --headless --path . --script tests/run_casino_ui_tests.gd
+
+      - name: Run Dice Roulette tests
+        run: godot --headless --path . --script tests/run_dice_roulette_tests.gd
