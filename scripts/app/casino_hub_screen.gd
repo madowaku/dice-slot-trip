@@ -5,6 +5,7 @@ signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const DICE_RACE_SCENE: PackedScene = preload("res://scenes/casino/DiceRace.tscn")
+const DICE_ROULETTE_SCENE: PackedScene = preload("res://scenes/casino/DiceRoulette.tscn")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 const CARD_DATA_PATH := "res://data/casino/prize_cards.json"
 
@@ -12,6 +13,7 @@ var hub_root: Control
 var chip_label: Label
 var prize_list: VBoxContainer
 var race_host: Control
+var roulette_host: Control
 var card_data: Array[Dictionary] = []
 
 func _ready() -> void:
@@ -40,7 +42,7 @@ func _build_ui() -> void:
 	var root := VBoxContainer.new()
 	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_theme_constant_override("separation", 14)
+	root.add_theme_constant_override("separation", 12)
 	margin.add_child(root)
 
 	var title := _label("LAS VEGAS CASINO", 34, Color("#ffd66b"))
@@ -53,9 +55,17 @@ func _build_ui() -> void:
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(note)
 
+	var game_scroll := ScrollContainer.new()
+	game_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(game_scroll)
+	var content := VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 12)
+	game_scroll.add_child(content)
+
 	var race_panel := PanelContainer.new()
 	race_panel.add_theme_stylebox_override("panel", _panel(Color("#38264a"), Color("#d8ad4c"), 18, 2))
-	root.add_child(race_panel)
+	content.add_child(race_panel)
 	var race_box := VBoxContainer.new()
 	race_box.add_theme_constant_override("separation", 8)
 	race_panel.add_child(race_box)
@@ -69,15 +79,28 @@ func _build_ui() -> void:
 	race_button.pressed.connect(_open_dice_race)
 	race_box.add_child(race_button)
 
+	var roulette_panel := PanelContainer.new()
+	roulette_panel.add_theme_stylebox_override("panel", _panel(Color("#242b4b"), Color("#e0b95a"), 18, 2))
+	content.add_child(roulette_panel)
+	var roulette_box := VBoxContainer.new()
+	roulette_box.add_theme_constant_override("separation", 8)
+	roulette_panel.add_child(roulette_box)
+	var roulette_title := _label("DICE ROULETTE", 28, Color("#ffd66b"))
+	roulette_box.add_child(roulette_title)
+	var roulette_copy := _label("赤と青のダイスが24分割ルーレットを駆ける。\n止まったWHERE × 出目BOOSTで配当が決まる！", 17, Color.WHITE)
+	roulette_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	roulette_box.add_child(roulette_copy)
+	var roulette_button := _button("DICE ROULETTEへ")
+	roulette_button.custom_minimum_size.y = 58
+	roulette_button.pressed.connect(_open_dice_roulette)
+	roulette_box.add_child(roulette_button)
+
 	var prize_title := _label("PRIZE COUNTER", 26, Color("#ffd66b"))
-	root.add_child(prize_title)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(scroll)
+	content.add_child(prize_title)
 	prize_list = VBoxContainer.new()
 	prize_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	prize_list.add_theme_constant_override("separation", 8)
-	scroll.add_child(prize_list)
+	content.add_child(prize_list)
 
 	var back := _button("旅へ戻る")
 	back.pressed.connect(func() -> void: back_requested.emit())
@@ -87,6 +110,11 @@ func _build_ui() -> void:
 	race_host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	race_host.visible = false
 	add_child(race_host)
+
+	roulette_host = Control.new()
+	roulette_host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	roulette_host.visible = false
+	add_child(roulette_host)
 
 func _refresh() -> void:
 	chip_label.text = "CASINO CHIP  %d" % CasinoBankScript.balance()
@@ -134,6 +162,24 @@ func _close_dice_race() -> void:
 	for child: Node in race_host.get_children():
 		child.queue_free()
 	race_host.visible = false
+	hub_root.visible = true
+	get_node("/root/BgmManager").call("play_lasvegas_main")
+	_refresh()
+
+func _open_dice_roulette() -> void:
+	hub_root.visible = false
+	roulette_host.visible = true
+	for child: Node in roulette_host.get_children():
+		child.queue_free()
+	var screen := DICE_ROULETTE_SCENE.instantiate()
+	roulette_host.add_child(screen)
+	if screen.has_signal("back_requested"):
+		screen.connect("back_requested", _close_dice_roulette)
+
+func _close_dice_roulette() -> void:
+	for child: Node in roulette_host.get_children():
+		child.queue_free()
+	roulette_host.visible = false
 	hub_root.visible = true
 	get_node("/root/BgmManager").call("play_lasvegas_main")
 	_refresh()
