@@ -6,7 +6,7 @@ goal:
   slug: "dice-slot-trip-las-vegas-casino-expansion"
   kind: specific
   tranche: "Implement and verify the circular Las Vegas hub plus TREASURE 21, VAULT BREAK, DICE ROULETTE, and DICE POKER, then commit and push."
-  status: active
+  status: done
 
 rules:
   pm_owns_state: true
@@ -22,7 +22,7 @@ agents:
   worker: installed
   judge: installed
 
-active_task: T090
+active_task: null
 
 tasks:
   - id: T001
@@ -642,7 +642,7 @@ tasks:
   - id: T090
     type: pm
     assignee: PM
-    status: active
+    status: done
     reasoning_hint: medium
     objective: "Inspect the final focused diff, include the existing uncommitted DICE RACE / DICE TOWER implementation with this Las Vegas expansion, create the requested commit, and push the current branch."
     inputs:
@@ -656,12 +656,25 @@ tasks:
     expected_output:
       - "Commit hash"
       - "Pushed branch and remote"
-    receipt: null
+    receipt:
+      result: done
+      decision: done
+      changed_files:
+        - "focused Las Vegas casino expansion implementation"
+        - "preserved DICE RACE / DICE TOWER implementation and casino tests"
+      commands:
+        - cmd: "git diff --cached --check"
+          status: pass
+        - cmd: "git commit -m \"feat(casino): replace high-low with dice roulette and expand vegas hub\""
+          status: "pass: 6f60fd20385aa77e94d6d74a622d20d78590b31e"
+        - cmd: "git push origin feat/casino-chip-dice-race"
+          status: "pass: origin/feat/casino-chip-dice-race updated to 6f60fd20385aa77e94d6d74a622d20d78590b31e"
+      summary: "Focused implementation, selected final360/final720 proof artifacts, authored Las Vegas assets, and the existing DICE RACE/TOWER changes were committed and pushed; unrelated import/audio/APK churn was left untouched."
 
   - id: T999
     type: judge
     assignee: Judge
-    status: queued
+    status: done
     reasoning_hint: high
     objective: "Audit whether the complete Las Vegas casino expansion satisfies the user's requested outcome."
     inputs:
@@ -676,13 +689,34 @@ tasks:
       - "complete | not_complete"
       - "Evidence mapped to each requested outcome"
       - "Missing evidence or next task if not complete"
-    receipt: null
+    receipt:
+      result: done
+      decision: complete
+      summary: "All six Las Vegas facilities are reachable, HIGH / LOW is absent from the active Hub in favor of PR #7-derived DICE ROULETTE, the four current new game loops and CasinoBank persistence are covered, DICE RACE/TOWER work is preserved, deterministic suites pass, and two-viewport runtime/reference evidence is inspected."
+      evidence:
+        - "scripts/app/casino_hub_screen.gd FACILITY_DEFINITIONS"
+        - "scripts/game/casino_bank.gd transaction and pending-roll APIs"
+        - "scripts/game/dice_roulette_model.gd and scripts/app/dice_roulette_screen.gd"
+        - "scripts/game/treasure_21_model.gd and scripts/app/treasure_21_screen.gd"
+        - "scripts/game/dice_poker_model.gd and scripts/app/dice_poker_screen.gd"
+        - "scripts/game/vault_break/ and scripts/app/vault_break_screen.gd"
+        - "tests/run_tests.gd plus casino/game/UI suites"
+        - "artifacts/playtest/las-vegas-casino-expansion/final360/ and final720/"
+        - "6f60fd20385aa77e94d6d74a622d20d78590b31e on origin/feat/casino-chip-dice-race"
 
 checks:
   dirty_fingerprint: "pre-existing dirty casino branch; exact status captured in T001"
   verification_policy: "All casino tests must use a test-only CasinoBank save path; never delete the normal player save."
   last_verification:
     result: passed
-    task: T055
+    task: T080
     commands:
+      - "Godot --headless --editor --path . --quit"
+      - "Godot --headless --path . --script res://tests/run_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_dice_roulette_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_treasure_21_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_dice_poker_tests.gd"
       - "Godot --headless --path . --script res://tests/run_vault_break_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_vault_break_ui_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+      - "Godot --path . --display-driver windows --script res://tests/record_las_vegas_casino_expansion.gd (360x800 and 720x1280)"
