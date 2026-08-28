@@ -74,6 +74,7 @@ func _configure_mode(screen: DiceRaceScreen, mode: String) -> void:
 			screen.status_label.text = "ウサギの6を狙え！"
 		"stopped":
 			screen.call("_play_stop_assignment_feedback", QA_ASSIGNMENTS)
+			screen.call("_set_spectator_focus", true, true)
 			screen.status_label.text = "ウサギ 6！"
 		"final_stretch":
 			_set_positions(screen, {

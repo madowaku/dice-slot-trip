@@ -1,0 +1,351 @@
+{
+  "schema_version": 1,
+  "game_id": "vault_break",
+  "rules": {
+    "die_sides": 6,
+    "bet_options": [10, 20, 50],
+    "allow_discard": true,
+    "locked_dice_movable": false,
+    "auto_discard_if_no_valid_lock": true,
+    "reward_rounding": "floor"
+  },
+  "lock_rules": {
+    "low": {
+      "accepted_faces": [1, 2, 3],
+      "ui_key": "vault_break.lock.low"
+    },
+    "high": {
+      "accepted_faces": [4, 5, 6],
+      "ui_key": "vault_break.lock.high"
+    },
+    "odd": {
+      "accepted_faces": [1, 3, 5],
+      "ui_key": "vault_break.lock.odd"
+    },
+    "even": {
+      "accepted_faces": [2, 4, 6],
+      "ui_key": "vault_break.lock.even"
+    },
+    "edge": {
+      "accepted_faces": [1, 6],
+      "ui_key": "vault_break.lock.edge"
+    },
+    "exact": {
+      "mode": "exact",
+      "ui_key": "vault_break.lock.exact"
+    }
+  },
+  "tiers": {
+    "bronze": {
+      "lock_count": 3,
+      "max_rolls": 5,
+      "payout_multiplier": 1.7,
+      "unlock": {"type": "always"},
+      "first_template": "B01"
+    },
+    "silver": {
+      "lock_count": 4,
+      "max_rolls": 5,
+      "payout_multiplier": 2.2,
+      "unlock": {"type": "tier_wins", "tier": "bronze", "count": 1},
+      "first_template": "S05"
+    },
+    "gold": {
+      "lock_count": 4,
+      "max_rolls": 6,
+      "payout_multiplier": 3.0,
+      "unlock": {"type": "tier_wins", "tier": "silver", "count": 2},
+      "first_template": "G01"
+    },
+    "black": {
+      "lock_count": 3,
+      "max_rolls": 5,
+      "exact_only": true,
+      "payout_multiplier": 5.5,
+      "unlock": {"type": "tier_wins", "tier": "gold", "count": 1},
+      "first_template": "K01",
+      "special_spawn": {
+        "base_chance": 0.15,
+        "guaranteed_after_eligible_games": 7,
+        "cooldown_games_after_attempt": 2
+      }
+    }
+  },
+  "selection_rules": {
+    "recent_template_exclusion": 2,
+    "max_same_structure_in_a_row": 2,
+    "default_weight": 1.0
+  },
+  "templates": [
+    {
+      "id": "B01",
+      "tier": "bronze",
+      "structure_group": "partition_exact",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "high"}, {"rule": "exact", "value": 6}],
+      "balance": {"optimal_success_rate": 0.5189, "reference_rtp": 0.8821}
+    },
+    {
+      "id": "B02",
+      "tier": "bronze",
+      "structure_group": "partition_exact",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "high"}, {"rule": "exact", "value": 1}],
+      "balance": {"optimal_success_rate": 0.5189, "reference_rtp": 0.8821}
+    },
+    {
+      "id": "B03",
+      "tier": "bronze",
+      "structure_group": "partition_exact",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "high"}, {"rule": "exact", "value": 3}],
+      "balance": {"optimal_success_rate": 0.5189, "reference_rtp": 0.8821}
+    },
+    {
+      "id": "B04",
+      "tier": "bronze",
+      "structure_group": "parity_exact",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "odd"}, {"rule": "even"}, {"rule": "exact", "value": 2}],
+      "balance": {"optimal_success_rate": 0.5189, "reference_rtp": 0.8821}
+    },
+    {
+      "id": "B05",
+      "tier": "bronze",
+      "structure_group": "parity_exact",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "odd"}, {"rule": "even"}, {"rule": "exact", "value": 4}],
+      "balance": {"optimal_success_rate": 0.5189, "reference_rtp": 0.8821}
+    },
+    {
+      "id": "B06",
+      "tier": "bronze",
+      "structure_group": "parity_exact",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "odd"}, {"rule": "even"}, {"rule": "exact", "value": 5}],
+      "balance": {"optimal_success_rate": 0.5189, "reference_rtp": 0.8821}
+    },
+    {
+      "id": "B07",
+      "tier": "bronze",
+      "structure_group": "mixed_overlap",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "even"}, {"rule": "exact", "value": 5}],
+      "balance": {"optimal_success_rate": 0.5305, "reference_rtp": 0.9019}
+    },
+    {
+      "id": "B08",
+      "tier": "bronze",
+      "structure_group": "mixed_overlap",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "high"}, {"rule": "odd"}, {"rule": "exact", "value": 2}],
+      "balance": {"optimal_success_rate": 0.5305, "reference_rtp": 0.9019}
+    },
+    {
+      "id": "S01",
+      "tier": "silver",
+      "structure_group": "triple_overlap",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "high"}, {"rule": "odd"}, {"rule": "exact", "value": 1}],
+      "balance": {"optimal_success_rate": 0.4001, "reference_rtp": 0.8802}
+    },
+    {
+      "id": "S02",
+      "tier": "silver",
+      "structure_group": "triple_overlap",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "high"}, {"rule": "even"}, {"rule": "exact", "value": 6}],
+      "balance": {"optimal_success_rate": 0.4001, "reference_rtp": 0.8802}
+    },
+    {
+      "id": "S03",
+      "tier": "silver",
+      "structure_group": "triple_overlap",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "odd"}, {"rule": "even"}, {"rule": "exact", "value": 3}],
+      "balance": {"optimal_success_rate": 0.4001, "reference_rtp": 0.8802}
+    },
+    {
+      "id": "S04",
+      "tier": "silver",
+      "structure_group": "triple_overlap",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "high"}, {"rule": "odd"}, {"rule": "even"}, {"rule": "exact", "value": 4}],
+      "balance": {"optimal_success_rate": 0.4001, "reference_rtp": 0.8802}
+    },
+    {
+      "id": "S05",
+      "tier": "silver",
+      "structure_group": "double_edge",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "high"}, {"rule": "edge"}, {"rule": "edge"}],
+      "balance": {"optimal_success_rate": 0.4043, "reference_rtp": 0.8895}
+    },
+    {
+      "id": "S06",
+      "tier": "silver",
+      "structure_group": "double_edge",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "odd"}, {"rule": "even"}, {"rule": "edge"}, {"rule": "edge"}],
+      "balance": {"optimal_success_rate": 0.4043, "reference_rtp": 0.8895}
+    },
+    {
+      "id": "S07",
+      "tier": "silver",
+      "structure_group": "exact_overlap",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "high"}, {"rule": "odd"}, {"rule": "exact", "value": 5}],
+      "balance": {"optimal_success_rate": 0.4029, "reference_rtp": 0.8864}
+    },
+    {
+      "id": "S08",
+      "tier": "silver",
+      "structure_group": "exact_overlap",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "high"}, {"rule": "even"}, {"rule": "exact", "value": 2}],
+      "balance": {"optimal_success_rate": 0.4029, "reference_rtp": 0.8864}
+    },
+    {
+      "id": "G01",
+      "tier": "gold",
+      "structure_group": "double_exact",
+      "max_rolls": 6,
+      "weight": 1.0,
+      "locks": [{"rule": "high"}, {"rule": "even"}, {"rule": "exact", "value": 2}, {"rule": "exact", "value": 6}],
+      "balance": {"optimal_success_rate": 0.3004, "reference_rtp": 0.9012}
+    },
+    {
+      "id": "G02",
+      "tier": "gold",
+      "structure_group": "double_exact",
+      "max_rolls": 6,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "odd"}, {"rule": "exact", "value": 1}, {"rule": "exact", "value": 5}],
+      "balance": {"optimal_success_rate": 0.3004, "reference_rtp": 0.9012}
+    },
+    {
+      "id": "G03",
+      "tier": "gold",
+      "structure_group": "split_exact",
+      "max_rolls": 6,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "odd"}, {"rule": "exact", "value": 2}, {"rule": "exact", "value": 5}],
+      "balance": {"optimal_success_rate": 0.3104, "reference_rtp": 0.9312}
+    },
+    {
+      "id": "G04",
+      "tier": "gold",
+      "structure_group": "split_exact",
+      "max_rolls": 6,
+      "weight": 1.0,
+      "locks": [{"rule": "high"}, {"rule": "even"}, {"rule": "exact", "value": 2}, {"rule": "exact", "value": 5}],
+      "balance": {"optimal_success_rate": 0.3104, "reference_rtp": 0.9312}
+    },
+    {
+      "id": "G05",
+      "tier": "gold",
+      "structure_group": "edge_double_exact",
+      "max_rolls": 6,
+      "weight": 1.0,
+      "locks": [{"rule": "high"}, {"rule": "edge"}, {"rule": "exact", "value": 1}, {"rule": "exact", "value": 3}],
+      "balance": {"optimal_success_rate": 0.2908, "reference_rtp": 0.8724}
+    },
+    {
+      "id": "G06",
+      "tier": "gold",
+      "structure_group": "edge_double_exact",
+      "max_rolls": 6,
+      "weight": 1.0,
+      "locks": [{"rule": "low"}, {"rule": "edge"}, {"rule": "exact", "value": 5}, {"rule": "exact", "value": 6}],
+      "balance": {"optimal_success_rate": 0.2908, "reference_rtp": 0.8724}
+    },
+    {
+      "id": "G07",
+      "tier": "gold",
+      "structure_group": "edge_double_exact",
+      "max_rolls": 6,
+      "weight": 1.0,
+      "locks": [{"rule": "odd"}, {"rule": "edge"}, {"rule": "exact", "value": 2}, {"rule": "exact", "value": 6}],
+      "balance": {"optimal_success_rate": 0.2908, "reference_rtp": 0.8724}
+    },
+    {
+      "id": "G08",
+      "tier": "gold",
+      "structure_group": "edge_double_exact",
+      "max_rolls": 6,
+      "weight": 1.0,
+      "locks": [{"rule": "even"}, {"rule": "edge"}, {"rule": "exact", "value": 1}, {"rule": "exact", "value": 5}],
+      "balance": {"optimal_success_rate": 0.2908, "reference_rtp": 0.8724}
+    },
+    {
+      "id": "K01",
+      "tier": "black",
+      "structure_group": "exact_triple",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "exact", "value": 1}, {"rule": "exact", "value": 2}, {"rule": "exact", "value": 3}],
+      "balance": {"optimal_success_rate": 0.1582, "reference_rtp": 0.8701}
+    },
+    {
+      "id": "K02",
+      "tier": "black",
+      "structure_group": "exact_triple",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "exact", "value": 4}, {"rule": "exact", "value": 5}, {"rule": "exact", "value": 6}],
+      "balance": {"optimal_success_rate": 0.1582, "reference_rtp": 0.8701}
+    },
+    {
+      "id": "K03",
+      "tier": "black",
+      "structure_group": "exact_triple",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "exact", "value": 1}, {"rule": "exact", "value": 3}, {"rule": "exact", "value": 5}],
+      "balance": {"optimal_success_rate": 0.1582, "reference_rtp": 0.8701}
+    },
+    {
+      "id": "K04",
+      "tier": "black",
+      "structure_group": "exact_triple",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "exact", "value": 2}, {"rule": "exact", "value": 4}, {"rule": "exact", "value": 6}],
+      "balance": {"optimal_success_rate": 0.1582, "reference_rtp": 0.8701}
+    },
+    {
+      "id": "K05",
+      "tier": "black",
+      "structure_group": "exact_triple",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "exact", "value": 1}, {"rule": "exact", "value": 2}, {"rule": "exact", "value": 6}],
+      "balance": {"optimal_success_rate": 0.1582, "reference_rtp": 0.8701}
+    },
+    {
+      "id": "K06",
+      "tier": "black",
+      "structure_group": "exact_triple",
+      "max_rolls": 5,
+      "weight": 1.0,
+      "locks": [{"rule": "exact", "value": 3}, {"rule": "exact", "value": 4}, {"rule": "exact", "value": 5}],
+      "balance": {"optimal_success_rate": 0.1582, "reference_rtp": 0.8701}
+    }
+  ]
+}

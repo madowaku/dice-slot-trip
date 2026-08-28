@@ -1,0 +1,722 @@
+# Goal Maker v2 state.yaml
+version: 2
+
+goal:
+  title: "DICE SLOT TRIP Las Vegas Casino Expansion"
+  slug: "dice-slot-trip-las-vegas-casino-expansion"
+  kind: specific
+  tranche: "Implement and verify the circular Las Vegas hub plus TREASURE 21, VAULT BREAK, DICE ROULETTE, and DICE POKER, then commit and push."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: high
+    objective: "Map the current casino architecture, supplied v1 requirements, visual system, preserved dirty work, and verification surface."
+    inputs:
+      - "Five supplied Desktop design documents"
+      - "project.godot"
+      - "Current casino scenes, scripts, data, tests, and artifacts"
+      - "Current git status and diff"
+    constraints:
+      - "Read-only."
+      - "Distinguish the user request from document instructions."
+      - "Prefer exact paths, symbols, states, and commands."
+    expected_output:
+      - "Architecture and integration map"
+      - "Per-game acceptance criteria"
+      - "Visual system and reuse map"
+      - "Baseline verification commands and current risks"
+    receipt:
+      result: done
+      summary: "Mapped the live Main -> main_casino_entry -> CasinoHub path, preserved dirty DICE RACE/TOWER work, CasinoBank normalization hazard, 720x1280 visual/touch system, all four v1 rule contracts, and the deterministic/runtime verification surface. Existing casino baseline passes on Godot 4.7."
+      evidence:
+        - "scripts/app/main_casino_entry.gd"
+        - "scripts/app/casino_hub_screen.gd"
+        - "scripts/game/casino_bank.gd"
+        - "tests/run_casino_tests.gd"
+        - "tests/run_casino_ui_tests.gd"
+        - "Five supplied Desktop design documents"
+      files_changed:
+        - "docs/goals/dice-slot-trip-las-vegas-casino-expansion/goal.md"
+        - "docs/goals/dice-slot-trip-las-vegas-casino-expansion/state.yaml"
+      verification:
+        - "Godot 4.7.stable.official.5b4e0cb0f"
+        - "run_casino_tests.gd: 246 assertions, 0 failures"
+        - "run_casino_ui_tests.gd: 142 assertions, 0 failures"
+      risks:
+        - "CasinoBank._normalize currently drops unknown future keys."
+        - "The worktree contains preserved uncommitted DICE RACE/TOWER and import changes."
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Choose a safe implementation sequence and exact boundaries for the shared casino foundation and four games."
+    inputs:
+      - "T001 receipt"
+      - "Current dirty diff"
+      - "User's complete outcome"
+    constraints:
+      - "Read-only."
+      - "Do not shrink away any required game."
+      - "Preserve the in-progress DICE RACE and DICE TOWER work."
+    expected_output:
+      - "Decision and sequence"
+      - "Exact first Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Risks and deferred hardware-only checks"
+    receipt:
+      result: done
+      decision: "Proceed serially: transaction-safe shared persistence and a lazy-loaded six-facility ring hub, then HIGH / LOW, TREASURE 21, DICE POKER, VAULT BREAK logic/data, VAULT BREAK UI, polish, MADO verification, focused commit/push, and final audit."
+      next_allowed_task: T010
+      blocked_tasks:
+        - T020
+        - T030
+        - T040
+        - T050
+        - T060
+        - T065
+        - T070
+        - T080
+        - T090
+        - T999
+
+  - id: T010
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Add a non-destructive, transaction-safe shared casino persistence contract and a six-facility circular lazy-load hub while preserving every current DICE RACE / DICE TOWER behavior, symbol, and dirty edit."
+    allowed_files:
+      - "scripts/game/casino_bank.gd"
+      - "scripts/app/casino_hub_screen.gd"
+      - "scenes/casino/CasinoHub.tscn"
+      - "tests/run_casino_tests.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/run_casino_foundation_tests.gd"
+    verify:
+      - "git diff --check -- scripts/game/casino_bank.gd scripts/app/casino_hub_screen.gd scenes/casino/CasinoHub.tscn tests/run_casino_tests.gd tests/run_casino_ui_tests.gd tests/run_casino_foundation_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_casino_foundation_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_casino_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_casino_ui_tests.gd"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "A preserved dirty-worktree edit would be overwritten."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/casino_bank.gd"
+        - "scripts/app/casino_hub_screen.gd"
+        - "tests/run_casino_tests.gd"
+        - "tests/run_casino_ui_tests.gd"
+        - "tests/run_casino_foundation_tests.gd"
+      commands:
+        - cmd: "git diff --check -- scoped files"
+          status: pass
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_foundation_tests.gd"
+          status: "pass: 35 assertions, 0 failures"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_tests.gd"
+          status: "pass: 246 assertions, 0 failures"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_ui_tests.gd"
+          status: "pass: 142 assertions, 0 failures"
+      summary: "CasinoBank now preserves unknown keys, isolates test saves, and provides resumable one-charge/one-settlement transactions. CasinoHub now exposes a lazy six-facility ring while preserving DICE RACE/TOWER and prize-counter contracts."
+
+  - id: T020
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Implement HIGH / LOW v1 as a reachable deterministic casino game."
+    allowed_files:
+      - "scripts/game/high_low_model.gd"
+      - "scripts/app/high_low_screen.gd"
+      - "scenes/casino/HighLow.tscn"
+      - "tests/run_high_low_tests.gd"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_high_low_tests.gd"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Rules conflict with the supplied v1 design."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/high_low_model.gd"
+        - "scripts/app/high_low_screen.gd"
+        - "scenes/casino/HighLow.tscn"
+        - "tests/run_high_low_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_high_low_tests.gd"
+          status: "pass: 164 assertions, 0 failures, clean diagnostics"
+        - cmd: "git diff --check -- T020 files"
+          status: pass
+      summary: "HIGH / LOW implements the exact table/ranges, floor POT, MISS, CASH OUT, five-win auto cash, persisted pending-roll anti-reroll/resume, 3D die presentation, and isolated deterministic tests."
+
+  - id: T021
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Replace the HIGH / LOW hub facility with the PR #7 DICE ROULETTE implementation while preserving the current transaction-safe casino foundation and all other facilities."
+    inputs:
+      - "Fetched origin/pr-7 at 99ce401842052ac969234f57019129b0b7a943b4"
+      - "Current CasinoBank, six-facility hub, and preserved DICE RACE / DICE TOWER dirty work"
+      - "Current user request to substitute DICE ROULETTE for HIGH / LOW"
+    allowed_files:
+      - "scripts/game/dice_roulette_model.gd"
+      - "scripts/app/dice_roulette_wheel.gd"
+      - "scripts/app/dice_roulette_screen.gd"
+      - "scenes/casino/DiceRoulette.tscn"
+      - "tests/run_dice_roulette_tests.gd"
+      - "scripts/app/casino_hub_screen.gd"
+      - "scripts/game/casino_bank.gd"
+      - "tests/run_casino_foundation_tests.gd"
+      - "tests/run_casino_tests.gd"
+      - "tests/run_casino_ui_tests.gd"
+    verify:
+      - "git diff --check -- DICE ROULETTE allowed files"
+      - "Godot --headless --path . --script res://tests/run_dice_roulette_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_casino_foundation_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_casino_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_casino_ui_tests.gd"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Replacing HIGH / LOW would regress TREASURE 21, VAULT BREAK, DICE RACE, or DICE TOWER."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/dice_roulette_model.gd"
+        - "scripts/app/dice_roulette_wheel.gd"
+        - "scripts/app/dice_roulette_screen.gd"
+        - "scenes/casino/DiceRoulette.tscn"
+        - "tests/run_dice_roulette_tests.gd"
+        - "scripts/app/casino_hub_screen.gd"
+        - "scripts/game/casino_bank.gd"
+        - "tests/run_casino_foundation_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_dice_roulette_tests.gd"
+          status: "pass: 54 assertions, 0 failures, clean diagnostics"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_foundation_tests.gd"
+          status: "pass: 36 assertions, 0 failures; existing DICE RACE/TOWER audio teardown leaks remain"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_tests.gd"
+          status: "pass: 246 assertions, 0 failures"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_ui_tests.gd"
+          status: "pass: 142 assertions, 0 failures; existing audio teardown leaks remain"
+        - cmd: "git diff --check -- T021 files"
+          status: pass
+      summary: "PR #7 DICE ROULETTE now occupies the former HIGH / LOW hub slot with exact 24-slot/side-bet/face-boost rules, animated wheel, resumable one-charge transaction, stats, and duplicate-settlement protection."
+
+  - id: T030
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Implement TREASURE 21 v1 as a reachable deterministic casino game."
+    allowed_files:
+      - "scripts/game/treasure_21_model.gd"
+      - "scripts/app/treasure_21_screen.gd"
+      - "scenes/casino/Treasure21.tscn"
+      - "tests/run_treasure_21_tests.gd"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_treasure_21_tests.gd"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Rules conflict with the supplied v1 design."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/treasure_21_model.gd"
+        - "scripts/app/treasure_21_screen.gd"
+        - "scenes/casino/Treasure21.tscn"
+        - "tests/run_treasure_21_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_treasure_21_tests.gd"
+          status: "pass: 43 assertions, 0 failures, clean diagnostics"
+        - cmd: "git diff --check -- T030 files"
+          status: pass
+      summary: "TREASURE 21 implements exact normal/Golden returns, first Golden 19, danger preview, active exit lock, remembered affordable bet, pending-roll resume, and idempotent settlement."
+
+  - id: T040
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Implement DICE POKER v1 as a reachable deterministic casino game."
+    allowed_files:
+      - "scripts/game/dice_poker_model.gd"
+      - "scripts/app/dice_poker_screen.gd"
+      - "scenes/casino/DicePoker.tscn"
+      - "tests/run_dice_poker_tests.gd"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_dice_poker_tests.gd"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Rules conflict with the supplied v1 design."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/dice_poker_model.gd"
+        - "scripts/app/dice_poker_screen.gd"
+        - "scenes/casino/DicePoker.tscn"
+        - "tests/run_dice_poker_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_dice_poker_tests.gd"
+          status: "pass: 55 assertions, 0 failures, clean diagnostics"
+        - cmd: "git diff --check -- T040 files"
+          status: pass
+      summary: "DICE POKER implements all eight ranks, both straights, exact returns, KEEP/unkeep, two rerolls, all-kept LOCK HAND, deterministic pending-roll resume, and idempotent settlement."
+
+  - id: T050
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Implement VAULT BREAK v1 data foundation, pure logic, progress, selection, and persistence."
+    allowed_files:
+      - "data/casino/vault_break_templates.json"
+      - "scripts/game/vault_break/"
+      - "tests/run_vault_break_tests.gd"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_vault_break_tests.gd"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "The 30-template contract cannot be validated."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "data/casino/vault_break_templates.json"
+        - "scripts/game/vault_break/vault_break_rules.gd"
+        - "scripts/game/vault_break/vault_break_template_repository.gd"
+        - "scripts/game/vault_break/vault_break_selector.gd"
+        - "scripts/game/vault_break/vault_break_progress.gd"
+        - "scripts/game/vault_break/vault_break_model.gd"
+        - "tests/run_vault_break_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_vault_break_tests.gd"
+          status: "pass: 414 assertions, 0 failures, clean diagnostics"
+        - cmd: "git diff --check -- T050 paths"
+          status: pass
+      summary: "VAULT BREAK now has validated 30-template JSON, six lock rules, pure state/placement/discard/reward logic, selection safeguards, derived unlocks, serializable progress, and complete BLACK lifecycle."
+
+  - id: T055
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Add validated active-game snapshot/restore to the pure VAULT BREAK model so UI resume does not reach into internal fields."
+    allowed_files:
+      - "scripts/game/vault_break/vault_break_model.gd"
+      - "tests/run_vault_break_tests.gd"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_vault_break_tests.gd"
+      - "git diff --check -- scripts/game/vault_break/vault_break_model.gd tests/run_vault_break_tests.gd"
+    stop_if:
+      - "Restoration would require UI, CasinoBank, hub, or template-data changes."
+      - "Snapshot validation cannot reject malformed or inconsistent placed-lock data."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/game/vault_break/vault_break_model.gd"
+        - "tests/run_vault_break_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_vault_break_tests.gd"
+          status: "pass: 452 assertions, 0 failures, clean diagnostics"
+        - cmd: "git diff --check -- T055 files"
+          status: pass
+      summary: "VAULT BREAK active games now round-trip validated JSON-safe snapshots transactionally, including READY and final-roll WAITING states, without UI access to internal fields."
+
+  - id: T060
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Implement VAULT BREAK v1 UI, casino integration, presentation, and reachable flows."
+    allowed_files:
+      - "scripts/app/vault_break_screen.gd"
+      - "scripts/app/vault_break_lock_view.gd"
+      - "scenes/casino/VaultBreak.tscn"
+      - "tests/run_vault_break_ui_tests.gd"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_vault_break_ui_tests.gd"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Logic would need to move into UI code."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/vault_break_screen.gd"
+        - "scripts/app/vault_break_lock_view.gd"
+        - "scenes/casino/VaultBreak.tscn"
+        - "tests/run_vault_break_ui_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_vault_break_ui_tests.gd"
+          status: "pass: 57 assertions, 0 failures, clean diagnostics"
+        - cmd: "git diff --check -- T060 files"
+          status: pass
+      summary: "VAULT BREAK UI is reachable with setup/active/result views, immutable lock targets, pre-animation pending-roll persistence, canonical resume, BLACK lifecycle, one-time settlement, and hub-compatible back_requested flow."
+
+  - id: T065
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Refresh the shared casino foundation regression now that all six facilities exist, while preserving the original lazy-load, touch-target, DICE RACE, and DICE TOWER contracts."
+    allowed_files:
+      - "tests/run_casino_foundation_tests.gd"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_casino_foundation_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_casino_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_casino_ui_tests.gd"
+      - "git diff --check -- tests/run_casino_foundation_tests.gd"
+    stop_if:
+      - "A production-file change is required."
+      - "The preserved DICE RACE / DICE TOWER contract regresses."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files: []
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_foundation_tests.gd"
+          status: "pass: 36 assertions, 0 failures; existing DICE RACE/TOWER audio teardown leaks remain"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_tests.gd"
+          status: "pass: 246 assertions, 0 failures"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_ui_tests.gd"
+          status: "pass: 142 assertions, 0 failures; existing audio teardown leaks remain"
+      summary: "Foundation regression now expects DICE ROULETTE plus TREASURE 21, DICE POKER, and VAULT BREAK as available six-facility routes; legacy DICE RACE/TOWER routes remain covered."
+
+  - id: T070
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Polish the shared art direction, generated assets, audio/animation feedback, responsive layout, and accessibility across the hub and four games."
+    allowed_files:
+      - "scripts/app/casino_hub_screen.gd"
+      - "scripts/app/high_low_screen.gd"
+      - "scripts/app/treasure_21_screen.gd"
+      - "scripts/app/dice_poker_screen.gd"
+      - "scripts/app/vault_break_screen.gd"
+      - "scripts/app/vault_break_lock_view.gd"
+      - "scenes/casino/CasinoHub.tscn"
+      - "scenes/casino/HighLow.tscn"
+      - "scenes/casino/Treasure21.tscn"
+      - "scenes/casino/DicePoker.tscn"
+      - "scenes/casino/VaultBreak.tscn"
+      - "assets/casino/las_vegas/"
+      - "tests/run_casino_expansion_ui_tests.gd"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "A generated asset cannot be inspected or placed at game scale."
+      - "Polish would change game rules or economics."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/casino_hub_screen.gd"
+        - "assets/casino/las_vegas/las-vegas-ring-map-v1.png"
+        - "tests/run_casino_expansion_ui_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 40 assertions, 0 failures"
+        - cmd: "git diff --check -- T070 files"
+          status: pass
+      summary: "The hub now uses the approved ImageGen 720x1280 Las Vegas ring-map artwork with a readable overlay/vignette, six 96-unit facility CTAs, and a focused expansion UI smoke test covering DICE ROULETTE, TREASURE 21, DICE POKER, and VAULT BREAK routes."
+
+  - id: T071
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Finish the sprite-pipeline pass for Las Vegas selection feedback by normalizing the approved ImageGen sparkle strip, integrating it into the hub without obscuring the ring map, and extending the focused UI smoke test."
+    inputs:
+      - "ImageGen output: C:/Users/hiro/.codex/generated_images/01a04234-876e-7380-8b87-f0196567661c/exec-1a649586-d9b5-4a1b-bac5-995db86f7ebf.png"
+      - "game-studio sprite-pipeline scripts build_sprite_edit_canvas.py, normalize_sprite_strip.py, render_sprite_preview_sheet.py"
+      - "Existing T070 Las Vegas ring-map implementation"
+    allowed_files:
+      - "scripts/app/casino_hub_screen.gd"
+      - "tests/run_casino_expansion_ui_tests.gd"
+      - "assets/casino/las_vegas/las-vegas-selection-sparkle-strip.png"
+      - "assets/casino/las_vegas/las-vegas-selection-sparkle-strip.png.import"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+      - "git diff --check -- scripts/app/casino_hub_screen.gd tests/run_casino_expansion_ui_tests.gd assets/casino/las_vegas/las-vegas-selection-sparkle-strip.png"
+    stop_if:
+      - "The normalized asset cannot be made transparent and readable at game scale."
+      - "Integration would alter routing, game rules, or existing DICE RACE/TOWER behavior."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/casino_hub_screen.gd"
+        - "tests/run_casino_expansion_ui_tests.gd"
+        - "assets/casino/las_vegas/las-vegas-selection-sparkle-strip.png"
+        - "assets/casino/las_vegas/las-vegas-selection-sparkle-strip.png.import"
+      commands:
+        - cmd: "game-studio sprite-pipeline build_sprite_edit_canvas.py + normalize_sprite_strip.py + render_sprite_preview_sheet.py"
+          status: "pass: 4 transparent 256px frames; preview inspected"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 42 assertions, 0 failures"
+        - cmd: "git diff --check -- T071 paths"
+          status: pass
+      summary: "The approved ImageGen sparkle strip is now a transparent 4-frame atlas used by an ambient AnimatedSprite2D above the Las Vegas hub center panel; it is non-blocking and covered by visibility/frame-count assertions."
+
+  - id: T072
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Make the Las Vegas ring-map CTA layout derive its center, radius, and center panel from the actual map bounds so the 720x1280 baseline and width-fit mobile captures never clip a facility button."
+    inputs:
+      - "T070 authored Las Vegas ring-map layout"
+      - "T080 scaled 720x1280 capture showing fixed-radius CTA bleed"
+    allowed_files:
+      - "scripts/app/casino_hub_screen.gd"
+      - "tests/run_casino_expansion_ui_tests.gd"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+      - "git diff --check -- scripts/app/casino_hub_screen.gd tests/run_casino_expansion_ui_tests.gd"
+    stop_if:
+      - "Responsive math changes facility order, routing, touch targets, or game rules."
+      - "The map cannot retain a readable center panel and six 96-unit CTAs at the baseline."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/casino_hub_screen.gd"
+        - "tests/run_casino_expansion_ui_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 66 assertions, 0 failures"
+        - cmd: "git diff --check -- scripts/app/casino_hub_screen.gd tests/run_casino_expansion_ui_tests.gd"
+          status: pass
+      summary: "Ring CTA centers/radii now derive from the live map bounds, clamp within safe margins, and reflow on resize; focused UI coverage verifies all six buttons inside 720 design bounds and a 316x616 portrait map."
+
+  - id: T073
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Move the Las Vegas hub sparkle focal point clear of the centered welcome copy while retaining the four-frame ambient animation and responsive layout."
+    inputs:
+      - "T080 final 720x1280 Hub capture review"
+    allowed_files:
+      - "scripts/app/casino_hub_screen.gd"
+      - "tests/run_casino_expansion_ui_tests.gd"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+      - "git diff --check -- scripts/app/casino_hub_screen.gd tests/run_casino_expansion_ui_tests.gd"
+    stop_if:
+      - "The sparkle becomes hidden or overlaps a CTA/center label at either tested map size."
+      - "The change alters routing, touch targets, or game rules."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/casino_hub_screen.gd"
+        - "tests/run_casino_expansion_ui_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 68 assertions, 0 failures"
+        - cmd: "git diff --check -- scripts/app/casino_hub_screen.gd tests/run_casino_expansion_ui_tests.gd"
+          status: pass
+      summary: "Responsive sparkle placement now stays above the RingCenter copy with a safe gap at both 720 design and portrait layouts; non-overlap assertions protect the visual focal point."
+
+  - id: T074
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Restore high-contrast readable labels for the six dark Las Vegas facility CTAs without changing routing, layout, or game rules."
+    inputs:
+      - "T080 same-viewport reference/implementation review of the final Hub capture"
+      - "Existing CasinoHub button theme and focused UI smoke test"
+    allowed_files:
+      - "scripts/app/casino_hub_screen.gd"
+      - "tests/run_casino_expansion_ui_tests.gd"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+      - "git diff --check -- scripts/app/casino_hub_screen.gd tests/run_casino_expansion_ui_tests.gd"
+    stop_if:
+      - "The change alters facility routing, touch targets, layout, or game rules."
+      - "The focused UI test cannot validate the readable CTA color contract."
+      - "Verification fails twice for the same unexplained reason."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/casino_hub_screen.gd"
+        - "tests/run_casino_expansion_ui_tests.gd"
+      commands:
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 116 assertions, 0 failures"
+        - cmd: "git diff --check -- scripts/app/casino_hub_screen.gd tests/run_casino_expansion_ui_tests.gd"
+          status: pass
+      summary: "Six dark jewel-tone facility CTAs now explicitly use light normal, hover, pressed, and disabled font colors; focused coverage checks all 24 overrides for luminance and preserves routing/layout contracts."
+
+  - id: T080
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Run MADO LOOP P3/P4 regression, deterministic game tests, two-viewport UI reports, runtime diagnostics, and representative playtest capture; fix scoped failures."
+    allowed_files:
+      - "tests/record_las_vegas_casino_expansion.gd"
+      - "artifacts/playtest/las-vegas-casino-expansion/"
+    verify:
+      - "Godot --headless --path . --script res://tests/run_tests.gd"
+      - "Godot --headless --path . --script res://tests/record_las_vegas_casino_expansion.gd"
+    stop_if:
+      - "A fix requires unrelated product behavior changes."
+      - "Hardware-only verification is the only missing evidence."
+      - "The same blocker remains after three scoped recovery attempts."
+    receipt:
+      result: done
+      changed_files:
+        - "tests/record_las_vegas_casino_expansion.gd"
+        - "artifacts/playtest/las-vegas-casino-expansion/final360/"
+        - "artifacts/playtest/las-vegas-casino-expansion/final720/"
+      commands:
+        - cmd: "Godot --headless --editor --path . --quit"
+          status: "pass: Godot 4.7 editor scan/import completed without parser or resource errors"
+        - cmd: "Godot --headless --path . --script res://tests/run_tests.gd"
+          status: "pass: DICE_SLOT_TRIP_TESTS failures=0"
+        - cmd: "Godot --headless --path . --script res://tests/run_dice_roulette_tests.gd"
+          status: "pass: 54 assertions, 0 failures"
+        - cmd: "Godot --headless --path . --script res://tests/run_treasure_21_tests.gd"
+          status: "pass: 43 assertions, 0 failures"
+        - cmd: "Godot --headless --path . --script res://tests/run_dice_poker_tests.gd"
+          status: "pass: 55 assertions, 0 failures"
+        - cmd: "Godot --headless --path . --script res://tests/run_vault_break_tests.gd"
+          status: "pass: 452 assertions, 0 failures"
+        - cmd: "Godot --headless --path . --script res://tests/run_vault_break_ui_tests.gd"
+          status: "pass: 57 assertions, 0 failures"
+        - cmd: "Godot --headless --path . --script res://tests/run_high_low_tests.gd"
+          status: "pass: 164 assertions, 0 failures; retained compatibility implementation is not an active Hub route"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_foundation_tests.gd"
+          status: "pass: 36 assertions, 0 failures; known preserved DICE RACE/TOWER audio teardown leak diagnostics remain"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_tests.gd"
+          status: "pass: 246 assertions, 0 failures"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_ui_tests.gd"
+          status: "pass: 142 assertions, 0 failures; known preserved audio teardown leak diagnostics remain"
+        - cmd: "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 116 assertions, 0 failures"
+        - cmd: "Godot --path . --display-driver windows --script res://tests/record_las_vegas_casino_expansion.gd (360x800)"
+          status: "pass: 35 assertions, 0 failures, actual_rendering=true"
+        - cmd: "Godot --path . --display-driver windows --script res://tests/record_las_vegas_casino_expansion.gd (720x1280)"
+          status: "pass: 35 assertions, 0 failures, actual_rendering=true"
+        - cmd: "same-viewport reference/implementation comparison inspection"
+          status: "pass: reference-vs-hub-360x800.png and reference-vs-hub-720x1280.png inspected; all six CTAs stay inside the ring map and remain readable"
+        - cmd: "git diff --check -- scoped implementation and verification paths"
+          status: pass
+      summary: "MADO P0-P4 evidence is current: deterministic suites pass, focused UI coverage verifies responsive six-facility routing and contrast, and non-headless OpenGL captures show Hub plus DICE ROULETTE, TREASURE 21, DICE POKER, and VAULT BREAK setup/active states at 360x800 and 720x1280."
+
+  - id: T090
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "Inspect the final focused diff, include the existing uncommitted DICE RACE / DICE TOWER implementation with this Las Vegas expansion, create the requested commit, and push the current branch."
+    inputs:
+      - "All implementation receipts"
+      - "Current passing verification"
+      - "Current git diff"
+    constraints:
+      - "Deliberately include the current DICE RACE / DICE TOWER code, scenes, casino tests, and required authored assets."
+      - "Do not commit unrelated generated/import churn, existing APK/signature files, unrelated audio replacements, bulk QA captures, or secrets."
+      - "Do not push until verification is current."
+    expected_output:
+      - "Commit hash"
+      - "Pushed branch and remote"
+    receipt:
+      result: done
+      decision: done
+      changed_files:
+        - "focused Las Vegas casino expansion implementation"
+        - "preserved DICE RACE / DICE TOWER implementation and casino tests"
+      commands:
+        - cmd: "git diff --cached --check"
+          status: pass
+        - cmd: "git commit -m \"feat(casino): replace high-low with dice roulette and expand vegas hub\""
+          status: "pass: 6f60fd20385aa77e94d6d74a622d20d78590b31e"
+        - cmd: "git push origin feat/casino-chip-dice-race"
+          status: "pass: origin/feat/casino-chip-dice-race updated to 6f60fd20385aa77e94d6d74a622d20d78590b31e"
+      summary: "Focused implementation, selected final360/final720 proof artifacts, authored Las Vegas assets, and the existing DICE RACE/TOWER changes were committed and pushed; unrelated import/audio/APK churn was left untouched."
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit whether the complete Las Vegas casino expansion satisfies the user's requested outcome."
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current git status"
+      - "Pushed commit"
+    constraints:
+      - "Read-only."
+      - "Reject completion if any required game, hub route, persistence behavior, or verification evidence is missing."
+    expected_output:
+      - "complete | not_complete"
+      - "Evidence mapped to each requested outcome"
+      - "Missing evidence or next task if not complete"
+    receipt:
+      result: done
+      decision: complete
+      summary: "All six Las Vegas facilities are reachable, HIGH / LOW is absent from the active Hub in favor of PR #7-derived DICE ROULETTE, the four current new game loops and CasinoBank persistence are covered, DICE RACE/TOWER work is preserved, deterministic suites pass, and two-viewport runtime/reference evidence is inspected."
+      evidence:
+        - "scripts/app/casino_hub_screen.gd FACILITY_DEFINITIONS"
+        - "scripts/game/casino_bank.gd transaction and pending-roll APIs"
+        - "scripts/game/dice_roulette_model.gd and scripts/app/dice_roulette_screen.gd"
+        - "scripts/game/treasure_21_model.gd and scripts/app/treasure_21_screen.gd"
+        - "scripts/game/dice_poker_model.gd and scripts/app/dice_poker_screen.gd"
+        - "scripts/game/vault_break/ and scripts/app/vault_break_screen.gd"
+        - "tests/run_tests.gd plus casino/game/UI suites"
+        - "artifacts/playtest/las-vegas-casino-expansion/final360/ and final720/"
+        - "6f60fd20385aa77e94d6d74a622d20d78590b31e on origin/feat/casino-chip-dice-race"
+
+checks:
+  dirty_fingerprint: "pre-existing dirty casino branch; exact status captured in T001"
+  verification_policy: "All casino tests must use a test-only CasinoBank save path; never delete the normal player save."
+  last_verification:
+    result: passed
+    task: T080
+    commands:
+      - "Godot --headless --editor --path . --quit"
+      - "Godot --headless --path . --script res://tests/run_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_dice_roulette_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_treasure_21_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_dice_poker_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_vault_break_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_vault_break_ui_tests.gd"
+      - "Godot --headless --path . --script res://tests/run_casino_expansion_ui_tests.gd"
+      - "Godot --path . --display-driver windows --script res://tests/record_las_vegas_casino_expansion.gd (360x800 and 720x1280)"

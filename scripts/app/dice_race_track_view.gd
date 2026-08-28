@@ -3,6 +3,7 @@ extends Control
 
 signal visible_range_changed(value: Vector2)
 signal rank_changed(racer_id: String, previous_rank: int, next_rank: int)
+signal motion_finished
 
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 const GOAL := 24
@@ -63,6 +64,8 @@ var _idle_time := 0.0
 var _previous_positions := {}
 var _portraits: Dictionary = {}
 var _last_ranks: Dictionary = {}
+var _motion_tween: Tween
+var _spectator_focus := false
 var _lane: Panel
 var _course_background: TextureRect
 var _arena_glow: Panel
@@ -112,7 +115,14 @@ func set_race_state(positions: Dictionary, bet_racer: String, active: bool, anim
 		_tween_camera_to(SECTION_MINIMUMS[camera_section])
 	else:
 		_layout_course(animate)
-	_detect_rank_changes()
+	if animate:
+		if _motion_tween != null:
+			_motion_tween.kill()
+		_motion_tween = create_tween()
+		_motion_tween.tween_interval(0.56)
+		_motion_tween.tween_callback(_complete_motion)
+	else:
+		_detect_rank_changes()
 	var stretch_active := int(race_positions.get(bet_racer, 0)) >= FINAL_STRETCH_SPACE or (
 		not race_positions.is_empty() and int(race_positions.values().max()) >= FINAL_STRETCH_SPACE)
 	_set_goal_light(stretch_active and active)
@@ -134,6 +144,22 @@ func set_winner_presentation(racer_id: String) -> void:
 	_winner_racer = racer_id if racer_id in RACERS else ""
 	_refresh_racer_styles()
 	_layout_course()
+	var winner_marker := racer_nodes.get(_winner_racer) as Control
+	if winner_marker != null:
+		winner_marker.z_index = 18
+
+
+func set_spectator_focus(active: bool) -> void:
+	_spectator_focus = active
+	_refresh_racer_styles()
+	if _spotlight != null:
+		_spotlight.modulate = Color.WHITE if active else Color(0.82, 0.82, 0.86, 0.78)
+
+
+func _complete_motion() -> void:
+	_motion_tween = null
+	_detect_rank_changes()
+	motion_finished.emit()
 
 
 func camera_section_for_test() -> int:
@@ -351,7 +377,8 @@ func _refresh_racer_styles() -> void:
 		var portrait := _portraits.get(racer_id) as TextureRect
 		if portrait != null:
 			portrait.pivot_offset = portrait.size * 0.5
-			portrait.scale = Vector2.ONE * (1.18 if winner else (1.13 if selected else 1.0))
+			portrait.scale = Vector2.ONE * (1.18 if winner else (1.20 if selected and _spectator_focus else (1.13 if selected else 1.0)))
+			portrait.modulate = Color.WHITE if selected or winner or not _spectator_focus else Color(0.72, 0.72, 0.78, 0.82)
 
 
 func _layout_course(animate_racers: bool = false) -> void:
@@ -549,11 +576,12 @@ func _layout_racers(center_x: float, lane_width: float, animate_racers: bool) ->
 			if selected or racer_id == _winner_racer:
 				marker.z_index = 18 if racer_id == _winner_racer else 12
 			var visual := _visuals[racer_id] as Control
-			visual.scale = Vector2.ONE
+			var base_scale := 1.20 if selected and _spectator_focus else (1.13 if selected else 1.0)
+			visual.scale = Vector2.ONE * base_scale
 			var bounce := create_tween()
 			var squash := clampf(1.04 + float(distance) * 0.012, 1.05, 1.14)
-			bounce.tween_property(visual, "scale", Vector2(squash, 2.0 - squash), 0.18)
-			bounce.tween_property(visual, "scale", Vector2.ONE, 0.20)
+			bounce.tween_property(visual, "scale", Vector2(squash, 2.0 - squash) * base_scale, 0.18)
+			bounce.tween_property(visual, "scale", Vector2.ONE * base_scale, 0.20)
 		else:
 			marker.position = target
 			marker.z_index = 18 if racer_id == _winner_racer else (12 if selected else 8)
