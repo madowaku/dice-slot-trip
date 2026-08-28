@@ -15,6 +15,7 @@ var race_positions: Dictionary = {}
 var selected_racer := "duck"
 var wager_active := false
 var camera_range := Vector2(0, 9)
+var final_stretch_active := false
 var _labels: Dictionary = {}
 
 
@@ -39,10 +40,21 @@ func set_camera_range(value: Vector2) -> void:
 	queue_redraw()
 
 
+func set_final_stretch(active: bool) -> void:
+	final_stretch_active = active
+	var goal_label := _labels.get(GOAL) as Label
+	if goal_label != null:
+		goal_label.add_theme_color_override("font_color", Color.WHITE if active else Color("#ffe59a"))
+	queue_redraw()
+
+
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color("#171221"), true)
 	draw_rect(Rect2(Vector2(1, 1), size - Vector2(2, 2)), Color("#bd9345"), false, 2)
 	var x := 18.0
+	if final_stretch_active:
+		draw_circle(Vector2(x, 38), 14, Color(1.0, 0.76, 0.22, 0.22))
+		draw_circle(Vector2(x, 38), 10, Color("#ffe59a"), false, 3)
 	draw_line(Vector2(x, 38), Vector2(x, size.y - 38), Color("#e5c775"), 5)
 	var camera_top := _position_to_y(int(camera_range.y))
 	var camera_bottom := _position_to_y(int(camera_range.x))

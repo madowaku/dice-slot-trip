@@ -5,6 +5,7 @@ const OrientationScript = preload("res://scripts/game/dice_race_orientation.gd")
 const RaceScript = preload("res://scripts/game/dice_race_model.gd")
 const HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const RACE_SCENE: PackedScene = preload("res://scenes/casino/DiceRace.tscn")
+const TOWER_SCENE: PackedScene = preload("res://scenes/casino/DiceTower.tscn")
 const CAIRO_SCENE: PackedScene = preload("res://scenes/casino/CairoCasinoPlayScreen.tscn")
 
 var failures := 0
@@ -22,8 +23,10 @@ func _expect(condition: bool, label: String) -> void:
 
 func _run() -> void:
 	var bgm := root.get_node("BgmManager")
-	if FileAccess.file_exists(CasinoBankScript.SAVE_PATH):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(CasinoBankScript.SAVE_PATH))
+	var test_save_path := "user://dice_slot_trip_casino_ui_tests_%d.json" % OS.get_process_id()
+	CasinoBankScript.set_test_save_path(test_save_path)
+	if FileAccess.file_exists(test_save_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(test_save_path))
 	CasinoBankScript.add_chips(100)
 
 	var hub := HUB_SCENE.instantiate()
@@ -43,6 +46,15 @@ func _run() -> void:
 	hub.call("_close_dice_race")
 	await process_frame
 	_expect(bgm.current_track() == &"lasvegas_main", "returning from Dice Race restores the Casino Hub BGM")
+	hub.call("_open_dice_tower")
+	await process_frame
+	_expect(hub.hub_root.visible == false and hub.tower_host.visible, "opening DICE TOWER hides the Casino Hub list")
+	var hub_tower := hub.tower_host.get_child(0) as Control
+	_expect(hub_tower is DiceTowerScreen, "Casino Hub hosts the dedicated DICE TOWER scene")
+	_expect(bgm.current_track() == &"lasvegas_main", "DICE TOWER keeps the Casino Hub jackpot atmosphere")
+	hub.call("_close_dice_tower")
+	await process_frame
+	_expect(hub.hub_root.visible and not hub.tower_host.visible, "returning from DICE TOWER restores the Casino Hub list")
 	hub.queue_free()
 	await process_frame
 
@@ -119,7 +131,7 @@ func _run() -> void:
 	await process_frame
 	_expect(not race.setup_view.visible and race.race_view.visible, "RACE START replaces setup controls with the active race view")
 	_expect(race.race_fx_layer.find_child("YourBetBanner", true, false) != null, "RACE START announces the supported racer once")
-	_expect("GOALまで" in race.assignment_label.text, "live commentary exposes the supported racer's goal distance")
+	_expect(not race.assignment_label.text.is_empty(), "live commentary exposes one timely cheering cue")
 	var bet_marker := race.racer_nodes.get(race.selected_racer) as Control
 	var bet_ring := bet_marker.find_child("BetHighlight", true, false) as Panel
 	_expect(bet_ring != null and bet_ring.visible, "RACE START highlights the supported racer with a gold ring")
@@ -135,7 +147,7 @@ func _run() -> void:
 	race.call("_refresh_assignment_ui")
 	race.call("_on_roll_stop")
 	race.call("_on_roll_stop")
-	await create_timer(0.4).timeout
+	await create_timer(0.7).timeout
 	_expect(race.last_stop_feedback_assignments == known_assignments, "STOP feedback uses the exact stopped physical orientation")
 	_expect((race.race.get("last_assignments", {}) as Dictionary) == known_assignments, "STOP applies the same assignments to race logic without a hidden redraw")
 	_expect(race.stop_feedback_count_for_test == 1, "one STOP creates one six-direction feedback burst")
@@ -160,7 +172,11 @@ func _run() -> void:
 	for racer_id: String in RaceScript.RACERS:
 		(race.race.racers.get(racer_id, {}) as Dictionary)["position"] = gap_positions[racer_id]
 	race.call("_refresh_all", false)
-	_expect("先頭まで 2" in race.assignment_label.text, "live commentary exposes the gap to the leader")
+	_expect(race.assignment_label.text == "6なら先頭圏！", "live commentary turns a catchable gap into hope")
+	race.call("_set_spectator_focus", true, true)
+	_expect(race.spectator_strip.visible and not race.dice_console.visible and not race.roll_button.visible, "movement phase expands the race and collapses dice controls into a cheering strip")
+	race.call("_set_spectator_focus", false, true)
+	_expect(not race.spectator_strip.visible and race.dice_console.visible and race.roll_button.visible, "next-roll phase restores the full dice console")
 	var moved_positions := {}
 	for racer_id: String in RaceScript.RACERS:
 		moved_positions[racer_id] = 2
@@ -175,19 +191,22 @@ func _run() -> void:
 	await create_timer(0.08).timeout
 	var banner := race.race_fx_layer.find_child("FinalStretchBanner", true, false) as Label
 	_expect(banner != null and banner.text == "FINAL STRETCH!", "entering the final course section raises one race-air banner")
+	_expect(race.minimap.final_stretch_active, "FINAL STRETCH lights the minimap goal")
 	race.call("_play_overtake_fx", 2, 1)
 	await process_frame
 	_expect(race.race_fx_layer.find_child("OvertakeSpark", true, false) != null, "BET racer overtake emits gold sparks")
-	race.race.set("finished", true)
-	race.race.set("winner", race.selected_racer)
+	race.race.set("finished", false)
+	race.race.set("winner", "")
 	race.race.set("bet_active", true)
-	(race.race.racers.get(race.selected_racer, {}) as Dictionary)["position"] = RaceScript.GOAL
-	moved_positions[race.selected_racer] = RaceScript.GOAL
-	race.track_view.set_race_state(moved_positions, race.selected_racer, true)
-	race.call("_finish_race")
-	await create_timer(0.08).timeout
+	(race.race.racers.get(race.selected_racer, {}) as Dictionary)["position"] = RaceScript.GOAL - 1
+	race.current_assignments = known_assignments.duplicate()
+	race.spinning = true
+	race.call("_on_roll_stop")
+	await create_timer(0.22).timeout
+	_expect(race.race_fx_layer.find_child("WinCard", true, false) == null and race.spectator_strip.visible, "GOAL resolution holds the expanded race view until movement finishes")
+	await create_timer(0.72).timeout
 	var win_card := race.race_fx_layer.find_child("WinCard", true, false) as Control
-	_expect(win_card != null, "selected-racer victory shows the reward card")
+	_expect(win_card != null, "the reward card arrives after the GOAL movement and short dramatic hold")
 	_expect(race.race_fx_layer.find_child("ConfettiPiece", true, false) != null, "victory adds restrained gold confetti")
 	_expect(bet_marker.z_index == 18, "the GOAL racer moves to the course foreground")
 	_expect(win_card != null and not win_card.get_global_rect().intersects(bet_marker.get_global_rect()), "the reward card no longer covers the GOAL racer")
@@ -195,6 +214,51 @@ func _run() -> void:
 	_expect(race.setup_view.visible and not race.race_view.visible, "returning to setup restores the betting view")
 	CasinoBankScript.add_chips(race.selected_bet)
 	race.queue_free()
+	await process_frame
+
+	var tower := TOWER_SCENE.instantiate()
+	root.add_child(tower)
+	await process_frame
+	_expect(tower is DiceTowerScreen, "Dice Tower scene instantiates its screen script")
+	_expect(tower.tutorial_overlay.visible, "Dice Tower opens with its three-step tutorial")
+	tower.call("_close_tutorial")
+	_expect(tower.setup_view.visible and not tower.active_view.visible, "tutorial dismissal reveals BET selection")
+	_expect(tower.bet_buttons.size() == 3, "Dice Tower offers the three authored bets")
+	_expect(not tower.start_button.disabled and tower.selected_bet == 20, "twenty CHIP is the default affordable bet")
+	_expect(tower.cashout_button.get_index() < tower.roll_button.get_index(), "CASH OUT stays on the left of ROLL")
+	var tower_rows: Array[Node] = tower.tower_stack.find_children("Floor_*", "PanelContainer", false, false)
+	_expect(tower_rows.size() == 10, "active view builds all ten tower floors")
+	var tower_start_balance: int = CasinoBankScript.balance()
+	tower.rng_seed = 20260826
+	tower.call("_start_game")
+	await process_frame
+	tower.queued_roll_value = 4
+	_expect(CasinoBankScript.balance() == tower_start_balance - 20 and tower.active_view.visible, "GAME START immediately commits the wager")
+	_expect(tower.cashout_button.disabled and not tower.roll_button.disabled, "START disables CASH OUT and arms ROLL")
+	tower.call("_on_roll_pressed")
+	await create_timer(1.18).timeout
+	_expect(int(tower.game.floor) == 1 and not tower.cashout_button.disabled, "first safe roll reaches floor one and enables CASH OUT")
+	_expect("23" in tower.cashout_button.text, "floor-one CASH OUT shows its chip amount directly")
+	var cash_center_x: float = tower.cashout_button.global_position.x + tower.cashout_button.size.x * 0.5
+	var roll_center_x: float = tower.roll_button.global_position.x + tower.roll_button.size.x * 0.5
+	_expect(cash_center_x < roll_center_x and absf(tower.cashout_button.size.x - tower.roll_button.size.x) <= 8.0, "fixed twin actions remain balanced across the console")
+	tower.queued_roll_value = 1
+	tower.call("_on_roll_pressed")
+	await create_timer(1.18).timeout
+	_expect(bool(tower.game.busted) and int(tower.game.payout) == 0 and CasinoBankScript.balance() == tower_start_balance - 20, "rolled one loses only the committed wager")
+	_expect(tower.roll_button.text == "もう一度" and tower.cashout_button.disabled, "BUST leaves one retry action and closes CASH OUT")
+	tower.roll_button.pressed.emit()
+	await process_frame
+	_expect(tower.setup_view.visible and not tower.active_view.visible, "retry returns the player to BET selection")
+	tower.call("_start_game")
+	await process_frame
+	tower.queued_roll_value = 4
+	tower.call("_on_roll_pressed")
+	await create_timer(1.18).timeout
+	tower.call("_on_cashout_pressed")
+	await process_frame
+	_expect(bool(tower.game.cashed_out) and int(tower.game.payout) == 23 and CasinoBankScript.balance() == tower_start_balance - 17, "successful CASH OUT pays twenty-three chips after the earlier lost run")
+	tower.queue_free()
 	await process_frame
 
 	var cairo := CAIRO_SCENE.instantiate()
@@ -268,6 +332,8 @@ func _run() -> void:
 	main.queue_free()
 	await process_frame
 
-	DirAccess.remove_absolute(ProjectSettings.globalize_path(CasinoBankScript.SAVE_PATH))
+	if FileAccess.file_exists(test_save_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(test_save_path))
+	CasinoBankScript.clear_test_save_path()
 	print("Casino UI tests: %d assertions, %d failures" % [assertions, failures])
 	quit(1 if failures > 0 else 0)

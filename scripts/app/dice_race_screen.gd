@@ -80,6 +80,9 @@ var die_face_label: Label
 var die_panel: Control
 var dice_presentation: DicePresentation3D
 var dice_console: PanelContainer
+var track_frame: PanelContainer
+var spectator_strip: PanelContainer
+var spectator_strip_label: Label
 var track: Control
 var track_view: DiceRaceTrackView
 var minimap: DiceRaceMiniMap
@@ -102,6 +105,7 @@ var amount_buttons := {}
 var bet_portrait: TextureRect
 var race_fx_layer: Control
 var final_stretch_shown := false
+var spectator_layout_tween: Tween
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -175,6 +179,7 @@ func _build_ui() -> void:
 	root.add_child(race_view)
 	_build_track(race_view)
 	_build_ranking(race_view)
+	_build_spectator_strip(race_view)
 	_build_dice_console(race_view)
 
 	roll_button = _button("ROLL", true)
@@ -315,7 +320,7 @@ func _build_course_overview(root: VBoxContainer) -> void:
 
 
 func _build_track(root: VBoxContainer) -> void:
-	var track_frame := PanelContainer.new()
+	track_frame = PanelContainer.new()
 	track_frame.name = "VerticalRaceViewport"
 	track_frame.custom_minimum_size.y = 560
 	track_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -339,6 +344,19 @@ func _build_track(root: VBoxContainer) -> void:
 	track_view.visible_range_changed.connect(minimap.set_camera_range)
 	minimap.set_camera_range(track_view.visible_range_for_test())
 	track_view.rank_changed.connect(_on_track_rank_changed)
+
+
+func _build_spectator_strip(root: VBoxContainer) -> void:
+	spectator_strip = PanelContainer.new()
+	spectator_strip.name = "SpectatorStrip"
+	spectator_strip.custom_minimum_size.y = 72
+	spectator_strip.add_theme_stylebox_override("panel", _panel(Color("#21162be8"), GOLD, 12, 2))
+	spectator_strip.visible = false
+	root.add_child(spectator_strip)
+	spectator_strip_label = _label("", 24, GOLD_LIGHT)
+	spectator_strip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	spectator_strip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	spectator_strip.add_child(spectator_strip_label)
 
 func _racer_art(racer_id: String) -> Texture2D:
 	var path := str(RACER_ART_PATHS.get(racer_id, ""))
@@ -559,6 +577,8 @@ func _show_bet_select() -> void:
 	setup_view.visible = true
 	race_view.visible = false
 	final_stretch_shown = false
+	if minimap != null:
+		minimap.set_final_stretch(false)
 	status_label.text = "勝たせたいレーサーを選ぼう"
 	_refresh_bet_buttons()
 	_refresh_all()
@@ -602,9 +622,11 @@ func _start_race() -> void:
 	wager_committed = true
 	result_recorded = false
 	final_stretch_shown = false
+	minimap.set_final_stretch(false)
 	setup_view.visible = false
 	race_view.visible = true
 	track_view.reset_camera()
+	_set_spectator_focus(false, true)
 	roll_button.disabled = false
 	status_label.text = "%sを応援！" % RACER_LABELS[selected_racer]
 	spin_elapsed = randf() * SPIN_STEP_SECONDS * float(maxi(orientations.size(), 1))
@@ -617,6 +639,7 @@ func _on_roll_stop() -> void:
 	if not wager_committed or bool(race.get("finished", false)):
 		return
 	if not spinning:
+		_set_spectator_focus(false)
 		spinning = true
 		_play_ui_sfx(&"start", false)
 		roll_button.text = "STOP!"
@@ -633,16 +656,27 @@ func _on_roll_stop() -> void:
 	var was_photo_finish := not (race.get("photo_finish_candidates", []) as Array).is_empty()
 	race = RaceScript.apply_roll(race, current_assignments)
 	_play_roll_result_sfx()
-	status_label.text = "PHOTO FINISH判定！" if was_photo_finish else _movement_summary()
+	status_label.text = "PHOTO FINISH判定！" if was_photo_finish else "%s、行け！" % RACER_LABELS[selected_racer]
+	_set_spectator_focus(true)
 	_refresh_all(true)
 	_refresh_physical_die(0.18)
 	_play_stop_assignment_feedback(stopped_assignments)
-	_maybe_show_final_stretch()
-	await get_tree().create_timer(0.34).timeout
+	await track_view.motion_finished
 	if not is_inside_tree():
+		return
+	_refresh_ranking()
+	_refresh_race_intel()
+	_show_selected_movement_event()
+	_maybe_show_final_stretch()
+	if bool(race.get("finished", false)):
+		_show_race_banner("GOAL!", GOLD_LIGHT, Color("#3f2408"), 0.22, "GoalMomentBanner")
+		await get_tree().create_timer(0.28).timeout
+		if is_inside_tree():
+			_finish_race()
 		return
 	_after_roll_resolution()
 	if not bool(race.get("finished", false)) and (race.get("photo_finish_candidates", []) as Array).is_empty():
+		_set_spectator_focus(false)
 		roll_button.disabled = false
 
 func _after_roll_resolution() -> void:
@@ -662,8 +696,6 @@ func _finish_race() -> void:
 	spinning = false
 	roll_button.disabled = true
 	var winner := str(race.get("winner", ""))
-	if is_instance_valid(track_view):
-		track_view.set_winner_presentation(winner)
 	var payout := RaceScript.winning_payout(race)
 	_play_ui_sfx(&"complete" if winner == selected_racer else &"error", true)
 	if payout > 0:
@@ -684,6 +716,8 @@ func _finish_race() -> void:
 		roll_button.pressed.disconnect(_on_roll_stop)
 	roll_button.pressed.connect(_restart_after_result, CONNECT_ONE_SHOT)
 	_refresh_all()
+	if is_instance_valid(track_view):
+		track_view.set_winner_presentation(winner)
 
 func _restart_after_result() -> void:
 	_play_ui_sfx(&"retry", false)
@@ -704,6 +738,32 @@ func _on_track_rank_changed(racer_id: String, previous_rank: int, next_rank: int
 		_play_overtake_fx(previous_rank, next_rank)
 
 
+func _set_spectator_focus(active: bool, immediate: bool = false) -> void:
+	if track_frame == null or dice_console == null or spectator_strip == null or roll_button == null:
+		return
+	if spectator_layout_tween != null:
+		spectator_layout_tween.kill()
+		spectator_layout_tween = null
+	track_view.set_spectator_focus(active)
+	if active:
+		var value := int(current_assignments.get(selected_racer, 0))
+		spectator_strip_label.text = "%s  %d!!" % [RACER_LABELS[selected_racer], value]
+		dice_console.visible = false
+		roll_button.visible = false
+		spectator_strip.visible = true
+	else:
+		dice_console.visible = true
+		roll_button.visible = true
+		spectator_strip.visible = false
+	var target_height := 720.0 if active else 560.0
+	if immediate:
+		track_frame.custom_minimum_size.y = target_height
+		return
+	spectator_layout_tween = create_tween()
+	spectator_layout_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	spectator_layout_tween.tween_property(track_frame, "custom_minimum_size:y", target_height, 0.18)
+
+
 func _maybe_show_final_stretch():
 	if final_stretch_shown or not wager_committed:
 		return
@@ -715,6 +775,8 @@ func _maybe_show_final_stretch():
 	if not reached:
 		return
 	final_stretch_shown = true
+	_play_ui_sfx(&"streak", true)
+	minimap.set_final_stretch(true)
 	_show_race_banner("FINAL STRETCH!", GOLD_LIGHT, Color("#3f2408"), 0.72, "FinalStretchBanner")
 
 
@@ -748,7 +810,7 @@ func _show_race_banner(text: String, color: Color, outline_color: Color, hold_se
 func _play_overtake_fx(previous_rank: int, next_rank: int) -> void:
 	if previous_rank <= next_rank:
 		return
-	_show_race_banner("%d → %d!" % [previous_rank, next_rank], GOLD_LIGHT, Color("#3f2408"), 0.42, "OvertakeBanner")
+	_show_race_banner("%d位 → %d位!" % [previous_rank, next_rank], GOLD_LIGHT, Color("#3f2408"), 0.42, "OvertakeBanner")
 	for index: int in 6:
 		_spawn_spark()
 
@@ -842,6 +904,20 @@ func _movement_summary() -> String:
 		extra = "　丸太でSTOP"
 	return "%s：%d → %dマス%s" % [RACER_LABELS[selected_racer], rolled, effective, extra]
 
+
+func _show_selected_movement_event() -> void:
+	var move: Dictionary = (race.get("last_movements", {}) as Dictionary).get(selected_racer, {})
+	var gimmick := str(move.get("gimmick", ""))
+	var callout := ""
+	match gimmick:
+		"rapid": callout = "急流！ 一気に加速！"
+		"foxfire": callout = "狐火！ -2マス"
+		"log": callout = "丸太でSTOP！" if bool(move.get("blocked_by_log", false)) else "丸太突破！"
+	if callout.is_empty():
+		return
+	status_label.text = callout
+	_show_race_banner(callout, GOLD_LIGHT, Color("#3f2408"), 0.38, "GimmickCallout")
+
 func _refresh_all(animate_track: bool = false) -> void:
 	chip_label.text = "CHIP  %d" % CasinoBankScript.balance()
 	bet_label.text = "%s  %d" % [RACER_LABELS.get(selected_racer, selected_racer), selected_bet] if wager_committed else "-"
@@ -850,8 +926,9 @@ func _refresh_all(animate_track: bool = false) -> void:
 	win_label.text = "%d" % payout if payout > 0 else ("×4" if wager_committed else "-")
 	_refresh_assignment_ui()
 	_refresh_physical_die(0.0)
-	_refresh_ranking()
-	_refresh_race_intel()
+	if not animate_track:
+		_refresh_ranking()
+		_refresh_race_intel()
 	call_deferred("_refresh_track", animate_track)
 
 func _refresh_race_intel() -> void:
@@ -866,11 +943,24 @@ func _refresh_race_intel() -> void:
 	var rank := RaceScript.rank_for_racer(race, selected_racer)
 	var goal_distance := maxi(0, RaceScript.GOAL - bet_position)
 	if goal_distance == 0:
-		assignment_label.text = "%d位 · GOAL!" % rank
+		assignment_label.text = "GOAL!"
+	elif goal_distance <= 6:
+		assignment_label.text = "GOALまで %dマス！" % goal_distance
 	elif rank == 1:
-		assignment_label.text = "1位 · LEADER · GOALまで %d" % goal_distance
+		assignment_label.text = "LEADER!"
 	else:
-		assignment_label.text = "%d位 · 先頭まで %d · GOALまで %d" % [rank, leader_position - bet_position, goal_distance]
+		var leader_gap := leader_position - bet_position
+		if leader_gap <= 1:
+			assignment_label.text = "先頭まで1マス！"
+		elif leader_gap <= _max_next_effective_move():
+			assignment_label.text = "6なら先頭圏！"
+		else:
+			assignment_label.text = "先頭まで %dマス" % leader_gap
+
+
+func _max_next_effective_move() -> int:
+	var racer: Dictionary = (race.get("racers", {}) as Dictionary).get(selected_racer, {})
+	return 4 if bool(racer.get("foxfire_pending", false)) else 6
 
 func _refresh_assignment_ui() -> void:
 	if current_assignments.is_empty():
