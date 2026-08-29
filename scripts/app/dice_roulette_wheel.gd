@@ -6,6 +6,7 @@ const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.t
 const DISPLAY_FONT: Font = preload("res://assets/fonts/cinzel/Cinzel-Variable.ttf")
 const BEZEL: Texture2D = preload("res://assets/casino/dice_roulette/ui/roulette-bezel-v1.png")
 const DieMarkerScript = preload("res://scripts/app/dice_roulette_die_marker.gd")
+const MARKER_SIZE: float = 92.0
 
 const AREA_COLORS := {
 	"LOW": Color("#385a90"),
@@ -80,8 +81,8 @@ func _draw_area_caption(center: Vector2, radius: float, degrees: float, text: St
 
 func _make_marker(text: String, fill: Color) -> Control:
 	var marker := DieMarkerScript.new() as Control
-	marker.custom_minimum_size = Vector2(68, 68)
-	marker.size = Vector2(68, 68)
+	marker.custom_minimum_size = Vector2(MARKER_SIZE, MARKER_SIZE)
+	marker.size = Vector2(MARKER_SIZE, MARKER_SIZE)
 	marker.call("configure", fill, text)
 	return marker
 
@@ -91,6 +92,8 @@ func reset_markers() -> void:
 	markers_spinning = false
 	red_marker.call("set_face", 1)
 	blue_marker.call("set_face", 1)
+	red_marker.call("set_result_focus", false)
+	blue_marker.call("set_result_focus", false)
 	_set_red_angle(-PI * 0.5)
 	_set_blue_angle(-PI * 0.5 + 0.18)
 
@@ -110,6 +113,8 @@ func animate_results(red_slot: int, blue_slot: int, red_face: int, blue_face: in
 	_set_blue_angle(_slot_angle(blue_slot))
 	red_marker.call("set_face", red_face)
 	blue_marker.call("set_face", blue_face)
+	red_marker.call("set_result_focus", true)
+	blue_marker.call("set_result_focus", true)
 
 func _slot_angle(slot: int) -> float:
 	return -PI * 0.5 + TAU * (float(slot) + 0.5) / float(ModelScript.SLOT_COUNT)
@@ -136,7 +141,7 @@ func _refresh_markers() -> void:
 func _refresh_marker(marker: Control, angle: float, radius_ratio: float) -> void:
 	var center := size * 0.5
 	var radius := minf(size.x, size.y) * 0.395 * radius_ratio
-	var marker_size := Vector2(68, 68)
+	var marker_size := Vector2(MARKER_SIZE, MARKER_SIZE)
 	var tangent := Vector2(-sin(angle), cos(angle))
 	var lane_offset: float = -30.0 if marker == red_marker else 30.0
 	marker.position = center + Vector2(cos(angle), sin(angle)) * radius + tangent * lane_offset - marker_size * 0.5

@@ -6,9 +6,10 @@ var die_color: Color = Color("#d9473f")
 var edge_color: Color = Color("#7c1715")
 var face: int = 1
 var badge_text: String = "R"
+var result_focus: bool = false
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(68, 68)
+	custom_minimum_size = Vector2(92, 92)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	queue_redraw()
 
@@ -22,10 +23,18 @@ func set_face(value: int) -> void:
 	face = clampi(value, 1, 6)
 	queue_redraw()
 
+func set_result_focus(value: bool) -> void:
+	result_focus = value
+	queue_redraw()
+
 func _draw() -> void:
 	var extent: float = minf(size.x, size.y)
 	var origin := Vector2((size.x - extent) * 0.5, (size.y - extent) * 0.5)
 	var body := Rect2(origin + Vector2(7.0, 4.0), Vector2(extent - 19.0, extent - 19.0))
+	if result_focus:
+		var halo_center := body.get_center() + Vector2(0.0, 2.0)
+		draw_circle(halo_center, body.size.x * 0.57, Color(1.0, 0.82, 0.30, 0.12))
+		draw_arc(halo_center, body.size.x * 0.57, 0.0, TAU, 40, Color(1.0, 0.88, 0.48, 0.90), 3.0, true)
 
 	# Soft table shadow and two shaded side faces give the marker a readable die silhouette.
 	draw_set_transform(origin + Vector2(extent * 0.52, extent * 0.82), 0.0, Vector2(1.0, 0.34))
@@ -88,7 +97,8 @@ func _draw_pips(body: Rect2) -> void:
 			positions = [Vector2(x_left, y_top), Vector2(x_right, y_top), Vector2(x_mid, y_mid), Vector2(x_left, y_bottom), Vector2(x_right, y_bottom)]
 		6:
 			positions = [Vector2(x_left, y_top), Vector2(x_right, y_top), Vector2(x_left, y_mid), Vector2(x_right, y_mid), Vector2(x_left, y_bottom), Vector2(x_right, y_bottom)]
+	var pip_radius: float = clampf(body.size.x * 0.095, 4.6, 7.0)
 	for pip_position: Vector2 in positions:
-		draw_circle(pip_position + Vector2(1.0, 1.5), 5.0, Color(0.0, 0.0, 0.0, 0.48))
-		draw_circle(pip_position, 4.6, Color("#fff8df"))
-		draw_circle(pip_position - Vector2(1.2, 1.2), 1.3, Color.WHITE)
+		draw_circle(pip_position + Vector2(1.0, 1.5), pip_radius + 0.5, Color(0.0, 0.0, 0.0, 0.48))
+		draw_circle(pip_position, pip_radius, Color("#fff8df"))
+		draw_circle(pip_position - Vector2(1.2, 1.2), pip_radius * 0.28, Color.WHITE)
