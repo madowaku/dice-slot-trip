@@ -10,6 +10,8 @@ const ROULETTE_BGM_PATH := "res://assets/audio/bgm/lasvegas/ルーレット.mp3"
 const ROULETTE_BACKGROUND_PATH := "res://assets/casino/dice_roulette/ui/casino-table-bg-v1.png"
 const ROULETTE_BEZEL_PATH := "res://assets/casino/dice_roulette/ui/roulette-bezel-v1.png"
 const ROULETTE_SPARKLE_PATH := "res://assets/casino/dice_roulette/ui/sparkle_frames/03.png"
+const BUTTON_ORNAMENTS_PATH := "res://assets/art/ui/common/roll-button-ornaments.png"
+const SPIN_RING_PATH := "res://assets/casino/dice_roulette/ui/spin-button-amber-v1.png"
 
 var failures := 0
 var assertions := 0
@@ -115,6 +117,8 @@ func _test_ui_contract() -> void:
 	_expect(ResourceLoader.load(ROULETTE_BACKGROUND_PATH) is Texture2D, "roulette casino background imports as a production texture")
 	_expect(ResourceLoader.load(ROULETTE_BEZEL_PATH) is Texture2D, "roulette jeweled bezel imports with transparency")
 	_expect(ResourceLoader.load(ROULETTE_SPARKLE_PATH) is Texture2D, "roulette normalized sparkle frame imports as a texture")
+	_expect(ResourceLoader.load(BUTTON_ORNAMENTS_PATH) is Texture2D, "roulette button ornament strip imports as a production texture")
+	_expect(ResourceLoader.load(SPIN_RING_PATH) is Texture2D, "roulette round SPIN ring imports as a production texture")
 	CasinoBankScript.save_data(CasinoBankScript.default_data())
 	CasinoBankScript.add_chips(100)
 	var roulette := ROULETTE_SCENE.instantiate()
@@ -128,10 +132,15 @@ func _test_ui_contract() -> void:
 	_expect(roulette.main_bet_buttons.size() == 6, "roulette creates all six main WHERE bet areas")
 	_expect(roulette.side_bet_buttons.size() == 3, "roulette creates red draw blue side bets")
 	_expect(roulette.spin_button != null and roulette.spin_button.custom_minimum_size.x >= 192.0, "roulette SPIN keeps a 96px physical touch target on the 360px canvas")
+	_expect(roulette.spin_button.get_node_or_null("SpinGoldRing") is TextureRect and roulette.spin_button.get_node_or_null("SpinCaption") is Label, "roulette SPIN uses the premium round gold ring and readable live caption")
 	_expect(roulette.guide_label != null and "①" in roulette.guide_label.text and "ベット額" in roulette.guide_label.text, "roulette opens with a Japanese current-step guide")
 	_expect(roulette.betting_shell != null and roulette.betting_shell.visible, "roulette lower controls sit on a decorated betting-table panel")
+	_expect((roulette.amount_buttons.get(10) as Button).get_node_or_null("ButtonOrnament") is TextureRect, "roulette amount buttons use the production gold ornament frames")
+	_expect((roulette.side_bet_buttons.get("RED_LEADS") as Button).get_node_or_null("SideDiceIcon") is TextureRect, "roulette color bets carry readable dice art")
 	_expect(roulette.action_dock != null and roulette.action_dock.visible and roulette.action_dock.is_ancestor_of(roulette.spin_button), "roulette keeps a visible fixed action dock independent of the scrolling betting table")
-	_expect(roulette.undo_button.text == "もどす" and roulette.clear_button.text == "消す", "roulette utility controls use first-play Japanese labels")
+	var undo_caption := roulette.undo_button.get_node_or_null("ButtonCaption") as Label
+	var clear_caption := roulette.clear_button.get_node_or_null("ButtonCaption") as Label
+	_expect(undo_caption != null and undo_caption.text == "もどす" and clear_caption != null and clear_caption.text == "消す", "roulette utility controls use first-play Japanese labels")
 	var casino_back := roulette.find_child("CasinoBackButton", true, false) as Button
 	_expect(casino_back != null and casino_back.custom_minimum_size.y >= 54.0, "roulette keeps an always-visible casino return target")
 	_expect(int(roulette.get("phase")) == 1, "roulette opens in BETTING phase")

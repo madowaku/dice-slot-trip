@@ -10,6 +10,8 @@ const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.t
 const DISPLAY_FONT: Font = preload("res://assets/fonts/cinzel/Cinzel-Variable.ttf")
 const CASINO_BACKGROUND: Texture2D = preload("res://assets/casino/dice_roulette/ui/casino-table-bg-v1.png")
 const DICE_ICON: Texture2D = preload("res://assets/art/ui/common/dice-ivory-brass.png")
+const BUTTON_ORNAMENTS: Texture2D = preload("res://assets/art/ui/common/roll-button-ornaments.png")
+const SPIN_RING: Texture2D = preload("res://assets/casino/dice_roulette/ui/spin-button-amber-v1.png")
 const SPARKLE_TEXTURES: Array[Texture2D] = [
 	preload("res://assets/casino/dice_roulette/ui/sparkle_frames/01.png"),
 	preload("res://assets/casino/dice_roulette/ui/sparkle_frames/02.png"),
@@ -292,16 +294,17 @@ func _build_ui() -> void:
 	for amount: int in ModelScript.BET_AMOUNTS:
 		var caption := "%d" % amount
 		if amount == 10:
-			caption += "\nじっくり"
+			caption += "  じっくり"
 		elif amount == 20:
-			caption += "\nおすすめ"
+			caption += "  おすすめ"
 		else:
-			caption += "\n大勝負"
+			caption += "  大勝負"
 		var button := _button(caption, 22)
 		button.toggle_mode = true
 		button.custom_minimum_size.y = 68
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(_select_amount.bind(amount))
+		_add_button_ornament(button)
 		amount_row.add_child(button)
 		amount_buttons[amount] = button
 
@@ -332,10 +335,11 @@ func _build_ui() -> void:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(_place_side_bet.bind(area))
 		_add_chip_badge(button)
+		_add_side_dice_icon(button, area)
 		side_row.add_child(button)
 		side_bet_buttons[area] = button
 	var dock_clearance := Control.new()
-	dock_clearance.custom_minimum_size.y = 142
+	dock_clearance.custom_minimum_size.y = 210
 	dock_clearance.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	betting_panel.add_child(dock_clearance)
 
@@ -343,7 +347,7 @@ func _build_ui() -> void:
 	action_dock.name = "BetActionDock"
 	action_dock.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	action_dock.offset_left = 18.0
-	action_dock.offset_top = -146.0
+	action_dock.offset_top = -210.0
 	action_dock.offset_right = -18.0
 	action_dock.offset_bottom = -14.0
 	action_dock.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -369,15 +373,26 @@ func _build_ui() -> void:
 	var controls := HBoxContainer.new()
 	controls.add_theme_constant_override("separation", 7)
 	dock_body.add_child(controls)
+	var utility_grid := GridContainer.new()
+	utility_grid.columns = 3
+	utility_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	utility_grid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	utility_grid.add_theme_constant_override("h_separation", 7)
+	controls.add_child(utility_grid)
 	undo_button = _button("もどす", 20)
 	clear_button = _button("消す", 20)
 	rebet_button = _button("前回BET", 19)
-	spin_button = _display_button("SPIN!", 32)
+	spin_button = _display_button("", 32)
 	spin_button.name = "SpinButton"
-	for button: Button in [undo_button, clear_button, rebet_button, spin_button]:
+	for button: Button in [undo_button, clear_button, rebet_button]:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 68
-		controls.add_child(button)
+		button.custom_minimum_size.y = 64
+		_add_button_ornament(button, 2)
+		utility_grid.add_child(button)
+	spin_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	spin_button.custom_minimum_size = Vector2(192, 132)
+	controls.add_child(spin_button)
+	_add_spin_decoration(spin_button)
 	# Keep the primary CTA touch-safe at the 360px reference width while
 	# allowing the three utility actions to remain compact but readable.
 	undo_button.custom_minimum_size.x = 58
@@ -385,7 +400,7 @@ func _build_ui() -> void:
 	rebet_button.custom_minimum_size.x = 58
 	# The project renders a 720px design canvas into the 360px reference
 	# viewport, so 192 design pixels provide the required 96px physical hitbox.
-	spin_button.custom_minimum_size.x = 236
+	spin_button.custom_minimum_size.x = 192
 	undo_button.pressed.connect(_undo)
 	clear_button.pressed.connect(_clear_bets)
 	rebet_button.pressed.connect(_rebet)
@@ -690,13 +705,15 @@ func _refresh_ui() -> void:
 		button.disabled = not betting
 		if amount == selected_bet_amount:
 			_apply_button_style(button, Color("#f3d179"), Color("#ffeeb2"), BRIGHT_GOLD, Color("#241400"), 20, 3)
+			_set_button_ornament(button, 3)
 		else:
 			_apply_button_style(button, Color("#0b2a20"), Color("#164b38"), Color("#9a7130"), CREAM, 20, 2)
+			_set_button_ornament(button, 0)
 	for area: String in main_bet_buttons.keys():
 		var button := main_bet_buttons[area] as Button
 		var amount := int(main_bets.get(area, 0))
 		var multiplier := float(ModelScript.MAIN_MULTIPLIERS.get(area, 0.0))
-		button.text = "%s\n%s  ×%s\n " % [MAIN_LABELS[area], MAIN_TAGS[area], _fmt_multiplier(multiplier)]
+		button.text = "%s\n%s  ×%s" % [MAIN_LABELS[area], MAIN_TAGS[area], _fmt_multiplier(multiplier)]
 		button.disabled = not betting
 		_set_chip_badge(button, amount)
 		_style_bet_button(button, area, amount > 0)
@@ -705,7 +722,7 @@ func _refresh_ui() -> void:
 		var amount := int(side_bet.get("amount", 0)) if str(side_bet.get("area", "")) == area else 0
 		var multiplier := float(ModelScript.SIDE_MULTIPLIERS.get(area, 0.0))
 		var side_caption := "赤が勝つ" if area == "RED_LEADS" else ("青が勝つ" if area == "BLUE_LEADS" else "同じ出目")
-		button.text = "%s\n%s  ×%s\n " % ["RED" if area == "RED_LEADS" else ("BLUE" if area == "BLUE_LEADS" else "DRAW"), side_caption, _fmt_multiplier(multiplier)]
+		button.text = "%s\n%s  ×%s" % ["RED" if area == "RED_LEADS" else ("BLUE" if area == "BLUE_LEADS" else "DRAW"), side_caption, _fmt_multiplier(multiplier)]
 		button.disabled = not betting
 		_set_chip_badge(button, amount)
 		_style_side_button(button, area, amount > 0)
@@ -752,7 +769,10 @@ func _apply_responsive_layout() -> void:
 		button.custom_minimum_size.y = 74 if compact else 82
 	for button: Button in [undo_button, clear_button, rebet_button, spin_button]:
 		if button != null:
-			button.custom_minimum_size.y = 60 if compact else 68
+			if button == spin_button:
+				button.custom_minimum_size.y = 124 if compact else 132
+			else:
+				button.custom_minimum_size.y = 58 if compact else 64
 
 func _set_wheel_focus(focused: bool) -> void:
 	if wheel_stack == null:
@@ -808,17 +828,96 @@ func _add_chip_badge(button: Button) -> void:
 	badge.name = "BetChipBadge"
 	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	badge.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	badge.offset_left = -86.0
-	badge.offset_top = -36.0
-	badge.offset_right = -6.0
-	badge.offset_bottom = -5.0
+	badge.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	badge.offset_left = -42.0
+	badge.offset_top = -34.0
+	badge.offset_right = 42.0
+	badge.offset_bottom = -3.0
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge.visible = false
 	badge.add_theme_color_override("font_outline_color", Color.BLACK)
 	badge.add_theme_constant_override("outline_size", 3)
 	badge.add_theme_stylebox_override("normal", _panel(Color("#173d8f"), BRIGHT_GOLD, 18, 3))
 	button.add_child(badge)
+
+func _button_ornament_texture(frame: int) -> AtlasTexture:
+	var atlas := AtlasTexture.new()
+	atlas.atlas = BUTTON_ORNAMENTS
+	atlas.region = Rect2(0.0, float(clampi(frame, 0, 3) * 400), 960.0, 400.0)
+	return atlas
+
+func _add_button_ornament(button: Button, frame: int = 0) -> void:
+	var ornament := TextureRect.new()
+	ornament.name = "ButtonOrnament"
+	ornament.texture = _button_ornament_texture(frame)
+	ornament.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ornament.stretch_mode = TextureRect.STRETCH_SCALE
+	ornament.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ornament.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ornament.modulate = Color(1.0, 1.0, 1.0, 0.94)
+	button.add_child(ornament)
+	var caption_size := maxi(16, button.get_theme_font_size("font_size") - 4)
+	var caption := _label(button.text, caption_size, CREAM)
+	caption.name = "ButtonCaption"
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	caption.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	caption.offset_top = 16.0
+	caption.offset_bottom = -2.0
+	caption.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.86))
+	caption.add_theme_constant_override("outline_size", 3)
+	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(caption)
+	button.set_meta("ornament_caption", button.text)
+	button.text = ""
+
+func _set_button_ornament(button: Button, frame: int) -> void:
+	var ornament := button.get_node_or_null("ButtonOrnament") as TextureRect
+	if ornament != null:
+		ornament.texture = _button_ornament_texture(frame)
+	var caption := button.get_node_or_null("ButtonCaption") as Label
+	if caption != null and not button.text.is_empty():
+		caption.text = button.text
+		button.set_meta("ornament_caption", button.text)
+		button.text = ""
+
+func _add_side_dice_icon(button: Button, area: String) -> void:
+	var icon := TextureRect.new()
+	icon.name = "SideDiceIcon"
+	icon.texture = DICE_ICON
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	icon.offset_left = 9.0
+	icon.offset_top = -23.0
+	icon.offset_right = 55.0
+	icon.offset_bottom = 23.0
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.modulate = RED.lightened(0.12) if area == "RED_LEADS" else (BLUE.lightened(0.18) if area == "BLUE_LEADS" else Color("#d7c9a3"))
+	button.add_child(icon)
+	var caption := button.get_node_or_null("ButtonCaption") as Label
+	if caption != null:
+		caption.offset_left = 30.0
+
+func _add_spin_decoration(button: Button) -> void:
+	var ring := TextureRect.new()
+	ring.name = "SpinGoldRing"
+	ring.texture = SPIN_RING
+	ring.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ring.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	ring.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(ring)
+
+	var caption := _display_label("SPIN!", 35, Color.WHITE)
+	caption.name = "SpinCaption"
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	caption.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	caption.add_theme_color_override("font_outline_color", Color("#421c00"))
+	caption.add_theme_constant_override("outline_size", 6)
+	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(caption)
 
 func _set_chip_badge(button: Button, amount: int) -> void:
 	var badge := button.get_node_or_null("BetChipBadge") as Label
@@ -909,10 +1008,18 @@ func _style_utility_button(button: Button) -> void:
 	_apply_button_style(button, Color("#081b15"), Color("#12372a"), Color("#80622f"), MUTED, 16, 1)
 
 func _style_spin_button(button: Button, enabled: bool) -> void:
-	if enabled:
-		_apply_button_style(button, Color("#b85f08"), Color("#dc8617"), BRIGHT_GOLD, Color.WHITE, 30, 4)
-	else:
-		_apply_button_style(button, Color("#3d382e"), Color("#4b4538"), Color("#72664c"), Color("#b7ad98"), 30, 2)
+	var clear_style := _panel(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 30, 0)
+	button.add_theme_stylebox_override("normal", clear_style)
+	button.add_theme_stylebox_override("hover", clear_style)
+	button.add_theme_stylebox_override("focus", clear_style)
+	button.add_theme_stylebox_override("pressed", clear_style)
+	button.add_theme_stylebox_override("disabled", clear_style)
+	var ring := button.get_node_or_null("SpinGoldRing") as TextureRect
+	if ring != null:
+		ring.modulate = Color.WHITE if enabled else Color(0.62, 0.62, 0.58, 0.78)
+	var caption := button.get_node_or_null("SpinCaption") as Label
+	if caption != null:
+		caption.add_theme_color_override("font_color", Color.WHITE if enabled else Color("#b7ad98"))
 
 func _apply_button_style(button: Button, fill: Color, hover: Color, border: Color, font_color: Color, radius: int, border_width: int) -> void:
 	var normal := _panel(fill, border, radius, border_width)
@@ -924,11 +1031,20 @@ func _apply_button_style(button: Button, fill: Color, hover: Color, border: Colo
 	button.add_theme_stylebox_override("focus", hover_style)
 	button.add_theme_stylebox_override("pressed", pressed)
 	button.add_theme_stylebox_override("disabled", disabled)
-	button.add_theme_color_override("font_color", font_color)
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", Color.WHITE)
-	button.add_theme_color_override("font_focus_color", Color.WHITE)
-	button.add_theme_color_override("font_disabled_color", Color("#8f897b"))
+	var decorated_caption := button.get_node_or_null("ButtonCaption") as Label
+	if decorated_caption != null:
+		decorated_caption.add_theme_color_override("font_color", font_color)
+		button.add_theme_color_override("font_color", Color.TRANSPARENT)
+		button.add_theme_color_override("font_hover_color", Color.TRANSPARENT)
+		button.add_theme_color_override("font_pressed_color", Color.TRANSPARENT)
+		button.add_theme_color_override("font_focus_color", Color.TRANSPARENT)
+		button.add_theme_color_override("font_disabled_color", Color.TRANSPARENT)
+	else:
+		button.add_theme_color_override("font_color", font_color)
+		button.add_theme_color_override("font_hover_color", Color.WHITE)
+		button.add_theme_color_override("font_pressed_color", Color.WHITE)
+		button.add_theme_color_override("font_focus_color", Color.WHITE)
+		button.add_theme_color_override("font_disabled_color", Color("#8f897b"))
 	button.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.82))
 	button.add_theme_constant_override("outline_size", 3)
 

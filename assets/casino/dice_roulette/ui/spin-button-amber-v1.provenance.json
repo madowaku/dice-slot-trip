@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "asset_id": "spin-button-amber-v1",
+  "runtime_path": "assets/casino/dice_roulette/ui/spin-button-amber-v1.png",
+  "prompt_path": "assets/casino/dice_roulette/ui/spin-button-amber-v1.prompt.txt",
+  "generation": {
+    "provider": "OpenAI built-in ImageGen",
+    "model": "built-in ImageGen (model identifier not exposed)",
+    "generated_on": "2026-08-29",
+    "original_output_path": "C:/Users/hiro/.codex/generated_images/01a04234-876e-7380-8b87-f0196567661c/exec-43c60a00-1af9-4efd-9b8a-fb9099c7fe11.png",
+    "style_references": [
+      ".codex-remote-attachments/01a04234-876e-7380-8b87-f0196567661c/b209788e-84d6-4ccb-ada0-1301fe0ff304/1-Photo-1.jpg"
+    ]
+  },
+  "runtime": {
+    "sha256": "bca7cad4e092bc741ba001fd38f0f4e87420bebaf2ed886768f6088f88e57d16",
+    "bytes": 2031432,
+    "width": 1254,
+    "height": 1254,
+    "mode": "RGBA"
+  },
+  "normalization": {
+    "method": "built-in ImageGen transparent output copied without destructive processing",
+    "transparent_corner_alpha": 0,
+    "center_alpha": 253
+  },
+  "usage": {
+    "role": "enabled SPIN action face on the DICE ROULETTE fixed betting dock",
+    "license": "project-owned AI-generated asset",
+    "semantic_review": {
+      "round_button": true,
+      "amber_center": true,
+      "gold_marquee_ring": true,
+      "no_text": true,
+      "no_logo": true,
+      "no_watermark": true,
+      "transparent_corners": true
+    }
+  }
+}
