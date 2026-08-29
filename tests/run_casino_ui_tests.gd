@@ -55,6 +55,13 @@ func _run() -> void:
 	hub.call("_close_dice_tower")
 	await process_frame
 	_expect(hub.hub_root.visible and not hub.tower_host.visible, "returning from DICE TOWER restores the Casino Hub list")
+	hub.call("_open_dice_roulette")
+	await process_frame
+	_expect(hub.roulette_host.visible and hub.roulette_host.get_child_count() == 1, "opening DICE ROULETTE shows its dedicated host")
+	_expect(bgm.current_track() == &"dice_roulette", "opening DICE ROULETTE switches to the roulette BGM")
+	hub.call("_close_dice_roulette")
+	await process_frame
+	_expect(bgm.current_track() == &"lasvegas_main", "returning from DICE ROULETTE restores the Casino Hub BGM")
 	hub.queue_free()
 	await process_frame
 

@@ -91,7 +91,7 @@ func _ready() -> void:
 	if not suppress_audio_for_tests:
 		var bgm := get_node_or_null("/root/BgmManager")
 		if bgm != null:
-			bgm.call("play_lasvegas_main")
+			bgm.call("play_dice_roulette")
 		var ui_sfx := get_node_or_null("/root/UiSfxManager")
 		if ui_sfx != null:
 			ui_sfx.call("set_stage", &"las_vegas")
@@ -251,6 +251,14 @@ func _build_ui() -> void:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.custom_minimum_size.y = 54
 		controls.add_child(button)
+	# Keep the primary CTA touch-safe at the 360px reference width while
+	# allowing the three utility actions to remain compact but readable.
+	undo_button.custom_minimum_size.x = 58
+	clear_button.custom_minimum_size.x = 58
+	rebet_button.custom_minimum_size.x = 58
+	# The project renders a 720px design canvas into the 360px reference
+	# viewport, so 192 design pixels provide the required 96px physical hitbox.
+	spin_button.custom_minimum_size.x = 192
 	undo_button.pressed.connect(_undo)
 	clear_button.pressed.connect(_clear_bets)
 	rebet_button.pressed.connect(_rebet)

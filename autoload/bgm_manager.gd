@@ -13,6 +13,7 @@ const TRACK_KYOTO_BOSS: StringName = &"kyoto_boss"
 const TRACK_LASVEGAS_PREVIEW: StringName = &"lasvegas_preview"
 const TRACK_LASVEGAS_MAIN: StringName = &"lasvegas_main"
 const TRACK_DICE_RACE: StringName = &"dice_race"
+const TRACK_DICE_ROULETTE: StringName = &"dice_roulette"
 const TRACK_KYOTO_FOX_FIRE_CHASE: StringName = &"kyoto_fox_fire_chase"
 const CROSSFADE_SECONDS := 0.8
 const BGM_LINEAR_GAIN := 0.32
@@ -32,6 +33,7 @@ const TRACKS: Dictionary = {
 	TRACK_LASVEGAS_PREVIEW: preload("res://assets/audio/bgm/lasvegas/カジノ.mp3"),
 	TRACK_LASVEGAS_MAIN: preload("res://assets/audio/bgm/lasvegas/ジャックポット.mp3"),
 	TRACK_DICE_RACE: preload("res://assets/audio/bgm/lasvegas/ミニマルダービー.mp3"),
+	TRACK_DICE_ROULETTE: preload("res://assets/audio/bgm/lasvegas/ルーレット.mp3"),
 	TRACK_KYOTO_FOX_FIRE_CHASE: preload("res://assets/audio/bgm/kyoto/あのね.mp3"),
 }
 
@@ -110,6 +112,10 @@ func play_lasvegas_main() -> void:
 
 func play_dice_race() -> void:
 	play_track(TRACK_DICE_RACE)
+
+
+func play_dice_roulette() -> void:
+	play_track(TRACK_DICE_ROULETTE)
 
 
 func play_kyoto_fox_fire_chase() -> void:

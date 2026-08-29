@@ -108,8 +108,8 @@ func animate_results(red_slot: int, blue_slot: int, red_face: int, blue_face: in
 	var blue_target := _slot_angle(blue_slot) - TAU * 4.25
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
-	tween.tween_method(_set_red_angle, red_angle, red_target, 2.15)
-	tween.parallel().tween_method(_set_blue_angle, blue_angle, blue_target, 2.45)
+	tween.tween_method(_set_red_angle, red_angle, red_target, 1.18)
+	tween.parallel().tween_method(_set_blue_angle, blue_angle, blue_target, 1.38)
 	await tween.finished
 	_set_red_angle(_slot_angle(red_slot))
 	_set_blue_angle(_slot_angle(blue_slot))

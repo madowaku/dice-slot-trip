@@ -1,6 +1,6 @@
 # Stage BGM source record
 
-Updated: 2026-08-23
+Updated: 2026-08-29
 
 Amazon, Kyoto, and Las Vegas use the following local MP3 files. The source pages are kept
 here so the Google Play release can retain an auditable music credit trail.
@@ -18,10 +18,17 @@ and each creator's conditions on the linked page.
 | Las Vegas | Stage-select preview | `assets/audio/bgm/lasvegas/カジノ.mp3` | [カジノ (DOVA-SYNDROME #17222)](https://dova-s.jp/bgm/detail/17222) — カピバラっ子 |
 | Las Vegas | Casino Hub | `assets/audio/bgm/lasvegas/ジャックポット.mp3` | [ジャックポット (DOVA-SYNDROME #18020)](https://dova-s.jp/bgm/detail/18020) — カピバラっ子 |
 | Las Vegas | Dice Race | `assets/audio/bgm/lasvegas/ミニマルダービー.mp3` | [ミニマルダービー (DOVA-SYNDROME #15883)](https://dova-s.jp/bgm/detail/15883) — shimtone |
+| Las Vegas | Dice Roulette | `assets/audio/bgm/lasvegas/ルーレット.mp3` | [ルーレット (DOVA-SYNDROME #8634)](https://dova-s.jp/bgm/detail/8634) — Phalene |
 
 Runtime mapping is defined in `autoload/bgm_manager.gd`:
 
 - stage-select preview: `TRACK_AMAZON_PREVIEW` / `TRACK_KYOTO_PREVIEW`
 - normal map: `TRACK_AMAZON_NORMAL` / `TRACK_KYOTO_NORMAL`
 - boss battle: `TRACK_AMAZON_BOSS` / `TRACK_KYOTO_BOSS`
-- Las Vegas: `TRACK_LASVEGAS_PREVIEW` / `TRACK_LASVEGAS_MAIN` / `TRACK_DICE_RACE`
+- Las Vegas: `TRACK_LASVEGAS_PREVIEW` / `TRACK_LASVEGAS_MAIN` / `TRACK_DICE_RACE` / `TRACK_DICE_ROULETTE`
+
+The DOVA-SYNDROME page identifies this as the 1:40 BGM “ルーレット” by Phalene.
+The current DOVA license lists games and apps as background-music examples, while
+also asking users to consult the operator before embedding audio into a tool or
+platform. Reconfirm the linked license and the creator's conditions before any
+public Android distribution.

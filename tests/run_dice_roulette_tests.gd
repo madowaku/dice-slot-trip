@@ -6,6 +6,7 @@ const ROULETTE_SCENE: PackedScene = preload("res://scenes/casino/DiceRoulette.ts
 const HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const ScreenScript = preload("res://scripts/app/dice_roulette_screen.gd")
 const HubScript = preload("res://scripts/app/casino_hub_screen.gd")
+const ROULETTE_BGM_PATH := "res://assets/audio/bgm/lasvegas/ルーレット.mp3"
 
 var failures := 0
 var assertions := 0
@@ -105,6 +106,9 @@ func _test_bank_settlement() -> void:
 	_expect(not bool(duplicate.get("ok", true)) and bool(duplicate.get("already_settled", false)) and CasinoBankScript.balance() == 136, "duplicate roulette settlement cannot credit twice")
 
 func _test_ui_contract() -> void:
+	_expect(FileAccess.file_exists(ROULETTE_BGM_PATH), "roulette BGM asset is present for runtime import")
+	var roulette_bgm: Resource = ResourceLoader.load(ROULETTE_BGM_PATH)
+	_expect(roulette_bgm is AudioStreamMP3, "roulette BGM imports as an AudioStreamMP3")
 	CasinoBankScript.save_data(CasinoBankScript.default_data())
 	CasinoBankScript.add_chips(100)
 	var roulette := ROULETTE_SCENE.instantiate()
@@ -115,6 +119,7 @@ func _test_ui_contract() -> void:
 	_expect(roulette.amount_buttons.size() == 3 and roulette.selected_bet_amount == 10, "roulette defaults to LONG PLAY 10 chip")
 	_expect(roulette.main_bet_buttons.size() == 6, "roulette creates all six main WHERE bet areas")
 	_expect(roulette.side_bet_buttons.size() == 3, "roulette creates red draw blue side bets")
+	_expect(roulette.spin_button != null and roulette.spin_button.custom_minimum_size.x >= 192.0, "roulette SPIN keeps a 96px physical touch target on the 360px canvas")
 	_expect(int(roulette.get("phase")) == 1, "roulette opens in BETTING phase")
 	roulette.call("_place_main_bet", "HIGH")
 	_expect(int(roulette.main_bets.get("HIGH", 0)) == 10 and roulette.call("_current_total_bet") == 10, "main bet tap places selected chip amount")
