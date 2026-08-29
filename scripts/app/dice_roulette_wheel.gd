@@ -3,6 +3,8 @@ extends Control
 
 const ModelScript = preload("res://scripts/game/dice_roulette_model.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
+const DISPLAY_FONT: Font = preload("res://assets/fonts/cinzel/Cinzel-Variable.ttf")
+const BEZEL: Texture2D = preload("res://assets/casino/dice_roulette/ui/roulette-bezel-v1.png")
 
 const AREA_COLORS := {
 	"LOW": Color("#385a90"),
@@ -32,8 +34,9 @@ func _ready() -> void:
 
 func _draw() -> void:
 	var center := size * 0.5
-	var radius := minf(size.x, size.y) * 0.46
-	var inner_radius := radius * 0.46
+	var radius := minf(size.x, size.y) * 0.395
+	var inner_radius := radius * 0.45
+	draw_circle(center, radius * 1.035, Color("#04140f"))
 	for slot: int in range(ModelScript.SLOT_COUNT):
 		var start_angle := -PI * 0.5 + TAU * float(slot) / float(ModelScript.SLOT_COUNT)
 		var end_angle := -PI * 0.5 + TAU * float(slot + 1) / float(ModelScript.SLOT_COUNT)
@@ -47,30 +50,31 @@ func _draw() -> void:
 			var angle := lerpf(start_angle, end_angle, t)
 			points.append(center + Vector2(cos(angle), sin(angle)) * radius)
 		draw_colored_polygon(points, color)
-		draw_line(center + Vector2(cos(start_angle), sin(start_angle)) * inner_radius, center + Vector2(cos(start_angle), sin(start_angle)) * radius, Color("#e7d8a5"), 1.0, true)
+		draw_line(center + Vector2(cos(start_angle), sin(start_angle)) * inner_radius, center + Vector2(cos(start_angle), sin(start_angle)) * radius, Color("#f6df91"), 2.0, true)
 
-	draw_circle(center, inner_radius, Color("#17172b"))
-	draw_arc(center, radius, 0.0, TAU, 96, Color("#f5d76c"), 5.0, true)
-	draw_arc(center, inner_radius, 0.0, TAU, 72, Color("#6d5b82"), 2.0, true)
-	var title := "DICE ROULETTE"
-	var title_size := FONT.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 24)
-	draw_string(FONT, center - Vector2(title_size.x * 0.5, -8), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color("#ffe493"))
-	var sub := "WHERE  ×  BOOST"
-	var sub_size := FONT.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
-	draw_string(FONT, center + Vector2(-sub_size.x * 0.5, 36), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#d6c8df"))
+	draw_circle(center, inner_radius, Color("#061d16"))
+	draw_arc(center, radius, 0.0, TAU, 96, Color("#f5d76c"), 4.0, true)
+	draw_arc(center, inner_radius, 0.0, TAU, 72, Color("#d6a93e"), 3.0, true)
+	var title := "WHERE"
+	var title_size := DISPLAY_FONT.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 28)
+	draw_string(DISPLAY_FONT, center - Vector2(title_size.x * 0.5, -7), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color("#ffe493"))
+	var sub := "DICE BOOST"
+	var sub_size := FONT.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 17)
+	draw_string(FONT, center + Vector2(-sub_size.x * 0.5, 34), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color("#f4dab1"))
 
-	_draw_area_caption(center, radius * 0.72, -62.0, "JACKPOT", Color("#fff0a7"))
-	_draw_area_caption(center, radius * 0.72, -17.0, "HIGH", Color.WHITE)
-	_draw_area_caption(center, radius * 0.72, 47.0, "EVEN", Color.WHITE)
-	_draw_area_caption(center, radius * 0.72, 100.0, "LUCKY 7", Color("#fff0a7"))
-	_draw_area_caption(center, radius * 0.72, 164.0, "LOW", Color.WHITE)
-	_draw_area_caption(center, radius * 0.72, 222.0, "ODD", Color.WHITE)
+	_draw_area_caption(center, radius * 0.64, -62.0, "JACKPOT", Color("#fff0a7"))
+	_draw_area_caption(center, radius * 0.64, -17.0, "HIGH", Color.WHITE)
+	_draw_area_caption(center, radius * 0.64, 47.0, "EVEN", Color.WHITE)
+	_draw_area_caption(center, radius * 0.64, 100.0, "LUCKY 7", Color("#fff0a7"))
+	_draw_area_caption(center, radius * 0.64, 164.0, "LOW", Color.WHITE)
+	_draw_area_caption(center, radius * 0.64, 222.0, "ODD", Color.WHITE)
+	draw_texture_rect(BEZEL, Rect2(Vector2.ZERO, size), false)
 
 func _draw_area_caption(center: Vector2, radius: float, degrees: float, text: String, color: Color) -> void:
 	var angle := deg_to_rad(degrees)
 	var pos := center + Vector2(cos(angle), sin(angle)) * radius
-	var text_size := FONT.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
-	draw_string(FONT, pos - Vector2(text_size.x * 0.5, -5), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+	var text_size := FONT.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18)
+	draw_string(FONT, pos - Vector2(text_size.x * 0.5, -6), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, color)
 
 func _make_marker(text: String, fill: Color) -> Label:
 	var marker := Label.new()
@@ -136,7 +140,7 @@ func _refresh_markers() -> void:
 
 func _refresh_marker(marker: Control, angle: float, radius_ratio: float) -> void:
 	var center := size * 0.5
-	var radius := minf(size.x, size.y) * 0.46 * radius_ratio
+	var radius := minf(size.x, size.y) * 0.395 * radius_ratio
 	var marker_size := Vector2(56, 56)
 	marker.position = center + Vector2(cos(angle), sin(angle)) * radius - marker_size * 0.5
 	marker.size = marker_size

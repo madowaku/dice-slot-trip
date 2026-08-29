@@ -7,6 +7,9 @@ const HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const ScreenScript = preload("res://scripts/app/dice_roulette_screen.gd")
 const HubScript = preload("res://scripts/app/casino_hub_screen.gd")
 const ROULETTE_BGM_PATH := "res://assets/audio/bgm/lasvegas/ルーレット.mp3"
+const ROULETTE_BACKGROUND_PATH := "res://assets/casino/dice_roulette/ui/casino-table-bg-v1.png"
+const ROULETTE_BEZEL_PATH := "res://assets/casino/dice_roulette/ui/roulette-bezel-v1.png"
+const ROULETTE_SPARKLE_PATH := "res://assets/casino/dice_roulette/ui/sparkle_frames/03.png"
 
 var failures := 0
 var assertions := 0
@@ -109,6 +112,9 @@ func _test_ui_contract() -> void:
 	_expect(FileAccess.file_exists(ROULETTE_BGM_PATH), "roulette BGM asset is present for runtime import")
 	var roulette_bgm: Resource = ResourceLoader.load(ROULETTE_BGM_PATH)
 	_expect(roulette_bgm is AudioStreamMP3, "roulette BGM imports as an AudioStreamMP3")
+	_expect(ResourceLoader.load(ROULETTE_BACKGROUND_PATH) is Texture2D, "roulette casino background imports as a production texture")
+	_expect(ResourceLoader.load(ROULETTE_BEZEL_PATH) is Texture2D, "roulette jeweled bezel imports with transparency")
+	_expect(ResourceLoader.load(ROULETTE_SPARKLE_PATH) is Texture2D, "roulette normalized sparkle frame imports as a texture")
 	CasinoBankScript.save_data(CasinoBankScript.default_data())
 	CasinoBankScript.add_chips(100)
 	var roulette := ROULETTE_SCENE.instantiate()
@@ -120,6 +126,8 @@ func _test_ui_contract() -> void:
 	_expect(roulette.main_bet_buttons.size() == 6, "roulette creates all six main WHERE bet areas")
 	_expect(roulette.side_bet_buttons.size() == 3, "roulette creates red draw blue side bets")
 	_expect(roulette.spin_button != null and roulette.spin_button.custom_minimum_size.x >= 192.0, "roulette SPIN keeps a 96px physical touch target on the 360px canvas")
+	var casino_back := roulette.find_child("CasinoBackButton", true, false) as Button
+	_expect(casino_back != null and casino_back.custom_minimum_size.y >= 54.0, "roulette keeps an always-visible casino return target")
 	_expect(int(roulette.get("phase")) == 1, "roulette opens in BETTING phase")
 	roulette.call("_place_main_bet", "HIGH")
 	_expect(int(roulette.main_bets.get("HIGH", 0)) == 10 and roulette.call("_current_total_bet") == 10, "main bet tap places selected chip amount")
