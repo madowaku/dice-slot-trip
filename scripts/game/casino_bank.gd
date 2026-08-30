@@ -130,7 +130,7 @@ static func stage_clear_conversion_once(conversion_key: String, remaining_trip_c
 
 static func _conversion_receipt(remaining_trip_coin: int, cleared_boss: bool, persist: bool) -> Dictionary:
 	var remainder := maxi(0, remaining_trip_coin)
-	var converted := int(remainder / COIN_TO_CHIP_RATE)
+	var converted := floori(float(remainder) / float(COIN_TO_CHIP_RATE))
 	var clear_bonus := CLEAR_CHIP_BONUS if cleared_boss else 0
 	var gained := converted + clear_bonus
 	var before := balance()

@@ -106,11 +106,11 @@ func _build_die(index: int) -> void:
 	var die := Node3D.new(); die.name = "Die3D_%d" % index; die.visible = false; world_root.add_child(die)
 	var cube := MeshInstance3D.new(); cube.name = "IvoryCube"
 	var box := BoxMesh.new(); box.size = Vector3(1.42, 1.42, 1.42); cube.mesh = box
-	var material := StandardMaterial3D.new()
-	material.albedo_color = IVORY
-	material.roughness = 0.48
-	material.metallic = 0.08
-	cube.material_override = material
+	var cube_material := StandardMaterial3D.new()
+	cube_material.albedo_color = IVORY
+	cube_material.roughness = 0.48
+	cube_material.metallic = 0.08
+	cube.material_override = cube_material
 	cube.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	die.add_child(cube)
 	# Subtle gold edge frame so dice read as premium ivory rather than plain cubes.
@@ -124,7 +124,7 @@ func _build_die(index: int) -> void:
 	edge_material.cull_mode = BaseMaterial3D.CULL_FRONT
 	edge.material_override = edge_material
 	die.add_child(edge)
-	cube_materials.append(material)
+	cube_materials.append(cube_material)
 	var pip_transforms: Array[Transform3D] = []
 	_collect_face_pips(pip_transforms, 1, Vector3.UP, Vector3.RIGHT, Vector3.BACK)
 	_collect_face_pips(pip_transforms, 6, Vector3.DOWN, Vector3.RIGHT, Vector3.FORWARD)
@@ -149,8 +149,8 @@ func _collect_face_pips(transforms: Array[Transform3D], value: int, normal: Vect
 	var patterns: Array = [[], [Vector2.ZERO], [Vector2(-1, -1), Vector2(1, 1)], [Vector2(-1, -1), Vector2.ZERO, Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2.ZERO, Vector2(-1, 1), Vector2(1, 1)], [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 0), Vector2(1, 0), Vector2(-1, 1), Vector2(1, 1)]]
 	for pip_index: int in range(patterns[value].size()):
 		var coordinate: Vector2 = patterns[value][pip_index]
-		var position := normal * 0.735 + horizontal * coordinate.x * 0.31 + vertical * coordinate.y * 0.31
-		transforms.append(Transform3D(Basis(Quaternion(Vector3.UP, normal)), position))
+		var pip_position: Vector3 = normal * 0.735 + horizontal * coordinate.x * 0.31 + vertical * coordinate.y * 0.31
+		transforms.append(Transform3D(Basis(Quaternion(Vector3.UP, normal)), pip_position))
 
 static func face_normal(value: int) -> Vector3:
 	match clampi(value, 1, 6):

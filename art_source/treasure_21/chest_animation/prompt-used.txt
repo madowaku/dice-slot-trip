@@ -1,0 +1,12 @@
+Use case: stylized-concept
+Asset type: transparent 2D game UI sprite strip for a Godot mobile casino game
+Primary request: Create one horizontal 4-frame animation strip showing the exact same ornate treasure chest progressing from closed to fully open with jewel treasure visible.
+Reference role: the three supplied TREASURE 21 mockups were visual style references only.
+Composition: four equal horizontal slots; identical chest scale, camera, silhouette, and bottom-center anchor.
+Palette: deep emerald, antique gold, champagne highlights, restrained ruby and sapphire accents.
+Constraints: no text, numbers, labels, UI frame, scenery, watermark, or cropped chest; transparent background requested.
+
+Background-extraction follow-up:
+Remove only the checkerboard background and replace it with genuine alpha transparency while preserving all four chest frames exactly.
+
+Note: both built-in ImageGen outputs were RGB with a painted checkerboard. build_chest_frames.py performs a deterministic edge-connected checkerboard cutout before sprite normalization.
