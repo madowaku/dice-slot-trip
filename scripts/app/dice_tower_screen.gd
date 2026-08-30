@@ -7,6 +7,9 @@ const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const TowerScript = preload("res://scripts/game/dice_tower_model.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
+const CASINO_BACKGROUND: Texture2D = preload("res://assets/casino/dice_roulette/ui/casino-table-bg-v1.png")
+const TOWER_TEXTURE: Texture2D = preload("res://assets/casino/dice_tower/ui/dice-tower-ten-floor-v2.png")
+const CHIP_TEXTURE: Texture2D = preload("res://assets/casino/vault_break/ui/chip-20-red-v1.png")
 
 const BET_AMOUNTS := [10, 20, 50]
 const ROLL_SECONDS := 0.75
@@ -45,8 +48,16 @@ var tutorial_page_label: Label
 var tutorial_body: Label
 var tutorial_next_button: Button
 var effect_layer: Control
-var bet_buttons := {}
-var floor_panels := {}
+var balance_preview_label: Label
+var last_roll_label: Label
+var result_overlay: Control
+var result_title_label: Label
+var result_dice_label: Label
+var result_floor_label: Label
+var result_reward_label: Label
+var result_bet_label: Label
+var bet_buttons: Dictionary = {}
+var floor_panels: Dictionary = {}
 var tutorial_page: int = 0
 
 func _ready() -> void:
@@ -61,81 +72,118 @@ func _ready() -> void:
 	_refresh_all()
 
 func _build_ui() -> void:
-	var bg := ColorRect.new()
-	bg.color = NAVY
+	var bg: TextureRect = TextureRect.new()
+	bg.name = "CasinoBackground"
+	bg.texture = CASINO_BACKGROUND
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	var glow := ColorRect.new()
-	glow.color = Color("#36213e")
-	glow.anchor_right = 1.0
-	glow.anchor_bottom = 0.38
-	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(glow)
+	var tint: ColorRect = ColorRect.new()
+	tint.name = "BackgroundTint"
+	tint.color = Color("#030b12a8")
+	tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(tint)
 
-	var margin := MarginContainer.new()
+	var margin: MarginContainer = MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 13)
-	margin.add_theme_constant_override("margin_right", 13)
-	margin.add_theme_constant_override("margin_top", 11)
-	margin.add_theme_constant_override("margin_bottom", 11)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
 	add_child(margin)
 
-	var root := VBoxContainer.new()
+	var root: VBoxContainer = VBoxContainer.new()
+	root.name = "ScreenVBox"
 	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_theme_constant_override("separation", 7)
+	root.add_theme_constant_override("separation", 12)
 	margin.add_child(root)
 
-	var header := PanelContainer.new()
-	header.custom_minimum_size.y = 60
-	header.add_theme_stylebox_override("panel", _panel(Color("#5d2440"), GOLD, 20, 3))
+	var header: PanelContainer = PanelContainer.new()
+	header.name = "Header"
+	header.custom_minimum_size.y = 128
+	header.add_theme_stylebox_override("panel", _panel(Color("#6b0d17f2"), GOLD_LIGHT, 34, 5, 18))
 	root.add_child(header)
-	var header_row := HBoxContainer.new()
-	header_row.add_theme_constant_override("separation", 8)
+	var header_row: HBoxContainer = HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 14)
 	header.add_child(header_row)
-	var title := _label("DICE TOWER", 33, GOLD_LIGHT)
+	var back: Button = _button("‹")
+	back.name = "CasinoBackButton"
+	back.custom_minimum_size = Vector2(96, 96)
+	back.add_theme_font_size_override("font_size", 64)
+	back.pressed.connect(_on_back_pressed)
+	header_row.add_child(back)
+	var title: Label = _label("DICE TOWER", 54, GOLD_LIGHT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.add_theme_color_override("font_outline_color", Color("#39121f"))
-	title.add_theme_constant_override("outline_size", 5)
+	title.add_theme_constant_override("outline_size", 9)
 	header_row.add_child(title)
-	var chip_panel := PanelContainer.new()
-	chip_panel.custom_minimum_size.x = 112
-	chip_panel.add_theme_stylebox_override("panel", _panel(Color("#211c19"), GOLD, 14, 2))
-	chip_label = _label("CHIP 0", 16, Color("#fff4cd"))
-	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	chip_panel.add_child(chip_label)
-	header_row.add_child(chip_panel)
+	var help: Button = _button("?")
+	help.name = "HelpButton"
+	help.custom_minimum_size = Vector2(96, 96)
+	help.add_theme_font_size_override("font_size", 48)
+	help.pressed.connect(_open_tutorial)
+	header_row.add_child(help)
 
-	status_label = _label("まずはBETを選ぼう", 18, Color.WHITE)
+	var info_row: HBoxContainer = HBoxContainer.new()
+	info_row.name = "InfoBar"
+	info_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	info_row.add_theme_constant_override("separation", 12)
+	root.add_child(info_row)
+	var chip_panel: PanelContainer = PanelContainer.new()
+	chip_panel.custom_minimum_size = Vector2(340, 70)
+	chip_panel.add_theme_stylebox_override("panel", _panel(Color("#061b1aee"), GOLD, 30, 3, 14))
+	var chip_row: HBoxContainer = HBoxContainer.new()
+	chip_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	chip_row.add_theme_constant_override("separation", 10)
+	chip_panel.add_child(chip_row)
+	var chip_icon: TextureRect = TextureRect.new()
+	chip_icon.texture = CHIP_TEXTURE
+	chip_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	chip_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	chip_icon.custom_minimum_size = Vector2(54, 54)
+	chip_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip_row.add_child(chip_icon)
+	chip_label = _label("所持チップ  0", 28, Color("#fff4cd"))
+	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	chip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	chip_row.add_child(chip_label)
+	info_row.add_child(chip_panel)
+
+	status_label = _label("まずはBETを選ぼう", 30, Color.WHITE)
+	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	status_label.custom_minimum_size.y = 34
-	root.add_child(status_label)
+	status_label.custom_minimum_size.y = 70
+	status_label.add_theme_stylebox_override("normal", _panel(Color("#061b1acc"), Color("#986f2d"), 28, 2, 10))
+	info_row.add_child(status_label)
 
 	setup_view = VBoxContainer.new()
 	setup_view.name = "TowerSetupView"
 	setup_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	setup_view.add_theme_constant_override("separation", 8)
+	setup_view.add_theme_constant_override("separation", 12)
 	root.add_child(setup_view)
 	_build_setup_view(setup_view)
 
 	active_view = VBoxContainer.new()
 	active_view.name = "TowerActiveView"
 	active_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	active_view.add_theme_constant_override("separation", 6)
+	active_view.add_theme_constant_override("separation", 10)
 	active_view.visible = false
 	root.add_child(active_view)
 	_build_active_view(active_view)
 
-	var back := _button("カジノへ戻る")
-	back.name = "CasinoBackButton"
-	back.custom_minimum_size.y = 46
-	back.pressed.connect(_on_back_pressed)
-	root.add_child(back)
-
 	tutorial_overlay = _build_tutorial_overlay()
 	add_child(tutorial_overlay)
+	result_overlay = _build_result_overlay()
+	add_child(result_overlay)
 
 	effect_layer = Control.new()
 	effect_layer.name = "TowerEffectLayer"
@@ -145,102 +193,170 @@ func _build_ui() -> void:
 	add_child(effect_layer)
 
 func _build_setup_view(root: VBoxContainer) -> void:
-	var preview := PanelContainer.new()
-	preview.name = "TowerPreview"
-	preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	preview.add_theme_stylebox_override("panel", _panel(Color("#20182ecc"), GOLD, 18, 3))
-	root.add_child(preview)
-	var preview_box := VBoxContainer.new()
-	preview_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	preview_box.add_theme_constant_override("separation", 8)
-	preview.add_child(preview_box)
-	var crown := _label("10F  x4.40", 28, GOLD_LIGHT)
-	crown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	preview_box.add_child(crown)
-	var copy := _label("1が出たらBUST。\n2から5で1階、6なら2階登る。", 20, Color.WHITE)
-	copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	preview_box.add_child(copy)
-	var ask := _label("CASH OUTするか、もう1回ROLLするか。", 18, Color("#f5cf78"))
-	ask.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	ask.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	preview_box.add_child(ask)
+	var content: HBoxContainer = HBoxContainer.new()
+	content.name = "Content"
+	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 14)
+	root.add_child(content)
 
-	var bet_caption := _label("BET", 20, GOLD_LIGHT)
+	var preview: PanelContainer = PanelContainer.new()
+	preview.name = "TowerPreview"
+	preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	preview.size_flags_stretch_ratio = 0.78
+	preview.add_theme_stylebox_override("panel", _panel(Color("#081b1ad4"), GOLD, 28, 3, 12))
+	content.add_child(preview)
+	var preview_center: CenterContainer = CenterContainer.new()
+	preview.add_child(preview_center)
+	var preview_texture: TextureRect = TextureRect.new()
+	preview_texture.name = "TowerTexture"
+	preview_texture.texture = TOWER_TEXTURE
+	preview_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	preview_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	preview_texture.custom_minimum_size = Vector2(218, 600)
+	preview_texture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	preview_center.add_child(preview_texture)
+
+	var rules: PanelContainer = PanelContainer.new()
+	rules.name = "RulePanel"
+	rules.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rules.size_flags_stretch_ratio = 1.22
+	rules.add_theme_stylebox_override("panel", _panel(Color("#062523f2"), GOLD_LIGHT, 30, 4, 20))
+	content.add_child(rules)
+	var rule_box: VBoxContainer = VBoxContainer.new()
+	rule_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	rule_box.add_theme_constant_override("separation", 12)
+	rules.add_child(rule_box)
+	var rule_title: Label = _label("ルール", 42, GOLD_LIGHT)
+	rule_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rule_box.add_child(rule_title)
+	var description: Label = _label("サイコロを振って\nタワーをのぼろう！", 31, Color.WHITE)
+	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rule_box.add_child(description)
+	_rule_row(rule_box, "[2–5]", "2〜5", "1階アップ", GREEN)
+	_rule_row(rule_box, "[6]", "6", "2階アップ", Color("#2f70b7"))
+	_rule_row(rule_box, "[1]", "1", "BUST", RED)
+	var warning: Label = _label("1が出るとゲーム終了\nのぼった階数に応じて報酬GET！", 22, Color("#fff2d4"))
+	warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rule_box.add_child(warning)
+
+	var bet_caption: Label = _label("★  BETを選択してください  ★", 34, Color("#fff2d4"))
+	bet_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	bet_caption.custom_minimum_size.y = 56
 	root.add_child(bet_caption)
-	var bet_row := HBoxContainer.new()
+	var bet_row: HBoxContainer = HBoxContainer.new()
 	bet_row.name = "BetRow"
 	bet_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	bet_row.add_theme_constant_override("separation", 7)
+	bet_row.add_theme_constant_override("separation", 14)
 	root.add_child(bet_row)
 	for amount: int in BET_AMOUNTS:
-		var button := _amount_button(amount)
+		var button: Button = _amount_button(amount)
 		button.name = "Bet_%d" % amount
 		button.pressed.connect(_select_bet.bind(amount))
 		bet_buttons[amount] = button
 		bet_row.add_child(button)
 
+	var balance_panel: PanelContainer = PanelContainer.new()
+	balance_panel.custom_minimum_size.y = 70
+	balance_panel.add_theme_stylebox_override("panel", _panel(Color("#061b1ae8"), Color("#986f2d"), 22, 2, 10))
+	root.add_child(balance_panel)
+	balance_preview_label = _label("BET後の所持チップ", 27, Color("#fff2d4"))
+	balance_preview_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	balance_preview_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	balance_panel.add_child(balance_preview_label)
+
 	start_button = _button("GAME START", true)
 	start_button.name = "StartButton"
-	start_button.custom_minimum_size.y = 76
-	start_button.add_theme_font_size_override("font_size", 26)
+	start_button.custom_minimum_size.y = 156
+	start_button.add_theme_font_size_override("font_size", 50)
 	start_button.pressed.connect(_start_game)
 	root.add_child(start_button)
+
+func _rule_row(parent: VBoxContainer, dice_text: String, value_text: String, result_text: String, accent: Color) -> void:
+	var panel: PanelContainer = PanelContainer.new()
+	panel.custom_minimum_size.y = 104
+	panel.add_theme_stylebox_override("panel", _panel(Color("#f7e4ae"), Color("#b87b28"), 18, 3, 12))
+	parent.add_child(panel)
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	panel.add_child(row)
+	var dice: Label = _label(dice_text, 42, INK)
+	dice.custom_minimum_size.x = 76
+	dice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	dice.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(dice)
+	var value: Label = _label(value_text, 44, accent)
+	value.custom_minimum_size.x = 92
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(value)
+	var result: Label = _label("→ " + result_text, 27, accent)
+	result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	result.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(result)
 
 func _build_active_view(root: VBoxContainer) -> void:
 	tower_frame = PanelContainer.new()
 	tower_frame.name = "TowerFrame"
-	tower_frame.custom_minimum_size.y = 250
+	tower_frame.custom_minimum_size.y = 540
 	tower_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tower_frame.size_flags_stretch_ratio = 1.45
-	tower_frame.add_theme_stylebox_override("panel", _panel(Color("#171126"), Color("#7a5a31"), 14, 2))
+	tower_frame.size_flags_stretch_ratio = 1.8
+	tower_frame.add_theme_stylebox_override("panel", _panel(Color("#031416c0"), Color("#7a5a31"), 26, 3, 8))
 	root.add_child(tower_frame)
+	var tower_canvas: Control = Control.new()
+	tower_canvas.name = "TowerCanvas"
+	tower_canvas.custom_minimum_size = Vector2(0, 540)
+	tower_frame.add_child(tower_canvas)
+	var tower_texture: TextureRect = TextureRect.new()
+	tower_texture.name = "TowerTexture"
+	tower_texture.texture = TOWER_TEXTURE
+	tower_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tower_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tower_texture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tower_texture.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	tower_canvas.add_child(tower_texture)
 	tower_stack = VBoxContainer.new()
 	tower_stack.name = "TowerStack"
+	tower_stack.anchor_left = 0.25
+	tower_stack.anchor_top = 0.205
+	tower_stack.anchor_right = 0.75
+	tower_stack.anchor_bottom = 0.885
 	tower_stack.add_theme_constant_override("separation", 2)
-	tower_frame.add_child(tower_stack)
+	tower_canvas.add_child(tower_stack)
 	for floor_number: int in range(TowerScript.MAX_FLOOR, 0, -1):
-		var row := PanelContainer.new()
+		var row: PanelContainer = PanelContainer.new()
 		row.name = "Floor_%d" % floor_number
 		row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		row.custom_minimum_size.y = 22
+		row.custom_minimum_size.y = 38
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_theme_stylebox_override("panel", _panel(Color("#2b2338"), Color.TRANSPARENT, 5, 0))
+		row.add_theme_stylebox_override("panel", _panel(Color("#210b08b8"), Color("#c68a2e"), 8, 2, 2))
 		tower_stack.add_child(row)
-		var text := _label("%dF  x%.2f" % [floor_number, TowerScript.multiplier_for_floor(floor_number)], 15, Color("#cfc4dc"))
+		var text: Label = _label("%dF    ×%.2f" % [floor_number, TowerScript.multiplier_for_floor(floor_number)], 25, Color("#fff2d4"))
 		text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(text)
 		floor_panels[floor_number] = {"panel": row, "label": text}
-	var start_base := PanelContainer.new()
-	start_base.name = "TowerStartBase"
-	start_base.custom_minimum_size.y = 30
-	start_base.add_theme_stylebox_override("panel", _panel(GOLD, GOLD_LIGHT, 5, 1))
-	tower_stack.add_child(start_base)
-	var start_text := _label("START", 15, INK)
-	start_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	start_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	start_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	start_base.add_child(start_text)
 
-	var stats := HBoxContainer.new()
+	var stats: HBoxContainer = HBoxContainer.new()
 	stats.name = "PayoutStats"
-	stats.add_theme_constant_override("separation", 5)
+	stats.custom_minimum_size.y = 176
+	stats.add_theme_constant_override("separation", 10)
 	root.add_child(stats)
-	var floor_box := _stat_box("FLOOR")
+	var floor_box: Dictionary = _stat_box("FLOOR")
 	floor_label = floor_box.label
 	stats.add_child(floor_box.panel)
-	var payout_box := _stat_box("CASH OUT")
+	var payout_box: Dictionary = _stat_box("いま降りると")
 	payout_label = payout_box.label
 	stats.add_child(payout_box.panel)
-	var risk_box := _stat_box("ROLL 1")
+	var risk_box: Dictionary = _stat_box("1でロスト")
 	risk_label = risk_box.label
 	stats.add_child(risk_box.panel)
 
-	var console := CenterContainer.new()
+	var console: CenterContainer = CenterContainer.new()
 	console.name = "DiceConsole"
-	console.custom_minimum_size.y = 158
+	console.custom_minimum_size.y = 144
 	root.add_child(console)
 	dice_presentation = DicePresentationScript.new()
 	dice_presentation.name = "TowerDie3D"
@@ -248,66 +364,72 @@ func _build_active_view(root: VBoxContainer) -> void:
 	dice_presentation.compact_single = true
 	dice_presentation.tray_surface_visible = false
 	dice_presentation.high_contrast_pips = true
-	dice_presentation.custom_minimum_size = Vector2(210, 152)
+	dice_presentation.custom_minimum_size = Vector2(310, 140)
 	console.add_child(dice_presentation)
 	face_label = _label("", 1, Color.TRANSPARENT)
 	face_label.name = "RolledFaceLabel"
 	face_label.visible = false
 	add_child(face_label)
 
-	var actions := HBoxContainer.new()
+	var actions: HBoxContainer = HBoxContainer.new()
 	actions.name = "TowerActions"
-	actions.add_theme_constant_override("separation", 7)
+	actions.add_theme_constant_override("separation", 16)
 	root.add_child(actions)
 	cashout_button = _button("CASH OUT", false)
 	cashout_button.name = "CashOutButton"
 	cashout_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cashout_button.custom_minimum_size.y = 90
-	cashout_button.add_theme_font_size_override("font_size", 21)
+	cashout_button.custom_minimum_size.y = 176
+	cashout_button.add_theme_font_size_override("font_size", 38)
 	cashout_button.disabled = true
 	cashout_button.pressed.connect(_on_cashout_pressed)
 	actions.add_child(cashout_button)
-	roll_button = _button("ROLL\nCLIMB HIGHER", true)
+	roll_button = _button("ROLL\nもう1回振る", true)
 	roll_button.name = "RollButton"
 	roll_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	roll_button.custom_minimum_size.y = 90
-	roll_button.add_theme_font_size_override("font_size", 23)
+	roll_button.custom_minimum_size.y = 176
+	roll_button.add_theme_font_size_override("font_size", 40)
 	roll_button.pressed.connect(_on_roll_pressed)
 	actions.add_child(roll_button)
+	last_roll_label = _label("前回：—", 28, Color("#fff2d4"))
+	last_roll_label.name = "LastRollInfo"
+	last_roll_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	last_roll_label.custom_minimum_size.y = 44
+	last_roll_label.add_theme_stylebox_override("normal", _panel(Color("#061b1ae8"), GOLD, 20, 2, 8))
+	root.add_child(last_roll_label)
 
 func _build_tutorial_overlay() -> Control:
-	var overlay := Control.new()
+	var overlay: Control = Control.new()
 	overlay.name = "TowerTutorial"
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.z_index = 50
-	var dim := ColorRect.new()
+	var dim: ColorRect = ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.74)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(dim)
-	var center := CenterContainer.new()
+	var center: CenterContainer = CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
-	var card := PanelContainer.new()
+	var card: PanelContainer = PanelContainer.new()
 	card.name = "TutorialCard"
-	card.custom_minimum_size.x = 300
-	card.add_theme_stylebox_override("panel", _panel(Color("#2b2038"), GOLD, 16, 3))
+	card.custom_minimum_size.x = 600
+	card.add_theme_stylebox_override("panel", _panel(Color("#061f1df8"), GOLD_LIGHT, 30, 4, 28))
 	center.add_child(card)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 12)
+	var box: VBoxContainer = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 24)
 	card.add_child(box)
-	var title := _label("HOW TO PLAY", 27, GOLD_LIGHT)
+	var title: Label = _label("HOW TO PLAY", 48, GOLD_LIGHT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)
-	tutorial_body = _label("", 20, Color.WHITE)
+	tutorial_body = _label("", 38, Color.WHITE)
 	tutorial_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tutorial_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tutorial_body.custom_minimum_size.y = 96
+	tutorial_body.custom_minimum_size.y = 180
 	box.add_child(tutorial_body)
-	tutorial_page_label = _label("1 / 3", 16, Color("#cdbfd7"))
+	tutorial_page_label = _label("1 / 3", 26, Color("#cdbfd7"))
 	tutorial_page_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(tutorial_page_label)
-	var actions := HBoxContainer.new()
-	actions.add_theme_constant_override("separation", 8)
+	var actions: HBoxContainer = HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 16)
 	box.add_child(actions)
 	var skip := _button("SKIP")
 	skip.name = "TutorialSkipButton"
@@ -321,16 +443,84 @@ func _build_tutorial_overlay() -> Control:
 	actions.add_child(tutorial_next_button)
 	return overlay
 
+func _build_result_overlay() -> Control:
+	var overlay: Control = Control.new()
+	overlay.name = "ResultOverlay"
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.z_index = 45
+	overlay.visible = false
+	var dim: ColorRect = ColorRect.new()
+	dim.color = Color(0.0, 0.0, 0.0, 0.48)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(dim)
+	var center: CenterContainer = CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(center)
+	var card: PanelContainer = PanelContainer.new()
+	card.name = "ResultPanel"
+	card.custom_minimum_size = Vector2(632, 720)
+	card.add_theme_stylebox_override("panel", _panel(Color("#190908f8"), GOLD_LIGHT, 34, 5, 28))
+	center.add_child(card)
+	var body: VBoxContainer = VBoxContainer.new()
+	body.alignment = BoxContainer.ALIGNMENT_CENTER
+	body.add_theme_constant_override("separation", 18)
+	card.add_child(body)
+	result_title_label = _label("残念… BUST!", 58, Color("#ffcf70"))
+	result_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.add_child(result_title_label)
+	result_dice_label = _label("[1]    BUST", 46, Color("#ff765e"))
+	result_dice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.add_child(result_dice_label)
+	result_floor_label = _label("FLOOR 0", 34, Color("#fff2d4"))
+	result_floor_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.add_child(result_floor_label)
+	var reward_panel: PanelContainer = PanelContainer.new()
+	reward_panel.custom_minimum_size.y = 170
+	reward_panel.add_theme_stylebox_override("panel", _panel(Color("#062523f2"), Color("#b87b28"), 24, 3, 18))
+	body.add_child(reward_panel)
+	result_reward_label = _label("獲得予定\n0 CHIP  →  0 CHIP", 42, Color("#fff2d4"))
+	result_reward_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_reward_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	reward_panel.add_child(result_reward_label)
+	result_bet_label = _label("BET結果  -20 CHIP", 32, Color("#ff765e"))
+	result_bet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.add_child(result_bet_label)
+	var retry: Button = _button("もう一度\nBET 20 CHIP", true)
+	retry.name = "RetryButton"
+	retry.custom_minimum_size.y = 150
+	retry.add_theme_font_size_override("font_size", 42)
+	retry.pressed.connect(_restart_after_result)
+	body.add_child(retry)
+	var secondary: HBoxContainer = HBoxContainer.new()
+	secondary.add_theme_constant_override("separation", 16)
+	body.add_child(secondary)
+	var change_bet: Button = _button("BETを変更する")
+	change_bet.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	change_bet.custom_minimum_size.y = 92
+	change_bet.pressed.connect(_restart_after_result)
+	secondary.add_child(change_bet)
+	var exit: Button = _button("やめる")
+	exit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	exit.custom_minimum_size.y = 92
+	exit.pressed.connect(_on_back_pressed)
+	secondary.add_child(exit)
+	return overlay
+
+func _open_tutorial() -> void:
+	tutorial_overlay.visible = true
+	_show_tutorial_page(0)
+
 func _build_stat_panel(caption: String) -> Dictionary:
-	var panel := PanelContainer.new()
+	var panel: PanelContainer = PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", _panel(Color("#f6d995"), Color("#a96b2e"), 12, 2))
-	var box := VBoxContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel(Color("#f6d995"), Color("#a96b2e"), 24, 3, 14))
+	var box: VBoxContainer = VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	panel.add_child(box)
-	var cap := _label(caption, 13, Color("#70451d"))
+	var cap: Label = _label(caption, 26, Color("#70451d"))
 	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(cap)
-	var value := _label("-", 19, INK)
+	var value: Label = _label("-", 46, INK)
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(value)
 	return {"panel": panel, "label": value}
@@ -339,9 +529,9 @@ func _stat_box(caption: String) -> Dictionary:
 	return _build_stat_panel(caption)
 
 func _amount_button(amount: int) -> Button:
-	var button := _button("%d CHIP" % amount)
-	button.custom_minimum_size = Vector2(100, 54)
-	button.add_theme_font_size_override("font_size", 18)
+	var button: Button = _button("%d\nCHIP" % amount)
+	button.custom_minimum_size = Vector2(208, 164)
+	button.add_theme_font_size_override("font_size", 38)
 	return button
 
 func _show_tutorial_page(page: int) -> void:
@@ -374,13 +564,16 @@ func _select_bet(amount: int) -> void:
 	_refresh_bet_buttons()
 
 func _refresh_bet_buttons() -> void:
-	var chips := CasinoBankScript.balance()
+	var chips: int = CasinoBankScript.balance()
 	for amount: int in bet_buttons:
-		var button := bet_buttons[amount] as Button
+		var button: Button = bet_buttons[amount] as Button
 		button.disabled = chips < amount
-		button.text = ("● " if amount == selected_bet else "") + "%d CHIP" % amount
+		button.text = ("◆\n" if amount == selected_bet else "") + "%d\nCHIP" % amount
 		_apply_button_state(button, amount == selected_bet)
 	start_button.disabled = chips < selected_bet
+	if balance_preview_label != null:
+		balance_preview_label.text = "BET後の所持チップ    %s  →  %s" % [_format_chips(chips), _format_chips(maxi(0, chips - selected_bet))]
+	start_button.text = "GAME START\nBET %d CHIP" % selected_bet
 	if start_button.disabled:
 		status_label.text = "CHIPが足りない。通常ステージでCOINを持ち帰ろう。"
 	else:
@@ -400,6 +593,7 @@ func _start_game() -> void:
 	queued_roll_value = 0
 	game = TowerScript.new_game(selected_bet)
 	rolling = false
+	result_overlay.visible = false
 	_set_retry_action(false)
 	setup_view.visible = false
 	active_view.visible = true
@@ -432,7 +626,7 @@ func _on_roll_pressed() -> void:
 	_after_roll_resolution()
 
 func _after_roll_resolution() -> void:
-	var kind := str(game.get("last_kind", ""))
+	var kind: String = str(game.get("last_kind", ""))
 	if bool(game.get("completed", false)):
 		_play_ui_sfx(&"complete", true)
 		_show_banner("TOWER COMPLETE!", GOLD_LIGHT, Color("#3f2408"), 0.85, "CompleteBanner")
@@ -446,6 +640,7 @@ func _after_roll_resolution() -> void:
 		_play_bust_fx()
 		_set_result_finished()
 		_refresh_all()
+		_show_bust_result()
 		return
 	if kind == "leap":
 		_play_ui_sfx(&"bonus", true)
@@ -461,7 +656,7 @@ func _after_roll_resolution() -> void:
 func _on_cashout_pressed() -> void:
 	if rolling or not bool(game.get("active", false)) or bool(game.get("finished", false)):
 		return
-	var payout := TowerScript.cashout_payout(game)
+	var payout: int = TowerScript.cashout_payout(game)
 	if payout <= 0:
 		_play_ui_sfx(&"blocked", false)
 		return
@@ -496,6 +691,7 @@ func _set_retry_action(enabled: bool) -> void:
 		roll_button.pressed.connect(_on_roll_pressed)
 
 func _restart_after_result() -> void:
+	result_overlay.visible = false
 	_play_ui_sfx(&"retry", false)
 	_show_setup()
 
@@ -505,7 +701,8 @@ func _show_setup() -> void:
 	queued_roll_value = 0
 	active_view.visible = false
 	setup_view.visible = true
-	roll_button.text = "ROLL\nCLIMB HIGHER"
+	result_overlay.visible = false
+	roll_button.text = "ROLL\nもう1回振る"
 	_apply_roll_style(false)
 	_set_retry_action(false)
 	_reset_tower_visuals()
@@ -518,19 +715,47 @@ func _reset_tower_visuals() -> void:
 	dice_presentation.present([1], false, 1)
 
 func _refresh_all() -> void:
-	chip_label.text = "CHIP  %d" % CasinoBankScript.balance()
+	chip_label.text = "所持チップ  %s" % _format_chips(CasinoBankScript.balance())
 	if game.is_empty():
 		_refresh_bet_buttons()
 		return
-	var floor_number := int(game.get("floor", 0))
-	var payout := int(game.get("payout", 0))
+	var floor_number: int = int(game.get("floor", 0))
+	var payout: int = int(game.get("payout", 0))
 	var planned_payout: int = payout if bool(game.get("finished", false)) else TowerScript.cashout_payout(game)
-	floor_label.text = str(floor_number)
+	floor_label.text = "%d / 10" % floor_number
 	payout_label.text = "%d CHIP" % planned_payout
-	risk_label.text = "-%d CHIP" % planned_payout
+	risk_label.text = "%d CHIP" % planned_payout
 	cashout_button.text = "CASH OUT\n%d CHIP" % planned_payout
 	cashout_button.disabled = not bool(game.get("active", false)) or floor_number < 1 or rolling
+	var last_roll: int = int(game.get("last_roll", 0))
+	if last_roll_label != null:
+		last_roll_label.text = "前回：%s%s" % ["—" if last_roll <= 0 else str(last_roll), "    GOLDEN LEAP!" if str(game.get("last_kind", "")) == "leap" else ""]
 	_refresh_tower(floor_number)
+
+func _show_bust_result() -> void:
+	var reached_floor: int = int(game.get("highest_floor", game.get("floor_before_bust", 0)))
+	if reached_floor <= 0:
+		reached_floor = int(game.get("previous_floor", 0))
+	var lost_reward: int = int(game.get("lost_payout", 0))
+	if lost_reward <= 0:
+		lost_reward = TowerScript.payout_for_floor(selected_bet, maxi(1, reached_floor)) if reached_floor > 0 else 0
+	result_title_label.text = "残念… BUST!"
+	result_dice_label.text = "[1]    BUST"
+	result_floor_label.text = "FLOOR %dまで登ったのに…" % reached_floor
+	result_reward_label.text = "獲得予定\n%d CHIP  →  0 CHIP" % lost_reward
+	result_bet_label.text = "BET結果  -%d CHIP" % selected_bet
+	var retry: Button = result_overlay.find_child("RetryButton", true, false) as Button
+	if retry != null:
+		retry.text = "もう一度\nBET %d CHIP" % selected_bet
+	result_overlay.visible = true
+
+func _format_chips(value: int) -> String:
+	var raw: String = str(maxi(0, value))
+	var result: String = ""
+	while raw.length() > 3:
+		result = "," + raw.right(3) + result
+		raw = raw.left(raw.length() - 3)
+	return raw + result
 
 func _refresh_tower(current_floor: int) -> void:
 	for floor_number: int in floor_panels:
@@ -639,16 +864,16 @@ func _on_back_pressed() -> void:
 	_play_ui_sfx(&"back", false)
 	back_requested.emit()
 
-func _label(text: String, size: int, color: Color) -> Label:
+func _label(text: String, font_size: int, color: Color) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_override("font", FONT)
-	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", color)
 	return label
 
 func _button(text: String, primary: bool = false) -> Button:
-	var button := Button.new()
+	var button: Button = Button.new()
 	button.text = text
 	button.add_theme_font_override("font", FONT)
 	button.add_theme_font_size_override("font_size", 17)
@@ -660,16 +885,23 @@ func _button(text: String, primary: bool = false) -> Button:
 	button.add_theme_stylebox_override("hover", _panel(GOLD_LIGHT if primary else Color("#51436a"), GOLD, 12, 2))
 	button.add_theme_stylebox_override("pressed", _panel(Color("#d99d2c") if primary else Color("#302641"), GOLD, 12, 2))
 	button.add_theme_stylebox_override("disabled", _panel(Color("#514c45"), Color("#766d5f"), 12, 1))
+	var focus: StyleBoxFlat = _panel(Color.TRANSPARENT, GOLD_LIGHT, 14, 4)
+	focus.draw_center = false
+	focus.expand_margin_left = 4
+	focus.expand_margin_right = 4
+	focus.expand_margin_top = 4
+	focus.expand_margin_bottom = 4
+	button.add_theme_stylebox_override("focus", focus)
 	return button
 
-func _panel(fill: Color, border: Color, radius: int, width: int) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
+func _panel(fill: Color, border: Color, radius: int, width: int, padding: int = 7) -> StyleBoxFlat:
+	var style: StyleBoxFlat = StyleBoxFlat.new()
 	style.bg_color = fill
 	style.border_color = border
 	style.set_border_width_all(width)
 	style.set_corner_radius_all(radius)
-	style.content_margin_left = 7
-	style.content_margin_right = 7
-	style.content_margin_top = 5
-	style.content_margin_bottom = 5
+	style.content_margin_left = padding
+	style.content_margin_right = padding
+	style.content_margin_top = padding
+	style.content_margin_bottom = padding
 	return style

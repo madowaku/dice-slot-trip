@@ -23,6 +23,8 @@ func _run() -> void:
 	_expect(bgm.current_track() == &"lasvegas_preview", "Las Vegas selection uses Casino")
 	bgm.play_lasvegas_main()
 	_expect(bgm.current_track() == &"lasvegas_main", "Las Vegas main map uses Jackpot")
+	bgm.play_vault_break()
+	_expect(bgm.current_track() == &"vault_break", "VAULT BREAK uses Shinobi Ashi")
 	bgm.play_dice_race()
 	_expect(bgm.current_track() == &"dice_race", "Dice Race uses Minimal Derby")
 	bgm.play_normal_map()

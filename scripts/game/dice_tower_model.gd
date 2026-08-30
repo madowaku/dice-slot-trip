@@ -28,6 +28,9 @@ static func new_game(bet_amount: int) -> Dictionary:
 		"payout": 0,
 		"last_roll": 0,
 		"last_kind": "",
+		"highest_floor": 0,
+		"floor_before_bust": 0,
+		"lost_payout": 0,
 	}
 
 static func multiplier_for_floor(floor_number: int) -> float:
@@ -57,6 +60,8 @@ static func apply_roll(state: Dictionary, rolled_value: int) -> Dictionary:
 	next["last_kind"] = ""
 
 	if value == 1:
+		next["floor_before_bust"] = int(next.get("floor", 0))
+		next["lost_payout"] = cashout_payout(next)
 		next["floor"] = 0
 		next["finished"] = true
 		next["busted"] = true
@@ -68,6 +73,7 @@ static func apply_roll(state: Dictionary, rolled_value: int) -> Dictionary:
 	var climb := 2 if value == 6 else 1
 	var reached_floor := mini(MAX_FLOOR, int(next.get("floor", 0)) + climb)
 	next["floor"] = reached_floor
+	next["highest_floor"] = maxi(int(next.get("highest_floor", 0)), reached_floor)
 	next["last_kind"] = "leap" if value == 6 else "climb"
 
 	if reached_floor >= MAX_FLOOR:

@@ -218,8 +218,17 @@ func _capture_poker(_hub: Node) -> void:
 	await _settle_frames(8)
 	_expect(screen.view_state == "setup", "poker setup state")
 	await _capture(screen, "poker-setup")
+	screen.call("_toggle_help")
+	await _settle_frames(3)
+	var help_overlay: Control = screen.find_child("HelpOverlay", true, false) as Control
+	_expect(help_overlay != null and help_overlay.visible, "poker help opens from setup")
+	await _capture(screen, "poker-help")
+	screen.call("_toggle_help")
+	await _settle_frames(2)
+	_expect(help_overlay != null and not help_overlay.visible, "poker help closes before play")
 	screen.call("_select_bet", 20)
-	screen.queued_roll_batch = [[1, 2, 3, 4, 5]]
+	# Match the retained-result design reference with a break-even FULL HOUSE.
+	screen.queued_roll_batch = [[3, 3, 3, 5, 5]]
 	screen.call("_start_game")
 	await _settle_frames(30)
 	await _capture(screen, "poker")
@@ -228,6 +237,8 @@ func _capture_poker(_hub: Node) -> void:
 		for index in range(5): screen.call("_on_keep_pressed", index)
 		screen.call("_on_lock_pressed")
 		await _settle_frames(20)
+	await _capture(screen, "poker-result")
+	_expect(screen.view_state == "result", "poker reaches a retained result")
 	screen.emit_signal("back_requested")
 	screen.queue_free()
 	await _settle_frames(3)
