@@ -59,7 +59,6 @@ var roll_button: Button
 var cashout_button: Button
 var again_button: Button
 var change_bet_button: Button
-var exit_button: Button
 var back_button: Button
 var setup_view: VBoxContainer
 var active_view: VBoxContainer
@@ -202,11 +201,11 @@ func _build_setup(root: VBoxContainer) -> void:
 	copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(copy)
-	var table := _label("17 ×0.4   18 ×0.6   19 ×1.0   20 ×1.2   21 ×2.0", 16, Color("#f5cf78"))
+	var table := _label("17 ×0.4   18 ×0.55   19 ×0.8   20 ×1.0   21 ×1.7", 16, Color("#f5cf78"))
 	table.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	table.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(table)
-	var golden_copy := _label("GOLDEN TREASURE  18 ×1.5  ·  19 ×1.7  ·  20 ×2.0", 16, GOLD_LIGHT)
+	var golden_copy := _label("GOLDEN TREASURE  18 ×1.25  ·  19 ×1.4  ·  20 ×1.6", 16, GOLD_LIGHT)
 	golden_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	golden_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(golden_copy)
@@ -389,7 +388,7 @@ func _build_result(root: VBoxContainer) -> void:
 	result_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(result_detail_label)
 
-	again_button = _button("AGAIN", true)
+	again_button = _button("PLAY AGAIN", true)
 	again_button.name = "AgainButton"
 	again_button.custom_minimum_size.y = 104
 	again_button.add_theme_font_size_override("font_size", 23)
@@ -400,12 +399,6 @@ func _build_result(root: VBoxContainer) -> void:
 	change_bet_button.custom_minimum_size.y = 96
 	change_bet_button.pressed.connect(_show_setup)
 	root.add_child(change_bet_button)
-	exit_button = _button("カジノへ戻る", false)
-	exit_button.name = "ResultExitButton"
-	exit_button.custom_minimum_size.y = 96
-	exit_button.pressed.connect(_on_back_pressed)
-	root.add_child(exit_button)
-
 func _resume_or_show_setup() -> void:
 	var active := CasinoBankScript.active_game(FACILITY_ID)
 	if active.is_empty():

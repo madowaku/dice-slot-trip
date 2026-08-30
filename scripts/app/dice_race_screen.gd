@@ -829,12 +829,12 @@ func _finish_race() -> void:
 	wager_committed = false
 	result_recorded = true
 	_play_ui_sfx(&"complete" if winner == selected_racer else &"error", true)
+	var net: int = payout - selected_bet
+	var outcome: String = "WIN" if net > 0 else ("EVEN" if net == 0 else "LOSS")
+	status_label.text = "%s · 最終%d位 · RETURN %d CHIP（BET込み） · NET %+d CHIP" % [outcome, final_rank, payout, net]
 	if winner == selected_racer:
-		status_label.text = "%s WIN！ %d CHIP獲得！" % [RACER_LABELS.get(winner, winner), payout]
 		_play_win_fx(RACER_ART_PATHS.get(winner, ""), RACER_LABELS.get(winner, winner), payout)
-	else:
-		status_label.text = "%s WIN。最終%d位で%d CHIP返還。" % [RACER_LABELS.get(winner, winner), final_rank, payout]
-	roll_button.text = "もう一度"
+	roll_button.text = "NEW RACE"
 	_apply_roll_button_style(false)
 	roll_button.disabled = false
 	if roll_button.pressed.is_connected(_on_roll_stop):
@@ -993,7 +993,7 @@ func _play_win_fx(winner_art: Variant, winner_label: Variant, payout: int) -> vo
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	art.custom_minimum_size = Vector2(40, 40)
 	row.add_child(art)
-	row.add_child(_label("%s WIN!  +%d CHIP" % [str(winner_label), payout], 22, GOLD_LIGHT))
+	row.add_child(_label("%s WIN!  RETURN %d · NET %+d" % [str(winner_label), payout, payout - selected_bet], 20, GOLD_LIGHT))
 	card.reset_size()
 	card.position = Vector2(
 		(race_fx_layer.size.x - card.size.x) * 0.5,

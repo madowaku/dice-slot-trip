@@ -43,27 +43,101 @@ def mix_dists(dists: list[dict[int, float]]) -> dict[int, float]:
     return normalize(dict(out))
 
 
-TOWER_MULTIPLIERS = {1: 1.15, 2: 1.30, 3: 1.55, 4: 1.80, 5: 2.10,
-                     6: 2.40, 7: 2.80, 8: 3.25, 9: 3.80, 10: 4.40}
+TOWER_MULTIPLIERS = {1: 1.10, 2: 1.25, 3: 1.50, 4: 1.80, 5: 2.00,
+                     6: 2.30, 7: 2.70, 8: 3.10, 9: 3.60, 10: 4.20}
 
 
 @lru_cache(None)
-def tower_opt(floor: int) -> tuple[float, str, tuple[tuple[int, float], ...]]:
+def tower_opt(bet: int, floor: int) -> tuple[float, str, tuple[tuple[int, float], ...]]:
     if floor >= 10:
-        payout = gd_round(BET * TOWER_MULTIPLIERS[10])
+        payout = gd_round(bet * TOWER_MULTIPLIERS[10])
         return float(payout), "complete", ((payout, 1.0),)
-    cash = gd_round(BET * TOWER_MULTIPLIERS[floor]) if floor else -1
+    cash = gd_round(bet * TOWER_MULTIPLIERS[floor]) if floor else -1
     roll_dist: Counter[int] = Counter({0: 1 / 6})
     roll_value = 0.0
     for face in range(2, 7):
         next_floor = min(10, floor + (2 if face == 6 else 1))
-        value, _, next_items = tower_opt(next_floor)
+        value, _, next_items = tower_opt(bet, next_floor)
         roll_value += value / 6
         for payout, probability in next_items:
             roll_dist[payout] += probability / 6
     if floor and cash >= roll_value:
         return float(cash), "cashout", ((cash, 1.0),)
     return roll_value, "roll", tuple(normalize(dict(roll_dist)).items())
+
+
+@lru_cache(None)
+def tower_threshold(bet: int, floor: int, cashout_floor: int) -> tuple[tuple[int, int, float], ...]:
+    """Return (payout, terminal floor, probability) for a fixed cash-out policy.
+
+    cashout_floor 1..9 takes the first reachable floor at or above the threshold;
+    10 means the explicit completion-only policy.
+    """
+    if floor >= 10:
+        return ((gd_round(bet * TOWER_MULTIPLIERS[10]), 10, 1.0),)
+    if floor >= cashout_floor and floor > 0:
+        return ((gd_round(bet * TOWER_MULTIPLIERS[floor]), floor, 1.0),)
+    out: Counter[tuple[int, int]] = Counter({(0, floor): 1 / 6})
+    for face in range(2, 7):
+        next_floor = min(10, floor + (2 if face == 6 else 1))
+        for payout, terminal_floor, probability in tower_threshold(bet, next_floor, cashout_floor):
+            out[(payout, terminal_floor)] += probability / 6
+    return tuple((payout, terminal_floor, probability)
+                 for (payout, terminal_floor), probability in sorted(out.items()))
+
+
+def tower_policy_report(bet: int, cashout_floor: int) -> dict:
+    outcomes = tower_threshold(bet, 0, cashout_floor)
+    payout_dist: Counter[int] = Counter()
+    floor_dist: Counter[int] = Counter()
+    for payout, terminal_floor, probability in outcomes:
+        payout_dist[payout] += probability
+        if payout > 0:
+            floor_dist[terminal_floor] += probability
+    normalized = normalize(dict(payout_dist))
+    return {
+        "rtp": round(dist_mean(normalized) / bet, 8),
+        "bust_rate": round(float(payout_dist[0]), 8),
+        "cashout_floors": {str(floor): round(probability, 8)
+                           for floor, probability in sorted(floor_dist.items()) if floor > 0},
+        "payout_distribution": {str(payout): round(probability, 10)
+                                for payout, probability in normalized.items()},
+    }
+
+
+@lru_cache(None)
+def tower_opt_outcomes(bet: int, floor: int = 0) -> tuple[tuple[int, int, float], ...]:
+    _, decision, _ = tower_opt(bet, floor)
+    if floor >= 10 or decision == "complete":
+        return ((gd_round(bet * TOWER_MULTIPLIERS[10]), 10, 1.0),)
+    if decision == "cashout":
+        return ((gd_round(bet * TOWER_MULTIPLIERS[floor]), floor, 1.0),)
+    out: Counter[tuple[int, int]] = Counter({(0, floor): 1 / 6})
+    for face in range(2, 7):
+        next_floor = min(10, floor + (2 if face == 6 else 1))
+        for payout, terminal_floor, probability in tower_opt_outcomes(bet, next_floor):
+            out[(payout, terminal_floor)] += probability / 6
+    return tuple((payout, terminal_floor, probability)
+                 for (payout, terminal_floor), probability in sorted(out.items()))
+
+
+def tower_optimal_report(bet: int) -> dict:
+    outcomes = tower_opt_outcomes(bet)
+    payout_dist: Counter[int] = Counter()
+    floor_dist: Counter[int] = Counter()
+    for payout, terminal_floor, probability in outcomes:
+        payout_dist[payout] += probability
+        if payout > 0:
+            floor_dist[terminal_floor] += probability
+    return {
+        "rtp": round(dist_mean(dict(payout_dist)) / bet, 8),
+        "bust_rate": round(float(payout_dist[0]), 8),
+        "cashout_floors": {str(floor): round(probability, 8)
+                           for floor, probability in sorted(floor_dist.items()) if floor > 0},
+        "decisions": {str(floor): tower_opt(bet, floor)[1] for floor in range(10)},
+        "payout_distribution": {str(payout): round(probability, 10)
+                                for payout, probability in normalize(dict(payout_dist)).items()},
+    }
 
 
 TREASURE_NORMAL = {17: 0.4, 18: 0.55, 19: 0.8, 20: 1.0, 21: 1.7}
@@ -205,6 +279,68 @@ def poker_initial_dist() -> dict[int, float]:
     return normalize(dict(out))
 
 
+def poker_first_roll_dist() -> dict[int, float]:
+    """Beginner policy: accept the initial hand without choosing holds/rerolls."""
+    out: Counter[int] = Counter()
+    for counts, probability in roll_count_distributions(5):
+        out[poker_payout(counts)] += probability
+    return normalize(dict(out))
+
+
+def poker_beginner_keep(counts: tuple[int, ...]) -> tuple[int, ...]:
+    """Deterministic visible-rule KEEP heuristic for a participating beginner.
+
+    Prefer the largest repeated face group.  Without a pair, keep the longest
+    consecutive run.  Equal candidates resolve by kept count, lowest starting
+    face, then the canonical die-index order represented by this face-count
+    tuple.  The last key is only a stability fallback after equivalent runs.
+    """
+    repeated = []
+    for face_index, count in enumerate(counts):
+        if count >= 2:
+            keep = tuple(count if index == face_index else 0 for index in range(6))
+            repeated.append((-count, face_index, tuple(index for index in range(5)
+                                                       if index < count), keep))
+    if repeated:
+        return min(repeated)[-1]
+
+    present = [index for index, count in enumerate(counts) if count > 0]
+    runs = []
+    for start in present:
+        end = start
+        while end + 1 in present:
+            end += 1
+        length = end - start + 1
+        keep = tuple(1 if start <= index <= end else 0 for index in range(6))
+        runs.append((-length, start, tuple(index for index in range(5)
+                                           if index < length), keep))
+    return min(runs)[-1] if runs else (0, 0, 0, 0, 0, 0)
+
+
+@lru_cache(None)
+def poker_beginner(counts: tuple[int, ...], rerolls: int) -> tuple[tuple[int, float], ...]:
+    # Five of a kind is the only obvious completed top hand; otherwise the
+    # visible flow consumes both available REROLL opportunities.
+    if rerolls <= 0 or max(counts) == 5:
+        return ((poker_payout(counts), 1.0),)
+    keep = poker_beginner_keep(counts)
+    reroll_n = 5 - sum(keep)
+    out: Counter[int] = Counter()
+    for rolled, probability in roll_count_distributions(reroll_n):
+        nxt = tuple(keep[index] + rolled[index] for index in range(6))
+        for payout, child_probability in poker_beginner(nxt, rerolls - 1):
+            out[payout] += probability * child_probability
+    return tuple(normalize(dict(out)).items())
+
+
+def poker_beginner_dist() -> dict[int, float]:
+    out: Counter[int] = Counter()
+    for counts, probability in roll_count_distributions(5):
+        for payout, final_probability in poker_beginner(counts, 2):
+            out[payout] += probability * final_probability
+    return normalize(dict(out))
+
+
 def roulette_high_dist() -> dict[int, float]:
     boosts = [1.0, 1.0, 1.2, 1.5, 2.0, 3.0]
     out: Counter[int] = Counter()
@@ -319,11 +455,82 @@ def race_profile(coast_max: int, rank_multipliers: dict[int, float],
     return rates
 
 
-def vault_bronze_dist(repo_root: Path) -> dict[int, float]:
-    data = json.loads((repo_root / "data/casino/vault_break_templates.json").read_text(encoding="utf-8"))
-    rates = [float(t["balance"]["optimal_success_rate"]) for t in data["templates"] if t["tier"] == "bronze"]
-    success = sum(rates) / len(rates)
-    payout = gd_round(BET * float(data["tiers"]["bronze"]["payout_multiplier"]))
+def vault_data(repo_root: Path) -> dict:
+    return json.loads((repo_root / "data/casino/vault_break_templates.json").read_text(encoding="utf-8"))
+
+
+def vault_mastered_report(repo_root: Path, bet: int = BET) -> dict[str, dict]:
+    data = vault_data(repo_root)
+    report = {}
+    for tier, config in data["tiers"].items():
+        templates = [t for t in data["templates"] if t["tier"] == tier]
+        weights = [float(t.get("weight", 1.0)) for t in templates]
+        weight_total = sum(weights)
+        rates = [float(t["balance"]["optimal_success_rate"]) for t in templates]
+        weighted_success = sum(rate * weight for rate, weight in zip(rates, weights)) / weight_total
+        payout = int(bet * float(config["payout_multiplier"]))
+        template_rtps = [rate * payout / bet for rate in rates]
+        report[tier] = {
+            "template_count": len(templates),
+            "weighted_success_rate": round(weighted_success, 8),
+            "payout": payout,
+            "weighted_rtp": round(weighted_success * payout / bet, 8),
+            "minimum_template_rtp": round(min(template_rtps), 8),
+            "maximum_template_rtp": round(max(template_rtps), 8),
+        }
+    return report
+
+
+def vault_mastered_dist(repo_root: Path, tier: str = "bronze", bet: int = BET) -> dict[int, float]:
+    row = vault_mastered_report(repo_root, bet)[tier]
+    success = float(row["weighted_success_rate"])
+    return normalize({0: 1 - success, int(row["payout"]): success})
+
+
+def vault_accepts(lock: dict, face: int) -> bool:
+    accepted = {
+        "low": (1, 2, 3), "high": (4, 5, 6), "odd": (1, 3, 5),
+        "even": (2, 4, 6), "edge": (1, 6),
+    }
+    rule = lock["rule"]
+    return face == int(lock["value"]) if rule == "exact" else face in accepted[rule]
+
+
+@lru_cache(None)
+def vault_random_success(lock_keys: tuple[tuple[str, int], ...], max_rolls: int,
+                         rolls_used: int = 0, filled_mask: int = 0) -> float:
+    """Exact beginner policy: pick uniformly among every currently valid empty lock."""
+    if filled_mask == (1 << len(lock_keys)) - 1:
+        return 1.0
+    if rolls_used >= max_rolls:
+        return 0.0
+    chance = 0.0
+    for face in range(1, 7):
+        valid = []
+        for index, (rule, value) in enumerate(lock_keys):
+            if filled_mask & (1 << index):
+                continue
+            lock = {"rule": rule, "value": value}
+            if vault_accepts(lock, face):
+                valid.append(index)
+        if not valid:
+            chance += vault_random_success(lock_keys, max_rolls, rolls_used + 1, filled_mask) / 6
+        else:
+            chance += sum(vault_random_success(lock_keys, max_rolls, rolls_used + 1,
+                                               filled_mask | (1 << index))
+                          for index in valid) / (6 * len(valid))
+    return chance
+
+
+def vault_random_bronze_dist(repo_root: Path, bet: int = BET) -> dict[int, float]:
+    data = vault_data(repo_root)
+    templates = [t for t in data["templates"] if t["tier"] == "bronze"]
+    successes = []
+    for template in templates:
+        lock_keys = tuple((lock["rule"], int(lock.get("value", 0))) for lock in template["locks"])
+        successes.append(vault_random_success(lock_keys, int(template["max_rolls"])))
+    success = sum(successes) / len(successes)
+    payout = int(bet * float(data["tiers"]["bronze"]["payout_multiplier"]))
     return normalize({0: 1 - success, payout: success})
 
 
@@ -349,6 +556,23 @@ def mixed_bankroll(dists: list[dict[int, float]], rounds: int, rng: np.random.Ge
     return summarize_balances(balances)
 
 
+def random_facility_bankroll(dists: list[dict[int, float]], rounds: int,
+                             rng: np.random.Generator) -> dict[str, float]:
+    """Choose one of the six facilities independently for every active player/round."""
+    balances = np.full(TRIALS, 300, dtype=np.int64)
+    for _ in range(rounds):
+        active_indices = np.flatnonzero(balances >= BET)
+        facility_choices = rng.integers(0, len(dists), size=active_indices.size)
+        for facility_index, dist in enumerate(dists):
+            selected = active_indices[facility_choices == facility_index]
+            if not selected.size:
+                continue
+            values = np.array(list(dist), dtype=np.int64)
+            probabilities = np.array([dist[int(v)] for v in values], dtype=float)
+            balances[selected] += rng.choice(values, size=selected.size, p=probabilities) - BET
+    return summarize_balances(balances)
+
+
 def summarize_balances(balances: np.ndarray) -> dict[str, float]:
     return {
         "mean": round(float(balances.mean()), 2),
@@ -357,6 +581,7 @@ def summarize_balances(balances: np.ndarray) -> dict[str, float]:
         "p90": float(np.percentile(balances, 90)),
         "bankrupt_pct": round(float((balances < BET).mean() * 100), 2),
         "at_or_above_300_pct": round(float((balances >= 300).mean() * 100), 2),
+        "under_100_pct": round(float((balances < 100).mean() * 100), 2),
     }
 
 
@@ -372,20 +597,48 @@ def main() -> None:
     treasure_sloppy = mix_dists([dict(treasure_policy(0, g, "sloppy")) for g in (18, 19, 20)])
     treasure_general = mix_dists([dict(treasure_policy(0, g, "general")) for g in (18, 19, 20)])
     treasure_optimal = mix_dists([dict(treasure_opt(0, g)[2]) for g in (18, 19, 20)])
-    dists = {
+    tower_optimal_dist = dict(tower_opt(BET, 0)[2])
+    tower_beginner_counter: Counter[int] = Counter()
+    for payout, _, probability in tower_threshold(BET, 0, 1):
+        tower_beginner_counter[payout] += probability
+    beginner_dists = {
+        "dice_race": race_dist,
+        "dice_tower": normalize(dict(tower_beginner_counter)),
+        "dice_roulette": roulette_high_dist(),
+        "treasure_21": treasure_sloppy,
+        "dice_poker": poker_beginner_dist(),
+        "vault_break": vault_random_bronze_dist(repo_root),
+    }
+    analysis_dists = {
         "dice_race_random": race_dist,
         "dice_race_60pct_timing": race_skill_dist,
-        "dice_tower_optimal": dict(tower_opt(0)[2]),
-        "dice_roulette_high": roulette_high_dist(),
+        "dice_tower_beginner_cashout_1f": beginner_dists["dice_tower"],
+        "dice_tower_optimal": tower_optimal_dist,
+        "dice_roulette_high": beginner_dists["dice_roulette"],
         "treasure_21_sloppy": treasure_sloppy,
         "treasure_21_general": treasure_general,
         "treasure_21_optimal": treasure_optimal,
+        "dice_poker_beginner_heuristic": beginner_dists["dice_poker"],
+        "dice_poker_first_roll_lower_bound": poker_first_roll_dist(),
         "dice_poker_optimal": poker_initial_dist(),
-        "vault_break_bronze_optimal": vault_bronze_dist(repo_root),
+        "vault_break_bronze_random_valid": beginner_dists["vault_break"],
+        "vault_break_bronze_mastered": vault_mastered_dist(repo_root),
     }
     rng = np.random.default_rng(SEED)
     result = {
-        "assumptions": {"initial_chips": 300, "fixed_bet": BET, "trials": TRIALS, "seed": SEED},
+        "phase": "Las Vegas Phase B",
+        "assumptions": {
+            "initial_chips": 300, "fixed_bet": BET, "trials": TRIALS, "seed": SEED,
+            "rounds": [10, 30, 50, 100],
+            "beginner_policies": {
+                "dice_race": "random-equivalent STOP timing with the visible coast model",
+                "dice_tower": "CASH OUT at the first reachable floor",
+                "dice_roulette": "HIGH bet; wheel outcomes remain random",
+                "treasure_21": "always HIT until an automatic terminal result",
+                "dice_poker": "keep the largest repeated group; otherwise keep the longest consecutive run; consume both rerolls unless five of a kind is complete",
+                "vault_break": "BRONZE; choose uniformly among valid empty locks, never discard a placeable die",
+            },
+        },
         "race_timing": race,
         "race_before_timing": race_before,
         "race_design_alternatives": {
@@ -394,24 +647,49 @@ def main() -> None:
             "selected_visible_coast_rank_payout": race,
         },
         "optimal_decisions": {
-            "tower": {str(f): tower_opt(f)[1] for f in range(10)},
+            "tower": {str(f): tower_opt(BET, f)[1] for f in range(10)},
             "treasure": {str(g): {str(t): treasure_opt(t, g)[1] for t in range(17, 22) if t != g and t != 21} for g in (18, 19, 20)},
+        },
+        "tower_bet_strategy": {},
+        "vault_mastered_tiers": vault_mastered_report(repo_root),
+        "lower_bounds": {
+            "dice_poker_first_roll_only": {
+                "policy": "accept the first roll without KEEP or REROLL; excluded from beginner aggregates",
+                "rtp": round(dist_mean(poker_first_roll_dist()) / BET, 6),
+            },
         },
         "games": {},
     }
-    for name, dist in dists.items():
+    for bet in (10, 20, 50):
+        optimal = tower_optimal_report(bet)
+        result["tower_bet_strategy"][str(bet)] = {
+            "optimal": optimal,
+            "policy_thresholds": {
+                **{str(floor): tower_policy_report(bet, floor) for floor in range(1, 10)},
+                "completion": tower_policy_report(bet, 10),
+            },
+        }
+    for name, dist in analysis_dists.items():
         result["games"][name] = {
             "payout_distribution": {str(k): round(v, 10) for k, v in dist.items()},
             "expected_payout": round(dist_mean(dist), 6),
             "rtp": round(dist_mean(dist) / BET, 6),
             "house_edge": round(1 - dist_mean(dist) / BET, 6),
-            "bankroll": {str(n): bankroll(dist, n, rng) for n in (10, 30, 100)},
+            "bankroll": {str(n): bankroll(dist, n, rng) for n in (10, 30, 50, 100)},
         }
-    baseline = [dists[name] for name in ("dice_race_random", "dice_tower_optimal", "dice_roulette_high", "treasure_21_optimal", "dice_poker_optimal", "vault_break_bronze_optimal")]
-    skilled = [dists[name] for name in ("dice_race_60pct_timing", "dice_tower_optimal", "dice_roulette_high", "treasure_21_optimal", "dice_poker_optimal", "vault_break_bronze_optimal")]
-    result["mixed_rotation"] = {
-        "baseline_random_race": {str(n): mixed_bankroll(baseline, n, rng) for n in (10, 30, 100)},
-        "race_60pct_timing": {str(n): mixed_bankroll(skilled, n, rng) for n in (10, 30, 100)},
+    result["beginner_bankroll"] = {
+        "facilities": {
+            name: {str(n): bankroll(dist, n, rng) for n in (10, 30, 50, 100)}
+            for name, dist in beginner_dists.items()
+        },
+        "uniform_rotation": {
+            str(n): mixed_bankroll(list(beginner_dists.values()), n, rng)
+            for n in (10, 30, 50, 100)
+        },
+        "independent_random_facility": {
+            str(n): random_facility_bankroll(list(beginner_dists.values()), n, rng)
+            for n in (10, 30, 50, 100)
+        },
     }
     result["bet_sensitivity"] = {}
     for bet in (5, 10, 20, 50):
@@ -420,6 +698,7 @@ def main() -> None:
         treasure_opt.cache_clear()
         treasure_policy.cache_clear()
         poker_opt.cache_clear()
+        poker_beginner.cache_clear()
         row = {
             "dice_race_random": race[f"{1 / 6:.4f}"]["rtp"],
             "treasure_21": {
@@ -428,10 +707,10 @@ def main() -> None:
         }
         if bet in (10, 20, 50):
             row.update({
-                "dice_tower": dist_mean(dict(tower_opt(0)[2])) / bet,
+                "dice_tower": dist_mean(dict(tower_opt(bet, 0)[2])) / bet,
                 "dice_roulette_high": dist_mean(roulette_high_dist()) / bet,
                 "dice_poker": dist_mean(poker_initial_dist()) / bet,
-                "vault_break_bronze": dist_mean(vault_bronze_dist(repo_root)) / bet,
+                "vault_break_bronze": dist_mean(vault_mastered_dist(repo_root, bet=bet)) / bet,
             })
         result["bet_sensitivity"][str(bet)] = row
     BET = 20
@@ -439,11 +718,19 @@ def main() -> None:
     treasure_opt.cache_clear()
     treasure_policy.cache_clear()
     poker_opt.cache_clear()
-    output = repo_root / "artifacts/audit/las-vegas-casino-economy-2026-08-30.json"
+    poker_beginner.cache_clear()
+    output = repo_root / "artifacts/audit/las-vegas-phase-b-casino-economy-2026-08-30.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(output)
-    print(json.dumps({name: game["rtp"] for name, game in result["games"].items()}, indent=2))
+    print(json.dumps({
+        "tower_optimal_rtp": {bet: result["tower_bet_strategy"][bet]["optimal"]["rtp"]
+                              for bet in ("10", "20", "50")},
+        "beginner_rtp": {name: round(dist_mean(dist) / BET, 6)
+                         for name, dist in beginner_dists.items()},
+        "vault_mastered_rtp": {tier: row["weighted_rtp"]
+                               for tier, row in result["vault_mastered_tiers"].items()},
+    }, indent=2))
 
 
 if __name__ == "__main__":

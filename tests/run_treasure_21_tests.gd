@@ -99,6 +99,11 @@ func _test_scene_flow() -> void:
 	await process_frame
 	_expect(scene is Treasure21Screen, "TREASURE 21 scene instantiates its screen")
 	_expect(scene.setup_view.visible and not scene.active_view.visible and not scene.result_view.visible, "screen opens on setup")
+	var setup_text := ""
+	for label: Node in scene.setup_view.find_children("*", "Label", true, false):
+		setup_text += (label as Label).text + "\n"
+	_expect("18 ×0.55" in setup_text and "21 ×1.7" in setup_text and "18 ×1.25" in setup_text and "20 ×1.6" in setup_text, "setup payout copy matches the Phase A model")
+	_expect(scene.again_button.text == "PLAY AGAIN", "same-BET immediate replay uses PLAY AGAIN")
 	_expect(scene.bet_buttons.size() == 4, "screen exposes four authored BET amounts")
 	for amount: int in scene.bet_buttons:
 		_expect((scene.bet_buttons[amount] as Button).custom_minimum_size.y >= 96.0, "BET %d meets touch target" % amount)
@@ -127,6 +132,13 @@ func _test_scene_flow() -> void:
 	scene.call("_on_cashout_pressed")
 	await process_frame
 	_expect(scene.result_view.visible and str(scene.game.get("result", "")) == "cashout" and int(scene.game.get("payout", 0)) == 8, "cash out opens result with payout")
+	var visible_casino_back_actions := 0
+	for candidate: Node in scene.find_children("*", "Button", true, false):
+		var candidate_button := candidate as Button
+		if candidate_button.visible and candidate_button.text == "カジノへ戻る":
+			visible_casino_back_actions += 1
+	_expect(visible_casino_back_actions == 1 and scene.find_child("ResultExitButton", true, false) == null, "TREASURE result exposes exactly one Casino-back action")
+	_expect(scene.again_button.visible and scene.again_button.text == "PLAY AGAIN" and scene.change_bet_button.visible and scene.change_bet_button.text == "CHANGE BET", "TREASURE result keeps replay and setup-return actions reachable")
 	_expect(CasinoBankScript.balance() == 988 and not CasinoBankScript.has_active_game("treasure_21"), "settlement credits once and clears active game")
 	var balance_after_cash := CasinoBankScript.balance()
 	scene.call("_on_cashout_pressed")

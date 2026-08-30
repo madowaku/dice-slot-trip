@@ -37,6 +37,14 @@ func _run() -> void:
 	_expect(bgm.current_track() == &"lasvegas_main", "Casino Hub starts the Las Vegas main-map BGM")
 	_expect(hub.chip_label != null and "100" in hub.chip_label.text, "Casino Hub shows persistent chip balance")
 	_expect(hub.card_data.size() == 6, "Prize Counter loads six initial racer cards")
+	var hub_subtitles: Dictionary = {}
+	for definition: Dictionary in hub.facility_definitions:
+		var facility_id := str(definition.get("id", ""))
+		var facility_button := hub.facility_buttons.get(facility_id) as Button
+		var subtitle := str(definition.get("subtitle", ""))
+		hub_subtitles[subtitle] = true
+		_expect(facility_button != null and subtitle in facility_button.text and "PLAY" in facility_button.text, "%s exposes its emotional role permanently at the Hub decision point" % facility_id)
+	_expect(hub_subtitles.size() == 6, "all six Hub emotional roles are distinct")
 	var prize_names: Array[String] = []
 	for card: Dictionary in hub.card_data:
 		prize_names.append(str(card.get("name", "")))
@@ -233,6 +241,8 @@ func _run() -> void:
 	await create_timer(0.72).timeout
 	var win_card := race.race_fx_layer.find_child("WinCard", true, false) as Control
 	_expect(win_card != null, "the reward card arrives after the GOAL movement and short dramatic hold")
+	_expect("WIN" in race.status_label.text and "最終1位" in race.status_label.text and "RETURN 36" in race.status_label.text and "NET +16" in race.status_label.text, "Race result states outcome, rank, stake-inclusive return, and net change")
+	_expect(race.roll_button.text == "NEW RACE", "Race setup-return CTA is named NEW RACE rather than implying immediate replay")
 	_expect(race.race_fx_layer.find_child("ConfettiPiece", true, false) != null, "victory adds restrained gold confetti")
 	_expect(bet_marker.z_index == 18, "the GOAL racer moves to the course foreground")
 	_expect(win_card != null and not win_card.get_global_rect().intersects(bet_marker.get_global_rect()), "the reward card no longer covers the GOAL racer")
@@ -312,7 +322,7 @@ func _run() -> void:
 	await create_timer(1.18).timeout
 	_expect(int(tower.game.floor) == 1 and int(tower.game.last_roll) == 4 and not tower.cashout_button.disabled, "Tower restart resolves the exact pending face and reaches floor one")
 	_expect(CasinoBankScript.balance() == tower_start_balance - 20 and CasinoBankScript.has_active_game("dice_tower"), "Tower resume neither debits again nor settles early")
-	_expect("23" in tower.cashout_button.text, "floor-one CASH OUT shows its chip amount directly")
+	_expect("22" in tower.cashout_button.text, "floor-one CASH OUT shows its chip amount directly")
 	var cash_center_x: float = tower.cashout_button.global_position.x + tower.cashout_button.size.x * 0.5
 	var roll_center_x: float = tower.roll_button.global_position.x + tower.roll_button.size.x * 0.5
 	_expect(cash_center_x < roll_center_x and absf(tower.cashout_button.size.x - tower.roll_button.size.x) <= 8.0, "fixed twin actions remain balanced across the console")
@@ -321,7 +331,9 @@ func _run() -> void:
 	tower.call("_on_roll_pressed")
 	await create_timer(1.18).timeout
 	_expect(bool(tower.game.busted) and int(tower.game.payout) == 0 and CasinoBankScript.balance() == tower_start_balance - 20, "rolled one loses only the committed wager")
-	_expect(tower.roll_button.text == "もう一度" and tower.cashout_button.disabled, "BUST leaves one retry action and closes CASH OUT")
+	_expect(tower.roll_button.text == "CHANGE BET" and tower.cashout_button.disabled, "BUST setup-return action is named CHANGE BET and closes CASH OUT")
+	var tower_retry := tower.result_overlay.find_child("RetryButton", true, false) as Button
+	_expect(tower_retry != null and "PLAY AGAIN" in tower_retry.text and "RETURN 0" in tower.result_reward_label.text and "NET  -20" in tower.result_bet_label.text, "BUST overlay distinguishes immediate replay, return, and net loss")
 	var tower_balance_after_bust: int = CasinoBankScript.balance()
 	var duplicate_tower_settlement: Dictionary = CasinoBankScript.settle_game("dice_tower", 0, {"busted": true}, busted_tower_game_id)
 	_expect(bool(duplicate_tower_settlement.get("already_settled", false)) and CasinoBankScript.balance() == tower_balance_after_bust, "Tower result replay cannot settle its wager twice")
@@ -335,7 +347,16 @@ func _run() -> void:
 	await create_timer(1.18).timeout
 	tower.call("_on_cashout_pressed")
 	await process_frame
-	_expect(bool(tower.game.cashed_out) and int(tower.game.payout) == 23 and CasinoBankScript.balance() == tower_start_balance - 17, "successful CASH OUT pays twenty-three chips after the earlier lost run")
+	_expect(bool(tower.game.cashed_out) and int(tower.game.payout) == 22 and CasinoBankScript.balance() == tower_start_balance - 18, "successful CASH OUT pays twenty-two chips after the earlier lost run")
+	_expect(tower.result_overlay.visible and "CASH OUT" in tower.result_title_label.text and "FLOOR 1" in tower.result_floor_label.text and "RETURN" in tower.result_reward_label.text and "NET  +2" in tower.result_bet_label.text, "successful CASH OUT uses the existing result overlay with floor, return, net, and reason")
+	var balance_before_play_again: int = CasinoBankScript.balance()
+	tower_retry = tower.result_overlay.find_child("RetryButton", true, false) as Button
+	tower_retry.pressed.emit()
+	await process_frame
+	_expect(tower.active_view.visible and CasinoBankScript.has_active_game("dice_tower") and CasinoBankScript.balance() == balance_before_play_again - 20, "Tower PLAY AGAIN immediately begins exactly one same-BET transaction")
+	tower.queued_roll_value = 1
+	tower.call("_on_roll_pressed")
+	await create_timer(1.18).timeout
 	tower.roll_button.pressed.emit()
 	await process_frame
 	var tower_balance_before_terminal_resume: int = CasinoBankScript.balance()
@@ -350,8 +371,8 @@ func _run() -> void:
 	root.add_child(tower)
 	await process_frame
 	await create_timer(1.18).timeout
-	_expect(bool(tower.game.completed) and int(tower.game.last_roll) == 6 and int(tower.game.payout) == 88, "Tower restart resolves the exact pending completion face")
-	_expect(not CasinoBankScript.has_active_game("dice_tower") and CasinoBankScript.balance() == tower_balance_before_terminal_resume + 68, "Tower terminal resume credits completion once without a second debit")
+	_expect(bool(tower.game.completed) and int(tower.game.last_roll) == 6 and int(tower.game.payout) == 84, "Tower restart resolves the exact pending completion face")
+	_expect(not CasinoBankScript.has_active_game("dice_tower") and CasinoBankScript.balance() == tower_balance_before_terminal_resume + 64, "Tower terminal resume credits completion once without a second debit")
 	tower.queue_free()
 	await process_frame
 

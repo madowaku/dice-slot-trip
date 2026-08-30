@@ -132,6 +132,8 @@ func _test_success_settlement_and_progress() -> void:
 	_expect(int(screen.model.get("reward")) == 34, "BET20 BRONZE reward floors to 34")
 	await _frames(7)
 	_expect(screen.view_state == "result" and screen.result_view.visible and not bool(returned["value"]), "Result is shown before any casino return")
+	_expect(screen.result_payout_label.text == "RETURN 34 CHIP（BET込み）" and "NET +14 CHIP" in screen.result_detail_label.text, "Vault success separates stake-inclusive RETURN from NET")
+	_expect(screen.again_button.text == "NEW VAULT", "Vault setup-return CTA is named NEW VAULT")
 	_expect(CasinoBankScript.balance() == 114 and screen.settlement_attempt_count == 1, "success credits 34 once after the committed wager")
 	var saved := CasinoBankScript.load_data()
 	var meta: Dictionary = saved.get("vault_break", {}) as Dictionary
@@ -203,6 +205,9 @@ func _roll_to_wait(screen: VaultBreakScreen, face: int) -> void:
 	screen.call("_on_roll_pressed")
 	await _frames(5)
 	_expect(screen.view_state == "waiting_for_placement", "FACE %d reaches placement state when a target exists" % face)
+	var valid_indices: Array = screen.model.call("get_valid_empty_lock_indices", face) as Array
+	if valid_indices.size() > 1:
+		_expect("%d個のLOCKが有効 · どこに使うか選択" % valid_indices.size() == screen.instruction_label.text, "multiple valid Vault locks retain one concise choice hint")
 
 func _roll_and_place(screen: VaultBreakScreen, face: int, lock_index: int) -> void:
 	await _roll_to_wait(screen, face)

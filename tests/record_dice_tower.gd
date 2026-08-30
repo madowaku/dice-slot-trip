@@ -15,7 +15,9 @@ func _init() -> void:
 	call_deferred("_record")
 
 func _record() -> void:
-	var output_dir: String = ProjectSettings.globalize_path("res://artifacts/playtest/dice-tower-v1")
+	var output_dir: String = OS.get_environment("DICE_TOWER_QA_OUTPUT_DIR")
+	if output_dir.is_empty():
+		output_dir = ProjectSettings.globalize_path("res://artifacts/playtest/dice-tower-v1")
 	DirAccess.make_dir_recursive_absolute(output_dir)
 	var save_path: String = "user://dice_tower_recorder_%d.json" % OS.get_process_id()
 	BANK_SCRIPT.set_test_save_path(save_path)
@@ -64,7 +66,7 @@ func _record() -> void:
 	tower.game.floor = 0
 	tower.game.highest_floor = 8
 	tower.game.floor_before_bust = 8
-	tower.game.lost_payout = 65
+	tower.game.lost_payout = 62
 	tower.game.last_roll = 1
 	tower.game.last_kind = "bust"
 	tower.game.finished = true
@@ -80,6 +82,22 @@ func _record() -> void:
 	await _resize_design(Vector2i(720, 1560))
 	_check_controls_inside([tower.result_overlay.find_child("RetryButton", true, false) as Control], "bust-780")
 	_capture(output_dir.path_join("bust-floor8-360x780.png"), Vector2i(360, 780))
+	await _resize_design(DESIGN_SIZE)
+
+	tower.game.floor = 10
+	tower.game.highest_floor = 10
+	tower.game.last_roll = 6
+	tower.game.last_kind = "leap"
+	tower.game.finished = true
+	tower.game.busted = false
+	tower.game.completed = true
+	tower.game.cashed_out = true
+	tower.game.active = false
+	tower.game.payout = 84
+	tower.call("_show_success_result", 84)
+	await _settle(8)
+	_check_controls_inside([tower.result_overlay.find_child("RetryButton", true, false) as Control], "success")
+	_capture(output_dir.path_join("success-floor10-360x800.png"))
 
 	print("DICE_TOWER_CAPTURE failures=%d output=%s" % [failures, output_dir])
 	var bgm: Node = root.get_node_or_null("BgmManager")

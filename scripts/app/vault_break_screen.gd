@@ -573,7 +573,7 @@ func _build_result(root_box: VBoxContainer) -> void:
 	result_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	result_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(result_detail_label)
-	again_button = _button("TRY AGAIN", true)
+	again_button = _button("NEW VAULT", true)
 	again_button.name = "AgainButton"
 	again_button.custom_minimum_size.y = 104
 	again_button.add_theme_font_size_override("font_size", 23)
@@ -1053,11 +1053,12 @@ func _show_result() -> void:
 	var template_id := str(result_data.get("template_id", active_template.get("id", "")))
 	result_label.text = "VAULT BREAK!" if won else "ACCESS DENIED"
 	result_label.add_theme_color_override("font_color", BRASS_LIGHT if won else Color("#f0a39a"))
-	result_payout_label.text = "+%d CHIP" % reward if won else "-%d CHIP" % bet
-	result_detail_label.text = "%s %s · BET %d · %d/%d ROLLS" % [
+	result_payout_label.text = "RETURN %d CHIP（BET込み）" % reward
+	result_detail_label.text = "NET %+d CHIP · BET %d\n%s %s · %d/%d ROLLS" % [
+		reward - bet,
+		bet,
 		str(TIER_NAMES.get(tier, tier.to_upper())),
 		template_id,
-		bet,
 		int(result_data.get("rolls_used", 0)),
 		int(result_data.get("max_rolls", 0)),
 	]

@@ -3,16 +3,16 @@ class_name DiceTowerModel
 
 const MAX_FLOOR := 10
 const MULTIPLIERS := {
-	1: 1.15,
-	2: 1.30,
-	3: 1.55,
+	1: 1.10,
+	2: 1.25,
+	3: 1.50,
 	4: 1.80,
-	5: 2.10,
-	6: 2.40,
-	7: 2.80,
-	8: 3.25,
-	9: 3.80,
-	10: 4.40,
+	5: 2.00,
+	6: 2.30,
+	7: 2.70,
+	8: 3.10,
+	9: 3.60,
+	10: 4.20,
 }
 
 static func new_game(bet_amount: int) -> Dictionary:

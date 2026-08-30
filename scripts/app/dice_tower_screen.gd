@@ -493,16 +493,16 @@ func _build_result_overlay() -> Control:
 	result_bet_label = _label("BET結果  -20 CHIP", 32, Color("#ff765e"))
 	result_bet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.add_child(result_bet_label)
-	var retry: Button = _button("もう一度\nBET 20 CHIP", true)
+	var retry: Button = _button("PLAY AGAIN\nBET 20 CHIP", true)
 	retry.name = "RetryButton"
 	retry.custom_minimum_size.y = 150
 	retry.add_theme_font_size_override("font_size", 42)
-	retry.pressed.connect(_restart_after_result)
+	retry.pressed.connect(_play_again_same_bet)
 	body.add_child(retry)
 	var secondary: HBoxContainer = HBoxContainer.new()
 	secondary.add_theme_constant_override("separation", 16)
 	body.add_child(secondary)
-	var change_bet: Button = _button("BETを変更する")
+	var change_bet: Button = _button("CHANGE BET")
 	change_bet.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	change_bet.custom_minimum_size.y = 92
 	change_bet.pressed.connect(_restart_after_result)
@@ -752,6 +752,7 @@ func _finish_success(payout: int, message: String) -> void:
 	status_label.text = message
 	_spawn_confetti()
 	_refresh_all()
+	_show_success_result(payout)
 
 func _settle_finished_game(payout: int) -> bool:
 	if settled:
@@ -774,7 +775,7 @@ func _settle_finished_game(payout: int) -> bool:
 func _set_result_finished() -> void:
 	cashout_button.disabled = true
 	roll_button.disabled = false
-	roll_button.text = "もう一度"
+	roll_button.text = "CHANGE BET"
 	_apply_roll_style(true)
 	_set_retry_action(true)
 
@@ -794,6 +795,15 @@ func _restart_after_result() -> void:
 	result_overlay.visible = false
 	_play_ui_sfx(&"retry", false)
 	_show_setup()
+
+func _play_again_same_bet() -> void:
+	result_overlay.visible = false
+	_play_ui_sfx(&"retry", false)
+	_show_setup()
+	if CasinoBankScript.balance() < selected_bet:
+		status_label.text = "CHIPが足りない。BETを変更してください。"
+		return
+	_start_game()
 
 func _show_setup() -> void:
 	game = {}
@@ -845,11 +855,24 @@ func _show_bust_result() -> void:
 	result_title_label.text = "残念… BUST!"
 	result_dice_label.text = "[1]    BUST"
 	result_floor_label.text = "FLOOR %dまで登ったのに…" % reached_floor
-	result_reward_label.text = "獲得予定\n%d CHIP  →  0 CHIP" % lost_reward
-	result_bet_label.text = "BET結果  -%d CHIP" % selected_bet
+	result_reward_label.text = "RETURN 0 CHIP（BET込み）\n獲得予定 %d CHIPを失った" % lost_reward
+	result_bet_label.text = "NET  -%d CHIP" % selected_bet
 	var retry: Button = result_overlay.find_child("RetryButton", true, false) as Button
 	if retry != null:
-		retry.text = "もう一度\nBET %d CHIP" % selected_bet
+		retry.text = "PLAY AGAIN\nBET %d CHIP" % selected_bet
+	result_overlay.visible = true
+
+func _show_success_result(payout: int) -> void:
+	var floor_number: int = int(game.get("floor", 0))
+	var completed: bool = bool(game.get("completed", false))
+	result_title_label.text = "TOWER COMPLETE!" if completed else "CASH OUT!"
+	result_dice_label.text = "[10]  GOAL" if completed else "SAFE RETURN"
+	result_floor_label.text = "FLOOR %dで配当確定" % floor_number
+	result_reward_label.text = "RETURN\n%d CHIP（BET込み）" % payout
+	result_bet_label.text = "NET  %+d CHIP" % (payout - selected_bet)
+	var retry: Button = result_overlay.find_child("RetryButton", true, false) as Button
+	if retry != null:
+		retry.text = "PLAY AGAIN\nBET %d CHIP" % selected_bet
 	result_overlay.visible = true
 
 func _format_chips(value: int) -> String:

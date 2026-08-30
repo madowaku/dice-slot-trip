@@ -12,37 +12,37 @@ const FACILITY_DEFINITIONS: Array[Dictionary] = [
 	{
 		"id": "dice_race",
 		"name": "DICE RACE",
-		"subtitle": "6体のサイコロレース",
+		"subtitle": "狙って推しを追い上げる",
 		"scene_path": "res://scenes/casino/DiceRace.tscn",
 	},
 	{
 		"id": "dice_tower",
 		"name": "DICE TOWER",
-		"subtitle": "上るほど倍率アップ",
+		"subtitle": "あと1段だけ欲張る",
 		"scene_path": "res://scenes/casino/DiceTower.tscn",
 	},
 	{
 		"id": "dice_roulette",
 		"name": "DICE ROULETTE",
-		"subtitle": "WHERE × BOOST で勝負",
+		"subtitle": "考え込まず一発に賭ける",
 		"scene_path": "res://scenes/casino/DiceRoulette.tscn",
 	},
 	{
 		"id": "treasure_21",
 		"name": "TREASURE 21",
-		"subtitle": "21を目指す宝箱",
+		"subtitle": "危険な止め時を読む",
 		"scene_path": "res://scenes/casino/Treasure21.tscn",
 	},
 	{
 		"id": "dice_poker",
 		"name": "DICE POKER",
-		"subtitle": "5つの役をそろえる",
+		"subtitle": "役の伸びしろを考える",
 		"scene_path": "res://scenes/casino/DicePoker.tscn",
 	},
 	{
 		"id": "vault_break",
 		"name": "VAULT BREAK",
-		"subtitle": "ロックを開けて突破",
+		"subtitle": "鍵穴の選択に悩む",
 		"scene_path": "res://scenes/casino/VaultBreak.tscn",
 	},
 ]
@@ -249,7 +249,7 @@ func _build_ring_map(ring_panel: PanelContainer) -> void:
 		button.name = "FacilityButton_%s" % _pascal_case(id)
 		button.custom_minimum_size = button_size
 		button.size = button_size
-		button.add_theme_font_size_override("font_size", 18)
+		button.add_theme_font_size_override("font_size", 15)
 		button.tooltip_text = str(definition.get("subtitle", ""))
 		button.set_meta("facility_id", id)
 		button.add_theme_stylebox_override("normal", _panel(Color("#38264a"), Color("#d8ad4c"), 18, 2))
@@ -453,7 +453,11 @@ func _refresh_facilities() -> void:
 		var available := _facility_available(id)
 		facility_availability[id] = available
 		button.disabled = not available
-		button.text = "%s\n%s" % [str(definition.get("name", id)), "PLAY" if available else "COMING SOON"]
+		button.text = "%s\n%s\n%s" % [
+			str(definition.get("name", id)),
+			str(definition.get("subtitle", "")),
+			"PLAY" if available else "COMING SOON",
+		]
 
 func _facility_available(facility_id: String) -> bool:
 	var definition := _facility_definition(facility_id)
