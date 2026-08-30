@@ -23,6 +23,7 @@ func _expect(condition: bool, label: String) -> void:
 
 func _run() -> void:
 	var bgm := root.get_node("BgmManager")
+	_expect(ProjectSettings.get_setting("display/window/size/window_width_override") == 360 and ProjectSettings.get_setting("display/window/size/window_height_override") == 800, "casino regression targets the authored 360x800 physical window")
 	var test_save_path := "user://dice_slot_trip_casino_ui_tests_%d.json" % OS.get_process_id()
 	CasinoBankScript.set_test_save_path(test_save_path)
 	if FileAccess.file_exists(test_save_path):
@@ -134,6 +135,7 @@ func _run() -> void:
 	var fox_caption := (race.direction_plates.get("fox", {}) as Dictionary).caption as Label
 	_expect(fox_caption.text == "上" and "キツネ" not in fox_caption.text, "direction plates let racer art replace duplicate small names")
 	_expect(race.setup_view.visible and not race.race_view.visible, "Dice Race opens in the pre-race betting view")
+	var race_start_balance: int = CasinoBankScript.balance()
 	race.call("_start_race")
 	await process_frame
 	_expect(not race.setup_view.visible and race.race_view.visible, "RACE START replaces setup controls with the active race view")
@@ -151,15 +153,30 @@ func _run() -> void:
 	_expect(start_centers.max() - start_centers.min() >= 150.0, "six racers spread across stable lanes when clustered at START")
 	race.orientation_index = 0
 	race.current_assignments = known_assignments.duplicate()
+	race.queued_coast_steps = 9
 	race.call("_refresh_assignment_ui")
 	race.call("_on_roll_stop")
 	race.call("_on_roll_stop")
-	await create_timer(0.7).timeout
-	_expect(race.last_stop_feedback_assignments == known_assignments, "STOP feedback uses the exact stopped physical orientation")
-	_expect((race.race.get("last_assignments", {}) as Dictionary) == known_assignments, "STOP applies the same assignments to race logic without a hidden redraw")
+	var pending_race_record: Dictionary = CasinoBankScript.active_game("dice_race")
+	var pending_race_rolls: Array = pending_race_record.get("pending_rolls", []) as Array
+	var persisted_race_roll: Dictionary = (pending_race_rolls[0] as Dictionary).duplicate(true) if not pending_race_rolls.is_empty() else {}
+	var persisted_race_assignments: Dictionary = (persisted_race_roll.get("assignments", {}) as Dictionary).duplicate(true)
+	_expect(not persisted_race_roll.is_empty() and int(persisted_race_roll.get("coast_steps", -1)) == 9, "STOP persists inertia and final orientation before its animation")
+	race.call("_on_back_pressed")
+	_expect(CasinoBankScript.has_active_game("dice_race") and CasinoBankScript.balance() == race_start_balance - race.selected_bet, "Race BACK preserves one debited active transaction")
+	race.queue_free()
+	await process_frame
+	race = RACE_SCENE.instantiate()
+	root.add_child(race)
+	await process_frame
+	await create_timer(1.1).timeout
+	bet_marker = race.racer_nodes.get(race.selected_racer) as Control
+	_expect(race.last_stop_feedback_assignments == persisted_race_assignments, "Race restart resumes the exact visible inertia result")
+	_expect((race.race.get("last_assignments", {}) as Dictionary) == persisted_race_assignments, "resumed STOP applies its persisted assignments without a hidden redraw")
+	_expect(CasinoBankScript.balance() == race_start_balance - race.selected_bet and CasinoBankScript.has_active_game("dice_race"), "Race resume neither debits again nor settles early")
 	_expect(race.stop_feedback_count_for_test == 1, "one STOP creates one six-direction feedback burst")
 	var stop_sfx: Dictionary = ui_sfx.call("receipt") if ui_sfx != null else {}
-	_expect(str(stop_sfx.get("last_cue", "")) == "progress-step" and str(stop_sfx.get("last_pack", "")) == "arcade", "ordinary STOP resolution plays one Las Vegas progress cue")
+	_expect(int(stop_sfx.get("play_count", 0)) > 0 and not str(stop_sfx.get("last_cue", "")).is_empty(), "resumed STOP completes through the authored result audio flow")
 	race.race["cashout_offered"] = true
 	race.race["cashout_amount"] = RaceScript.cashout_offer(race.race)
 	race.call("_after_roll_resolution")
@@ -208,6 +225,8 @@ func _run() -> void:
 	(race.race.racers.get(race.selected_racer, {}) as Dictionary)["position"] = RaceScript.GOAL - 1
 	race.current_assignments = known_assignments.duplicate()
 	race.spinning = true
+	race.queued_coast_steps = 0
+	var finished_race_game_id: String = race.game_id
 	race.call("_on_roll_stop")
 	await create_timer(0.22).timeout
 	_expect(race.race_fx_layer.find_child("WinCard", true, false) == null and race.spectator_strip.visible, "GOAL resolution holds the expanded race view until movement finishes")
@@ -217,9 +236,46 @@ func _run() -> void:
 	_expect(race.race_fx_layer.find_child("ConfettiPiece", true, false) != null, "victory adds restrained gold confetti")
 	_expect(bet_marker.z_index == 18, "the GOAL racer moves to the course foreground")
 	_expect(win_card != null and not win_card.get_global_rect().intersects(bet_marker.get_global_rect()), "the reward card no longer covers the GOAL racer")
-	race.call("_show_bet_select")
+	var race_balance_after_settlement: int = CasinoBankScript.balance()
+	var duplicate_race_settlement: Dictionary = CasinoBankScript.settle_game("dice_race", 36, {"won": true}, finished_race_game_id)
+	_expect(bool(duplicate_race_settlement.get("already_settled", false)) and CasinoBankScript.balance() == race_balance_after_settlement, "Race result replay cannot credit its payout twice")
+	race.roll_button.pressed.emit()
+	await process_frame
 	_expect(race.setup_view.visible and not race.race_view.visible, "returning to setup restores the betting view")
-	CasinoBankScript.add_chips(race.selected_bet)
+	var race_balance_before_loss: int = CasinoBankScript.balance()
+	race.call("_start_race")
+	for racer_id: String in RaceScript.RACERS:
+		(race.race.racers.get(racer_id, {}) as Dictionary)["position"] = 2
+	(race.race.racers.get("fox", {}) as Dictionary)["position"] = 25
+	(race.race.racers.get("rabbit", {}) as Dictionary)["position"] = 24
+	(race.race.racers.get(race.selected_racer, {}) as Dictionary)["position"] = 23
+	race.race["winner"] = "fox"
+	race.race["finished"] = true
+	race.race["bet_active"] = true
+	race.call("_finish_race")
+	await process_frame
+	_expect(not CasinoBankScript.has_active_game("dice_race") and CasinoBankScript.balance() == race_balance_before_loss - 4, "Race third-place loss settles once with the authored 16 CHIP partial return")
+	var race_stats: Dictionary = CasinoBankScript.load_data()
+	_expect(int(race_stats.get("dice_race_play_count", 0)) == 2 and int(race_stats.get("dice_race_win_count", 0)) == 1, "Race settlement records one win and one loss atomically")
+	race.roll_button.pressed.emit()
+	await process_frame
+	var race_balance_before_terminal_resume: int = CasinoBankScript.balance()
+	race.call("_start_race")
+	(race.race.racers.get(race.selected_racer, {}) as Dictionary)["position"] = 25
+	race.race["winner"] = race.selected_racer
+	race.race["finished"] = true
+	race.race["bet_active"] = true
+	race.race["pending_rolls"] = []
+	CasinoBankScript.update_game("dice_race", race.race, race.game_id)
+	race.queue_free()
+	await process_frame
+	race = RACE_SCENE.instantiate()
+	root.add_child(race)
+	await process_frame
+	await process_frame
+	_expect(not CasinoBankScript.has_active_game("dice_race") and CasinoBankScript.balance() == race_balance_before_terminal_resume + 16, "Race restart settles a persisted terminal win without reroll or second debit")
+	var resumed_race_stats: Dictionary = CasinoBankScript.load_data()
+	_expect(int(resumed_race_stats.get("dice_race_play_count", 0)) == 3 and int(resumed_race_stats.get("dice_race_win_count", 0)) == 2, "terminal Race resume records its result exactly once")
 	race.queue_free()
 	await process_frame
 
@@ -243,17 +299,32 @@ func _run() -> void:
 	_expect(CasinoBankScript.balance() == tower_start_balance - 20 and tower.active_view.visible, "GAME START immediately commits the wager")
 	_expect(tower.cashout_button.disabled and not tower.roll_button.disabled, "START disables CASH OUT and arms ROLL")
 	tower.call("_on_roll_pressed")
+	var pending_tower_record: Dictionary = CasinoBankScript.active_game("dice_tower")
+	var pending_tower_rolls: Array = pending_tower_record.get("pending_rolls", []) as Array
+	_expect(not pending_tower_rolls.is_empty() and int((pending_tower_rolls[0] as Dictionary).get("value", 0)) == 4, "Tower persists the next face before animation")
+	tower.call("_on_back_pressed")
+	_expect(CasinoBankScript.has_active_game("dice_tower") and CasinoBankScript.balance() == tower_start_balance - 20, "Tower BACK preserves one debited active transaction")
+	tower.queue_free()
+	await process_frame
+	tower = TOWER_SCENE.instantiate()
+	root.add_child(tower)
+	await process_frame
 	await create_timer(1.18).timeout
-	_expect(int(tower.game.floor) == 1 and not tower.cashout_button.disabled, "first safe roll reaches floor one and enables CASH OUT")
+	_expect(int(tower.game.floor) == 1 and int(tower.game.last_roll) == 4 and not tower.cashout_button.disabled, "Tower restart resolves the exact pending face and reaches floor one")
+	_expect(CasinoBankScript.balance() == tower_start_balance - 20 and CasinoBankScript.has_active_game("dice_tower"), "Tower resume neither debits again nor settles early")
 	_expect("23" in tower.cashout_button.text, "floor-one CASH OUT shows its chip amount directly")
 	var cash_center_x: float = tower.cashout_button.global_position.x + tower.cashout_button.size.x * 0.5
 	var roll_center_x: float = tower.roll_button.global_position.x + tower.roll_button.size.x * 0.5
 	_expect(cash_center_x < roll_center_x and absf(tower.cashout_button.size.x - tower.roll_button.size.x) <= 8.0, "fixed twin actions remain balanced across the console")
 	tower.queued_roll_value = 1
+	var busted_tower_game_id: String = tower.game_id
 	tower.call("_on_roll_pressed")
 	await create_timer(1.18).timeout
 	_expect(bool(tower.game.busted) and int(tower.game.payout) == 0 and CasinoBankScript.balance() == tower_start_balance - 20, "rolled one loses only the committed wager")
 	_expect(tower.roll_button.text == "もう一度" and tower.cashout_button.disabled, "BUST leaves one retry action and closes CASH OUT")
+	var tower_balance_after_bust: int = CasinoBankScript.balance()
+	var duplicate_tower_settlement: Dictionary = CasinoBankScript.settle_game("dice_tower", 0, {"busted": true}, busted_tower_game_id)
+	_expect(bool(duplicate_tower_settlement.get("already_settled", false)) and CasinoBankScript.balance() == tower_balance_after_bust, "Tower result replay cannot settle its wager twice")
 	tower.roll_button.pressed.emit()
 	await process_frame
 	_expect(tower.setup_view.visible and not tower.active_view.visible, "retry returns the player to BET selection")
@@ -265,6 +336,22 @@ func _run() -> void:
 	tower.call("_on_cashout_pressed")
 	await process_frame
 	_expect(bool(tower.game.cashed_out) and int(tower.game.payout) == 23 and CasinoBankScript.balance() == tower_start_balance - 17, "successful CASH OUT pays twenty-three chips after the earlier lost run")
+	tower.roll_button.pressed.emit()
+	await process_frame
+	var tower_balance_before_terminal_resume: int = CasinoBankScript.balance()
+	tower.call("_start_game")
+	tower.game["floor"] = 9
+	tower.game["highest_floor"] = 9
+	tower.game["pending_rolls"] = [{"kind": "roll", "value": 6, "from_floor": 9, "roll_index": 1}]
+	CasinoBankScript.update_game("dice_tower", tower.game, tower.game_id)
+	tower.queue_free()
+	await process_frame
+	tower = TOWER_SCENE.instantiate()
+	root.add_child(tower)
+	await process_frame
+	await create_timer(1.18).timeout
+	_expect(bool(tower.game.completed) and int(tower.game.last_roll) == 6 and int(tower.game.payout) == 88, "Tower restart resolves the exact pending completion face")
+	_expect(not CasinoBankScript.has_active_game("dice_tower") and CasinoBankScript.balance() == tower_balance_before_terminal_resume + 68, "Tower terminal resume credits completion once without a second debit")
 	tower.queue_free()
 	await process_frame
 
@@ -342,5 +429,9 @@ func _run() -> void:
 	if FileAccess.file_exists(test_save_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(test_save_path))
 	CasinoBankScript.clear_test_save_path()
+	if ui_sfx != null:
+		ui_sfx.call("stop_all")
+	bgm.call("stop")
+	await process_frame
 	print("Casino UI tests: %d assertions, %d failures" % [assertions, failures])
 	quit(1 if failures > 0 else 0)

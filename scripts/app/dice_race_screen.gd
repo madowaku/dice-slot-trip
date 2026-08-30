@@ -39,6 +39,9 @@ const RACER_ART_PATHS := {
 }
 const BET_AMOUNTS := [10, 20, 50]
 const SPIN_STEP_SECONDS := 0.085
+const FACILITY_ID := "dice_race"
+const MAX_COAST_STEPS := 9
+const COAST_STEP_SECONDS := 0.04
 const DIRECTION_LABELS := {
 	"top": "上", "bottom": "下", "front": "手前",
 	"back": "奥", "left": "左", "right": "右",
@@ -67,6 +70,11 @@ var orientation_index := 0
 var current_assignments: Dictionary = {}
 var wager_committed := false
 var result_recorded := false
+var game_id: String = ""
+var pending_roll: Dictionary = {}
+var settled: bool = false
+var queued_coast_steps: int = -1
+var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 var chip_label: Label
 var bet_label: Label
@@ -114,8 +122,9 @@ func _ready() -> void:
 	if ui_sfx != null:
 		ui_sfx.call("set_stage", &"las_vegas")
 	orientations = OrientationScript.all_orientations()
+	rng.randomize()
 	_build_ui()
-	_show_bet_select()
+	_resume_or_show_setup()
 
 func _process(delta: float) -> void:
 	if not spinning or orientations.is_empty():
@@ -314,7 +323,7 @@ func _build_course_overview(root: VBoxContainer) -> void:
 	route.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	route.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(route)
-	var note := _label("推しを選んで、欲しい目を狙え", 19, Color("#f5cf78"))
+	var note := _label("推しを選んで、欲しい目を狙え\nSTOP後は見える惰性回転で確定", 19, Color("#f5cf78"))
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(note)
 
@@ -568,8 +577,62 @@ func _build_bet_panel(root: VBoxContainer) -> void:
 	start_button.pressed.connect(_start_race)
 	bet_panel.add_child(start_button)
 
+func _resume_or_show_setup() -> void:
+	var active: Dictionary = CasinoBankScript.active_game(FACILITY_ID)
+	if active.is_empty():
+		_show_bet_select()
+		return
+	game_id = str(active.get("game_id", ""))
+	var session: Dictionary = active.get("session", {}) as Dictionary
+	race = _normalise_race(session, int(active.get("bet", selected_bet)))
+	selected_racer = str(race.get("bet_racer", selected_racer))
+	selected_bet = int(race.get("bet_amount", active.get("bet", selected_bet)))
+	wager_committed = true
+	settled = false
+	result_recorded = false
+	pending_roll = _extract_pending_roll(race)
+	if pending_roll.is_empty():
+		pending_roll = _extract_pending_roll(active)
+	setup_view.visible = false
+	race_view.visible = true
+	final_stretch_shown = false
+	track_view.reset_camera()
+	_set_spectator_focus(false, true)
+	roll_button.disabled = not pending_roll.is_empty()
+	status_label.text = "%sのレースを再開" % RACER_LABELS.get(selected_racer, selected_racer)
+	_refresh_all()
+	if bool(race.get("finished", false)):
+		call_deferred("_finish_race")
+	elif not pending_roll.is_empty():
+		call_deferred("_resume_pending_roll")
+
+func _normalise_race(source: Dictionary, fallback_bet: int) -> Dictionary:
+	var candidate: Dictionary = source.duplicate(true)
+	if candidate.has("race") and candidate["race"] is Dictionary:
+		candidate = (candidate["race"] as Dictionary).duplicate(true)
+	var racer_id: String = str(candidate.get("bet_racer", selected_racer))
+	var bet_amount: int = maxi(0, int(candidate.get("bet_amount", candidate.get("bet", fallback_bet))))
+	var fresh: Dictionary = RaceScript.new_race(racer_id, bet_amount)
+	for key: Variant in candidate.keys():
+		fresh[str(key)] = candidate[key]
+	return fresh
+
+func _extract_pending_roll(source: Dictionary) -> Dictionary:
+	var values: Variant = source.get("pending_rolls", [])
+	if values is Array and not (values as Array).is_empty() and (values as Array)[0] is Dictionary:
+		return ((values as Array)[0] as Dictionary).duplicate(true)
+	return {}
+
+func _resume_pending_roll() -> void:
+	if pending_roll.is_empty() or not is_inside_tree():
+		return
+	await _play_persisted_roll(pending_roll)
+
 func _show_bet_select() -> void:
 	race = RaceScript.new_race()
+	game_id = ""
+	pending_roll = {}
+	settled = false
 	spinning = false
 	wager_committed = false
 	result_recorded = false
@@ -613,12 +676,21 @@ func _refresh_bet_buttons() -> void:
 		status_label.text = "CHIPが足りない。通常ステージでCOINを持ち帰ろう。"
 
 func _start_race() -> void:
-	if not CasinoBankScript.spend_chips(selected_bet):
+	var initial_race: Dictionary = RaceScript.new_race(selected_racer, selected_bet)
+	initial_race["pending_rolls"] = []
+	var receipt: Dictionary = CasinoBankScript.begin_game(FACILITY_ID, selected_bet, initial_race)
+	if not bool(receipt.get("ok", false)):
+		if bool(receipt.get("already_active", false)):
+			_resume_or_show_setup()
+			return
 		_play_ui_sfx(&"blocked", false)
 		_refresh_bet_buttons()
 		return
 	_play_ui_sfx(&"start", false)
-	race = RaceScript.new_race(selected_racer, selected_bet)
+	race = initial_race
+	game_id = str(receipt.get("game_id", ""))
+	pending_roll = {}
+	settled = false
 	wager_committed = true
 	result_recorded = false
 	final_stretch_shown = false
@@ -651,10 +723,53 @@ func _on_roll_stop() -> void:
 	roll_button.text = "ROLL"
 	roll_button.disabled = true
 	_apply_roll_button_style(false)
-	current_assignments = OrientationScript.values_for_racers(orientations[orientation_index])
-	var stopped_assignments := current_assignments.duplicate()
+	var start_index: int = orientation_index
+	var coast_steps: int = queued_coast_steps if queued_coast_steps in range(0, MAX_COAST_STEPS + 1) else rng.randi_range(0, MAX_COAST_STEPS)
+	queued_coast_steps = -1
+	var final_index: int = (start_index + coast_steps) % orientations.size()
+	var final_assignments: Dictionary = OrientationScript.values_for_racers(orientations[final_index])
+	pending_roll = {
+		"kind": "orientation",
+		"start_index": start_index,
+		"coast_steps": coast_steps,
+		"orientation_index": final_index,
+		"assignments": final_assignments.duplicate(true),
+	}
+	race["pending_rolls"] = [pending_roll.duplicate(true)]
+	var update_receipt: Dictionary = CasinoBankScript.update_game(FACILITY_ID, race, game_id)
+	if not bool(update_receipt.get("ok", false)):
+		status_label.text = "保存できませんでした。もう一度STOPしてください。"
+		roll_button.disabled = false
+		return
+	await _play_persisted_roll(pending_roll)
+
+func _play_persisted_roll(pending: Dictionary) -> void:
+	if pending.is_empty() or orientations.is_empty():
+		return
+	var start_index: int = posmod(int(pending.get("start_index", orientation_index)), orientations.size())
+	var coast_steps: int = clampi(int(pending.get("coast_steps", 0)), 0, MAX_COAST_STEPS)
+	status_label.text = "STOP！ 惰性回転を見届けよう"
+	for step: int in range(1, coast_steps + 1):
+		status_label.text = "惰性回転  %d / %d" % [step, coast_steps]
+		orientation_index = (start_index + step) % orientations.size()
+		current_assignments = OrientationScript.values_for_racers(orientations[orientation_index])
+		_refresh_assignment_ui()
+		_refresh_physical_die(COAST_STEP_SECONDS)
+		await get_tree().create_timer(COAST_STEP_SECONDS).timeout
+		if not is_inside_tree():
+			return
+	orientation_index = posmod(int(pending.get("orientation_index", start_index)), orientations.size())
+	current_assignments = (pending.get("assignments", {}) as Dictionary).duplicate(true)
+	if current_assignments.is_empty():
+		current_assignments = OrientationScript.values_for_racers(orientations[orientation_index])
+	await _resolve_persisted_roll(current_assignments)
+
+func _resolve_persisted_roll(stopped_assignments: Dictionary) -> void:
 	var was_photo_finish := not (race.get("photo_finish_candidates", []) as Array).is_empty()
-	race = RaceScript.apply_roll(race, current_assignments)
+	race = RaceScript.apply_roll(race, stopped_assignments)
+	race["pending_rolls"] = []
+	pending_roll = {}
+	CasinoBankScript.update_game(FACILITY_ID, race, game_id)
 	_play_roll_result_sfx()
 	status_label.text = "PHOTO FINISH判定！" if was_photo_finish else "%s、行け！" % RACER_LABELS[selected_racer]
 	_set_spectator_focus(true)
@@ -695,20 +810,30 @@ func _after_roll_resolution() -> void:
 func _finish_race() -> void:
 	spinning = false
 	roll_button.disabled = true
-	var winner := str(race.get("winner", ""))
-	var payout := RaceScript.winning_payout(race)
+	var winner: String = str(race.get("winner", ""))
+	var final_rank: int = RaceScript.final_rank_for_racer(race, selected_racer)
+	var payout: int = RaceScript.final_payout(race)
+	var receipt: Dictionary = CasinoBankScript.settle_game(FACILITY_ID, payout, {
+		"winner": winner,
+		"bet_racer": selected_racer,
+		"rank": final_rank,
+		"won": winner == selected_racer,
+		"payout": payout,
+	}, game_id)
+	if bool(receipt.get("already_settled", false)):
+		payout = int(receipt.get("payout", payout))
+	settled = bool(receipt.get("ok", false)) or bool(receipt.get("already_settled", false))
+	if not settled:
+		status_label.text = "精算を保存できませんでした。"
+		return
+	wager_committed = false
+	result_recorded = true
 	_play_ui_sfx(&"complete" if winner == selected_racer else &"error", true)
-	if payout > 0:
-		CasinoBankScript.add_chips(payout)
+	if winner == selected_racer:
 		status_label.text = "%s WIN！ %d CHIP獲得！" % [RACER_LABELS.get(winner, winner), payout]
 		_play_win_fx(RACER_ART_PATHS.get(winner, ""), RACER_LABELS.get(winner, winner), payout)
-	elif bool(race.get("cashout_taken", false)):
-		status_label.text = "%s WIN。CASH OUT済み。" % RACER_LABELS.get(winner, winner)
 	else:
-		status_label.text = "%s WIN。次は当てよう！" % RACER_LABELS.get(winner, winner)
-	if not result_recorded:
-		CasinoBankScript.record_dice_race(winner == selected_racer and payout > 0, payout)
-		result_recorded = true
+		status_label.text = "%s WIN。最終%d位で%d CHIP返還。" % [RACER_LABELS.get(winner, winner), final_rank, payout]
 	roll_button.text = "もう一度"
 	_apply_roll_button_style(false)
 	roll_button.disabled = false
@@ -728,6 +853,8 @@ func _restart_after_result() -> void:
 	_show_bet_select()
 
 func _on_back_pressed() -> void:
+	if wager_committed and not race.is_empty():
+		CasinoBankScript.update_game(FACILITY_ID, race, game_id)
 	_play_ui_sfx(&"back", false)
 	back_requested.emit()
 

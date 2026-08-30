@@ -199,4 +199,10 @@ func _test_bet_and_cashout() -> void:
 	race = RaceScript.new_race("duck", 20)
 	race.winner = "duck"
 	race.finished = true
-	_expect(RaceScript.winning_payout(race) == 80, "standard win pays bet times four including stake")
+	race.racers.duck.position = RaceScript.GOAL
+	_expect(RaceScript.winning_payout(race) == 36, "first place returns the Phase A x1.8 rank payout")
+	_expect(RaceScript.final_multiplier_for_rank(2) == 1.0 and RaceScript.final_multiplier_for_rank(6) == 0.3, "final rank payouts preserve a break-even second and partial lower-rank returns")
+	race.winner = "fox"
+	race.racers.fox.position = RaceScript.GOAL + 1
+	race.racers.duck.position = RaceScript.GOAL - 1
+	_expect(RaceScript.final_rank_for_racer(race, "duck") == 2 and RaceScript.final_payout(race) == 20, "second place returns the stake without a win")

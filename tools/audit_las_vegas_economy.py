@@ -66,8 +66,8 @@ def tower_opt(floor: int) -> tuple[float, str, tuple[tuple[int, float], ...]]:
     return roll_value, "roll", tuple(normalize(dict(roll_dist)).items())
 
 
-TREASURE_NORMAL = {17: 0.4, 18: 0.6, 19: 1.0, 20: 1.2, 21: 2.0}
-TREASURE_GOLDEN = {18: 1.5, 19: 1.7, 20: 2.0}
+TREASURE_NORMAL = {17: 0.4, 18: 0.55, 19: 0.8, 20: 1.0, 21: 1.7}
+TREASURE_GOLDEN = {18: 1.25, 19: 1.4, 20: 1.6}
 
 
 @lru_cache(None)
@@ -94,6 +94,32 @@ def treasure_opt(total: int, golden: int) -> tuple[float, str, tuple[tuple[int, 
     if total >= 17 and cash >= roll_value:
         return float(cash), "cashout", ((cash, 1.0),)
     return roll_value, "roll", tuple(normalize(dict(roll_dist)).items())
+
+
+@lru_cache(None)
+def treasure_policy(total: int, golden: int, policy: str) -> tuple[tuple[int, float], ...]:
+    should_cash = False
+    if total >= 17:
+        if policy == "general":
+            should_cash = total >= 18
+        elif policy == "sloppy":
+            should_cash = False
+    if should_cash:
+        return ((int(BET * TREASURE_NORMAL[total]), 1.0),)
+    result: Counter[int] = Counter()
+    for face in range(1, 7):
+        nxt = total + face
+        if nxt > 21:
+            child = ((0, 1.0),)
+        elif nxt == 21:
+            child = ((int(BET * TREASURE_NORMAL[21]), 1.0),)
+        elif nxt == golden:
+            child = ((int(BET * TREASURE_GOLDEN[golden]), 1.0),)
+        else:
+            child = treasure_policy(nxt, golden, policy)
+        for payout, probability in child:
+            result[payout] += probability / 6
+    return tuple(normalize(dict(result)).items())
 
 
 POKER_MULTIPLIERS = {
@@ -219,18 +245,29 @@ RACERS = ("camel", "rabbit", "fox", "duck", "dinosaur", "robot")
 RACER_DIRECTION = {"fox": "top", "rabbit": "bottom", "duck": "front", "dinosaur": "back", "camel": "left", "robot": "right"}
 
 
-def race_once(rng: random.Random, accuracy: float) -> bool:
+RACE_RANK_MULTIPLIERS = {1: 1.8, 2: 1.0, 3: 0.8, 4: 0.6, 5: 0.4, 6: 0.3}
+
+
+def race_once_rank(rng: random.Random, accuracy: float, coast_max: int = 9,
+                   skill_roll_limit: int | None = None) -> int:
     all_o = orientations()
     hits = [o for o in all_o if o["bottom"] == 6]
     misses = [o for o in all_o if o["bottom"] != 6]
     racers = {r: {"position": 0, "foxfire": False, "log": False} for r in RACERS}
     candidates: list[str] = []
+    roll_count = 0
+    winner = ""
     while True:
-        o = rng.choice(hits if rng.random() < accuracy else misses)
+        skill_active = skill_roll_limit is None or roll_count < skill_roll_limit
+        o = rng.choice(hits if skill_active and rng.random() < accuracy else misses if skill_active else all_o)
+        if coast_max > 0:
+            start_index = all_o.index(o)
+            o = all_o[(start_index + rng.randint(0, coast_max)) % len(all_o)]
+        roll_count += 1
         assignments = {r: o[RACER_DIRECTION[r]] for r in RACERS}
         if candidates:
             winner = max(candidates, key=lambda r: assignments[r])
-            return winner == "rabbit"
+            break
         for racer in RACERS:
             state = racers[racer]
             rolled = assignments[racer]
@@ -256,15 +293,29 @@ def race_once(rng: random.Random, accuracy: float) -> bool:
             best = max(racers[r]["position"] for r in goalers)
             candidates = [r for r in goalers if racers[r]["position"] == best]
             if len(candidates) == 1:
-                return candidates[0] == "rabbit"
+                winner = candidates[0]
+                break
+    ordered = sorted(RACERS, key=lambda r: (
+        racers[r]["position"],
+        1 if r == winner else 0,
+        -RACERS.index(r),
+    ), reverse=True)
+    return ordered.index("rabbit") + 1
 
 
-def race_rates() -> dict[str, float]:
+def race_profile(coast_max: int, rank_multipliers: dict[int, float],
+                 skill_roll_limit: int | None = None, trials: int = 100_000) -> dict[str, dict]:
     rng = random.Random(SEED)
-    rates = {}
+    rates: dict[str, dict] = {}
     for accuracy in (1 / 6, 0.25, 0.40, 0.60, 0.80, 1.0):
-        wins = sum(race_once(rng, accuracy) for _ in range(100_000))
-        rates[f"{accuracy:.4f}"] = wins / 100_000
+        ranks = Counter(race_once_rank(rng, accuracy, coast_max, skill_roll_limit) for _ in range(trials))
+        distribution = {rank: ranks[rank] / trials for rank in range(1, 7)}
+        rtp = sum(distribution[rank] * rank_multipliers.get(rank, 0.0) for rank in range(1, 7))
+        rates[f"{accuracy:.4f}"] = {
+            "win_rate": distribution[1],
+            "rank_distribution": {str(rank): distribution[rank] for rank in range(1, 7)},
+            "rtp": rtp,
+        }
     return rates
 
 
@@ -312,22 +363,36 @@ def summarize_balances(balances: np.ndarray) -> dict[str, float]:
 def main() -> None:
     global BET
     repo_root = Path(__file__).resolve().parents[1]
-    race = race_rates()
-    race_random_p = race[f"{1 / 6:.4f}"]
-    race_skill_p = race["0.6000"]
+    race = race_profile(9, RACE_RANK_MULTIPLIERS)
+    race_before = race_profile(0, {1: 4.0}, trials=50_000)
+    race_random_ranks = race[f"{1 / 6:.4f}"]["rank_distribution"]
+    race_skill_ranks = race["0.6000"]["rank_distribution"]
+    race_dist = normalize({gd_round(BET * RACE_RANK_MULTIPLIERS[rank]): float(race_random_ranks[str(rank)]) for rank in range(1, 7)})
+    race_skill_dist = normalize({gd_round(BET * RACE_RANK_MULTIPLIERS[rank]): float(race_skill_ranks[str(rank)]) for rank in range(1, 7)})
+    treasure_sloppy = mix_dists([dict(treasure_policy(0, g, "sloppy")) for g in (18, 19, 20)])
+    treasure_general = mix_dists([dict(treasure_policy(0, g, "general")) for g in (18, 19, 20)])
+    treasure_optimal = mix_dists([dict(treasure_opt(0, g)[2]) for g in (18, 19, 20)])
     dists = {
-        "dice_race_random": normalize({0: 1 - race_random_p, 80: race_random_p}),
-        "dice_race_60pct_timing": normalize({0: 1 - race_skill_p, 80: race_skill_p}),
+        "dice_race_random": race_dist,
+        "dice_race_60pct_timing": race_skill_dist,
         "dice_tower_optimal": dict(tower_opt(0)[2]),
         "dice_roulette_high": roulette_high_dist(),
-        "treasure_21_optimal": mix_dists([dict(treasure_opt(0, g)[2]) for g in (18, 19, 20)]),
+        "treasure_21_sloppy": treasure_sloppy,
+        "treasure_21_general": treasure_general,
+        "treasure_21_optimal": treasure_optimal,
         "dice_poker_optimal": poker_initial_dist(),
         "vault_break_bronze_optimal": vault_bronze_dist(repo_root),
     }
     rng = np.random.default_rng(SEED)
     result = {
         "assumptions": {"initial_chips": 300, "fixed_bet": BET, "trials": TRIALS, "seed": SEED},
-        "race_timing": {accuracy: {"win_rate": rate, "rtp": rate * 4} for accuracy, rate in race.items()},
+        "race_timing": race,
+        "race_before_timing": race_before,
+        "race_design_alternatives": {
+            "payout_only_x0_95": race_profile(0, {1: 0.95}, trials=50_000),
+            "one_skilled_roll_x5": race_profile(0, {1: 5.0}, skill_roll_limit=1, trials=50_000),
+            "selected_visible_coast_rank_payout": race,
+        },
         "optimal_decisions": {
             "tower": {str(f): tower_opt(f)[1] for f in range(10)},
             "treasure": {str(g): {str(t): treasure_opt(t, g)[1] for t in range(17, 22) if t != g and t != 21} for g in (18, 19, 20)},
@@ -353,9 +418,10 @@ def main() -> None:
         BET = bet
         tower_opt.cache_clear()
         treasure_opt.cache_clear()
+        treasure_policy.cache_clear()
         poker_opt.cache_clear()
         row = {
-            "dice_race_random": race_random_p * 4,
+            "dice_race_random": race[f"{1 / 6:.4f}"]["rtp"],
             "treasure_21": {
                 str(g): dist_mean(dict(treasure_opt(0, g)[2])) / bet for g in (18, 19, 20)
             },
@@ -371,6 +437,7 @@ def main() -> None:
     BET = 20
     tower_opt.cache_clear()
     treasure_opt.cache_clear()
+    treasure_policy.cache_clear()
     poker_opt.cache_clear()
     output = repo_root / "artifacts/audit/las-vegas-casino-economy-2026-08-30.json"
     output.parent.mkdir(parents=True, exist_ok=True)

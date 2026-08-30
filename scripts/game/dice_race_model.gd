@@ -3,7 +3,15 @@ class_name DiceRaceModel
 
 const GOAL := 24
 const RACERS: Array[String] = ["camel", "rabbit", "fox", "duck", "dinosaur", "robot"]
-const WIN_MULTIPLIER := 4.0
+const WIN_MULTIPLIER := 1.8
+const FINAL_RANK_MULTIPLIERS := {
+	1: 1.8,
+	2: 1.0,
+	3: 0.8,
+	4: 0.6,
+	5: 0.4,
+	6: 0.3,
+}
 const CASHOUT_MULTIPLIERS := {
 	1: 1.8,
 	2: 1.0,
@@ -127,9 +135,30 @@ static func ride_on(state: Dictionary) -> Dictionary:
 static func winning_payout(state: Dictionary) -> int:
 	if not bool(state.get("bet_active", false)):
 		return 0
-	if str(state.get("winner", "")) != str(state.get("bet_racer", "")):
+	return final_payout(state)
+
+static func final_payout(state: Dictionary) -> int:
+	if not bool(state.get("bet_active", false)) or not bool(state.get("finished", false)):
 		return 0
-	return int(roundi(float(int(state.get("bet_amount", 0))) * WIN_MULTIPLIER))
+	var racer_id: String = str(state.get("bet_racer", ""))
+	var final_rank: int = final_rank_for_racer(state, racer_id)
+	var multiplier: float = float(FINAL_RANK_MULTIPLIERS.get(final_rank, 0.0))
+	return int(roundi(float(int(state.get("bet_amount", 0))) * multiplier))
+
+static func final_multiplier_for_rank(final_rank: int) -> float:
+	return float(FINAL_RANK_MULTIPLIERS.get(clampi(final_rank, 1, 6), 0.0))
+
+static func final_rank_for_racer(state: Dictionary, racer_id: String) -> int:
+	var base_rank: int = rank_for_racer(state, racer_id)
+	if not bool(state.get("finished", false)):
+		return base_rank
+	var winner: String = str(state.get("winner", ""))
+	if racer_id == winner:
+		return 1
+	var racers: Dictionary = state.get("racers", {})
+	var racer_position: int = int((racers.get(racer_id, {}) as Dictionary).get("position", 0))
+	var winner_position: int = int((racers.get(winner, {}) as Dictionary).get("position", -1))
+	return base_rank + 1 if winner_position == racer_position else base_rank
 
 static func rank_for_racer(state: Dictionary, racer_id: String) -> int:
 	if racer_id not in RACERS:

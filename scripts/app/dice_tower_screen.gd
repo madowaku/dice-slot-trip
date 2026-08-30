@@ -12,6 +12,7 @@ const TOWER_TEXTURE: Texture2D = preload("res://assets/casino/dice_tower/ui/dice
 const CHIP_TEXTURE: Texture2D = preload("res://assets/casino/vault_break/ui/chip-20-red-v1.png")
 
 const BET_AMOUNTS := [10, 20, 50]
+const FACILITY_ID := "dice_tower"
 const ROLL_SECONDS := 0.75
 const RESULT_SECONDS := 0.32
 const GOLD := Color("#f2bf4c")
@@ -28,6 +29,9 @@ var rolling: bool = false
 var rng_seed: int = 0
 var queued_roll_value: int = 0
 var rng := RandomNumberGenerator.new()
+var game_id: String = ""
+var pending_roll: Dictionary = {}
+var settled: bool = false
 
 var chip_label: Label
 var status_label: Label
@@ -68,8 +72,12 @@ func _ready() -> void:
 		ui_sfx.call("set_stage", &"las_vegas")
 	rng.randomize()
 	_build_ui()
-	_show_tutorial_page(0)
-	_refresh_all()
+	if CasinoBankScript.has_active_game(FACILITY_ID):
+		tutorial_overlay.visible = false
+		_resume_or_show_setup()
+	else:
+		_show_tutorial_page(0)
+		_show_setup()
 
 func _build_ui() -> void:
 	var bg: TextureRect = TextureRect.new()
@@ -579,10 +587,62 @@ func _refresh_bet_buttons() -> void:
 	else:
 		status_label.text = "%d CHIPで塔に挑む？" % selected_bet
 
+func _resume_or_show_setup() -> void:
+	var active: Dictionary = CasinoBankScript.active_game(FACILITY_ID)
+	if active.is_empty():
+		_show_setup()
+		return
+	game_id = str(active.get("game_id", ""))
+	var session: Dictionary = active.get("session", {}) as Dictionary
+	game = _normalise_game(session, int(active.get("bet", selected_bet)))
+	selected_bet = int(game.get("bet", active.get("bet", selected_bet)))
+	pending_roll = _extract_pending_roll(game)
+	if pending_roll.is_empty():
+		pending_roll = _extract_pending_roll(active)
+	settled = false
+	rolling = not pending_roll.is_empty()
+	setup_view.visible = false
+	active_view.visible = true
+	result_overlay.visible = false
+	_set_retry_action(false)
+	_reset_tower_visuals()
+	_refresh_all()
+	if bool(game.get("finished", false)):
+		call_deferred("_after_roll_resolution")
+	elif not pending_roll.is_empty():
+		call_deferred("_resume_pending_roll")
+
+func _normalise_game(source: Dictionary, fallback_bet: int) -> Dictionary:
+	var candidate: Dictionary = source.duplicate(true)
+	if candidate.has("game") and candidate["game"] is Dictionary:
+		candidate = (candidate["game"] as Dictionary).duplicate(true)
+	var bet_amount: int = maxi(0, int(candidate.get("bet", candidate.get("stake", fallback_bet))))
+	var fresh: Dictionary = TowerScript.new_game(bet_amount)
+	for key: Variant in candidate.keys():
+		fresh[str(key)] = candidate[key]
+	return fresh
+
+func _extract_pending_roll(source: Dictionary) -> Dictionary:
+	var values: Variant = source.get("pending_rolls", [])
+	if values is Array and not (values as Array).is_empty() and (values as Array)[0] is Dictionary:
+		return ((values as Array)[0] as Dictionary).duplicate(true)
+	return {}
+
+func _resume_pending_roll() -> void:
+	if pending_roll.is_empty() or not is_inside_tree():
+		return
+	await _animate_and_resolve_pending_roll(pending_roll)
+
 func _start_game() -> void:
 	if rolling or CasinoBankScript.balance() < selected_bet:
 		return
-	if not CasinoBankScript.spend_chips(selected_bet):
+	var initial_game: Dictionary = TowerScript.new_game(selected_bet)
+	initial_game["pending_rolls"] = []
+	var receipt: Dictionary = CasinoBankScript.begin_game(FACILITY_ID, selected_bet, initial_game)
+	if not bool(receipt.get("ok", false)):
+		if bool(receipt.get("already_active", false)):
+			_resume_or_show_setup()
+			return
 		_play_ui_sfx(&"blocked", false)
 		_refresh_bet_buttons()
 		return
@@ -591,7 +651,10 @@ func _start_game() -> void:
 	else:
 		rng.randomize()
 	queued_roll_value = 0
-	game = TowerScript.new_game(selected_bet)
+	game = initial_game
+	game_id = str(receipt.get("game_id", ""))
+	pending_roll = {}
+	settled = false
 	rolling = false
 	result_overlay.visible = false
 	_set_retry_action(false)
@@ -607,17 +670,35 @@ func _start_game() -> void:
 func _on_roll_pressed() -> void:
 	if rolling or not bool(game.get("active", false)) or bool(game.get("finished", false)):
 		return
+	var rolled: int = queued_roll_value if queued_roll_value in range(1, 7) else rng.randi_range(1, 6)
+	queued_roll_value = 0
+	pending_roll = {
+		"kind": "roll",
+		"value": rolled,
+		"from_floor": int(game.get("floor", 0)),
+		"roll_index": int(game.get("roll_count", 0)) + 1,
+	}
+	game["pending_rolls"] = [pending_roll.duplicate(true)]
+	var receipt: Dictionary = CasinoBankScript.update_game(FACILITY_ID, game, game_id)
+	if not bool(receipt.get("ok", false)):
+		status_label.text = "保存できませんでした。もう一度ROLLしてください。"
+		return
 	rolling = true
 	cashout_button.disabled = true
 	roll_button.disabled = true
-	var rolled: int = queued_roll_value if queued_roll_value in range(1, 7) else rng.randi_range(1, 6)
-	queued_roll_value = 0
+	await _animate_and_resolve_pending_roll(pending_roll)
+
+func _animate_and_resolve_pending_roll(pending: Dictionary) -> void:
+	var rolled: int = clampi(int(pending.get("value", 1)), 1, 6)
 	status_label.text = "サイコロが回る..."
 	dice_presentation.present([rolled], true, 1)
 	await get_tree().create_timer(ROLL_SECONDS).timeout
 	if not is_inside_tree():
 		return
 	game = TowerScript.apply_roll(game, rolled)
+	game["pending_rolls"] = []
+	pending_roll = {}
+	CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 	dice_presentation.present([rolled], false, 1)
 	await get_tree().create_timer(RESULT_SECONDS).timeout
 	if not is_inside_tree():
@@ -638,7 +719,7 @@ func _after_roll_resolution() -> void:
 		status_label.text = "BUST！ 獲得予定CHIPは0。"
 		_show_banner("BUST  0 CHIP", Color("#ffd9d4"), Color("#5b1210"), 0.85, "BustBanner")
 		_play_bust_fx()
-		_set_result_finished()
+		_settle_finished_game(0)
 		_refresh_all()
 		_show_bust_result()
 		return
@@ -665,11 +746,30 @@ func _on_cashout_pressed() -> void:
 	_finish_success(payout, "CASH OUT！ +%d CHIP" % payout)
 
 func _finish_success(payout: int, message: String) -> void:
-	CasinoBankScript.add_chips(payout)
+	if not _settle_finished_game(payout):
+		status_label.text = "精算を保存できませんでした。"
+		return
 	status_label.text = message
 	_spawn_confetti()
-	_set_result_finished()
 	_refresh_all()
+
+func _settle_finished_game(payout: int) -> bool:
+	if settled:
+		_set_result_finished()
+		return true
+	CasinoBankScript.update_game(FACILITY_ID, game, game_id)
+	var receipt: Dictionary = CasinoBankScript.settle_game(FACILITY_ID, maxi(0, payout), {
+		"floor": int(game.get("floor", 0)),
+		"highest_floor": int(game.get("highest_floor", 0)),
+		"busted": bool(game.get("busted", false)),
+		"completed": bool(game.get("completed", false)),
+		"cashed_out": bool(game.get("cashed_out", false)),
+		"payout": maxi(0, payout),
+	}, game_id)
+	settled = bool(receipt.get("ok", false)) or bool(receipt.get("already_settled", false))
+	if settled:
+		_set_result_finished()
+	return settled
 
 func _set_result_finished() -> void:
 	cashout_button.disabled = true
@@ -697,6 +797,9 @@ func _restart_after_result() -> void:
 
 func _show_setup() -> void:
 	game = {}
+	game_id = ""
+	pending_roll = {}
+	settled = false
 	rolling = false
 	queued_roll_value = 0
 	active_view.visible = false
@@ -861,6 +964,8 @@ func _apply_roll_style(danger: bool) -> void:
 	roll_button.add_theme_stylebox_override("hover", _panel(fill.lightened(0.08), GOLD_LIGHT, 12, 3))
 
 func _on_back_pressed() -> void:
+	if not game.is_empty() and bool(game.get("active", false)):
+		CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 	_play_ui_sfx(&"back", false)
 	back_requested.emit()
 

@@ -57,12 +57,12 @@ func _state_at_total(total: int, golden: int = 19) -> Dictionary:
 	return state
 
 func _test_model_rules() -> void:
-	var expected := {17: 8, 18: 12, 19: 20, 20: 24, 21: 40}
+	var expected := {17: 8, 18: 11, 19: 16, 20: 20, 21: 34}
 	for total: int in expected:
 		_expect(Treasure21Script.payout_for_total(20, total) == int(expected[total]), "BET20 normal payout total %d" % total)
-	_expect(Treasure21Script.golden_payout_for(20, 18) == 30, "Golden18 pays 30")
-	_expect(Treasure21Script.golden_payout_for(20, 19) == 34, "Golden19 pays 34")
-	_expect(Treasure21Script.golden_payout_for(20, 20) == 40, "Golden20 pays 40")
+	_expect(Treasure21Script.golden_payout_for(20, 18) == 25, "Golden18 pays 25")
+	_expect(Treasure21Script.golden_payout_for(20, 19) == 28, "Golden19 pays 28")
+	_expect(Treasure21Script.golden_payout_for(20, 20) == 32, "Golden20 pays 32")
 	_expect(not Treasure21Script.can_cash_out_total(16), "cash out is gated below 17")
 	_expect(Treasure21Script.can_cash_out_total(17) and Treasure21Script.can_cash_out_total(21), "cash out is available from 17 through 21")
 
@@ -78,13 +78,13 @@ func _test_model_rules() -> void:
 	_expect(str(bust.get("result", "")) == "bust" and int(bust.get("payout", -1)) == 0 and not bool(bust.get("active", true)), "TOTAL over21 busts without payout")
 	var treasure := _state_at_total(20, 18)
 	treasure = Treasure21Script.apply_roll(treasure, 1)
-	_expect(str(treasure.get("result", "")) == "treasure" and int(treasure.get("payout", 0)) == 40, "TOTAL21 auto settles at x2")
+	_expect(str(treasure.get("result", "")) == "treasure" and int(treasure.get("payout", 0)) == 34, "TOTAL21 auto settles at the Phase A x1.7 payout")
 	var golden := _state_at_total(17, 18)
 	golden = Treasure21Script.apply_roll(golden, 1)
-	_expect(str(golden.get("result", "")) == "golden" and int(golden.get("payout", 0)) == 30, "exact GOLDEN auto settles with bonus priority")
+	_expect(str(golden.get("result", "")) == "golden" and int(golden.get("payout", 0)) == 25, "exact GOLDEN auto settles with bonus priority")
 	var golden_twenty := _state_at_total(19, 20)
 	golden_twenty = Treasure21Script.apply_roll(golden_twenty, 1)
-	_expect(str(golden_twenty.get("result", "")) == "golden" and int(golden_twenty.get("payout", 0)) == 40, "GOLDEN20 wins before normal total20 payout")
+	_expect(str(golden_twenty.get("result", "")) == "golden" and int(golden_twenty.get("payout", 0)) == 32, "GOLDEN20 wins before normal total20 payout")
 
 	var preview := Treasure21Script.danger_preview(18, 20)
 	_expect(preview.size() == 6, "danger preview always exposes all six faces")
