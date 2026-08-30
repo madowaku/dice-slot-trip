@@ -4,6 +4,12 @@ const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const Treasure21Script = preload("res://scripts/game/treasure_21_model.gd")
 const Treasure21ScreenScript = preload("res://scripts/app/treasure_21_screen.gd")
 const TREASURE_SCENE: PackedScene = preload("res://scenes/casino/Treasure21.tscn")
+const CHEST_EXPECTATIONS: Dictionary = {
+	"bust": "res://assets/casino/treasure_21/chest_frames/01.png",
+	"cashout": "res://assets/casino/treasure_21/chest_frames/02.png",
+	"golden": "res://assets/casino/treasure_21/chest_frames/03.png",
+	"treasure": "res://assets/casino/treasure_21/chest_frames/04.png",
+}
 
 var failures := 0
 var assertions := 0
@@ -26,6 +32,7 @@ func _run() -> void:
 	if ui_sfx != null:
 		ui_sfx.call("set_enabled", false)
 	_test_model_rules()
+	_test_chest_texture_contracts()
 	await _test_scene_flow()
 	if ui_sfx != null:
 		ui_sfx.call("stop_all")
@@ -93,12 +100,49 @@ func _test_model_rules() -> void:
 	var first := Treasure21Script.new_game(20, 19)
 	_expect(int(first.get("golden_number", 0)) == 19, "first-game golden default is 19")
 
+func _test_chest_texture_contracts() -> void:
+	for result_kind: String in CHEST_EXPECTATIONS:
+		var texture_path: String = str(CHEST_EXPECTATIONS[result_kind])
+		var texture: Texture2D = load(texture_path) as Texture2D
+		_expect(texture != null, "%s chest texture loads" % result_kind)
+		if texture == null:
+			continue
+		_expect(texture.get_size() == Vector2(256, 256), "%s chest texture is 256x256" % result_kind)
+
+func _expect_control_inside(screen: Control, control: Control, label: String) -> void:
+	_expect(control != null, "%s exists" % label)
+	if control == null:
+		return
+	var screen_rect: Rect2 = screen.get_global_rect()
+	var control_rect: Rect2 = control.get_global_rect()
+	_expect(control_rect.size.x > 0.0 and control_rect.size.y > 0.0, "%s has positive bounds" % label)
+	_expect(screen_rect.encloses(control_rect), "%s stays inside the screen" % label)
+
+func _expect_result_chest(screen: Treasure21Screen, result_kind: String) -> void:
+	screen.game = {
+		"result": result_kind,
+		"total": 20,
+		"golden_number": 19,
+		"payout": 20,
+		"bet": 20,
+		"finished": true,
+		"active": false,
+	}
+	screen.call("_show_result")
+	var expected_path: String = str(CHEST_EXPECTATIONS[result_kind])
+	_expect(screen.result_chest != null and screen.result_chest.texture != null, "%s result assigns a chest texture" % result_kind)
+	if screen.result_chest != null and screen.result_chest.texture != null:
+		_expect(screen.result_chest.texture.resource_path == expected_path, "%s result assigns the authored chest state" % result_kind)
+
 func _test_scene_flow() -> void:
 	var scene := TREASURE_SCENE.instantiate()
 	root.add_child(scene)
 	await process_frame
 	_expect(scene is Treasure21Screen, "TREASURE 21 scene instantiates its screen")
 	_expect(scene.setup_view.visible and not scene.active_view.visible and not scene.result_view.visible, "screen opens on setup")
+	_expect_control_inside(scene, scene.find_child("Treasure21Header", true, false) as Control, "setup header")
+	_expect_control_inside(scene, scene.start_button, "setup GAME START")
+	_expect_control_inside(scene, scene.back_button, "setup Casino back")
 	var setup_text := ""
 	for label: Node in scene.setup_view.find_children("*", "Label", true, false):
 		setup_text += (label as Label).text + "\n"
@@ -119,6 +163,9 @@ func _test_scene_flow() -> void:
 	_expect(CasinoBankScript.balance() == 980, "GAME START charges wager once")
 	await create_timer(0.58).timeout
 	_expect(int(scene.game.get("total", 0)) == 1 and int(scene.game.get("golden_number", 0)) == 19 and scene.active_view.visible, "first game resolves initial face and fixes GOLDEN19")
+	_expect_control_inside(scene, scene.danger_panel, "active future preview")
+	_expect_control_inside(scene, scene.cashout_button, "active CASH OUT")
+	_expect_control_inside(scene, scene.roll_button, "active ROLL")
 	_expect(scene.back_button.disabled, "EXIT remains locked while the wager is active")
 	scene.call("_on_back_pressed")
 	_expect(scene.active_view.visible, "back request cannot leave an active wager")
@@ -139,6 +186,11 @@ func _test_scene_flow() -> void:
 			visible_casino_back_actions += 1
 	_expect(visible_casino_back_actions == 1 and scene.find_child("ResultExitButton", true, false) == null, "TREASURE result exposes exactly one Casino-back action")
 	_expect(scene.again_button.visible and scene.again_button.text == "PLAY AGAIN" and scene.change_bet_button.visible and scene.change_bet_button.text == "CHANGE BET", "TREASURE result keeps replay and setup-return actions reachable")
+	_expect_control_inside(scene, scene.find_child("ResultCard", true, false) as Control, "result card")
+	_expect_control_inside(scene, scene.again_button, "result PLAY AGAIN")
+	_expect_control_inside(scene, scene.change_bet_button, "result CHANGE BET")
+	for result_kind: String in CHEST_EXPECTATIONS:
+		_expect_result_chest(scene, result_kind)
 	_expect(CasinoBankScript.balance() == 988 and not CasinoBankScript.has_active_game("treasure_21"), "settlement credits once and clears active game")
 	var balance_after_cash := CasinoBankScript.balance()
 	scene.call("_on_cashout_pressed")

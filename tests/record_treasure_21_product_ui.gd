@@ -4,6 +4,7 @@ const TREASURE_SCENE: PackedScene = preload("res://scenes/casino/Treasure21.tscn
 const TreasureScreen = preload("res://scripts/app/treasure_21_screen.gd")
 const TreasureModel = preload("res://scripts/game/treasure_21_model.gd")
 const Bank = preload("res://scripts/game/casino_bank.gd")
+const RESULT_REVEAL_SETTLE_FRAMES: int = 24
 
 var output_dir: String = ""
 var viewport_size: Vector2i = Vector2i(360, 800)
@@ -78,6 +79,9 @@ func _record() -> void:
 	result_state = TreasureModel.apply_roll(result_state, 1)
 	screen.game = result_state
 	screen.call("_show_result")
+	# The production result reveal lasts 0.26 seconds. Wait beyond it so the
+	# canonical screenshot records the fully opaque, settled result card.
+	await _settle(RESULT_REVEAL_SETTLE_FRAMES)
 	await _capture(screen, "result-treasure")
 
 	screen.queue_free()
@@ -114,6 +118,12 @@ func _capture(screen: Treasure21Screen, capture_name: String) -> void:
 		_assert_control_inside(screen.roll_button, capture_name + " roll")
 		_assert_control_inside(screen.cashout_button, capture_name + " cashout")
 		_assert_control_inside(screen.danger_panel, capture_name + " preview")
+	if screen.result_view.visible:
+		_assert_control_inside(screen.find_child("ResultCard", true, false) as Control, capture_name + " result card")
+		_assert_control_inside(screen.result_chest, capture_name + " result chest")
+		_assert_control_inside(screen.again_button, capture_name + " play again")
+		_assert_control_inside(screen.change_bet_button, capture_name + " change bet")
+		_expect(screen.result_view.modulate.a >= 0.99, capture_name + " reveal is fully opaque")
 	print("CAPTURE %s" % path)
 
 func _assert_control_inside(control: Control, label: String) -> void:

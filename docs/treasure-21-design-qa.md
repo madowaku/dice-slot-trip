@@ -22,8 +22,11 @@ final result: passed
 - TOTAL 17 reveals all six deterministic outcomes and clearly enables CASH OUT.
 - TOTAL 20 emphasizes the single TREASURE face and de-emphasizes five BUST faces.
 - Generated chest frames share one scale and bottom-center anchor and retain alpha transparency.
-- 68 bounds and capture assertions pass at both 360×800 and 720×1280.
-- Existing TREASURE 21 gameplay suite passes 47 assertions.
+- All four authored chest textures load at 256×256 and map deterministically to BUST, CASH OUT, GOLDEN, and TREASURE result states.
+- Result capture waits beyond the 0.26-second reveal; the settled card is fully opaque with readable RETURN / NET and all three transition actions on-screen.
+- 81 bounds and capture assertions pass at both 360×800 and 720×1280.
+- TREASURE 21 gameplay and visual-contract suite passes 90 assertions.
+- Casino expansion UI passes 116 assertions; Las Vegas Phase C visual tests pass 29 assertions.
 
 ## P3 follow-up ideas
 

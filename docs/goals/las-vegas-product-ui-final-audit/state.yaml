@@ -1,0 +1,216 @@
+# Goal Maker v2 state.yaml
+# Board truth lives here. goal.md is the editable charter; notes/ holds long receipts only.
+
+version: 2
+
+goal:
+  title: "Las Vegas Product UI Final Audit"
+  slug: "las-vegas-product-ui-final-audit"
+  kind: audit
+  tranche: "Audit Phase C screens, implement the first safe high-leverage product-UI slice, verify it, and re-audit."
+  status: active
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: T100
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: high
+    objective: "Audit Phase C Las Vegas screenshots, UI code, asset coverage, and verification surfaces; rank product-quality gaps and state whether image generation is justified."
+    inputs:
+      - "docs/audits/las-vegas-phase-c-visual-feel-polish-2026-08-30.md"
+      - "artifacts/audit/las-vegas-phase-c-after"
+      - "scripts/app/casino_hub_screen.gd"
+      - "scripts/app/dice_*_screen.gd"
+      - "scripts/app/treasure_21_screen.gd"
+      - "scripts/app/vault_break_screen.gd"
+      - "assets/casino"
+    constraints:
+      - "Read-only."
+      - "Do not edit implementation files."
+      - "Prefer screenshot and file-path evidence over generic UI advice."
+      - "Distinguish asset deficiency from layout, copy, timing, and hierarchy issues."
+      - "Recommend image generation only when existing assets and code-native styling are insufficient."
+    expected_output:
+      - "Cross-game product UI audit"
+      - "Ranked P1/P2/P3 gaps"
+      - "Image-generation yes/no decision with exact target"
+      - "Candidate safe implementation slices"
+      - "Verification commands"
+    receipt:
+      result: done
+      note: "notes/T001-product-ui-gap-map.md"
+      summary: "TREASURE 21の空白主体setup/resultを唯一のP1と特定。4状態宝箱は生成済み候補があるため追加生成不要。"
+      evidence:
+        - "artifacts/audit/las-vegas-phase-c-after/expansion-console-gui/treasure-setup-360x800.png"
+        - "artifacts/audit/las-vegas-phase-c-after/results/treasure-result-360x800.png"
+        - "assets/casino/treasure_21/chest_frames"
+        - "artifacts/qa/treasure21-product/final-360x800"
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Review T001 evidence and choose the first safe implementation slice by product impact, confidence, reversibility, and verification strength."
+    inputs:
+      - "T001 receipt and note"
+      - "Current dirty-worktree fingerprint"
+    constraints:
+      - "Do not implement."
+      - "Select one reviewable slice."
+      - "Reject generated imagery if a code-native or existing-asset fix is sufficient."
+      - "Do not change economy, transaction, or game rules. Existing casino-related dirty files may be selected only after evidence-based review; unrelated dirty files remain excluded."
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Deferred candidates"
+    receipt:
+      result: done
+      note: "notes/T002-implementation-decision.md"
+      decision: "TREASURE 21 visual acceptance hardeningを実施。新規ImageGenとproduction変更は不要。"
+      next_allowed_task: T003
+      blocked_tasks:
+        - "VAULT result asset reuse"
+        - "TOWER overlay hierarchy"
+        - "Cross-game CTA and CHIP wording"
+        - "ROULETTE density pass"
+        - "New image generation"
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: default
+    objective: "Acceptance-harden the existing TREASURE 21 product UI by settling result capture after the reveal, testing four chest texture/state contracts and key Control bounds, and regenerating canonical 360×800 and 720×1280 QA images without production changes."
+    allowed_files:
+      - "tests/record_treasure_21_product_ui.gd"
+      - "tests/run_treasure_21_tests.gd"
+      - "artifacts/qa/treasure21-product/final-360x800/*.png"
+      - "artifacts/qa/treasure21-product/final-720x1280/*.png"
+      - "docs/treasure-21-design-qa.md"
+    verify:
+      - "Godot 4.7 headless: tests/run_treasure_21_tests.gd"
+      - "Godot 4.7 headless: tests/run_casino_expansion_ui_tests.gd"
+      - "Godot 4.7 headless: tests/run_las_vegas_phase_c_visual_tests.gd"
+      - "Godot 4.7 GUI recorder: 360x800 canonical states"
+      - "Godot 4.7 GUI recorder: 720x1280 canonical states"
+      - "git diff --check on allowed text files"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Behavior or visual direction is ambiguous."
+      - "Verification fails twice."
+      - "The change would affect economy, transaction, game rules, or unrelated dirty files."
+      - "PNG, provenance, production screen, model, or bank changes are required."
+      - "Reveal-complete result remains low-opacity, clipped, or has unreadable CTA."
+    receipt:
+      result: done
+      changed_files:
+        - "tests/record_treasure_21_product_ui.gd"
+        - "tests/run_treasure_21_tests.gd"
+        - "docs/treasure-21-design-qa.md"
+        - "artifacts/qa/treasure21-product/final-360x800/treasure21-result-treasure-360x800.png"
+        - "artifacts/qa/treasure21-product/final-720x1280/treasure21-result-treasure-720x1280.png"
+      commands:
+        - cmd: "Godot 4.7 headless tests/run_treasure_21_tests.gd"
+          status: "pass: 90 assertions, 0 failures"
+        - cmd: "Godot 4.7 headless tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 116 assertions, 0 failures"
+        - cmd: "Godot 4.7 headless tests/run_las_vegas_phase_c_visual_tests.gd"
+          status: "pass: 29 assertions, 0 failures"
+        - cmd: "Godot 4.7 GUI recorder at 360x800"
+          status: "pass: 81 assertions, 0 failures; 5 canonical PNGs"
+        - cmd: "Godot 4.7 GUI recorder at 720x1280"
+          status: "pass: 81 assertions, 0 failures; 5 canonical PNGs"
+        - cmd: "git diff --check on allowed text files"
+          status: pass
+      summary: "Result capture now waits 24 frames after the reveal; four chest texture/state contracts and setup/active/result Control bounds are regression tested."
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit whether the implemented slice satisfies the requested Las Vegas product-UI quality tranche."
+    inputs:
+      - "All completed task receipts"
+      - "Before/after 360×800 evidence"
+      - "Last verification"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "Reject completion if required Worker work remains queued or active."
+    expected_output:
+      - "complete | not_complete"
+      - "Product UI score"
+      - "Missing evidence"
+      - "Next task if not complete"
+    receipt:
+      result: pass
+      decision: "ready_for_pm_commit_push"
+      product_ui_score: 94
+      summary: "TREASURE 21の唯一のP1は解消。新規ImageGenは不要。commit/push後にユーザー要求が完了する。"
+      evidence:
+        - "TREASURE 21: 90 assertions, 0 failures"
+        - "Casino expansion UI: 116 assertions, 0 failures"
+        - "Phase C visual: 29 assertions, 0 failures"
+        - "Canonical 360x800 and 720x1280 result captures are fully opaque and unclipped"
+      missing_evidence:
+        - "Real-device haptics and five-play audio-level evaluation"
+        - "Fresh 720x1280 captures for the other five facilities"
+      deferred:
+        - "TOWER overlay hierarchy"
+        - "Cross-game CTA and CHIP wording"
+        - "ROULETTE density"
+        - "VAULT result continuity"
+
+  - id: T100
+    type: pm
+    assignee: PM
+    status: active
+    reasoning_hint: default
+    objective: "Stage only the final-audit and verified casino-related files, run final regression and staged-diff checks, create an independent commit, and push it to origin/codex/dice-roulette-bgm."
+    inputs:
+      - "T999 receipt"
+      - "Current dirty status"
+      - "User authorization to commit and push casino-related uncommitted changes"
+    constraints:
+      - "Do not stage APK, export settings, other cities, unrelated audio/import files, duplicate captures, or retired HIGH LOW UID."
+      - "Do not rewrite or clean unrelated dirty files."
+      - "Push only after staged scope and verification are clean."
+    expected_output:
+      - "Commit hash"
+      - "Push receipt"
+      - "Post-push HEAD equals upstream"
+      - "Unrelated dirty files remain untouched"
+    receipt: null
+
+checks:
+  dirty_fingerprint: "sha256:ed5b54cf608f7259bb1d60e07607900dfe92a0dec47447aa61ebbc1b8444b0de; entries:251; captured_after_T003; HEAD:6668a2f"
+  last_verification:
+    result: "pass"
+    task: T100
+    commands:
+      - "Nine Las Vegas baseline suites: 1308 assertions, 0 failures"
+      - "Phase C visual: 29 assertions, 0 failures"
+      - "GUI recorders: 81 assertions, 0 failures at each target resolution"
+      - "Staged scope: 14 exact files; git diff --cached --check passed"
