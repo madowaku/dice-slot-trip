@@ -5,6 +5,7 @@ const BANK_SCRIPT = preload("res://scripts/game/casino_bank.gd")
 
 const DESIGN_SIZE := Vector2i(720, 1600)
 const OUTPUT_SIZE := Vector2i(360, 800)
+const RESULT_SETTLE_FRAMES := 24
 
 var capture_viewport: SubViewport
 var capture_root: Control
@@ -76,7 +77,7 @@ func _record() -> void:
 	tower.call("_set_result_finished")
 	tower.call("_refresh_all")
 	tower.call("_show_bust_result")
-	await _settle(8)
+	await _settle(RESULT_SETTLE_FRAMES)
 	_check_controls_inside([tower.result_overlay.find_child("RetryButton", true, false) as Control], "bust")
 	_capture(output_dir.path_join("bust-floor8-360x800.png"))
 	await _resize_design(Vector2i(720, 1560))
@@ -95,7 +96,7 @@ func _record() -> void:
 	tower.game.active = false
 	tower.game.payout = 84
 	tower.call("_show_success_result", 84)
-	await _settle(8)
+	await _settle(RESULT_SETTLE_FRAMES)
 	_check_controls_inside([tower.result_overlay.find_child("RetryButton", true, false) as Control], "success")
 	_capture(output_dir.path_join("success-floor10-360x800.png"))
 

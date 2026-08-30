@@ -4,6 +4,7 @@ extends Control
 signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
+const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const ModelScript = preload("res://scripts/game/dice_roulette_model.gd")
 const WheelScript = preload("res://scripts/app/dice_roulette_wheel.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -664,7 +665,7 @@ func _show_payout() -> void:
 		status_label.text = "今回はハズレ… 次こそ！"
 		_play_world(&"close")
 	guide_label.text = "結果  •  %s" % ("WIN!" if profit > 0 else "もう一度挑戦しよう")
-	payout_label.text = "BET %d   払戻 %d   収支 %s%d CHIP" % [wager, returned, "+" if profit >= 0 else "", profit]
+	payout_label.text = "BET %d   RETURN %d   NET %s%d CHIP" % [wager, returned, "+" if profit >= 0 else "", profit]
 
 func _rebet_and_spin() -> void:
 	if phase != Phase.ROUND_END:
@@ -966,6 +967,7 @@ func _button(text: String, font_size: int) -> Button:
 	button.add_theme_font_size_override("font_size", font_size)
 	button.custom_minimum_size = Vector2(92, 44)
 	button.focus_mode = Control.FOCUS_ALL
+	VisualFeedback.bind_button(button)
 	return button
 
 func _display_button(text: String, font_size: int) -> Button:

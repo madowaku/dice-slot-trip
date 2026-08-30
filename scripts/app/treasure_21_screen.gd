@@ -4,6 +4,7 @@ extends Control
 signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
+const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const Treasure21Script = preload("res://scripts/game/treasure_21_model.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -611,13 +612,19 @@ func _show_result() -> void:
 			result_detail_label.text = "ゲーム終了。"
 	var payout := int(game.get("payout", 0))
 	var bet := int(game.get("bet", selected_bet))
-	result_payout_label.text = "%d CHIP" % payout
-	result_profit_label.text = "PROFIT  %+d CHIP" % (payout - bet)
+	result_payout_label.text = "RETURN %d CHIP（BET込み）" % payout
+	result_profit_label.text = "NET  %+d CHIP" % (payout - bet)
 	status_label.text = "もう一度、TREASUREを狙う？"
 	roll_button.disabled = true
 	cashout_button.disabled = true
 	back_button.disabled = false
 	_refresh_all()
+	call_deferred("_animate_result_reveal")
+
+func _animate_result_reveal() -> void:
+	if result_view == null or not result_view.visible:
+		return
+	VisualFeedback.reveal(result_view, 0.26)
 
 func _on_again_pressed() -> void:
 	if rolling:
@@ -906,6 +913,7 @@ func _button(text: String, primary: bool = false) -> Button:
 	button.add_theme_stylebox_override("hover", _panel(GOLD_LIGHT if primary else Color("#51436a"), GOLD, 12, 2))
 	button.add_theme_stylebox_override("pressed", _panel(Color("#d99d2c") if primary else Color("#302641"), GOLD, 12, 2))
 	button.add_theme_stylebox_override("disabled", _panel(Color("#514c45"), Color("#766d5f"), 12, 1))
+	VisualFeedback.bind_button(button)
 	return button
 
 func _apply_button_state(button: Button, selected: bool) -> void:

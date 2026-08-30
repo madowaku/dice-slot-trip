@@ -4,6 +4,7 @@ extends Control
 signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
+const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 const CARD_DATA_PATH := "res://data/casino/prize_cards.json"
 const LAS_VEGAS_MAP_PATH := "res://assets/casino/las_vegas/las-vegas-ring-map-v1.png"
@@ -501,6 +502,7 @@ func _button(text: String) -> Button:
 	button.add_theme_font_override("font", FONT)
 	button.add_theme_font_size_override("font_size", 16)
 	button.custom_minimum_size = Vector2(220, 96)
+	VisualFeedback.bind_button(button)
 	return button
 
 func _panel(fill: Color, border: Color, radius: int, width: int) -> StyleBoxFlat:

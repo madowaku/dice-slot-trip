@@ -4,6 +4,7 @@ extends Control
 signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
+const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const RepositoryScript = preload("res://scripts/game/vault_break/vault_break_template_repository.gd")
 const SelectorScript = preload("res://scripts/game/vault_break/vault_break_selector.gd")
 const ProgressScript = preload("res://scripts/game/vault_break/vault_break_progress.gd")
@@ -1067,6 +1068,12 @@ func _show_result() -> void:
 		result_detail_label.text += "\nBLACK VAULT %s APPEARED" % spawned
 	status_label.text = "進行とCHIPを保存しました。次の行動を選択。"
 	_refresh_all()
+	call_deferred("_animate_result_reveal")
+
+func _animate_result_reveal() -> void:
+	if result_view == null or not result_view.visible:
+		return
+	VisualFeedback.reveal(result_view, 0.28)
 
 func _show_saved_result(saved_result: Dictionary) -> void:
 	result_data = saved_result.duplicate(true)
@@ -1525,6 +1532,7 @@ func _button(copy: String, primary: bool = false) -> Button:
 	button.add_theme_stylebox_override("pressed", _panel(Color("#ae792a") if primary else Color("#302641"), BRASS_LIGHT, 13, 3))
 	button.add_theme_stylebox_override("disabled", _panel(Color("#3a3540"), Color("#67616b"), 13, 1))
 	button.add_theme_stylebox_override("focus", _focus_panel(BRASS_LIGHT, 13))
+	VisualFeedback.bind_button(button)
 	return button
 
 func _vault_door_texture(node_name: String) -> TextureRect:

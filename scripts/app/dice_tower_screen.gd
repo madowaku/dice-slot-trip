@@ -4,6 +4,7 @@ extends Control
 signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
+const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const TowerScript = preload("res://scripts/game/dice_tower_model.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -55,6 +56,7 @@ var effect_layer: Control
 var balance_preview_label: Label
 var last_roll_label: Label
 var result_overlay: Control
+var result_card: PanelContainer
 var result_title_label: Label
 var result_dice_label: Label
 var result_floor_label: Label
@@ -464,7 +466,8 @@ func _build_result_overlay() -> Control:
 	var center: CenterContainer = CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
-	var card: PanelContainer = PanelContainer.new()
+	result_card = PanelContainer.new()
+	var card: PanelContainer = result_card
 	card.name = "ResultPanel"
 	card.custom_minimum_size = Vector2(632, 720)
 	card.add_theme_stylebox_override("panel", _panel(Color("#190908f8"), GOLD_LIGHT, 34, 5, 28))
@@ -861,6 +864,7 @@ func _show_bust_result() -> void:
 	if retry != null:
 		retry.text = "PLAY AGAIN\nBET %d CHIP" % selected_bet
 	result_overlay.visible = true
+	call_deferred("_animate_result_reveal")
 
 func _show_success_result(payout: int) -> void:
 	var floor_number: int = int(game.get("floor", 0))
@@ -874,6 +878,12 @@ func _show_success_result(payout: int) -> void:
 	if retry != null:
 		retry.text = "PLAY AGAIN\nBET %d CHIP" % selected_bet
 	result_overlay.visible = true
+	call_deferred("_animate_result_reveal")
+
+func _animate_result_reveal() -> void:
+	if result_card == null or not result_card.visible or not result_overlay.visible:
+		return
+	VisualFeedback.reveal(result_card, 0.28)
 
 func _format_chips(value: int) -> String:
 	var raw: String = str(maxi(0, value))
@@ -1020,6 +1030,7 @@ func _button(text: String, primary: bool = false) -> Button:
 	focus.expand_margin_top = 4
 	focus.expand_margin_bottom = 4
 	button.add_theme_stylebox_override("focus", focus)
+	VisualFeedback.bind_button(button)
 	return button
 
 func _panel(fill: Color, border: Color, radius: int, width: int, padding: int = 7) -> StyleBoxFlat:
