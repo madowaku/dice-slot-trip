@@ -8,7 +8,7 @@ goal:
   slug: "las-vegas-product-ui-final-audit"
   kind: audit
   tranche: "Audit Phase C screens, implement the first safe high-leverage product-UI slice, verify it, and re-audit."
-  status: active
+  status: done
 
 rules:
   pm_owns_state: true
@@ -24,7 +24,7 @@ agents:
   worker: installed
   judge: installed
 
-active_task: T100
+active_task: null
 
 tasks:
   - id: T001
@@ -186,7 +186,7 @@ tasks:
   - id: T100
     type: pm
     assignee: PM
-    status: active
+    status: done
     reasoning_hint: default
     objective: "Stage only the final-audit and verified casino-related files, run final regression and staged-diff checks, create an independent commit, and push it to origin/codex/dice-roulette-bgm."
     inputs:
@@ -202,10 +202,33 @@ tasks:
       - "Push receipt"
       - "Post-push HEAD equals upstream"
       - "Unrelated dirty files remain untouched"
-    receipt: null
+    receipt:
+      result: done
+      decision: complete
+      changed_files:
+        - "docs/treasure-21-design-qa.md"
+        - "tests/record_treasure_21_product_ui.gd"
+        - "tests/run_treasure_21_tests.gd"
+        - "two canonical result PNGs"
+        - "Goal Maker charter, state, and notes"
+        - "five tracked Godot UID sidecars for casino audit scripts"
+      commands:
+        - cmd: "Nine Las Vegas baseline suites"
+          status: "pass: 1308 assertions, 0 failures"
+        - cmd: "Phase C visual suite"
+          status: "pass: 29 assertions, 0 failures"
+        - cmd: "git diff --cached --check"
+          status: pass
+        - cmd: "git commit"
+          status: "pass: 6520fc33 test(casino): harden Treasure 21 visual acceptance"
+        - cmd: "git push"
+          status: "pass: origin/codex/dice-roulette-bgm"
+        - cmd: "compare HEAD and upstream"
+          status: "pass: both 6520fc33e7b6885f2d956968a17297b6b02ccd1a"
+      summary: "Verified casino-related acceptance files were committed and pushed; unrelated APK, other-city, import-batch, duplicate-capture, and retired HIGH LOW files remain untouched."
 
 checks:
-  dirty_fingerprint: "sha256:ed5b54cf608f7259bb1d60e07607900dfe92a0dec47447aa61ebbc1b8444b0de; entries:251; captured_after_T003; HEAD:6668a2f"
+  dirty_fingerprint: "sha256:5d0d1cafe8949b7bac54d5a731ea35984f5cef003b665a3bd9ac01adb75aaff8; entries:237; captured_after_functional_push; HEAD:6520fc33"
   last_verification:
     result: "pass"
     task: T100
