@@ -1,18 +1,26 @@
 BGM
 
 
-カジノ.mp3：ステージ選択
-https://dova-s.jp/bgm/detail/17222
+ドキドキ賭けごと.mp3：ステージ選択
+https://dova-s.jp/bgm/detail/21985
 ジャックポット.mp3:ラスベガスメインマップ
 https://dova-s.jp/bgm/detail/18020
 ミニマルダービー.mp3：DICE RACER
 https://dova-s.jp/bgm/detail/15883
 ルーレット.mp3：DICE ROULETTE
 https://dova-s.jp/bgm/detail/8634
-忍び足：VAULT BREAK
+忍び足.mp3：VAULT BREAK
 https://dova-s.jp/bgm/detail/15786
+ShotGlass.mp3：TREASURE21
+https://dova-s.jp/bgm/detail/737
+Dark blue night.mp3：DICE POKER
+https://dova-s.jp/bgm/detail/23442
+Rain Soaked Friday.mp3：DICE TOWER
+https://dova-s.jp/bgm/detail/23792/track/3
 
 
+カジノ.mp3
+https://dova-s.jp/bgm/detail/17222
 Funky weekend night
 https://dova-s.jp/bgm/detail/17532
 ジャックポットシンドローム
@@ -23,16 +31,12 @@ https://dova-s.jp/bgm/detail/9618
 https://dova-s.jp/bgm/detail/2844
 カジノで大儲けした夜のようなテンション
 https://dova-s.jp/bgm/detail/2155
-ShotGlass 
-https://dova-s.jp/bgm/detail/737
-ドキドキ賭けごと
-https://dova-s.jp/bgm/detail/21985
+
 盤面の闘い
 https://dova-s.jp/bgm/detail/18928
 Doubt 
 https://dova-s.jp/bgm/detail/12219
-Dark blue night
-https://dova-s.jp/bgm/detail/23442
+
 
 
 神出鬼没

@@ -14,6 +14,9 @@ const TRACK_LASVEGAS_PREVIEW: StringName = &"lasvegas_preview"
 const TRACK_LASVEGAS_MAIN: StringName = &"lasvegas_main"
 const TRACK_DICE_RACE: StringName = &"dice_race"
 const TRACK_DICE_ROULETTE: StringName = &"dice_roulette"
+const TRACK_TREASURE_21: StringName = &"treasure_21"
+const TRACK_DICE_POKER: StringName = &"dice_poker"
+const TRACK_DICE_TOWER: StringName = &"dice_tower"
 const TRACK_VAULT_BREAK: StringName = &"vault_break"
 const TRACK_KYOTO_FOX_FIRE_CHASE: StringName = &"kyoto_fox_fire_chase"
 const CROSSFADE_SECONDS := 0.8
@@ -22,7 +25,7 @@ const SILENT_DB := -80.0
 
 const TRACKS: Dictionary = {
 	TRACK_HOME: preload("res://assets/audio/bgm/home/世界の最果てで、自由を謳う_2.mp3"),
-	TRACK_STAGE_SELECT: preload("res://assets/audio/bgm/cairo/砂丘の風.mp3"),
+	TRACK_STAGE_SELECT: preload("res://assets/audio/bgm/lasvegas/ドキドキ賭けごと.mp3"),
 	TRACK_NORMAL_MAP: preload("res://assets/audio/bgm/cairo/そよ風とお散歩.mp3"),
 	TRACK_BOSS: preload("res://assets/audio/bgm/cairo/太陽の絨毯、砂漠の彼方.mp3"),
 	TRACK_AMAZON_PREVIEW: preload("res://assets/audio/bgm/amazon/アマゾン探検.mp3"),
@@ -35,6 +38,9 @@ const TRACKS: Dictionary = {
 	TRACK_LASVEGAS_MAIN: preload("res://assets/audio/bgm/lasvegas/ジャックポット.mp3"),
 	TRACK_DICE_RACE: preload("res://assets/audio/bgm/lasvegas/ミニマルダービー.mp3"),
 	TRACK_DICE_ROULETTE: preload("res://assets/audio/bgm/lasvegas/ルーレット.mp3"),
+	TRACK_TREASURE_21: preload("res://assets/audio/bgm/lasvegas/ShotGlass.mp3"),
+	TRACK_DICE_POKER: preload("res://assets/audio/bgm/lasvegas/Dark blue night.mp3"),
+	TRACK_DICE_TOWER: preload("res://assets/audio/bgm/lasvegas/Rain Soaked Friday.mp3"),
 	TRACK_VAULT_BREAK: preload("res://assets/audio/bgm/lasvegas/忍び足.mp3"),
 	TRACK_KYOTO_FOX_FIRE_CHASE: preload("res://assets/audio/bgm/kyoto/あのね.mp3"),
 }
@@ -118,6 +124,18 @@ func play_dice_race() -> void:
 
 func play_dice_roulette() -> void:
 	play_track(TRACK_DICE_ROULETTE)
+
+
+func play_treasure_21() -> void:
+	play_track(TRACK_TREASURE_21)
+
+
+func play_dice_poker() -> void:
+	play_track(TRACK_DICE_POKER)
+
+
+func play_dice_tower() -> void:
+	play_track(TRACK_DICE_TOWER)
 
 
 func play_vault_break() -> void:

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bwc2mvd2o83uu"
+path="res://.godot/imported/Rain Soaked Friday.mp3-ee17cd5915db50fb599af71ee5c7ae20.mp3str"
+
+[deps]
+
+source_file="res://assets/audio/bgm/lasvegas/Rain Soaked Friday.mp3"
+dest_files=["res://.godot/imported/Rain Soaked Friday.mp3-ee17cd5915db50fb599af71ee5c7ae20.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

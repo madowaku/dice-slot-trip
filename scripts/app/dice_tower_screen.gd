@@ -69,7 +69,7 @@ var tutorial_page: int = 0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	get_node("/root/BgmManager").call("play_lasvegas_main")
+	get_node("/root/BgmManager").call("play_dice_tower")
 	var ui_sfx := get_node_or_null("/root/UiSfxManager")
 	if ui_sfx != null:
 		ui_sfx.call("set_stage", &"las_vegas")

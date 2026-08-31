@@ -60,7 +60,7 @@ func _run() -> void:
 	_expect(hub.hub_root.visible == false and hub.tower_host.visible, "opening DICE TOWER hides the Casino Hub list")
 	var hub_tower := hub.tower_host.get_child(0) as Control
 	_expect(hub_tower is DiceTowerScreen, "Casino Hub hosts the dedicated DICE TOWER scene")
-	_expect(bgm.current_track() == &"lasvegas_main", "DICE TOWER keeps the Casino Hub jackpot atmosphere")
+	_expect(bgm.current_track() == &"dice_tower", "DICE TOWER switches to its dedicated tower BGM")
 	hub.call("_close_dice_tower")
 	await process_frame
 	_expect(hub.hub_root.visible and not hub.tower_host.visible, "returning from DICE TOWER restores the Casino Hub list")

@@ -15,10 +15,22 @@ func _run() -> void:
 	if bgm == null:
 		quit(1)
 		return
+	var lasvegas_tracks: Array[String] = [
+		"res://assets/audio/bgm/lasvegas/ドキドキ賭けごと.mp3",
+		"res://assets/audio/bgm/lasvegas/ジャックポット.mp3",
+		"res://assets/audio/bgm/lasvegas/ミニマルダービー.mp3",
+		"res://assets/audio/bgm/lasvegas/ルーレット.mp3",
+		"res://assets/audio/bgm/lasvegas/ShotGlass.mp3",
+		"res://assets/audio/bgm/lasvegas/Dark blue night.mp3",
+		"res://assets/audio/bgm/lasvegas/Rain Soaked Friday.mp3",
+		"res://assets/audio/bgm/lasvegas/忍び足.mp3",
+	]
+	for track_path: String in lasvegas_tracks:
+		_expect(FileAccess.file_exists(track_path), "Las Vegas BGM asset exists: %s" % track_path.get_file())
 	bgm.play_home()
 	_expect(bgm.current_track() == &"home", "title screen uses the supplied main theme")
 	bgm.play_stage_select()
-	_expect(bgm.current_track() == &"stage_select", "stage selection uses Sand Dune Wind")
+	_expect(bgm.current_track() == &"stage_select", "stage selection uses Doki Doki Kakegoto")
 	bgm.play_lasvegas_preview()
 	_expect(bgm.current_track() == &"lasvegas_preview", "Las Vegas selection uses Casino")
 	bgm.play_lasvegas_main()
@@ -27,6 +39,12 @@ func _run() -> void:
 	_expect(bgm.current_track() == &"vault_break", "VAULT BREAK uses Shinobi Ashi")
 	bgm.play_dice_race()
 	_expect(bgm.current_track() == &"dice_race", "Dice Race uses Minimal Derby")
+	bgm.play_treasure_21()
+	_expect(bgm.current_track() == &"treasure_21", "TREASURE 21 uses ShotGlass")
+	bgm.play_dice_poker()
+	_expect(bgm.current_track() == &"dice_poker", "DICE POKER uses Dark blue night")
+	bgm.play_dice_tower()
+	_expect(bgm.current_track() == &"dice_tower", "DICE TOWER uses Rain Soaked Friday")
 	bgm.play_normal_map()
 	_expect(bgm.current_track() == &"normal_map", "normal travel uses A Walk in the Breeze")
 	bgm.play_kyoto_fox_fire_chase()

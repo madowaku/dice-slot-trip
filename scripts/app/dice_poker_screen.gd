@@ -117,7 +117,7 @@ func _ready() -> void:
 	if not suppress_audio_for_tests:
 		var bgm: Node = get_node_or_null("/root/BgmManager")
 		if bgm != null:
-			bgm.call("play_lasvegas_main")
+			bgm.call("play_dice_poker")
 		var ui_sfx: Node = get_node_or_null("/root/UiSfxManager")
 		if ui_sfx != null:
 			ui_sfx.call("set_stage", &"las_vegas")
