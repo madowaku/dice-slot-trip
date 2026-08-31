@@ -193,9 +193,9 @@ func _build_header(root: VBoxContainer) -> void:
 	row.add_child(title)
 	var chip_panel := PanelContainer.new()
 	chip_panel.name = "ChipBalancePanel"
-	chip_panel.custom_minimum_size.x = 154
+	chip_panel.custom_minimum_size.x = 180
 	chip_panel.add_theme_stylebox_override("panel", _panel(Color("#061d18e8"), Color("#8d6a28"), 12, 2))
-	chip_label = _label("CHIP 0", 18, CREAM)
+	chip_label = _label("CASINO CHIP\n0", 16, CREAM)
 	chip_label.name = "ChipBalanceLabel"
 	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	chip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -836,7 +836,7 @@ func _animate_roll(value: int) -> void:
 
 func _refresh_all() -> void:
 	if chip_label != null:
-		chip_label.text = "CHIP  %d" % CasinoBankScript.balance()
+		chip_label.text = "CASINO CHIP\n%d" % CasinoBankScript.balance()
 	_refresh_bet_buttons()
 	if game.is_empty():
 		if danger_panel != null:

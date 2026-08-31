@@ -16,6 +16,7 @@ const BET_AMOUNTS := [10, 20, 50]
 const FACILITY_ID := "dice_tower"
 const ROLL_SECONDS := 0.75
 const RESULT_SECONDS := 0.32
+const RESULT_DIM_ALPHA := 0.68
 const GOLD := Color("#f2bf4c")
 const GOLD_LIGHT := Color("#ffe6a0")
 const INK := Color("#322315")
@@ -160,7 +161,7 @@ func _build_ui() -> void:
 	chip_icon.custom_minimum_size = Vector2(54, 54)
 	chip_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	chip_row.add_child(chip_icon)
-	chip_label = _label("所持チップ  0", 28, Color("#fff4cd"))
+	chip_label = _label("CASINO CHIP\n0", 28, Color("#fff4cd"))
 	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	chip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	chip_row.add_child(chip_label)
@@ -459,9 +460,12 @@ func _build_result_overlay() -> Control:
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.z_index = 45
 	overlay.visible = false
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	var dim: ColorRect = ColorRect.new()
-	dim.color = Color(0.0, 0.0, 0.0, 0.48)
+	dim.name = "ResultDim"
+	dim.color = Color(0.0, 0.0, 0.0, RESULT_DIM_ALPHA)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	overlay.add_child(dim)
 	var center: CenterContainer = CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -510,7 +514,7 @@ func _build_result_overlay() -> Control:
 	change_bet.custom_minimum_size.y = 92
 	change_bet.pressed.connect(_restart_after_result)
 	secondary.add_child(change_bet)
-	var exit: Button = _button("やめる")
+	var exit: Button = _button("カジノへ戻る")
 	exit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	exit.custom_minimum_size.y = 92
 	exit.pressed.connect(_on_back_pressed)
@@ -831,7 +835,7 @@ func _reset_tower_visuals() -> void:
 	dice_presentation.present([1], false, 1)
 
 func _refresh_all() -> void:
-	chip_label.text = "所持チップ  %s" % _format_chips(CasinoBankScript.balance())
+	chip_label.text = "CASINO CHIP\n%s" % _format_chips(CasinoBankScript.balance())
 	if game.is_empty():
 		_refresh_bet_buttons()
 		return

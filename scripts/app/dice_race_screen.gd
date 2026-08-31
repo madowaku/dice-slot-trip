@@ -228,10 +228,11 @@ func _build_header(root: VBoxContainer) -> void:
 	title.add_theme_constant_override("outline_size", 5)
 	row.add_child(title)
 	var chip_panel := PanelContainer.new()
-	chip_panel.custom_minimum_size.x = 118
+	chip_panel.custom_minimum_size.x = 146
 	chip_panel.add_theme_stylebox_override("panel", _panel(Color("#211c19"), GOLD, 16, 2))
-	chip_label = _label("CHIP 0", 16, Color("#fff4cd"))
+	chip_label = _label("CASINO CHIP\n0", 14, Color("#fff4cd"))
 	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	chip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	chip_panel.add_child(chip_label)
 	row.add_child(chip_panel)
 
@@ -1047,7 +1048,7 @@ func _show_selected_movement_event() -> void:
 	_show_race_banner(callout, GOLD_LIGHT, Color("#3f2408"), 0.38, "GimmickCallout")
 
 func _refresh_all(animate_track: bool = false) -> void:
-	chip_label.text = "CHIP  %d" % CasinoBankScript.balance()
+	chip_label.text = "CASINO CHIP\n%d" % CasinoBankScript.balance()
 	bet_label.text = "%s  %d" % [RACER_LABELS.get(selected_racer, selected_racer), selected_bet] if wager_committed else "-"
 	roll_count_label.text = "%d / 6" % int(race.get("roll_count", 0))
 	var payout := RaceScript.winning_payout(race)

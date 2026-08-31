@@ -48,11 +48,11 @@ func _record() -> void:
 
 func _configure_mode(screen: DiceRaceScreen, mode: String) -> void:
 	if mode in ["setup", "setup_chip0"]:
-		screen.chip_label.text = "CHIP  0" if mode == "setup_chip0" else screen.chip_label.text
+		screen.chip_label.text = "CASINO CHIP\n0" if mode == "setup_chip0" else screen.chip_label.text
 		return
 	if mode == "setup_ready":
 		screen.call("_select_racer", "rabbit")
-		screen.chip_label.text = "CHIP  100"
+		screen.chip_label.text = "CASINO CHIP\n100"
 		screen.start_button.disabled = false
 		screen.status_label.text = "ウサギを応援する"
 		return

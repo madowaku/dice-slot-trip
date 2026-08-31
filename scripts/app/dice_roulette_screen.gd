@@ -202,7 +202,7 @@ func _build_ui() -> void:
 	var nav_spacer := Control.new()
 	nav_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nav.add_child(nav_spacer)
-	chip_label = _label("500 CHIP", 22, Color.WHITE)
+	chip_label = _label("CASINO CHIP\n500", 18, Color.WHITE)
 	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	chip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	chip_label.custom_minimum_size = Vector2(180, 54)
@@ -436,8 +436,8 @@ func _build_ui() -> void:
 	round_actions.add_theme_constant_override("separation", 8)
 	root_box.add_child(round_actions)
 	rebet_spin_button = _button("同じBETでSPIN", 20)
-	new_bet_button = _button("新しくBET", 20)
-	cashout_button = _button("終了", 20)
+	new_bet_button = _button("CHANGE BET", 20)
+	cashout_button = _button("カジノへ戻る", 20)
 	for button: Button in [rebet_spin_button, new_bet_button, cashout_button]:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.custom_minimum_size.y = 64
@@ -710,7 +710,7 @@ func _current_total_bet() -> int:
 	return ModelScript.total_bet(main_bets, side_bet)
 
 func _refresh_ui() -> void:
-	chip_label.text = "%s  CHIP" % _format_chips(CasinoBankScript.balance())
+	chip_label.text = "CASINO CHIP\n%s" % _format_chips(CasinoBankScript.balance())
 	var betting := phase == Phase.BETTING
 	status_label.visible = not betting
 	betting_shell.visible = betting

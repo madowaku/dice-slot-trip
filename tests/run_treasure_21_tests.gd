@@ -139,6 +139,7 @@ func _test_scene_flow() -> void:
 	root.add_child(scene)
 	await process_frame
 	_expect(scene is Treasure21Screen, "TREASURE 21 scene instantiates its screen")
+	_expect("CASINO CHIP" in scene.chip_label.text, "TREASURE 21 uses the shared CASINO CHIP balance heading")
 	_expect(scene.setup_view.visible and not scene.active_view.visible and not scene.result_view.visible, "screen opens on setup")
 	_expect_control_inside(scene, scene.find_child("Treasure21Header", true, false) as Control, "setup header")
 	_expect_control_inside(scene, scene.start_button, "setup GAME START")

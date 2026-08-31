@@ -155,6 +155,8 @@ var die_face_label: Label
 var result_label: Label
 var result_payout_label: Label
 var result_detail_label: Label
+var result_vault_door_panel: PanelContainer
+var result_vault_door: TextureRect
 var lock_container: HBoxContainer
 var lock_views: Array[VaultBreakLockView] = []
 var dice_presentation: DicePresentation3D
@@ -561,6 +563,17 @@ func _build_result(root_box: VBoxContainer) -> void:
 	var eyebrow := _label("VAULT BREAK RESULT", 17, Color("#cfc4dc"))
 	eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(eyebrow)
+	result_vault_door_panel = PanelContainer.new()
+	result_vault_door_panel.name = "ResultVaultDoorPanel"
+	result_vault_door_panel.custom_minimum_size = Vector2(0, 244)
+	result_vault_door_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	result_vault_door_panel.add_theme_stylebox_override("panel", _metal_panel(Color("#130e17d8"), BRASS, 16, 2))
+	box.add_child(result_vault_door_panel)
+	result_vault_door = _vault_door_texture("ResultVaultDoor")
+	result_vault_door.custom_minimum_size = Vector2(0, 234)
+	result_vault_door.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	result_vault_door.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	result_vault_door_panel.add_child(result_vault_door)
 	result_label = _label("RESULT", 37, BRASS_LIGHT)
 	result_label.name = "ResultLabel"
 	result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1054,6 +1067,11 @@ func _show_result() -> void:
 	var template_id := str(result_data.get("template_id", active_template.get("id", "")))
 	result_label.text = "VAULT BREAK!" if won else "ACCESS DENIED"
 	result_label.add_theme_color_override("font_color", BRASS_LIGHT if won else Color("#f0a39a"))
+	if result_vault_door != null:
+		result_vault_door.modulate = Color("#f5d890") if won else Color("#75646b")
+		result_vault_door.modulate.a = 0.96 if won else 0.64
+	if result_vault_door_panel != null:
+		result_vault_door_panel.add_theme_stylebox_override("panel", _metal_panel(Color("#130e17d8"), BRASS if won else FAILURE_RED, 16, 2))
 	result_payout_label.text = "RETURN %d CHIP（BET込み）" % reward
 	result_detail_label.text = "NET %+d CHIP · BET %d\n%s %s · %d/%d ROLLS" % [
 		reward - bet,

@@ -67,6 +67,9 @@ func _run() -> void:
 	hub.call("_open_dice_roulette")
 	await process_frame
 	_expect(hub.roulette_host.visible and hub.roulette_host.get_child_count() == 1, "opening DICE ROULETTE shows its dedicated host")
+	var roulette := hub.roulette_host.get_child(0) as DiceRouletteScreen
+	_expect(roulette != null and "CASINO CHIP" in roulette.chip_label.text, "DICE ROULETTE uses the shared CASINO CHIP balance heading")
+	_expect(roulette != null and roulette.new_bet_button.text == "CHANGE BET" and roulette.cashout_button.text == "カジノへ戻る", "DICE ROULETTE names setup change and casino return actions consistently")
 	_expect(bgm.current_track() == &"dice_roulette", "opening DICE ROULETTE switches to the roulette BGM")
 	hub.call("_close_dice_roulette")
 	await process_frame
@@ -78,6 +81,7 @@ func _run() -> void:
 	root.add_child(race)
 	await process_frame
 	_expect(race is DiceRaceScreen, "Dice Race scene instantiates its screen script")
+	_expect("CASINO CHIP" in race.chip_label.text, "DICE RACE uses the shared CASINO CHIP balance heading")
 	_expect(bgm.current_track() == &"dice_race", "Dice Race starts its dedicated race BGM")
 	var ui_sfx := root.get_node_or_null("UiSfxManager")
 	_expect(ui_sfx != null and ui_sfx.call("current_stage_pack") == &"arcade", "Dice Race selects the Las Vegas arcade SFX pack")
@@ -293,6 +297,7 @@ func _run() -> void:
 	root.add_child(tower)
 	await process_frame
 	_expect(tower is DiceTowerScreen, "Dice Tower scene instantiates its screen script")
+	_expect("CASINO CHIP" in tower.chip_label.text, "DICE TOWER uses the shared CASINO CHIP balance heading")
 	_expect(tower.tutorial_overlay.visible, "Dice Tower opens with its three-step tutorial")
 	tower.call("_close_tutorial")
 	_expect(tower.setup_view.visible and not tower.active_view.visible, "tutorial dismissal reveals BET selection")
@@ -334,6 +339,8 @@ func _run() -> void:
 	_expect(tower.roll_button.text == "CHANGE BET" and tower.cashout_button.disabled, "BUST setup-return action is named CHANGE BET and closes CASH OUT")
 	var tower_retry := tower.result_overlay.find_child("RetryButton", true, false) as Button
 	_expect(tower_retry != null and "PLAY AGAIN" in tower_retry.text and "RETURN 0" in tower.result_reward_label.text and "NET  -20" in tower.result_bet_label.text, "BUST overlay distinguishes immediate replay, return, and net loss")
+	var tower_result_dim := tower.result_overlay.find_child("ResultDim", true, false) as ColorRect
+	_expect(tower_result_dim != null and tower_result_dim.mouse_filter == Control.MOUSE_FILTER_STOP and tower_result_dim.color.a >= 0.64, "TOWER result overlay isolates the result card from the active controls")
 	var tower_balance_after_bust: int = CasinoBankScript.balance()
 	var duplicate_tower_settlement: Dictionary = CasinoBankScript.settle_game("dice_tower", 0, {"busted": true}, busted_tower_game_id)
 	_expect(bool(duplicate_tower_settlement.get("already_settled", false)) and CasinoBankScript.balance() == tower_balance_after_bust, "Tower result replay cannot settle its wager twice")
