@@ -115,7 +115,7 @@ func _test_auto_discard_and_final_roll_failure() -> void:
 	# The placement happens synchronously before the brief failure/result hold.
 	_expect(int((final_screen.model.call("get_placed_faces") as Array)[1]) == 4, "final roll applies its chosen placement before failure evaluation")
 	await _frames(7)
-	_expect(final_screen.view_state == "result" and str(final_screen.result_data.get("result", "")) == "failure", "incomplete final placement then reaches FAILURE and Result")
+	_expect(final_screen.view_state == "result" and str(final_screen.result_data.get("result", "")) == "failure" and "LOSE" in final_screen.result_label.text and final_screen.result_payout_label.text == "RETURN 0 CHIP（BET込み）" and "NET -20 CHIP · BET 20" in final_screen.result_detail_label.text, "incomplete final placement reaches an explicit LOSE Result with BET, RETURN, and NET")
 	_expect(CasinoBankScript.balance() == 80, "failure settles with zero payout")
 	await _dispose(final_screen)
 

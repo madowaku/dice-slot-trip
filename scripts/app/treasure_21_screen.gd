@@ -5,6 +5,7 @@ signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
+const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
 const Treasure21Script = preload("res://scripts/game/treasure_21_model.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -161,8 +162,8 @@ func _build_ui() -> void:
 	back_button = _button("カジノへ戻る", false)
 	back_button.name = "CasinoBackButton"
 	back_button.custom_minimum_size.y = 68
-	back_button.add_theme_font_size_override("font_size", 19)
 	back_button.pressed.connect(_on_back_pressed)
+	CasinoBackButton.configure(back_button)
 	root.add_child(back_button)
 
 	effect_layer = Control.new()

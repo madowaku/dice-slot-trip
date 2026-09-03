@@ -5,6 +5,7 @@ signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
+const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
 const OrientationScript = preload("res://scripts/game/dice_race_orientation.gd")
 const RaceScript = preload("res://scripts/game/dice_race_model.gd")
 const TrackViewScript = preload("res://scripts/app/dice_race_track_view.gd")
@@ -211,6 +212,7 @@ func _build_ui() -> void:
 	back.name = "CasinoBackButton"
 	back.custom_minimum_size.y = 48
 	back.pressed.connect(_on_back_pressed)
+	CasinoBackButton.configure(back)
 	root.add_child(back)
 
 

@@ -108,7 +108,7 @@ func _test_scene_flow() -> void:
 	root.add_child(scene_node)
 	await process_frame
 	_expect(scene != null and scene.get_script() == DicePokerScreenScript, "DICE POKER scene reaches DicePokerScreen")
-	_expect(scene.setup_view.visible and not scene.active_view.visible and not scene.result_view.visible, "DICE POKER opens on setup")
+	_expect(scene.setup_view.visible and not scene.active_view.visible and not scene.result_view.visible and scene.back_button.text == "カジノへ戻る", "DICE POKER opens on setup with the shared casino-return label")
 	_expect(scene.bet_buttons.size() == 3 and scene.keep_buttons.size() == 5, "screen builds three BET and five KEEP targets")
 	for amount: int in scene.bet_buttons:
 		_expect((scene.bet_buttons[amount] as Button).custom_minimum_size.y >= 96.0, "BET %d meets touch target" % amount)
@@ -139,7 +139,7 @@ func _test_scene_flow() -> void:
 	_expect(scene.lock_button.visible and not scene.reroll_button.visible, "all kept state shows LOCK HAND primary action")
 	scene.lock_button.pressed.emit()
 	await process_frame
-	_expect(scene.result_view.visible and int(scene.game.get("payout", 0)) == 34 and CasinoBankScript.balance() == 1014, "LOCK HAND settles FOUR once")
+	_expect(scene.result_view.visible and int(scene.game.get("payout", 0)) == 34 and CasinoBankScript.balance() == 1014 and not scene.back_button.visible and scene.exit_button.text == "カジノへ戻る", "LOCK HAND settles FOUR once and Result exposes one shared casino-return action")
 	var settled_balance: int = CasinoBankScript.balance()
 	scene.lock_button.pressed.emit()
 	_expect(CasinoBankScript.balance() == settled_balance, "settlement replay is idempotent")

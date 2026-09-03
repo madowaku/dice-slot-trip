@@ -69,7 +69,7 @@ func _run() -> void:
 	_expect(hub.roulette_host.visible and hub.roulette_host.get_child_count() == 1, "opening DICE ROULETTE shows its dedicated host")
 	var roulette := hub.roulette_host.get_child(0) as DiceRouletteScreen
 	_expect(roulette != null and "CASINO CHIP" in roulette.chip_label.text, "DICE ROULETTE uses the shared CASINO CHIP balance heading")
-	_expect(roulette != null and roulette.new_bet_button.text == "CHANGE BET" and roulette.cashout_button.text == "カジノへ戻る", "DICE ROULETTE names setup change and casino return actions consistently")
+	_expect(roulette != null and roulette.new_bet_button.text == "CHANGE BET" and roulette.back_button.text == "カジノへ戻る" and roulette.cashout_button.text == "カジノへ戻る", "DICE ROULETTE uses the shared casino-return label without the legacy hall wording")
 	_expect(bgm.current_track() == &"dice_roulette", "opening DICE ROULETTE switches to the roulette BGM")
 	hub.call("_close_dice_roulette")
 	await process_frame
@@ -81,7 +81,7 @@ func _run() -> void:
 	root.add_child(race)
 	await process_frame
 	_expect(race is DiceRaceScreen, "Dice Race scene instantiates its screen script")
-	_expect("CASINO CHIP" in race.chip_label.text, "DICE RACE uses the shared CASINO CHIP balance heading")
+	_expect("CASINO CHIP" in race.chip_label.text and (race.find_child("CasinoBackButton", true, false) as Button).text == "カジノへ戻る", "DICE RACE uses the shared balance heading and casino-return label")
 	_expect(bgm.current_track() == &"dice_race", "Dice Race starts its dedicated race BGM")
 	var ui_sfx := root.get_node_or_null("UiSfxManager")
 	_expect(ui_sfx != null and ui_sfx.call("current_stage_pack") == &"arcade", "Dice Race selects the Las Vegas arcade SFX pack")
@@ -296,7 +296,7 @@ func _run() -> void:
 	var tower := TOWER_SCENE.instantiate()
 	root.add_child(tower)
 	await process_frame
-	_expect(tower is DiceTowerScreen, "Dice Tower scene instantiates its screen script")
+	_expect(tower is DiceTowerScreen and tower.back_button.text == "カジノへ戻る", "Dice Tower scene instantiates with the shared casino-return label")
 	_expect("CASINO CHIP" in tower.chip_label.text, "DICE TOWER uses the shared CASINO CHIP balance heading")
 	_expect(tower.tutorial_overlay.visible, "Dice Tower opens with its three-step tutorial")
 	tower.call("_close_tutorial")
@@ -355,7 +355,8 @@ func _run() -> void:
 	tower.call("_on_cashout_pressed")
 	await process_frame
 	_expect(bool(tower.game.cashed_out) and int(tower.game.payout) == 22 and CasinoBankScript.balance() == tower_start_balance - 18, "successful CASH OUT pays twenty-two chips after the earlier lost run")
-	_expect(tower.result_overlay.visible and "CASH OUT" in tower.result_title_label.text and "FLOOR 1" in tower.result_floor_label.text and "RETURN" in tower.result_reward_label.text and "NET  +2" in tower.result_bet_label.text, "successful CASH OUT uses the existing result overlay with floor, return, net, and reason")
+	var tower_result_back := tower.result_overlay.find_child("ResultCasinoBackButton", true, false) as Button
+	_expect(tower.result_overlay.visible and not tower.back_button.visible and tower_result_back != null and tower_result_back.text == "カジノへ戻る" and "CASH OUT" in tower.result_title_label.text and "FLOOR 1" in tower.result_floor_label.text and "RETURN" in tower.result_reward_label.text and "NET  +2" in tower.result_bet_label.text, "successful CASH OUT uses one shared casino-return action with floor, return, net, and reason")
 	var balance_before_play_again: int = CasinoBankScript.balance()
 	tower_retry = tower.result_overlay.find_child("RetryButton", true, false) as Button
 	tower_retry.pressed.emit()

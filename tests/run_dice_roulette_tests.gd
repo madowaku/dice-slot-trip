@@ -145,7 +145,7 @@ func _test_ui_contract() -> void:
 	var clear_caption := roulette.clear_button.get_node_or_null("ButtonCaption") as Label
 	_expect(undo_caption != null and undo_caption.text == "もどす" and clear_caption != null and clear_caption.text == "消す", "roulette utility controls use first-play Japanese labels")
 	var casino_back := roulette.find_child("CasinoBackButton", true, false) as Button
-	_expect(casino_back != null and casino_back.custom_minimum_size.y >= 54.0, "roulette keeps an always-visible casino return target")
+	_expect(casino_back != null and casino_back.text == "カジノへ戻る" and casino_back.custom_minimum_size.y >= 54.0 and roulette.find_child("ResultCasinoBackButton", true, false) is Button, "roulette uses the shared casino-return label for setup and Result")
 	_expect(int(roulette.get("phase")) == 1, "roulette opens in BETTING phase")
 	roulette.call("_place_main_bet", "HIGH")
 	_expect(int(roulette.main_bets.get("HIGH", 0)) == 10 and roulette.call("_current_total_bet") == 10, "main bet tap places selected chip amount")

@@ -5,6 +5,7 @@ signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
+const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
 const ModelScript = preload("res://scripts/game/dice_roulette_model.gd")
 const WheelScript = preload("res://scripts/app/dice_roulette_wheel.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -109,7 +110,7 @@ var rebet_button: Button
 var rebet_spin_button: Button
 var new_bet_button: Button
 var cashout_button: Button
-var leave_button: Button
+var back_button: Button
 var amount_buttons: Dictionary = {}
 var main_bet_buttons: Dictionary = {}
 var side_bet_buttons: Dictionary = {}
@@ -193,11 +194,12 @@ func _build_ui() -> void:
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 12)
 	root_box.add_child(nav)
-	var back_button := _button("CASINO", 20)
+	back_button = _button("カジノへ戻る", 20)
 	back_button.name = "CasinoBackButton"
 	back_button.custom_minimum_size = Vector2(142, 54)
 	back_button.pressed.connect(_cash_out)
 	_apply_button_style(back_button, Color("#09261e"), Color("#164f3b"), GOLD, CREAM, 18, 2)
+	CasinoBackButton.configure(back_button)
 	nav.add_child(back_button)
 	var nav_spacer := Control.new()
 	nav_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -438,6 +440,7 @@ func _build_ui() -> void:
 	rebet_spin_button = _button("同じBETでSPIN", 20)
 	new_bet_button = _button("CHANGE BET", 20)
 	cashout_button = _button("カジノへ戻る", 20)
+	cashout_button.name = "ResultCasinoBackButton"
 	for button: Button in [rebet_spin_button, new_bet_button, cashout_button]:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.custom_minimum_size.y = 64
@@ -445,12 +448,7 @@ func _build_ui() -> void:
 	rebet_spin_button.pressed.connect(_rebet_and_spin)
 	new_bet_button.pressed.connect(_new_bet)
 	cashout_button.pressed.connect(_cash_out)
-
-	leave_button = _button("カジノホールへ戻る", 18)
-	leave_button.custom_minimum_size.y = 56
-	_apply_button_style(leave_button, Color("#071713dd"), Color("#11362a"), Color("#8d6b32"), MUTED, 16, 1)
-	leave_button.pressed.connect(_cash_out)
-	root_box.add_child(leave_button)
+	CasinoBackButton.configure(cashout_button)
 
 func _select_amount(amount: int) -> void:
 	if phase != Phase.BETTING:
@@ -610,8 +608,8 @@ func _animate_and_finish_round() -> void:
 	await get_tree().create_timer(0.38).timeout
 
 	phase = Phase.DICE_RESULT
-	red_result_label.text = "%s\n出目%d  ×%s" % [_display_area(str(current_result.red_area)), int(current_result.red_face), _fmt_multiplier(float(current_result.red_boost))]
-	blue_result_label.text = "%s\n出目%d  ×%s" % [_display_area(str(current_result.blue_area)), int(current_result.blue_face), _fmt_multiplier(float(current_result.blue_boost))]
+	red_result_label.text = "WHERE: %s\nBOOST: %d  ×%s" % [_display_area(str(current_result.red_area)), int(current_result.red_face), _fmt_multiplier(float(current_result.red_boost))]
+	blue_result_label.text = "WHERE: %s\nBOOST: %d  ×%s" % [_display_area(str(current_result.blue_area)), int(current_result.blue_face), _fmt_multiplier(float(current_result.blue_boost))]
 	if int(current_result.red_face) == 6 or int(current_result.blue_face) == 6:
 		status_label.text = "MAX BOOST ×3!"
 		_play_world(&"bonus")
@@ -717,6 +715,8 @@ func _refresh_ui() -> void:
 	betting_panel.visible = betting
 	action_dock.visible = betting
 	round_actions.visible = phase == Phase.ROUND_END
+	back_button.visible = phase != Phase.ROUND_END
+	back_button.disabled = phase in [Phase.BET_LOCK, Phase.SPINNING, Phase.AREA_RESULT, Phase.DICE_RESULT, Phase.PAYOUT, Phase.CASH_OUT]
 	var total := _current_total_bet()
 	total_bet_label.text = "合計ベット  %d / %d CHIP" % [total, MAX_TOTAL_BET]
 	for amount: int in amount_buttons.keys():
@@ -760,6 +760,7 @@ func _refresh_ui() -> void:
 	_apply_button_style(rebet_spin_button, Color("#87510f"), Color("#b06c13"), GOLD, Color.WHITE, 18, 2)
 	_apply_button_style(new_bet_button, Color("#0b5137"), Color("#14714d"), GOLD, Color.WHITE, 18, 2)
 	_apply_button_style(cashout_button, Color("#321a18"), Color("#5b2923"), Color("#bd805a"), CREAM, 18, 2)
+	CasinoBackButton.configure(cashout_button)
 
 func _set_status(text: String) -> void:
 	status_label.text = text
@@ -779,8 +780,6 @@ func _apply_responsive_layout() -> void:
 		return
 	var compact := size.y > 0.0 and size.y < 1450.0
 	wheel_stack.custom_minimum_size = Vector2(390, 390) if compact else Vector2(450, 450)
-	if leave_button != null:
-		leave_button.visible = not compact
 	for button: Button in amount_buttons.values():
 		button.custom_minimum_size.y = 62 if compact else 68
 	for button: Button in main_bet_buttons.values():

@@ -4,6 +4,7 @@ extends Control
 signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
+const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
 const DicePokerScript = preload("res://scripts/game/dice_poker_model.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -214,11 +215,11 @@ func _build_header(root: VBoxContainer) -> void:
 	var nav: HBoxContainer = HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 10)
 	stack.add_child(nav)
-	back_button = _button("‹  CASINO", false)
+	back_button = _button("カジノへ戻る", false)
 	back_button.name = "CasinoBackButton"
-	back_button.custom_minimum_size = Vector2(126, 96)
-	back_button.add_theme_font_size_override("font_size", 18)
+	back_button.custom_minimum_size = Vector2(168, 96)
 	_apply_utility_button_style(back_button)
+	CasinoBackButton.configure(back_button)
 	back_button.pressed.connect(_on_back_pressed)
 	nav.add_child(back_button)
 	var title_stack: VBoxContainer = VBoxContainer.new()
@@ -527,12 +528,13 @@ func _build_result(root: VBoxContainer) -> void:
 	_apply_secondary_button_style(change_bet_button, PLUM)
 	change_bet_button.pressed.connect(_on_change_bet_pressed)
 	root.add_child(change_bet_button)
-	exit_button = _button("EXIT TO CASINO", false)
+	exit_button = _button("カジノへ戻る", false)
 	exit_button.name = "ResultExitButton"
 	exit_button.custom_minimum_size.y = 88
 	exit_button.add_theme_font_override("font", DISPLAY_FONT)
 	exit_button.add_theme_font_size_override("font_size", 21)
 	_apply_utility_button_style(exit_button)
+	CasinoBackButton.configure(exit_button)
 	exit_button.pressed.connect(_on_back_pressed)
 	root.add_child(exit_button)
 
@@ -1014,6 +1016,7 @@ func _show_result() -> void:
 	setup_view.visible = false
 	active_view.visible = false
 	result_view.visible = true
+	back_button.visible = false
 	var rank_name: String = str(game.get("rank", game.get("result", DicePokerScript.RANK_NO_HAND)))
 	var bet_amount: int = int(game.get("bet", selected_bet))
 	var payout_amount: int = int(game.get("payout", 0))
@@ -1046,6 +1049,7 @@ func _show_setup(reset_game: bool = true) -> void:
 	setup_view.visible = true
 	active_view.visible = false
 	result_view.visible = false
+	back_button.visible = true
 	if help_overlay != null:
 		help_overlay.visible = false
 	status_label.text = "1  BETを選ぶ   →   2  DEAL   →   3  KEEP & REROLL"

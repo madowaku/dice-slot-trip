@@ -177,7 +177,8 @@ func _capture_roulette(hub: Node) -> void:
 			break
 		await process_frame
 	await _capture(screen, "roulette-result")
-	_expect(screen.phase == screen.Phase.ROUND_END, "roulette reaches a retained win result")
+	var result_back := screen.find_child("ResultCasinoBackButton", true, false) as Button
+	_expect(screen.phase == screen.Phase.ROUND_END and not screen.back_button.visible and result_back != null and result_back.visible and result_back.text == "カジノへ戻る", "roulette reaches a retained win result with one casino-return action")
 	screen.emit_signal("back_requested")
 	screen.queue_free()
 	await _settle_frames(3)

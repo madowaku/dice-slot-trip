@@ -5,6 +5,7 @@ signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
+const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
 const RepositoryScript = preload("res://scripts/game/vault_break/vault_break_template_repository.gd")
 const SelectorScript = preload("res://scripts/game/vault_break/vault_break_selector.gd")
 const ProgressScript = preload("res://scripts/game/vault_break/vault_break_progress.gd")
@@ -266,6 +267,7 @@ func _build_ui() -> void:
 	back_button.name = "CasinoBackButton"
 	back_button.custom_minimum_size.y = 96
 	back_button.pressed.connect(_on_back_pressed)
+	CasinoBackButton.configure(back_button)
 	root_box.add_child(back_button)
 
 	effect_layer = Control.new()
@@ -1065,7 +1067,7 @@ func _show_result() -> void:
 	var bet := int(result_data.get("bet", selected_bet))
 	var tier := str(result_data.get("tier", active_tier))
 	var template_id := str(result_data.get("template_id", active_template.get("id", "")))
-	result_label.text = "VAULT BREAK!" if won else "ACCESS DENIED"
+	result_label.text = "VAULT BREAK!" if won else "ACCESS DENIED\nLOSE"
 	result_label.add_theme_color_override("font_color", BRASS_LIGHT if won else Color("#f0a39a"))
 	if result_vault_door != null:
 		result_vault_door.modulate = Color("#f5d890") if won else Color("#75646b")
@@ -1285,7 +1287,7 @@ func _refresh_all() -> void:
 		start_button.disabled = state != State.SETUP or resume_error or CasinoBankScript.balance() < selected_bet or not _is_tier_playable(selected_tier) or not _repository_loaded
 	if back_button != null:
 		back_button.disabled = state in [State.ROLLING, State.RESOLVING_PLACEMENT, State.SUCCESS, State.FAILURE, State.EXITING]
-		back_button.text = "カジノへ戻る" if state != State.RESULT else "RESULTを閉じてカジノへ戻る"
+		back_button.text = CasinoBackButton.LABEL
 	if model == null or active_template.is_empty():
 		return
 	var config: Dictionary = repository.call("get_tier_config", active_tier) as Dictionary

@@ -5,6 +5,7 @@ signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
+const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
 const TowerScript = preload("res://scripts/game/dice_tower_model.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -63,6 +64,7 @@ var result_dice_label: Label
 var result_floor_label: Label
 var result_reward_label: Label
 var result_bet_label: Label
+var back_button: Button
 var bet_buttons: Dictionary = {}
 var floor_panels: Dictionary = {}
 var tutorial_page: int = 0
@@ -122,12 +124,12 @@ func _build_ui() -> void:
 	var header_row: HBoxContainer = HBoxContainer.new()
 	header_row.add_theme_constant_override("separation", 14)
 	header.add_child(header_row)
-	var back: Button = _button("‹")
-	back.name = "CasinoBackButton"
-	back.custom_minimum_size = Vector2(96, 96)
-	back.add_theme_font_size_override("font_size", 64)
-	back.pressed.connect(_on_back_pressed)
-	header_row.add_child(back)
+	back_button = _button("カジノへ戻る")
+	back_button.name = "CasinoBackButton"
+	back_button.custom_minimum_size = Vector2(168, 96)
+	back_button.pressed.connect(_on_back_pressed)
+	CasinoBackButton.configure(back_button)
+	header_row.add_child(back_button)
 	var title: Label = _label("DICE TOWER", 54, GOLD_LIGHT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -515,9 +517,11 @@ func _build_result_overlay() -> Control:
 	change_bet.pressed.connect(_restart_after_result)
 	secondary.add_child(change_bet)
 	var exit: Button = _button("カジノへ戻る")
+	exit.name = "ResultCasinoBackButton"
 	exit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	exit.custom_minimum_size.y = 92
 	exit.pressed.connect(_on_back_pressed)
+	CasinoBackButton.configure(exit)
 	secondary.add_child(exit)
 	return overlay
 
@@ -610,7 +614,7 @@ func _resume_or_show_setup() -> void:
 	rolling = not pending_roll.is_empty()
 	setup_view.visible = false
 	active_view.visible = true
-	result_overlay.visible = false
+	_set_result_overlay_visible(false)
 	_set_retry_action(false)
 	_reset_tower_visuals()
 	_refresh_all()
@@ -663,7 +667,7 @@ func _start_game() -> void:
 	pending_roll = {}
 	settled = false
 	rolling = false
-	result_overlay.visible = false
+	_set_result_overlay_visible(false)
 	_set_retry_action(false)
 	setup_view.visible = false
 	active_view.visible = true
@@ -799,12 +803,12 @@ func _set_retry_action(enabled: bool) -> void:
 		roll_button.pressed.connect(_on_roll_pressed)
 
 func _restart_after_result() -> void:
-	result_overlay.visible = false
+	_set_result_overlay_visible(false)
 	_play_ui_sfx(&"retry", false)
 	_show_setup()
 
 func _play_again_same_bet() -> void:
-	result_overlay.visible = false
+	_set_result_overlay_visible(false)
 	_play_ui_sfx(&"retry", false)
 	_show_setup()
 	if CasinoBankScript.balance() < selected_bet:
@@ -821,7 +825,7 @@ func _show_setup() -> void:
 	queued_roll_value = 0
 	active_view.visible = false
 	setup_view.visible = true
-	result_overlay.visible = false
+	_set_result_overlay_visible(false)
 	roll_button.text = "ROLL\nもう1回振る"
 	_apply_roll_style(false)
 	_set_retry_action(false)
@@ -867,7 +871,7 @@ func _show_bust_result() -> void:
 	var retry: Button = result_overlay.find_child("RetryButton", true, false) as Button
 	if retry != null:
 		retry.text = "PLAY AGAIN\nBET %d CHIP" % selected_bet
-	result_overlay.visible = true
+	_set_result_overlay_visible(true)
 	call_deferred("_animate_result_reveal")
 
 func _show_success_result(payout: int) -> void:
@@ -881,13 +885,18 @@ func _show_success_result(payout: int) -> void:
 	var retry: Button = result_overlay.find_child("RetryButton", true, false) as Button
 	if retry != null:
 		retry.text = "PLAY AGAIN\nBET %d CHIP" % selected_bet
-	result_overlay.visible = true
+	_set_result_overlay_visible(true)
 	call_deferred("_animate_result_reveal")
 
 func _animate_result_reveal() -> void:
 	if result_card == null or not result_card.visible or not result_overlay.visible:
 		return
 	VisualFeedback.reveal(result_card, 0.28)
+
+func _set_result_overlay_visible(is_visible: bool) -> void:
+	result_overlay.visible = is_visible
+	if back_button != null:
+		back_button.visible = not is_visible
 
 func _format_chips(value: int) -> String:
 	var raw: String = str(maxi(0, value))
