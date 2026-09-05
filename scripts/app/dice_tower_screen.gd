@@ -7,6 +7,7 @@ const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
 const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
+const CasinoFeelFXScript = preload("res://scripts/ui/casino_feel_fx.gd")
 const TowerScript = preload("res://scripts/game/dice_tower_model.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -69,6 +70,9 @@ var back_button: Button
 var bet_buttons: Dictionary = {}
 var floor_panels: Dictionary = {}
 var tutorial_page: int = 0
+var feel_fx: CasinoFeelFX
+var payout_before_roll: int = 0
+var balance_before_cashout: int = 0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -78,6 +82,9 @@ func _ready() -> void:
 		ui_sfx.call("set_stage", &"las_vegas")
 	rng.randomize()
 	_build_ui()
+	feel_fx = CasinoFeelFXScript.new()
+	feel_fx.name = "CasinoFeelFX"
+	add_child(feel_fx)
 	if CasinoBankScript.has_active_game(FACILITY_ID):
 		tutorial_overlay.visible = false
 		_resume_or_show_setup()
@@ -723,6 +730,11 @@ func _start_game() -> void:
 func _on_roll_pressed() -> void:
 	if rolling or not bool(game.get("active", false)) or bool(game.get("finished", false)):
 		return
+	if feel_fx != null:
+		feel_fx.press_button(roll_button, true)
+		if int(game.get("floor", 0)) >= 9:
+			feel_fx.play_tower_tension()
+	payout_before_roll = TowerScript.cashout_payout(game)
 	var rolled: int = queued_roll_value if queued_roll_value in range(1, 7) else rng.randi_range(1, 6)
 	queued_roll_value = 0
 	pending_roll = {
@@ -744,6 +756,8 @@ func _on_roll_pressed() -> void:
 func _animate_and_resolve_pending_roll(pending: Dictionary) -> void:
 	var rolled: int = clampi(int(pending.get("value", 1)), 1, 6)
 	status_label.text = "サイコロが回る..."
+	if feel_fx != null:
+		feel_fx.play_dice_roll()
 	dice_presentation.present([rolled], true, 1)
 	await get_tree().create_timer(ROLL_SECONDS).timeout
 	if not is_inside_tree():
@@ -753,6 +767,8 @@ func _animate_and_resolve_pending_roll(pending: Dictionary) -> void:
 	pending_roll = {}
 	CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 	dice_presentation.present([rolled], false, 1)
+	if feel_fx != null:
+		feel_fx.play_dice_land()
 	await get_tree().create_timer(RESULT_SECONDS).timeout
 	if not is_inside_tree():
 		return
@@ -762,13 +778,18 @@ func _animate_and_resolve_pending_roll(pending: Dictionary) -> void:
 func _after_roll_resolution() -> void:
 	var kind: String = str(game.get("last_kind", ""))
 	if bool(game.get("completed", false)):
-		_play_ui_sfx(&"complete", true)
+		if feel_fx != null:
+			feel_fx.play_tower_complete()
 		_show_banner("TOWER COMPLETE!", GOLD_LIGHT, Color("#3f2408"), 0.85, "CompleteBanner")
+		_punch_tower(true, false)
 		_finish_success(int(game.get("payout", 0)), "10F到達！ %d CHIP獲得！" % int(game.get("payout", 0)))
 		_refresh_all()
+		if feel_fx != null:
+			feel_fx.animate_payout_change(payout_label, payout_before_roll, int(game.get("payout", 0)))
 		return
 	if bool(game.get("busted", false)):
-		_play_ui_sfx(&"error", true)
+		if feel_fx != null:
+			feel_fx.play_tower_bust()
 		status_label.text = "BUST！ 獲得予定CHIPは0。"
 		_show_banner("BUST  0 CHIP", Color("#ffd9d4"), Color("#5b1210"), 0.85, "BustBanner")
 		_play_bust_fx()
@@ -781,22 +802,32 @@ func _after_roll_resolution() -> void:
 		_show_banner("GOLDEN LEAP!", GOLD_LIGHT, Color("#3f2408"), 0.48, "LeapBanner")
 		status_label.text = "GOLDEN LEAP！ %dFへ。" % int(game.get("floor", 0))
 	else:
-		_play_ui_sfx(&"progress-step", true)
 		status_label.text = "CLIMB！ %dFへ。" % int(game.get("floor", 0))
+		if feel_fx != null:
+			feel_fx.play_tower_floor_up(int(game.get("floor", 0)))
+		_punch_tower(false, int(game.get("floor", 0)) >= 7)
 	cashout_button.disabled = false
 	roll_button.disabled = false
 	_refresh_all()
+	if feel_fx != null:
+		feel_fx.animate_payout_change(payout_label, payout_before_roll, TowerScript.cashout_payout(game))
 
 func _on_cashout_pressed() -> void:
 	if rolling or not bool(game.get("active", false)) or bool(game.get("finished", false)):
 		return
 	var payout: int = TowerScript.cashout_payout(game)
+	balance_before_cashout = CasinoBankScript.balance()
 	if payout <= 0:
 		_play_ui_sfx(&"blocked", false)
 		return
+	payout_before_roll = payout
 	game = TowerScript.take_cashout(game)
-	_play_ui_sfx(&"complete", true)
+	if feel_fx != null:
+		feel_fx.play_cashout_feedback(chip_label)
 	_finish_success(payout, "受け取り完了！ +%d CHIP" % payout)
+	if feel_fx != null:
+		feel_fx.animate_payout_change(payout_label, payout_before_roll, payout)
+		feel_fx.animate_balance_change(chip_label, balance_before_cashout, CasinoBankScript.balance())
 
 func _finish_success(payout: int, message: String) -> void:
 	if not _settle_finished_game(payout):
@@ -806,6 +837,23 @@ func _finish_success(payout: int, message: String) -> void:
 	_spawn_confetti()
 	_refresh_all()
 	_show_success_result(payout)
+
+func _punch_tower(complete: bool, high_floor: bool = false) -> void:
+	if tower_frame == null:
+		return
+	tower_frame.offset_transform_enabled = true
+	var tween: Tween = create_tween()
+	var lift: float = -12.0 if complete else (-3.0 if high_floor else -5.0)
+	tween.tween_property(tower_frame, "offset_transform_position", Vector2(0.0, lift), 0.09)
+	tween.tween_property(tower_frame, "offset_transform_position", Vector2.ZERO, 0.11)
+	tower_frame.offset_transform_scale = Vector2.ONE
+	var pulse: Tween = create_tween()
+	var emphasis: float = 1.06 if complete else (1.03 if high_floor else 1.02)
+	pulse.tween_property(tower_frame, "offset_transform_scale", Vector2(emphasis, emphasis), 0.09)
+	pulse.tween_property(tower_frame, "offset_transform_scale", Vector2.ONE, 0.09)
+	if complete:
+		tower_frame.modulate = Color(1.18, 1.08, 0.82)
+		tween.tween_property(tower_frame, "modulate", Color.WHITE, 0.35)
 
 func _settle_finished_game(payout: int) -> bool:
 	if settled:
@@ -1015,6 +1063,11 @@ func _play_bust_fx() -> void:
 	if tower_frame == null or effect_layer == null:
 		return
 	tower_frame.modulate = Color(1.55, 0.68, 0.68)
+	tower_frame.offset_transform_enabled = true
+	var jerk := create_tween()
+	jerk.tween_property(tower_frame, "offset_transform_position", Vector2(4.0, 2.0), 0.06)
+	jerk.tween_property(tower_frame, "offset_transform_position", Vector2(-3.0, -1.0), 0.07)
+	jerk.tween_property(tower_frame, "offset_transform_position", Vector2.ZERO, 0.10)
 	var collapse := create_tween()
 	collapse.tween_interval(0.05)
 	collapse.tween_property(tower_frame, "modulate", Color(0.52, 0.24, 0.24, 0.42), 0.42)

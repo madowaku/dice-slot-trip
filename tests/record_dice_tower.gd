@@ -20,6 +20,10 @@ func _record() -> void:
 	if output_dir.is_empty():
 		output_dir = ProjectSettings.globalize_path("res://artifacts/playtest/dice-tower-v1")
 	DirAccess.make_dir_recursive_absolute(output_dir)
+	var requested: String = OS.get_environment("DICE_TOWER_QA_VIEWPORT")
+	var capture_output: Vector2i = OUTPUT_SIZE
+	if requested == "720x1280":
+		capture_output = Vector2i(720, 1280)
 	var save_path: String = "user://dice_tower_recorder_%d.json" % OS.get_process_id()
 	BANK_SCRIPT.set_test_save_path(save_path)
 	BANK_SCRIPT.add_chips(1240)
@@ -43,7 +47,7 @@ func _record() -> void:
 	tower.call("_close_tutorial")
 	await _settle(4)
 	_check_controls_inside([tower.start_button, tower.bet_buttons[10], tower.bet_buttons[20], tower.bet_buttons[50]], "setup")
-	_capture(output_dir.path_join("setup-360x800.png"))
+	_capture(output_dir.path_join("setup-%dx%d.png" % [capture_output.x, capture_output.y]), capture_output)
 	await _resize_design(Vector2i(720, 1560))
 	_check_controls_inside([tower.start_button, tower.bet_buttons[10], tower.bet_buttons[20], tower.bet_buttons[50]], "setup-780")
 	_capture(output_dir.path_join("setup-360x780.png"), Vector2i(360, 780))
@@ -58,7 +62,7 @@ func _record() -> void:
 	tower.call("_refresh_all")
 	await _settle(8)
 	_check_controls_inside([tower.cashout_button, tower.roll_button], "active")
-	_capture(output_dir.path_join("active-floor5-360x800.png"))
+	_capture(output_dir.path_join("active-floor5-%dx%d.png" % [capture_output.x, capture_output.y]), capture_output)
 	await _resize_design(Vector2i(720, 1560))
 	_check_controls_inside([tower.cashout_button, tower.roll_button], "active-780")
 	_capture(output_dir.path_join("active-floor5-360x780.png"), Vector2i(360, 780))
@@ -79,7 +83,7 @@ func _record() -> void:
 	tower.call("_show_bust_result")
 	await _settle(RESULT_SETTLE_FRAMES)
 	_check_controls_inside([tower.result_overlay.find_child("RetryButton", true, false) as Control], "bust")
-	_capture(output_dir.path_join("bust-floor8-360x800.png"))
+	_capture(output_dir.path_join("bust-floor8-%dx%d.png" % [capture_output.x, capture_output.y]), capture_output)
 	await _resize_design(Vector2i(720, 1560))
 	_check_controls_inside([tower.result_overlay.find_child("RetryButton", true, false) as Control], "bust-780")
 	_capture(output_dir.path_join("bust-floor8-360x780.png"), Vector2i(360, 780))
@@ -98,7 +102,7 @@ func _record() -> void:
 	tower.call("_show_success_result", 84)
 	await _settle(RESULT_SETTLE_FRAMES)
 	_check_controls_inside([tower.result_overlay.find_child("RetryButton", true, false) as Control], "success")
-	_capture(output_dir.path_join("success-floor10-360x800.png"))
+	_capture(output_dir.path_join("success-floor10-%dx%d.png" % [capture_output.x, capture_output.y]), capture_output)
 
 	print("DICE_TOWER_CAPTURE failures=%d output=%s" % [failures, output_dir])
 	var bgm: Node = root.get_node_or_null("BgmManager")
