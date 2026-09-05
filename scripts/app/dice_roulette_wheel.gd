@@ -24,6 +24,15 @@ var blue_angle := -PI * 0.5
 var result_red_slot := -1
 var result_blue_slot := -1
 var markers_spinning := false
+var motion_tween: Tween
+var motion_phase: StringName = &"idle"
+
+func _exit_tree() -> void:
+	if motion_tween != null and motion_tween.is_valid():
+		motion_tween.kill()
+	motion_tween = null
+	markers_spinning = false
+	motion_phase = &"idle"
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(430, 430)
@@ -87,9 +96,12 @@ func _make_marker(text: String, fill: Color) -> Control:
 	return marker
 
 func reset_markers() -> void:
+	if motion_tween != null and motion_tween.is_valid():
+		motion_tween.kill()
 	result_red_slot = -1
 	result_blue_slot = -1
 	markers_spinning = false
+	motion_phase = &"idle"
 	red_marker.call("set_face", 1)
 	blue_marker.call("set_face", 1)
 	red_marker.call("set_result_focus", false)
@@ -98,16 +110,31 @@ func reset_markers() -> void:
 	_set_blue_angle(-PI * 0.5 + 0.18)
 
 func animate_results(red_slot: int, blue_slot: int, red_face: int, blue_face: int) -> void:
+	if motion_tween != null and motion_tween.is_valid():
+		motion_tween.kill()
 	result_red_slot = red_slot
 	result_blue_slot = blue_slot
 	markers_spinning = true
+	motion_phase = &"acceleration"
 	var red_target := _slot_angle(red_slot) + TAU * 4.0
 	var blue_target := _slot_angle(blue_slot) - TAU * 4.25
-	var tween := create_tween()
-	tween.set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
-	tween.tween_method(_set_red_angle, red_angle, red_target, 1.18)
-	tween.parallel().tween_method(_set_blue_angle, blue_angle, blue_target, 1.38)
-	await tween.finished
+	motion_tween = create_tween()
+	# Three tactile phases: quick acceleration, steady cruise, then a readable slowdown.
+	motion_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	motion_tween.tween_method(_set_red_angle, red_angle, red_angle + TAU * 0.55, 0.16)
+	motion_tween.parallel().tween_method(_set_blue_angle, blue_angle, blue_angle - TAU * 0.55, 0.16)
+	motion_tween.tween_callback(_set_cruise_phase)
+	motion_tween.set_trans(Tween.TRANS_LINEAR).set_ease(Tween.EASE_IN_OUT)
+	motion_tween.tween_method(_set_red_angle, red_angle + TAU * 0.55, red_target - TAU * 0.7, 0.56)
+	motion_tween.parallel().tween_method(_set_blue_angle, blue_angle - TAU * 0.55, blue_target + TAU * 0.7, 0.58)
+	motion_tween.tween_callback(_set_deceleration_phase)
+	motion_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	motion_tween.tween_method(_set_red_angle, red_target - TAU * 0.7, red_target, 0.40)
+	motion_tween.parallel().tween_method(_set_blue_angle, blue_target + TAU * 0.7, blue_target, 0.42)
+	await motion_tween.finished
+	if not is_inside_tree() or not is_instance_valid(red_marker) or not is_instance_valid(blue_marker):
+		return
+	motion_tween = null
 	markers_spinning = false
 	_set_red_angle(_slot_angle(red_slot))
 	_set_blue_angle(_slot_angle(blue_slot))
@@ -115,6 +142,13 @@ func animate_results(red_slot: int, blue_slot: int, red_face: int, blue_face: in
 	blue_marker.call("set_face", blue_face)
 	red_marker.call("set_result_focus", true)
 	blue_marker.call("set_result_focus", true)
+	motion_phase = &"idle"
+
+func _set_cruise_phase() -> void:
+	motion_phase = &"cruise"
+
+func _set_deceleration_phase() -> void:
+	motion_phase = &"deceleration"
 
 func _slot_angle(slot: int) -> float:
 	return -PI * 0.5 + TAU * (float(slot) + 0.5) / float(ModelScript.SLOT_COUNT)

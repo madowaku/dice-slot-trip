@@ -16,6 +16,7 @@ const SPIN_RING_PATH := "res://assets/casino/dice_roulette/ui/spin-button-amber-
 var failures := 0
 var assertions := 0
 var test_save_path := ""
+var back_request_count := 0
 
 func _init() -> void:
 	call_deferred("_run")
@@ -26,6 +27,41 @@ func _expect(condition: bool, label: String) -> void:
 		return
 	failures += 1
 	push_error("FAIL: %s" % label)
+
+func _on_back_requested() -> void:
+	back_request_count += 1
+
+func _teardown_at_event(test_root: Node, event_name: String) -> void:
+	var probe := ROULETTE_SCENE.instantiate()
+	test_root.add_child(probe)
+	await process_frame
+	probe.call("_place_main_bet", "HIGH")
+	probe.rng.seed = 7
+	probe.call("_spin")
+	var elapsed := 0.0
+	while event_name not in probe.presentation_events and elapsed < 4.0:
+		await create_timer(0.02).timeout
+		elapsed += 0.02
+	_expect(event_name in probe.presentation_events, "teardown probe reaches %s" % event_name)
+	probe.queue_free()
+	await process_frame
+	_expect(not is_instance_valid(probe), "roulette frees safely during %s" % event_name)
+
+func _teardown_at_motion_phase(test_root: Node, phase_name: String) -> void:
+	var probe := ROULETTE_SCENE.instantiate()
+	test_root.add_child(probe)
+	await process_frame
+	probe.call("_place_main_bet", "HIGH")
+	probe.rng.seed = 7
+	probe.call("_spin")
+	var elapsed := 0.0
+	while str(probe.wheel.motion_phase) != phase_name and elapsed < 4.0:
+		await create_timer(0.02).timeout
+		elapsed += 0.02
+	_expect(str(probe.wheel.motion_phase) == phase_name, "wheel enters %s phase" % phase_name)
+	probe.queue_free()
+	await process_frame
+	_expect(not is_instance_valid(probe), "roulette frees safely during wheel %s" % phase_name)
 
 func _assert_how_to(screen: Node) -> void:
 	var panel := screen.find_child("CasinoHowTo3Steps", true, false) as PanelContainer
@@ -177,9 +213,42 @@ func _test_ui_contract() -> void:
 	_expect(roulette.call("_current_total_bet") == 50, "bet placement cannot push total beyond 50")
 	roulette.call("_undo")
 	_expect(roulette.call("_current_total_bet") == 30, "UNDO restores the previous bet snapshot")
+	# Deterministic feel contract: one SPIN emits the complete readable beat sequence,
+	# while a second input during the presentation cannot charge or start another round.
+	roulette.call("_clear_bets")
+	roulette.call("_select_amount", 10)
+	roulette.call("_place_main_bet", "HIGH")
+	roulette.rng.seed = 7
+	var balance_before_spin: int = CasinoBankScript.balance()
+	roulette.call("_spin")
+	roulette.call("_spin")
+	_expect(CasinoBankScript.balance() == balance_before_spin - 10, "second SPIN is ignored while the first presentation is running")
+	var spin_timeout: float = 0.0
+	while int(roulette.phase) != 7 and spin_timeout < 4.0:
+		await create_timer(0.05).timeout
+		spin_timeout += 0.05
+	_expect(int(roulette.phase) == 7, "roulette feel fixture reaches ROUND_END")
+	var expected_events: Array[String] = ["spin_press", "land", "where", "boost"]
+	var events: Array[String] = roulette.presentation_events
+	var prefix_ok: bool = events.size() >= expected_events.size()
+	for event_index: int in range(expected_events.size()):
+		prefix_ok = prefix_ok and events[event_index] == expected_events[event_index]
+	_expect(prefix_ok, "roulette presentation events keep SPIN -> land -> WHERE -> BOOST order")
+	_expect(events.size() >= 6 and (events[4] == "win" or events[4] == "lose") and events[5] == "chip_count", "roulette emits outcome before CHIP count")
+	_expect("BET" in roulette.payout_label.text and "受け取り" in roulette.payout_label.text and "収支" in roulette.payout_label.text, "roulette payout summary explains BET, return, and net")
+	back_request_count = 0
+	roulette.back_requested.connect(_on_back_requested)
+	roulette.call("_cash_out")
+	roulette.call("_cash_out")
+	_expect(back_request_count == 1, "cash out is idempotent and emits back_requested once")
+	for teardown_event: String in ["spin_press", "land", "where", "boost", "chip_count"]:
+		await _teardown_at_event(root, teardown_event)
+	for motion_phase_name: String in ["acceleration", "cruise", "deceleration"]:
+		await _teardown_at_motion_phase(root, motion_phase_name)
+	# Teardown safety: freeing during the active spin must not leave a live screen.
 	roulette.queue_free()
 	await process_frame
-
+	_expect(not is_instance_valid(roulette), "roulette screen can be freed during presentation safely")
 	var hub := HUB_SCENE.instantiate()
 	root.add_child(hub)
 	await process_frame

@@ -8,6 +8,7 @@ const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
 const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const ModelScript = preload("res://scripts/game/dice_roulette_model.gd")
+const CasinoFeelFXScript = preload("res://scripts/ui/casino_feel_fx.gd")
 const WheelScript = preload("res://scripts/app/dice_roulette_wheel.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 const DISPLAY_FONT: Font = preload("res://assets/fonts/cinzel/Cinzel-Variable.ttf")
@@ -116,6 +117,15 @@ var amount_buttons: Dictionary = {}
 var main_bet_buttons: Dictionary = {}
 var side_bet_buttons: Dictionary = {}
 var sparkle_overlay: TextureRect
+var feel_fx: CasinoFeelFX
+var presentation_events: Array[String] = []
+var reveal_tweens: Array[Tween] = []
+
+func _exit_tree() -> void:
+	for tween: Tween in reveal_tweens:
+		if tween != null and tween.is_valid():
+			tween.kill()
+	reveal_tweens.clear()
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -129,6 +139,9 @@ func _ready() -> void:
 		if ui_sfx != null:
 			ui_sfx.call("set_stage", &"las_vegas")
 	_build_ui()
+	feel_fx = CasinoFeelFXScript.new()
+	feel_fx.audio_enabled = not suppress_audio_for_tests
+	add_child(feel_fx)
 	resized.connect(_apply_responsive_layout)
 	call_deferred("_apply_responsive_layout")
 	_resume_or_show_setup()
@@ -258,7 +271,16 @@ func _build_ui() -> void:
 	sparkle_overlay.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	sparkle_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	sparkle_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	sparkle_overlay.modulate = Color(1, 1, 1, 0.58)
+	# Sparkle frames contain a broad light backing; keep the effect as a subtle
+	# accent so high-BOOST results never wash the full wheel opaque.
+	sparkle_overlay.modulate = Color(1, 1, 1, 0.16)
+	# Sparkle sheets include a flat gray matte. Key that matte out so only the
+	# bright sparkle pixels remain visible over the roulette wheel.
+	var sparkle_material := ShaderMaterial.new()
+	var sparkle_shader := Shader.new()
+	sparkle_shader.code = "shader_type canvas_item;\nvoid fragment() {\n    vec4 tex = texture(TEXTURE, UV);\n    float spread = max(max(tex.r, tex.g), tex.b) - min(min(tex.r, tex.g), tex.b);\n    if (tex.r > 0.35 && spread < 0.08 && tex.r < 0.92) { discard; }\n    COLOR = tex * COLOR;\n}"
+	sparkle_material.shader = sparkle_shader
+	sparkle_overlay.material = sparkle_material
 	sparkle_overlay.visible = false
 	wheel_stack.add_child(sparkle_overlay)
 
@@ -551,6 +573,9 @@ func _rebet() -> void:
 func _spin() -> void:
 	if phase != Phase.BETTING:
 		return
+	if feel_fx != null:
+		feel_fx.press_button(spin_button, true)
+	presentation_events.append("spin_press")
 	var wager := _current_total_bet()
 	if wager <= 0:
 		_set_status("BETしてから回そう")
@@ -606,25 +631,60 @@ func _animate_and_finish_round() -> void:
 	sparkle_overlay.visible = true
 	phase = Phase.SPINNING
 	_play_world(&"start")
+	if feel_fx != null:
+		feel_fx.play_dice_roll()
 	wheel.reset_markers()
 	await wheel.animate_results(int(current_result.red_slot), int(current_result.blue_slot), int(current_result.red_face), int(current_result.blue_face))
 
+	# The wheel has landed, but give the player one quiet beat to recognise both dice.
+	presentation_events.append("land")
+	_play_world(&"stop")
+	if feel_fx != null:
+		feel_fx.play_dice_land(false)
+		feel_fx.vibrate_light()
+	await _presentation_wait(0.20)
+	if not is_inside_tree():
+		return
+
 	phase = Phase.AREA_RESULT
+	presentation_events.append("where")
 	red_result_label.text = "赤  %s" % _display_area(str(current_result.red_area))
 	blue_result_label.text = "青  %s" % _display_area(str(current_result.blue_area))
-	status_label.text = "賭け先が確定"
-	_play_world(&"stop")
-	await get_tree().create_timer(0.38).timeout
+	var special_where := str(current_result.red_area) == "LUCKY_7" or str(current_result.blue_area) == "LUCKY_7" or str(current_result.red_area) == "JACKPOT" or str(current_result.blue_area) == "JACKPOT"
+	status_label.text = "WHERE 確定%s" % ("  •  SPECIAL!" if special_where else "")
+	_animate_where_reveal(red_result_label)
+	_animate_where_reveal(blue_result_label)
+	_play_world(&"bonus" if special_where else &"progress-step")
+	if special_where and feel_fx != null:
+		feel_fx.vibrate_light()
+	await _presentation_wait(0.20)
+	if not is_inside_tree():
+		return
 
 	phase = Phase.DICE_RESULT
+	presentation_events.append("boost")
 	red_result_label.text = "WHERE: %s\nBOOST: %d  ×%s" % [_display_area(str(current_result.red_area)), int(current_result.red_face), _fmt_multiplier(float(current_result.red_boost))]
 	blue_result_label.text = "WHERE: %s\nBOOST: %d  ×%s" % [_display_area(str(current_result.blue_area)), int(current_result.blue_face), _fmt_multiplier(float(current_result.blue_boost))]
-	if int(current_result.red_face) == 6 or int(current_result.blue_face) == 6:
-		status_label.text = "MAX BOOST ×3!"
+	var high_boost := float(current_result.red_boost) >= 2.0 or float(current_result.blue_boost) >= 2.0
+	if high_boost:
+		status_label.text = "HIGH BOOST!  ×倍率アップ"
 		_play_world(&"bonus")
+		if feel_fx != null:
+			feel_fx.vibrate_light()
 	else:
 		status_label.text = "%s  •  BOOST確定" % _display_side(str(current_result.side_result))
-	await get_tree().create_timer(0.42).timeout
+		_play_world(&"progress-step")
+	_animate_boost_reveal(red_result_label, high_boost or int(current_result.red_face) == 6)
+	_animate_boost_reveal(blue_result_label, high_boost or int(current_result.blue_face) == 6)
+	# Keep the two recognisable beats separate so first-time players can read them.
+	await _presentation_wait(0.30 if high_boost else 0.24)
+	if not is_inside_tree():
+		return
+	status_label.text = "WIN判定中…" if int(current_result.profit) > 0 else "LOSE判定中…"
+	await _presentation_wait(0.18)
+	if not is_inside_tree():
+		return
+	presentation_events.append("win" if int(current_result.profit) > 0 else "lose")
 
 	phase = Phase.PAYOUT
 	var settlement := CasinoBankScript.settle_game(FACILITY_ID, int(current_result.total_return), current_result, game_id)
@@ -637,7 +697,16 @@ func _animate_and_finish_round() -> void:
 	session_total_bet += wager
 	session_total_return += int(current_result.total_return)
 	_show_payout()
-	await get_tree().create_timer(0.25).timeout
+	if feel_fx != null:
+		feel_fx.animate_balance_change(chip_label, CasinoBankScript.balance() - int(current_result.total_return), CasinoBankScript.balance())
+		if int(current_result.profit) > 0:
+			feel_fx.play_win_feedback()
+		else:
+			feel_fx.play_lose_feedback()
+	presentation_events.append("chip_count")
+	await _presentation_wait(0.52 if high_boost else (0.40 if int(current_result.profit) > 0 else 0.28))
+	if not is_inside_tree():
+		return
 	phase = Phase.ROUND_END
 	pending_roll.clear()
 	game_id = ""
@@ -645,11 +714,35 @@ func _animate_and_finish_round() -> void:
 	round_actions.visible = true
 	_refresh_ui()
 
+func _presentation_wait(seconds: float) -> void:
+	if not is_inside_tree():
+		return
+	await get_tree().create_timer(seconds).timeout
+
+func _animate_where_reveal(label: Label) -> void:
+	_animate_reveal(label, Vector2(0.88, 0.88), Vector2(1.08, 1.08), 0.18)
+
+func _animate_boost_reveal(label: Label, emphasized: bool) -> void:
+	var peak := Vector2(1.14, 1.14) if emphasized else Vector2(1.08, 1.08)
+	_animate_reveal(label, Vector2.ONE, peak, 0.22)
+
+func _animate_reveal(label: Label, start: Vector2, peak: Vector2, duration: float) -> void:
+	if label == null or not is_instance_valid(label):
+		return
+	label.offset_transform_enabled = true
+	label.offset_transform_scale = start
+	var tween: Tween = create_tween()
+	reveal_tweens.append(tween)
+	tween.tween_property(label, "offset_transform_scale", peak, duration * 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "offset_transform_scale", Vector2.ONE, duration * 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
 func _show_payout() -> void:
 	var wager := int(current_result.total_bet)
 	var returned := int(current_result.total_return)
 	var profit := int(current_result.profit)
-	sparkle_overlay.visible = profit > 0
+	# Keep sparkle identity during the spin, but never cover the settled result
+	# panel with the sheet's broad matte; payout emphasis comes from the labels.
+	sparkle_overlay.visible = false
 	chip_label.text = "CASINO CHIP  %d" % CasinoBankScript.balance()
 	if bool(current_result.double_jackpot_max):
 		status_label.text = "DOUBLE JACKPOT  MAX BOOST!!"
@@ -705,6 +798,8 @@ func _new_bet() -> void:
 	_refresh_ui()
 
 func _cash_out() -> void:
+	if phase == Phase.CASH_OUT:
+		return
 	if phase in [Phase.BET_LOCK, Phase.SPINNING, Phase.AREA_RESULT, Phase.DICE_RESULT, Phase.PAYOUT]:
 		return
 	phase = Phase.CASH_OUT
