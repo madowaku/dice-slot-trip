@@ -1,0 +1,263 @@
+version: 2
+goal:
+  title: "VAULT BREAK FEEL POLISH"
+  slug: vault-break-feel-polish
+  mode: specific
+  status: done
+  active_task: null
+  summary: "Make VAULT BREAK feel like a precise mechanical unlocking game without changing gameplay or economy."
+  constraints:
+    - "Presentation, sound, haptics, and display timing only"
+    - "No BET, payout, rules, probability, discard, tier, save, bank, BGM, or route changes"
+    - "VAULT BREAK only; DICE TOWER may change only where the shared feel helper requires safe generic extension"
+    - "Preserve Japanese-first 360x800 and 720x1280 layouts"
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    objective: "Map VAULT BREAK state transitions, UI nodes, current timing/audio, deterministic QA, and the smallest safe presentation-only implementation boundary."
+    inputs:
+      - "scripts/app/vault_break_screen.gd"
+      - "scripts/app/vault_break_lock_view.gd"
+      - "scripts/game/vault_break/"
+      - "scripts/ui/casino_feel_fx.gd"
+      - "tests/run_vault_break_ui_tests.gd"
+      - "tests/record_las_vegas_casino_expansion.gd"
+    constraints:
+      - "Read-only investigation"
+      - "Do not alter models, bank, save, routes, BGM, or other facilities"
+    expected_output:
+      - "Event/timing/state map"
+      - "Reusable shared feel methods and vault-local cue plan"
+      - "Exact allowed_files, verification commands, and stop conditions"
+      - "Rendered QA extension plan for last roll, success, and denied"
+    receipt:
+      result: done
+      summary: "VAULT BREAK uses one die per roll and immediate single-button DISCARD, so Phase 5B should enhance the shipped flow rather than invent multi-die selection. Existing model/persistence ordering can remain untouched while Screen and LockView carry the presentation timeline."
+      evidence:
+        - "scripts/app/vault_break_screen.gd"
+        - "scripts/app/vault_break_lock_view.gd"
+        - "scripts/game/vault_break/vault_break_model.gd"
+        - "scripts/ui/casino_feel_fx.gd"
+        - "tests/run_vault_break_ui_tests.gd"
+        - "tests/record_las_vegas_casino_expansion.gd"
+      decisions:
+        - "Reuse CasinoFeelFX only for button, roll, land, CHIP count, and haptics; keep lock/discard/door/tier cues local to VAULT BREAK."
+        - "Preserve the crash-safe order: persist pending face before animation, resolve the model afterward, and settle before result presentation."
+        - "Simulate a two-stage door open with the existing single PNG; no new layered art or external audio in this tranche."
+        - "Interpret DISCARD feel as confirmation feedback on the existing immediate action; do not add selection state."
+      baseline:
+        - "tests/run_vault_break_tests.gd: 452 assertions, 0 failures"
+        - "tests/run_vault_break_ui_tests.gd: 68 assertions, 0 failures"
+        - "tests/run_casino_tests.gd: 248 assertions, 0 failures"
+        - "tests/run_casino_ui_tests.gd: 204 assertions, 0 failures"
+      allowed_files_for_worker:
+        - "scripts/app/vault_break_screen.gd"
+        - "scripts/app/vault_break_lock_view.gd"
+        - "scripts/ui/casino_feel_fx.gd"
+        - "tests/run_vault_break_ui_tests.gd"
+        - "tests/record_vault_break_feel.gd"
+        - "tests/record_vault_break_feel.gd.uid"
+
+  - id: T010
+    type: worker
+    assignee: Worker
+    status: blocked
+    objective: "Implement the bounded single-die VAULT BREAK feel layer selected from T001: shared roll/land/button/CHIP feedback, tactile discard, lock progress, remaining-roll tension, two-stage success door, short denied door, tier nuance, and deterministic rendered QA."
+    allowed_files:
+      - "scripts/app/vault_break_screen.gd"
+      - "scripts/app/vault_break_lock_view.gd"
+      - "scripts/ui/casino_feel_fx.gd"
+      - "tests/run_vault_break_ui_tests.gd"
+      - "tests/record_vault_break_feel.gd"
+      - "tests/record_vault_break_feel.gd.uid"
+    verify:
+      - "Godot 4.7 headless editor validation"
+      - "tests/run_vault_break_tests.gd"
+      - "tests/run_vault_break_ui_tests.gd"
+      - "tests/run_casino_foundation_tests.gd"
+      - "tests/run_casino_tests.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/record_vault_break_feel.gd at 360x800 and 720x1280 real render"
+      - "Safe queue-free during roll/result animation"
+      - "git diff --check and explicit gameplay-file no-diff gate"
+    stop_if:
+      - "Need files outside allowed_files"
+      - "Any gameplay/model/bank/save/economy/route/BGM behavior would change"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: blocked
+      changed_files:
+        - "scripts/app/vault_break_screen.gd"
+        - "scripts/app/vault_break_lock_view.gd"
+        - "scripts/ui/casino_feel_fx.gd"
+        - "tests/run_vault_break_ui_tests.gd"
+        - "tests/record_vault_break_feel.gd"
+        - "tests/record_vault_break_feel.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 editor validation"
+          status: "pass"
+        - cmd: "tests/run_vault_break_tests.gd"
+          status: "pass: 452 assertions, 0 failures"
+        - cmd: "tests/run_vault_break_ui_tests.gd"
+          status: "blocked: new denied-path assertion failed twice"
+      summary: "Implemented the first bounded feel pass, then stopped after the same new denied fixture failed twice. Existing model coverage remained green; inspection indicates the fixture used FACE 5 on B01, which enters placement because B01 has a HIGH lock rather than producing automatic discard."
+      limitation: "No render/regression evidence was accepted from this task; recovery is delegated to T011."
+
+  - id: T011
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Recover T010 by correcting the deterministic denied fixture without changing gameplay, audit and harden the presentation code, complete scoped regressions, and produce two-resolution real-render evidence."
+    allowed_files:
+      - "scripts/app/vault_break_screen.gd"
+      - "scripts/app/vault_break_lock_view.gd"
+      - "scripts/ui/casino_feel_fx.gd"
+      - "tests/run_vault_break_ui_tests.gd"
+      - "tests/record_vault_break_feel.gd"
+      - "tests/record_vault_break_feel.gd.uid"
+    verify:
+      - "Godot 4.7 headless editor validation"
+      - "tests/run_vault_break_tests.gd"
+      - "tests/run_vault_break_ui_tests.gd"
+      - "tests/run_casino_foundation_tests.gd"
+      - "tests/run_casino_tests.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/record_vault_break_feel.gd at 360x800 and 720x1280 real render"
+      - "Queue-free safety during final roll and result effects"
+      - "git diff --check and gameplay-file no-diff gate"
+    stop_if:
+      - "Need files outside allowed_files"
+      - "Any gameplay/model/bank/save/economy/route/BGM behavior would change"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/vault_break_screen.gd"
+        - "scripts/app/vault_break_lock_view.gd"
+        - "scripts/ui/casino_feel_fx.gd"
+        - "tests/run_vault_break_ui_tests.gd"
+        - "tests/record_vault_break_feel.gd"
+        - "tests/record_vault_break_feel.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 headless editor validation"
+          status: "pass"
+        - cmd: "tests/run_vault_break_tests.gd"
+          status: "pass: 452 assertions, 0 failures"
+        - cmd: "tests/run_vault_break_ui_tests.gd"
+          status: "pass: 94 assertions, 0 failures"
+        - cmd: "tests/run_casino_foundation_tests.gd"
+          status: "pass: 36 assertions, 0 failures; known exit resource warnings only"
+        - cmd: "tests/run_casino_tests.gd"
+          status: "pass: 248 assertions, 0 failures"
+        - cmd: "tests/run_casino_ui_tests.gd"
+          status: "pass: 204 assertions, 0 failures"
+        - cmd: "tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 168 assertions, 0 failures"
+        - cmd: "tests/record_vault_break_feel.gd at 360x800 and 720x1280"
+          status: "pass: 7 PNG each, 0 failures"
+        - cmd: "git diff --check and gameplay-file no-diff gate"
+          status: "pass"
+      summary: "Completed the bounded presentation-only feel layer, corrected denied and BLACK deterministic fixtures, awaited every capture before cleanup, and added queue-free coverage during ACCESS DENIED feedback."
+      verification:
+        - "Godot 4.7 headless editor validation: pass"
+        - "VAULT model: 452 assertions, 0 failures"
+        - "VAULT UI: 94 assertions, 0 failures"
+        - "Casino foundation: 36 assertions, 0 failures (known exit resource warnings only)"
+        - "Casino: 248 assertions, 0 failures"
+        - "Casino UI: 204 assertions, 0 failures"
+        - "Casino expansion/Tower shared helper: 168 assertions, 0 failures"
+        - "Real render: 7 states at 360x800 and 720x1280, 0 failures"
+        - "git diff --check and gameplay-file no-diff gate: pass"
+      render_evidence:
+        - "C:/tmp/vault-break-feel-recovery-final2-360"
+        - "C:/tmp/vault-break-feel-recovery-final2-720"
+      limitation: "The shipped game remains its existing one-die-per-roll flow; DISCARD receives immediate tactile confirmation without adding selection state."
+
+  - id: T020
+    type: pm
+    assignee: PM
+    status: done
+    objective: "Run focused model/UI regressions and real-render feel QA at 360x800 and 720x1280, including last roll, success, denied, and safe teardown."
+    inputs:
+      - "T010 receipt"
+    constraints:
+      - "No implementation edits unless a follow-up Worker is activated"
+    expected_output:
+      - "Assertions and failure counts"
+      - "Rendered evidence"
+      - "Gameplay/economy/persistence regression result"
+      - "Any bounded follow-up task"
+    receipt:
+      result: done
+      commands:
+        - cmd: "Godot 4.7 headless editor validation"
+          status: "pass"
+        - cmd: "tests/run_vault_break_tests.gd"
+          status: "pass: 452 assertions, 0 failures"
+        - cmd: "tests/run_vault_break_ui_tests.gd"
+          status: "pass: 94 assertions, 0 failures"
+        - cmd: "tests/run_casino_foundation_tests.gd"
+          status: "pass: 36 assertions, 0 failures; pre-existing exit leak/resource warnings"
+        - cmd: "tests/run_casino_tests.gd"
+          status: "pass: 248 assertions, 0 failures"
+        - cmd: "tests/run_casino_ui_tests.gd"
+          status: "pass: 204 assertions, 0 failures"
+        - cmd: "tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 168 assertions, 0 failures"
+        - cmd: "tests/record_vault_break_feel.gd at 360x800 and 720x1280"
+          status: "pass: 7 non-empty PNG each"
+        - cmd: "git diff --check and gameplay/model/bank no-diff gate"
+          status: "pass"
+      summary: "Independent PM audit confirmed the model and shared casino regressions, inspected placement, true BLACK success, and ACCESS DENIED renders, and found no residual Godot process."
+      render_evidence:
+        - "C:/tmp/vault-break-feel-pm-360"
+        - "C:/tmp/vault-break-feel-pm-720"
+      gameplay_regression: "No diff in VAULT model, CasinoBank, save/autoload, templates, project settings, or VaultBreak scene."
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    objective: "Audit whether Phase 5B satisfies the formal VAULT BREAK feel acceptance and is safe to hand off to Phase 5C."
+    inputs:
+      - "All done task receipts"
+      - "Current diff and validation output"
+      - "Real-render evidence"
+    expected_output:
+      - "complete | not_complete"
+      - "Missing evidence"
+      - "Next bounded task if not complete"
+    receipt:
+      result: complete
+      decision: complete
+      summary: "Phase 5B is formally accepted and may proceed to Phase 5C ROULETTE FEEL POLISH."
+      evidence:
+        - "Judge reran VAULT model 452/0, VAULT UI 94/0, and Casino expansion UI 168/0."
+        - "PM evidence covers foundation 36/0, Casino 248/0, Casino UI 204/0, and Godot editor validation."
+        - "Gameplay, CasinoBank, save, templates, BGM, routes, and scene files have no diff."
+        - "360x800 and 720x1280 each contain seven non-empty real renders with no missing or overlapping result information."
+        - "Final-roll and ACCESS DENIED queue-free safety are covered."
+      missing_evidence: []
+      limitations:
+        - "The shipped one-die immediate-DISCARD flow is preserved; multi-die selection and simultaneous lock opening are out of scope."
+        - "Animation feel is accepted from timing/code/state evidence plus still captures; the door uses the existing single PNG for a simulated two-stage open."
+      next_allowed_task: "Phase 5C ROULETTE FEEL POLISH"

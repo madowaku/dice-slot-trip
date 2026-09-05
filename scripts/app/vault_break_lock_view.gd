@@ -40,6 +40,7 @@ var rule_label: Label
 var faces_label: Label
 var state_label: Label
 var face_label: Label
+var feedback_tween: Tween
 
 func _ready() -> void:
 	_ensure_ui()
@@ -80,6 +81,16 @@ func get_lock_state() -> int:
 
 func is_valid_target() -> bool:
 	return state == State.VALID_TARGET and not disabled and placed_face == 0
+
+func play_lock_feedback() -> void:
+	offset_transform_enabled = true
+	if feedback_tween != null:
+		feedback_tween.kill()
+	feedback_tween = create_tween()
+	feedback_tween.tween_property(self, "offset_transform_position", Vector2(0.0, -5.0), 0.06)
+	feedback_tween.parallel().tween_property(self, "offset_transform_scale", Vector2(1.10, 1.10), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	feedback_tween.tween_property(self, "offset_transform_position", Vector2.ZERO, 0.10)
+	feedback_tween.parallel().tween_property(self, "offset_transform_scale", Vector2.ONE, 0.10)
 
 func accepted_faces_text() -> String:
 	var parts: PackedStringArray = []

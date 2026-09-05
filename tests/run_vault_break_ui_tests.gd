@@ -42,6 +42,7 @@ func _run() -> void:
 	await _test_auto_discard_and_final_roll_failure()
 	await _test_success_settlement_and_progress()
 	await _test_black_persistence_and_attempt()
+	await _test_feel_contract_and_safe_teardown()
 	await _test_setup_back_signal()
 	_cleanup_save()
 	CasinoBankScript.clear_test_save_path()
@@ -92,6 +93,7 @@ func _test_scene_setup_and_pending_resume() -> void:
 	resumed.call("_on_lock_pressed", 2)
 	await _frames(4)
 	_expect(int((resumed.model.call("get_placed_faces") as Array)[2]) == 6 and resumed.view_state == "ready", "valid placement persists and returns to READY")
+	_expect(resumed.lock_feedback_count == 1 and resumed.last_feel_event == "lock", "valid placement emits one mechanical lock feedback event")
 	_expect((resumed.lock_views[2] as VaultBreakLockView).get_lock_state() == VaultBreakLockView.State.FILLED and (resumed.lock_views[2] as VaultBreakLockView).disabled, "placed die is visibly immutable")
 	resumed.queued_roll_value = 6
 	resumed.call("_on_roll_pressed")
@@ -101,6 +103,7 @@ func _test_scene_setup_and_pending_resume() -> void:
 	resumed.call("_on_discard_pressed")
 	await _frames(4)
 	_expect(int(resumed.model.get("discard_count")) == 1 and not bool(resumed.model.get("last_discard_was_automatic")) and resumed.view_state == "ready", "explicit DISCARD resolves a fitting die manually")
+	_expect(resumed.last_feel_event == "discard", "explicit DISCARD emits tactile confirmation without changing model semantics")
 	await _dispose(resumed)
 
 func _test_auto_discard_and_final_roll_failure() -> void:
@@ -147,6 +150,7 @@ func _test_success_settlement_and_progress() -> void:
 	_expect(int(screen.model.get("reward")) == 34, "BET20 BRONZE reward floors to 34")
 	await _frames(7)
 	_expect(screen.view_state == "result" and screen.result_view.visible and not bool(returned["value"]), "Result is shown before any casino return")
+	_expect(screen.last_feel_event == "success_bronze", "BRONZE success records the baseline two-stage feel tier")
 	_expect(screen.result_payout_label.text == "受け取り 34 CHIP（BET込み）" and "収支 +14 CHIP" in screen.result_detail_label.text, "Vault success separates stake-inclusive return from net")
 	_expect(screen.result_vault_door.visible and screen.result_vault_door_panel.visible and screen.result_vault_door.modulate.a >= 0.95, "Vault success keeps the door visual present and bright in Result")
 	_expect(screen.again_button.text == "次の金庫を選ぶ", "Vault setup-return CTA explains choosing the next vault")
@@ -205,6 +209,50 @@ func _test_black_persistence_and_attempt() -> void:
 	_expect(int(final_black.get("plays", 0)) == 1 and bool(final_black.get("first_play_done", false)), "BLACK attempt records its first play even on failure")
 	_expect(CasinoBankScript.balance() == 80 and resumed.settlement_attempt_count == 1, "BLACK failure settles its wager exactly once")
 	await _dispose(resumed)
+
+func _test_feel_contract_and_safe_teardown() -> void:
+	_reset_bank(100)
+	var last_roll_screen := await _spawn_screen()
+	last_roll_screen.call("_select_bet", 20)
+	last_roll_screen.call("_start_game")
+	for ignored: int in 4:
+		await _roll_to_wait(last_roll_screen, 6)
+		last_roll_screen.call("_on_discard_pressed")
+		await _frames(4)
+	_expect(last_roll_screen.last_feel_event == "remaining_1", "remaining-one feedback is explicit after the penultimate turn")
+	last_roll_screen.queued_roll_value = 6
+	last_roll_screen.call("_on_roll_pressed")
+	_expect(last_roll_screen.last_roll_was_final and last_roll_screen.last_feel_event == "last_roll", "final ROLL selects the bounded stronger timing path")
+	last_roll_screen.queue_free()
+	await _frames(3)
+	_expect(not is_instance_valid(last_roll_screen), "queue-free during final roll leaves no live screen")
+
+	_reset_bank(100)
+	var denied_screen := await _spawn_screen()
+	denied_screen.call("_select_bet", 20)
+	denied_screen.call("_start_game")
+	for ignored: int in 5:
+		await _roll_to_wait(denied_screen, 5)
+		denied_screen.call("_on_discard_pressed")
+		await _frames(4)
+	await _frames(7)
+	_expect(denied_screen.last_feel_event == "access_denied" and denied_screen.view_state == "result", "failed vault uses the short resisted-door result path")
+	await _dispose(denied_screen)
+
+	_reset_bank(100)
+	var result_teardown_screen := await _spawn_screen()
+	result_teardown_screen.call("_select_bet", 20)
+	result_teardown_screen.call("_start_game")
+	for ignored: int in 4:
+		await _roll_to_wait(result_teardown_screen, 5)
+		result_teardown_screen.call("_on_discard_pressed")
+		await _frames(4)
+	await _roll_to_wait(result_teardown_screen, 5)
+	result_teardown_screen.call("_on_discard_pressed")
+	await _frames(2)
+	result_teardown_screen.queue_free()
+	await _frames(3)
+	_expect(not is_instance_valid(result_teardown_screen), "queue-free during ACCESS DENIED feedback leaves no live screen")
 
 func _test_setup_back_signal() -> void:
 	_reset_bank(34)

@@ -13,6 +13,7 @@ const ProgressScript = preload("res://scripts/game/vault_break/vault_break_progr
 const ModelScript = preload("res://scripts/game/vault_break/vault_break_model.gd")
 const LockViewScript = preload("res://scripts/app/vault_break_lock_view.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
+const CasinoFeelFXScript = preload("res://scripts/ui/casino_feel_fx.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 const VAULT_DOOR_TEXTURE: Texture2D = preload("res://assets/casino/vault_break/ui/vault-door-brass-v1.png")
 const BET_CHIP_TEXTURES: Dictionary = {
@@ -40,8 +41,10 @@ const TIER_NAMES_JA := {
 	"black": "ブラック金庫",
 }
 
-const ROLL_SECONDS := 0.30
-const SETTLE_SECONDS := 0.12
+const ROLL_SECONDS := 0.48
+const FINAL_ROLL_SECONDS := 0.60
+const SETTLE_SECONDS := 0.18
+const FINAL_SETTLE_SECONDS := 0.23
 const ACTION_SECONDS := 0.14
 const RESULT_HOLD_SECONDS := 0.22
 
@@ -169,6 +172,10 @@ var active_vault_door: TextureRect
 var vault_handle_tween: Tween
 var chip_balance_tween: Tween
 var last_chip_balance: int = -1
+var feel_fx: CasinoFeelFX
+var last_feel_event: String = ""
+var last_roll_was_final: bool = false
+var lock_feedback_count: int = 0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -195,6 +202,10 @@ func _ready() -> void:
 	_restore_preferences(meta)
 	_new_model()
 	_build_ui()
+	feel_fx = CasinoFeelFXScript.new() as CasinoFeelFX
+	feel_fx.name = "CasinoFeelFX"
+	feel_fx.audio_enabled = not suppress_audio_for_tests
+	add_child(feel_fx)
 	_resume_or_show_setup()
 
 func _new_model() -> void:
@@ -830,6 +841,13 @@ func _on_roll_pressed() -> void:
 	var face := _next_roll_value()
 	if face not in range(1, 7):
 		return
+	last_roll_was_final = int(model.get("max_rolls")) - int(model.get("rolls_used")) == 1
+	last_feel_event = "last_roll" if last_roll_was_final else "roll"
+	if feel_fx != null:
+		feel_fx.press_button(roll_button, true)
+		feel_fx.play_dice_roll()
+	if last_roll_was_final:
+		_play_ui_sfx(&"warning", true)
 	var pre_roll_snapshot: Dictionary = model.call("snapshot_active_game") as Dictionary
 	pending_roll = {
 		"kind": "roll",
@@ -850,9 +868,8 @@ func _on_roll_pressed() -> void:
 	displayed_face = face
 	_set_state(State.ROLLING)
 	status_label.text = "サイコロ %d / %d..." % [int(pending_roll.get("roll_index", 1)), int(model.get("max_rolls"))]
-	_play_ui_sfx(&"roll", false)
 	_refresh_all()
-	await _animate_roll(face)
+	await _animate_roll(face, last_roll_was_final)
 	if not is_inside_tree():
 		return
 	await _resolve_pending_roll(pending_roll)
@@ -864,7 +881,9 @@ func _resume_pending_roll() -> void:
 	if pending_roll.is_empty() or not is_inside_tree():
 		return
 	var face := clampi(int(pending_roll.get("value", 1)), 1, 6)
-	await _animate_roll(face)
+	var resumed_final: bool = int(model.get("max_rolls")) - int(model.get("rolls_used")) == 1
+	last_roll_was_final = resumed_final
+	await _animate_roll(face, resumed_final)
 	if not is_inside_tree():
 		return
 	await _resolve_pending_roll(pending_roll)
@@ -928,6 +947,12 @@ func _on_lock_pressed(lock_index: int) -> void:
 	_persist_active_game()
 	_play_ui_sfx(&"progress-step", true)
 	_refresh_all()
+	if lock_index >= 0 and lock_index < lock_views.size():
+		(lock_views[lock_index] as VaultBreakLockView).play_lock_feedback()
+	lock_feedback_count += 1
+	last_feel_event = "lock"
+	if feel_fx != null:
+		feel_fx.vibrate_light()
 	await _finish_turn_feedback(true)
 
 func place_current_die(lock_index: int) -> void:
@@ -944,8 +969,12 @@ func _on_discard_pressed() -> void:
 	status_label.text = "目%dを捨てる。" % face
 	instruction_label.text = "捨てました · 次のサイコロへ"
 	_persist_active_game()
-	_play_ui_sfx(&"back", false)
+	_play_ui_sfx(&"drop", true)
 	_refresh_all()
+	_play_discard_feedback()
+	last_feel_event = "discard"
+	if feel_fx != null:
+		feel_fx.vibrate_light()
 	await _finish_turn_feedback(false)
 
 func discard() -> void:
@@ -965,6 +994,7 @@ func _finish_turn_feedback(was_placement: bool) -> void:
 	status_label.text = "LOCKを埋めた。次のサイコロ。" if was_placement else "次のサイコロへ。"
 	instruction_label.text = "「サイコロを振る」で次のダイスを出す"
 	_refresh_all()
+	_play_remaining_roll_feedback()
 
 func _complete_terminal_result() -> void:
 	if _terminal_handling or model == null:
@@ -1011,12 +1041,7 @@ func _complete_terminal_result() -> void:
 	if bool(settlement_receipt.get("already_settled", false)):
 		payout = int(settlement_receipt.get("payout", payout))
 		result_data["reward"] = payout
-	if won:
-		_play_ui_sfx(&"complete", true)
-		_play_success_feedback()
-	else:
-		_play_ui_sfx(&"error", true)
-		_play_failure_feedback()
+	await _play_terminal_feedback(won)
 	await _wait_seconds(RESULT_HOLD_SECONDS)
 	if not is_inside_tree():
 		return
@@ -1024,6 +1049,9 @@ func _complete_terminal_result() -> void:
 		model.call("advance_to_result")
 	_set_state(State.RESULT)
 	_show_result()
+	if won and feel_fx != null:
+		var balance_before: int = CasinoBankScript.balance() - payout
+		feel_fx.animate_balance_change(chip_label, balance_before, CasinoBankScript.balance())
 	_terminal_handling = false
 
 func _record_progress_before_result(won: bool) -> bool:
@@ -1460,13 +1488,13 @@ func force_black_spawn() -> void:
 	queued_spawn_random_value = 0.0
 	queued_black_template_random_value = 0.0
 
-func _animate_roll(face: int) -> void:
+func _animate_roll(face: int, is_final_roll: bool = false) -> void:
 	var start_face := displayed_face
 	if start_face not in range(1, 7):
 		start_face = 1
 	if is_instance_valid(dice_presentation):
 		dice_presentation.present([start_face], true, 1)
-	await _wait_seconds(ROLL_SECONDS)
+	await _wait_seconds(FINAL_ROLL_SECONDS if is_final_roll else ROLL_SECONDS)
 	if not is_inside_tree():
 		return
 	if is_instance_valid(dice_presentation):
@@ -1474,7 +1502,72 @@ func _animate_roll(face: int) -> void:
 	displayed_face = face
 	if die_face_label != null:
 		die_face_label.text = str(face)
-	await _wait_seconds(SETTLE_SECONDS)
+	if feel_fx != null:
+		feel_fx.play_dice_land(false)
+	_play_die_land_feedback()
+	await _wait_seconds(FINAL_SETTLE_SECONDS if is_final_roll else SETTLE_SECONDS)
+
+func _play_die_land_feedback() -> void:
+	if die_face_label == null:
+		return
+	die_face_label.offset_transform_enabled = true
+	var tween: Tween = create_tween()
+	tween.tween_property(die_face_label, "offset_transform_scale", Vector2(1.04, 1.04), 0.05)
+	tween.tween_property(die_face_label, "offset_transform_scale", Vector2(0.98, 0.98), 0.04)
+	tween.tween_property(die_face_label, "offset_transform_scale", Vector2.ONE, 0.05)
+
+func _play_discard_feedback() -> void:
+	if die_face_label == null:
+		return
+	die_face_label.offset_transform_enabled = true
+	var tween: Tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(die_face_label, "offset_transform_scale", Vector2(0.88, 0.88), 0.08)
+	tween.tween_property(die_face_label, "offset_transform_position", Vector2(0.0, 7.0), 0.10)
+	tween.chain().tween_property(die_face_label, "offset_transform_scale", Vector2.ONE, 0.08)
+	tween.parallel().tween_property(die_face_label, "offset_transform_position", Vector2.ZERO, 0.08)
+
+func _play_remaining_roll_feedback() -> void:
+	if roll_counter == null or model == null:
+		return
+	var remaining: int = maxi(0, int(model.get("max_rolls")) - int(model.get("rolls_used")))
+	if remaining > 2:
+		return
+	roll_counter.offset_transform_enabled = true
+	var strength: float = 1.12 if remaining == 1 else 1.06
+	var tween: Tween = create_tween()
+	tween.tween_property(roll_counter, "offset_transform_scale", Vector2(strength, strength), 0.08)
+	tween.tween_property(roll_counter, "offset_transform_scale", Vector2.ONE, 0.12)
+	last_feel_event = "remaining_%d" % remaining
+	if remaining == 1:
+		_play_ui_sfx(&"warning", true)
+		if feel_fx != null:
+			feel_fx.vibrate_light()
+
+func _play_terminal_feedback(won: bool) -> void:
+	if won:
+		last_feel_event = "success_%s" % active_tier
+		_play_ui_sfx(&"progress-step", true)
+		await _wait_seconds(0.18 if active_tier != "black" else 0.30)
+		if not is_inside_tree():
+			return
+		_play_ui_sfx(&"complete", true)
+		_play_success_feedback()
+		await _wait_seconds(0.42)
+		if active_tier in ["gold", "black"]:
+			_play_ui_sfx(&"achievement", true)
+		if feel_fx != null:
+			feel_fx.vibrate_result()
+	else:
+		last_feel_event = "access_denied"
+		await _wait_seconds(0.22)
+		if not is_inside_tree():
+			return
+		_play_ui_sfx(&"error", true)
+		_play_failure_feedback()
+		if feel_fx != null:
+			feel_fx.vibrate_result()
+		await _wait_seconds(0.24)
 
 func _wait_seconds(base_seconds: float) -> void:
 	var seconds := maxf(0.0, base_seconds * maxf(0.0, animation_duration_scale))
@@ -1492,6 +1585,12 @@ func _play_success_feedback() -> void:
 	pulse.tween_property(vault_panel, "modulate", Color.WHITE, 0.20 * maxf(animation_duration_scale, 0.01))
 	_spin_vault_handle()
 	_spawn_brass_sparks()
+	if active_vault_door != null:
+		active_vault_door.offset_transform_enabled = true
+		var door_tween: Tween = create_tween()
+		door_tween.tween_property(active_vault_door, "offset_transform_scale", Vector2(0.98, 1.02), 0.18 * maxf(animation_duration_scale, 0.01))
+		door_tween.tween_property(active_vault_door, "offset_transform_position", Vector2(18.0, -3.0), 0.34 * maxf(animation_duration_scale, 0.01)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		door_tween.parallel().tween_property(active_vault_door, "offset_transform_scale", Vector2(0.90, 1.04), 0.34 * maxf(animation_duration_scale, 0.01))
 
 func _play_failure_feedback() -> void:
 	if vault_panel == null:
@@ -1649,9 +1748,10 @@ func _shake_vault_door() -> void:
 	if vault_handle_tween != null:
 		vault_handle_tween.kill()
 	vault_handle_tween = create_tween()
-	vault_handle_tween.tween_property(active_vault_door, "position:x", 8.0, 0.05).as_relative()
-	vault_handle_tween.tween_property(active_vault_door, "position:x", -16.0, 0.08).as_relative()
-	vault_handle_tween.tween_property(active_vault_door, "position:x", 8.0, 0.05).as_relative()
+	active_vault_door.offset_transform_enabled = true
+	vault_handle_tween.tween_property(active_vault_door, "offset_transform_position", Vector2(3.0, 0.0), 0.06)
+	vault_handle_tween.tween_property(active_vault_door, "offset_transform_position", Vector2(-3.0, 0.0), 0.08)
+	vault_handle_tween.tween_property(active_vault_door, "offset_transform_position", Vector2.ZERO, 0.08)
 
 func _apply_button_state(button: Button, selected: bool, available: bool) -> void:
 	if not available:

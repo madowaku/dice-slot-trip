@@ -5,6 +5,7 @@ const ROLL_STREAMS: Array[AudioStream] = [preload("res://assets/audio/dice/roll_
 const LAND_STREAMS: Array[AudioStream] = [preload("res://assets/audio/dice/land_01.wav"), preload("res://assets/audio/dice/land_02.wav"), preload("res://assets/audio/dice/land_03.wav"), preload("res://assets/audio/dice/land_04.wav")]
 var _players: Array[AudioStreamPlayer] = []
 var _cursor: int = 0
+var audio_enabled: bool = true
 
 func _ready() -> void:
 	for index: int in 3:
@@ -16,11 +17,13 @@ func _ready() -> void:
 		_players.append(player)
 
 func _sfx(cue: StringName, world_specific: bool = false) -> void:
+	if not audio_enabled:
+		return
 	var manager: Node = get_node_or_null("/root/UiSfxManager")
 	if manager != null: manager.call("play_ui_sfx", cue, world_specific)
 
 func _play_stream(stream: AudioStream, volume_db: float = -3.0) -> void:
-	if _players.is_empty(): return
+	if not audio_enabled or _players.is_empty(): return
 	var player: AudioStreamPlayer = _players[_cursor % _players.size()]
 	_cursor += 1
 	player.stream = stream
@@ -39,9 +42,10 @@ func press_button(button: Control = null, with_light_haptic: bool = false) -> vo
 		vibrate_light()
 
 func play_dice_roll() -> void: _play_stream(ROLL_STREAMS[randi() % ROLL_STREAMS.size()], -5.0)
-func play_dice_land() -> void:
+func play_dice_land(with_haptic: bool = true) -> void:
 	_play_stream(LAND_STREAMS[randi() % LAND_STREAMS.size()], -2.0)
-	vibrate_light()
+	if with_haptic:
+		vibrate_light()
 
 func animate_chip_change(label: Control = null) -> void:
 	_sfx(&"reward", false)
