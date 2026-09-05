@@ -5,6 +5,7 @@ signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
+const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 const CARD_DATA_PATH := "res://data/casino/prize_cards.json"
 const LAS_VEGAS_MAP_PATH := "res://assets/casino/las_vegas/las-vegas-ring-map-v1.png"
@@ -13,36 +14,42 @@ const FACILITY_DEFINITIONS: Array[Dictionary] = [
 	{
 		"id": "dice_race",
 		"name": "DICE RACE",
+		"button_label": "推しレース",
 		"subtitle": "狙って推しを追い上げる",
 		"scene_path": "res://scenes/casino/DiceRace.tscn",
 	},
 	{
 		"id": "dice_tower",
 		"name": "DICE TOWER",
+		"button_label": "欲張りタワー",
 		"subtitle": "あと1段だけ欲張る",
 		"scene_path": "res://scenes/casino/DiceTower.tscn",
 	},
 	{
 		"id": "dice_roulette",
 		"name": "DICE ROULETTE",
+		"button_label": "一発ルーレット",
 		"subtitle": "考え込まず一発に賭ける",
 		"scene_path": "res://scenes/casino/DiceRoulette.tscn",
 	},
 	{
 		"id": "treasure_21",
 		"name": "TREASURE 21",
+		"button_label": "宝箱21",
 		"subtitle": "危険な止め時を読む",
 		"scene_path": "res://scenes/casino/Treasure21.tscn",
 	},
 	{
 		"id": "dice_poker",
 		"name": "DICE POKER",
+		"button_label": "役そろえ",
 		"subtitle": "役の伸びしろを考える",
 		"scene_path": "res://scenes/casino/DicePoker.tscn",
 	},
 	{
 		"id": "vault_break",
 		"name": "VAULT BREAK",
+		"button_label": "金庫破り",
 		"subtitle": "鍵穴の選択に悩む",
 		"scene_path": "res://scenes/casino/VaultBreak.tscn",
 	},
@@ -89,53 +96,46 @@ func _build_ui() -> void:
 	add_child(hub_root)
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 22)
-	margin.add_theme_constant_override("margin_right", 22)
-	margin.add_theme_constant_override("margin_top", 24)
-	margin.add_theme_constant_override("margin_bottom", 24)
+	margin.add_theme_constant_override("margin_left", UiTokensScript.EDGE)
+	margin.add_theme_constant_override("margin_right", UiTokensScript.EDGE)
+	margin.add_theme_constant_override("margin_top", UiTokensScript.EDGE)
+	margin.add_theme_constant_override("margin_bottom", UiTokensScript.EDGE)
 	hub_root.add_child(margin)
 	var root := VBoxContainer.new()
 	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_theme_constant_override("separation", 14)
+	root.add_theme_constant_override("separation", UiTokensScript.GAP_S)
 	margin.add_child(root)
 
-	var title := _label("LAS VEGAS CASINO", 34, Color("#ffd66b"))
+	var title := _label("LAS VEGAS CASINO", UiTokensScript.FONT_TITLE, Color("#ffd66b"))
 	title.name = "CasinoHubTitle"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
-	chip_label = _label("CHIP 0", 24, Color.WHITE)
+	chip_label = _label("CHIP 0", UiTokensScript.FONT_BODY, Color.WHITE)
 	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(chip_label)
-	var note := _label("旅で持ち帰ったCASINO CHIPで遊ぼう", 17, Color("#d9c7e8"))
+	var note := _label("旅で持ち帰ったCASINO CHIPで遊ぼう", UiTokensScript.FONT_BODY, Color("#d9c7e8"))
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(note)
 
 	var ring_panel := PanelContainer.new()
 	ring_panel.name = "CasinoRingMap"
-	ring_panel.custom_minimum_size = Vector2(0, 640)
+	ring_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	# The authored Las Vegas map is the visual anchor; keep a restrained frame so
 	# the facility CTAs read as interactive overlays instead of fake map chrome.
 	ring_panel.add_theme_stylebox_override("panel", _panel(Color("#17111f"), Color("#d8ad4c"), 24, 2))
 	root.add_child(ring_panel)
 	_build_ring_map(ring_panel)
-	facility_status_label = _label("施設を選んでゲームへ", 17, Color("#d9c7e8"))
+	facility_status_label = _label("施設を選んでゲームへ", UiTokensScript.FONT_CAPTION, Color("#d9c7e8"))
 	facility_status_label.name = "FacilityStatus"
 	facility_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(facility_status_label)
 
-	var prize_title := _label("PRIZE COUNTER", 26, Color("#ffd66b"))
-	root.add_child(prize_title)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(scroll)
-	prize_list = VBoxContainer.new()
-	prize_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	prize_list.add_theme_constant_override("separation", 8)
-	scroll.add_child(prize_list)
-
 	var back := _button("旅へ戻る")
 	back.name = "BackToTripButton"
+	back.custom_minimum_size.y = UiTokensScript.BUTTON_HEIGHT
+	back.add_theme_font_size_override("font_size", UiTokensScript.FONT_BODY)
 	back.pressed.connect(func() -> void: back_requested.emit())
 	root.add_child(back)
 
@@ -237,7 +237,7 @@ func _build_ring_map(ring_panel: PanelContainer) -> void:
 	var center_chip := _label("✦ 6 FACILITIES ✦", 14, Color("#f2bf4c"))
 	center_chip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	center_box.add_child(center_chip)
-	var button_size := Vector2(172, 96)
+	var button_size := Vector2(220, UiTokensScript.BUTTON_HEIGHT)
 	for candidate: Variant in facility_nodes.values():
 		var candidate_button := candidate as Button
 		if candidate_button != null:
@@ -250,7 +250,7 @@ func _build_ring_map(ring_panel: PanelContainer) -> void:
 		button.name = "FacilityButton_%s" % _pascal_case(id)
 		button.custom_minimum_size = button_size
 		button.size = button_size
-		button.add_theme_font_size_override("font_size", 15)
+		button.add_theme_font_size_override("font_size", UiTokensScript.FONT_CAPTION)
 		button.tooltip_text = str(definition.get("subtitle", ""))
 		button.set_meta("facility_id", id)
 		button.add_theme_stylebox_override("normal", _panel(Color("#38264a"), Color("#d8ad4c"), 18, 2))
@@ -296,7 +296,12 @@ func _layout_ring_map(map: Control) -> void:
 		var panel_half_height := center_panel.size.y * 0.5 if center_panel != null else 75.0
 		var sparkle_half_height := 128.0 * sparkle.scale.y
 		sparkle.position = center + Vector2(0.0, -panel_half_height - sparkle_half_height - 8.0)
-	var button_size := Vector2(172, 96)
+	var button_size := Vector2(220, UiTokensScript.BUTTON_HEIGHT)
+	for candidate: Variant in facility_nodes.values():
+		var candidate_button: Button = candidate as Button
+		if candidate_button != null:
+			button_size.x = maxf(button_size.x, candidate_button.size.x)
+			button_size.y = maxf(button_size.y, candidate_button.size.y)
 	# Reserve half the CTA dimensions plus a 12px safety margin on every edge.
 	var radius := Vector2(
 		maxf(0.0, map_size.x * 0.5 - button_size.x * 0.5 - 12.0),
@@ -320,6 +325,10 @@ func _layout_ring_map(map: Control) -> void:
 func _refresh() -> void:
 	chip_label.text = "CASINO CHIP  %d" % CasinoBankScript.balance()
 	_refresh_facilities()
+	# Prize data and purchasing remain available for a future dedicated counter,
+	# but the Hub intentionally does not attach the dormant list to its UI tree.
+	if prize_list == null:
+		return
 	for child: Node in prize_list.get_children():
 		child.queue_free()
 	var owned: Array = CasinoBankScript.load_data().get("owned_cards", [])
@@ -454,10 +463,10 @@ func _refresh_facilities() -> void:
 		var available := _facility_available(id)
 		facility_availability[id] = available
 		button.disabled = not available
-		button.text = "%s\n%s\n%s" % [
+		button.text = "%s\n▶ 遊ぶ" % str(definition.get("button_label", definition.get("name", id)))
+		button.tooltip_text = "%s｜%s" % [
 			str(definition.get("name", id)),
 			str(definition.get("subtitle", "")),
-			"PLAY" if available else "COMING SOON",
 		]
 
 func _facility_available(facility_id: String) -> bool:
@@ -500,8 +509,8 @@ func _button(text: String) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.add_theme_font_override("font", FONT)
-	button.add_theme_font_size_override("font_size", 16)
-	button.custom_minimum_size = Vector2(220, 96)
+	button.add_theme_font_size_override("font_size", UiTokensScript.FONT_BODY)
+	button.custom_minimum_size = Vector2(220, UiTokensScript.TOUCH_MIN)
 	VisualFeedback.bind_button(button)
 	return button
 

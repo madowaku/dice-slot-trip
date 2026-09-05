@@ -6,6 +6,7 @@ signal back_requested
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
+const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const RepositoryScript = preload("res://scripts/game/vault_break/vault_break_template_repository.gd")
 const SelectorScript = preload("res://scripts/game/vault_break/vault_break_selector.gd")
 const ProgressScript = preload("res://scripts/game/vault_break/vault_break_progress.gd")
@@ -322,7 +323,7 @@ func _build_setup(root_box: VBoxContainer) -> void:
 	var rules_title := _label("出た目を置いて\n金庫を開けよう", 27, BRASS_LIGHT)
 	rules_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	rules_box.add_child(rules_title)
-	var rules_copy := _label("1  サイコロを振る\n2  光るLOCKを選ぶ\n3  すべて埋めるとOPEN", 15, PARCHMENT)
+	var rules_copy := _label("1  サイコロを振る\n2  光るロックを選ぶ\n3  すべて埋めると開錠", 15, PARCHMENT)
 	rules_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	rules_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rules_box.add_child(rules_copy)
@@ -343,6 +344,8 @@ func _build_setup(root_box: VBoxContainer) -> void:
 	setup_vault_door.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	setup_vault_door.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vault_center.add_child(setup_vault_door)
+
+	CasinoHowTo3StepsScript.build(root_box, FACILITY_ID, _how_to_steps())
 
 	var bet_caption := _label("STEP 1　ベットを選ぶ", 19, BRASS_LIGHT)
 	bet_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -385,13 +388,20 @@ func _build_setup(root_box: VBoxContainer) -> void:
 	setup_reward_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root_box.add_child(setup_reward_label)
 
-	start_button = _button("金庫に挑戦！\nBREAK THE VAULT", true)
+	start_button = _button("金庫に挑戦！\nゲーム開始", true)
 	start_button.name = "StartButton"
 	start_button.custom_minimum_size.y = 112
 	start_button.add_theme_font_size_override("font_size", 22)
 	_apply_cta_style(start_button)
 	start_button.pressed.connect(_start_game)
 	root_box.add_child(start_button)
+
+func _how_to_steps() -> Array[Dictionary]:
+	return [
+		{"action": "ベットと金庫を選ぶ", "copy": "挑戦するCHIPとランクを決めよう"},
+		{"action": "サイコロを振って置く", "copy": "出た目に合うロックを選ぼう"},
+		{"action": "6つのロックを埋める", "copy": "すべて埋まれば開錠成功"},
+	]
 
 func _configure_bet_button(button: Button, amount: int) -> void:
 	var margin := MarginContainer.new()
@@ -489,7 +499,7 @@ func _build_active(root_box: VBoxContainer) -> void:
 	lock_container.add_theme_constant_override("separation", 7)
 	lock_container.modulate = Color("#fff5d4")
 	vault_box.add_child(lock_container)
-	instruction_label = _label("ROLLでダイスを出す", 18, PARCHMENT)
+	instruction_label = _label("「サイコロを振る」でダイスを出す", 18, PARCHMENT)
 	instruction_label.name = "InstructionLabel"
 	instruction_label.custom_minimum_size.y = 42
 	instruction_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -528,7 +538,7 @@ func _build_active(root_box: VBoxContainer) -> void:
 	die_face_label.name = "CurrentDieFaceLabel"
 	die_face_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	die_copy.add_child(die_face_label)
-	reward_label = _label("OPEN REWARD 0 CHIP", 15, PARCHMENT)
+	reward_label = _label("獲得チップ 0 CHIP", 15, PARCHMENT)
 	reward_label.name = "RewardLabel"
 	reward_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	reward_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -538,13 +548,13 @@ func _build_active(root_box: VBoxContainer) -> void:
 	actions.name = "VaultActions"
 	actions.add_theme_constant_override("separation", 8)
 	root_box.add_child(actions)
-	discard_button = _button("DISCARD\nこの目を捨てる", false)
+	discard_button = _button("捨てる\nこの目を捨てる", false)
 	discard_button.name = "DiscardButton"
 	discard_button.custom_minimum_size = Vector2(0, 104)
 	discard_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	discard_button.pressed.connect(_on_discard_pressed)
 	actions.add_child(discard_button)
-	roll_button = _button("ROLL\n1D6", true)
+	roll_button = _button("サイコロを振る\n1D6", true)
 	roll_button.name = "RollButton"
 	roll_button.custom_minimum_size = Vector2(0, 104)
 	roll_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -589,7 +599,7 @@ func _build_result(root_box: VBoxContainer) -> void:
 	result_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	result_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(result_detail_label)
-	again_button = _button("NEW VAULT", true)
+	again_button = _button("次の金庫を選ぶ", true)
 	again_button.name = "AgainButton"
 	again_button.custom_minimum_size.y = 104
 	again_button.add_theme_font_size_override("font_size", 23)
@@ -657,7 +667,7 @@ func _resume_or_show_setup() -> void:
 	match model_state:
 		ModelScript.State.READY:
 			_set_state(State.READY)
-			status_label.text = "ゲームを再開しました。ROLLしてください。"
+			status_label.text = "ゲームを再開しました。サイコロを振ってください。"
 		ModelScript.State.WAITING_FOR_PLACEMENT:
 			_set_state(State.WAITING_FOR_PLACEMENT)
 			displayed_face = int(model.get("current_face"))
@@ -807,7 +817,7 @@ func _start_game() -> void:
 	_rebuild_lock_views()
 	_show_active_views()
 	_set_state(State.READY)
-	status_label.text = "%s %s。ROLLで最初のダイスを出す。" % [str(TIER_NAMES.get(active_tier, active_tier.to_upper())), str(active_template.get("id", ""))]
+	status_label.text = "%s %s。「サイコロを振る」で最初のダイスを出す。" % [str(TIER_NAMES.get(active_tier, active_tier.to_upper())), str(active_template.get("id", ""))]
 	_play_ui_sfx(&"start", false)
 	_refresh_all()
 
@@ -833,13 +843,13 @@ func _on_roll_pressed() -> void:
 	if not _persist_active_game(pre_roll_snapshot):
 		pending_rolls = []
 		pending_roll = {}
-		status_label.text = "ROLLを保存できません。もう一度お試しください。"
+		status_label.text = "サイコロを保存できません。もう一度お試しください。"
 		_refresh_all()
 		return
 	rolling = true
 	displayed_face = face
 	_set_state(State.ROLLING)
-	status_label.text = "ROLL %d / %d..." % [int(pending_roll.get("roll_index", 1)), int(model.get("max_rolls"))]
+	status_label.text = "サイコロ %d / %d..." % [int(pending_roll.get("roll_index", 1)), int(model.get("max_rolls"))]
 	_play_ui_sfx(&"roll", false)
 	_refresh_all()
 	await _animate_roll(face)
@@ -867,7 +877,7 @@ func _resolve_pending_roll(pending: Dictionary) -> void:
 	if model_state == ModelScript.State.READY:
 		if int(model.call("begin_roll", face)) != face:
 			rolling = false
-			status_label.text = "ROLLを解決できません。"
+			status_label.text = "サイコロを解決できません。"
 			return
 	elif model_state == ModelScript.State.ROLLING:
 		if int(model.get("current_face")) != face:
@@ -885,7 +895,7 @@ func _resolve_pending_roll(pending: Dictionary) -> void:
 	displayed_face = face
 	if not valid_indices.is_empty():
 		_set_state(State.WAITING_FOR_PLACEMENT)
-		status_label.text = "FACE %d。光るLOCKを選ぶかDISCARD。" % face
+		status_label.text = "目 %d。光るLOCKを選ぶか捨てる。" % face
 		instruction_label.text = "%d個のLOCKが有効 · どこに使うか選択" % valid_indices.size()
 		_persist_active_game()
 		_play_ui_sfx(&"select", true)
@@ -895,7 +905,7 @@ func _resolve_pending_roll(pending: Dictionary) -> void:
 	# The pure model has already performed the authored automatic discard. Keep
 	# that outcome visible briefly, including on the final roll, before failure.
 	_set_state(State.RESOLVING_PLACEMENT)
-	status_label.text = "NO FIT · FACE %dをAUTO DISCARD" % face
+	status_label.text = "置けない目%dを自動で捨てました" % face
 	instruction_label.text = "入るLOCKがないため自動で捨てました"
 	_persist_active_game()
 	_play_ui_sfx(&"blocked", true)
@@ -931,8 +941,8 @@ func _on_discard_pressed() -> void:
 		return
 	displayed_face = face
 	_set_state(State.RESOLVING_PLACEMENT)
-	status_label.text = "FACE %dをDISCARD。" % face
-	instruction_label.text = "DISCARDED · 次のROLLへ"
+	status_label.text = "目%dを捨てる。" % face
+	instruction_label.text = "捨てました · 次のサイコロへ"
 	_persist_active_game()
 	_play_ui_sfx(&"back", false)
 	_refresh_all()
@@ -952,8 +962,8 @@ func _finish_turn_feedback(was_placement: bool) -> void:
 	if model_state != ModelScript.State.READY:
 		return
 	_set_state(State.READY)
-	status_label.text = "LOCKを埋めた。次のROLL。" if was_placement else "次のROLLへ。"
-	instruction_label.text = "ROLLで次のダイスを出す"
+	status_label.text = "LOCKを埋めた。次のサイコロ。" if was_placement else "次のサイコロへ。"
+	instruction_label.text = "「サイコロを振る」で次のダイスを出す"
 	_refresh_all()
 
 func _complete_terminal_result() -> void:
@@ -968,8 +978,8 @@ func _complete_terminal_result() -> void:
 	_terminal_handling = true
 	var won := model_state == ModelScript.State.SUCCESS
 	_set_state(State.SUCCESS if won else State.FAILURE)
-	status_label.text = "VAULT OPEN" if won else "ACCESS DENIED"
-	instruction_label.text = "ALL LOCKS SECURED" if won else "ROLL LIMIT REACHED"
+	status_label.text = "金庫を開錠！" if won else "開錠失敗"
+	instruction_label.text = "すべてのロックを解除" if won else "サイコロ回数終了"
 	_refresh_all()
 	# Persist the terminal model first, then atomically save progress/BLACK and a
 	# game-id receipt before any Result UI becomes visible.
@@ -1067,15 +1077,15 @@ func _show_result() -> void:
 	var bet := int(result_data.get("bet", selected_bet))
 	var tier := str(result_data.get("tier", active_tier))
 	var template_id := str(result_data.get("template_id", active_template.get("id", "")))
-	result_label.text = "VAULT BREAK!" if won else "ACCESS DENIED\nLOSE"
+	result_label.text = "金庫を開錠！" if won else "開錠失敗\nチップなし"
 	result_label.add_theme_color_override("font_color", BRASS_LIGHT if won else Color("#f0a39a"))
 	if result_vault_door != null:
 		result_vault_door.modulate = Color("#f5d890") if won else Color("#75646b")
 		result_vault_door.modulate.a = 0.96 if won else 0.64
 	if result_vault_door_panel != null:
 		result_vault_door_panel.add_theme_stylebox_override("panel", _metal_panel(Color("#130e17d8"), BRASS if won else FAILURE_RED, 16, 2))
-	result_payout_label.text = "RETURN %d CHIP（BET込み）" % reward
-	result_detail_label.text = "NET %+d CHIP · BET %d\n%s %s · %d/%d ROLLS" % [
+	result_payout_label.text = "受け取り %d CHIP（BET込み）" % reward
+	result_detail_label.text = "収支 %+d CHIP · BET %d\n%s %s · %d/%d回" % [
 		reward - bet,
 		bet,
 		str(TIER_NAMES.get(tier, tier.to_upper())),
@@ -1298,7 +1308,7 @@ func _refresh_all() -> void:
 	if roll_counter != null:
 		roll_counter.text = "%d / %d" % [maxi(0, int(model.get("max_rolls")) - int(model.get("rolls_used"))), int(model.get("max_rolls"))]
 	if reward_label != null:
-		reward_label.text = "OPEN REWARD  %d CHIP" % floori(float(selected_bet) * float(config.get("payout_multiplier", 0.0)))
+		reward_label.text = "獲得チップ  %d CHIP" % floori(float(selected_bet) * float(config.get("payout_multiplier", 0.0)))
 	if template_label != null:
 		template_label.text = "%s VAULT · %s · %d LOCKS" % [str(TIER_NAMES.get(active_tier, active_tier.to_upper())), str(active_template.get("id", "")), lock_views.size()]
 	if die_face_label != null:

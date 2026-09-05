@@ -6,6 +6,7 @@ signal back_requested
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
+const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const ModelScript = preload("res://scripts/game/dice_roulette_model.gd")
 const WheelScript = preload("res://scripts/app/dice_roulette_wheel.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -238,6 +239,7 @@ func _build_ui() -> void:
 	guide_label.add_theme_constant_override("outline_size", 4)
 	guide_label.add_theme_stylebox_override("normal", _panel(Color("#093122f2"), BRIGHT_GOLD, 18, 2))
 	root_box.add_child(guide_label)
+	CasinoHowTo3StepsScript.build(root_box, FACILITY_ID, _how_to_steps())
 
 	var wheel_panel := PanelContainer.new()
 	wheel_panel.add_theme_stylebox_override("panel", _panel(Color("#071a14e8"), GOLD, 28, 3))
@@ -437,8 +439,8 @@ func _build_ui() -> void:
 	round_actions = HBoxContainer.new()
 	round_actions.add_theme_constant_override("separation", 8)
 	root_box.add_child(round_actions)
-	rebet_spin_button = _button("同じBETでSPIN", 20)
-	new_bet_button = _button("CHANGE BET", 20)
+	rebet_spin_button = _button("同じベットでもう一度回す", 20)
+	new_bet_button = _button("ベットを変える", 20)
 	cashout_button = _button("カジノへ戻る", 20)
 	cashout_button.name = "ResultCasinoBackButton"
 	for button: Button in [rebet_spin_button, new_bet_button, cashout_button]:
@@ -449,6 +451,13 @@ func _build_ui() -> void:
 	new_bet_button.pressed.connect(_new_bet)
 	cashout_button.pressed.connect(_cash_out)
 	CasinoBackButton.configure(cashout_button)
+
+func _how_to_steps() -> Array[Dictionary]:
+	return [
+		{"action": "ベットを決める", "copy": "好きなエリアとCHIPを選ぼう"},
+		{"action": "回す", "copy": "2つのダイスの目と場所を見る"},
+		{"action": "的中を確認する", "copy": "選んだエリアに当たれば配当"},
+	]
 
 func _select_amount(amount: int) -> void:
 	if phase != Phase.BETTING:
@@ -544,7 +553,7 @@ func _spin() -> void:
 		return
 	var wager := _current_total_bet()
 	if wager <= 0:
-		_set_status("BETしてからSPINしよう")
+		_set_status("BETしてから回そう")
 		return
 	if wager > CasinoBankScript.balance():
 		_set_status("CASINO CHIPが足りない")
@@ -591,7 +600,7 @@ func _animate_and_finish_round() -> void:
 	payout_label.text = ""
 	red_result_label.text = "赤ダイス\n回転中…"
 	blue_result_label.text = "青ダイス\n回転中…"
-	guide_label.text = "SPIN中  •  ダイスを見よう"
+	guide_label.text = "回転中  •  ダイスを見よう"
 	status_label.text = "回転中…"
 	_set_wheel_focus(true)
 	sparkle_overlay.visible = true
@@ -658,12 +667,12 @@ func _show_payout() -> void:
 		status_label.text = "WIN!"
 		_play_world(&"success")
 	elif returned > 0:
-		status_label.text = "RETURN %d" % returned
+		status_label.text = "受け取り %d CHIP" % returned
 	else:
 		status_label.text = "今回はハズレ… 次こそ！"
 		_play_world(&"close")
 	guide_label.text = "結果  •  %s" % ("WIN!" if profit > 0 else "もう一度挑戦しよう")
-	payout_label.text = "BET %d   RETURN %d   NET %s%d CHIP" % [wager, returned, "+" if profit >= 0 else "", profit]
+	payout_label.text = "BET %d   受け取り %d   収支 %s%d CHIP" % [wager, returned, "+" if profit >= 0 else "", profit]
 
 func _rebet_and_spin() -> void:
 	if phase != Phase.ROUND_END:
@@ -700,7 +709,7 @@ func _cash_out() -> void:
 		return
 	phase = Phase.CASH_OUT
 	var profit := session_total_return - session_total_bet
-	status_label.text = "CASH OUT  %d PLAY  PROFIT %s%d CHIP" % [session_rounds, "+" if profit >= 0 else "", profit]
+	status_label.text = "受け取り  %d回  利益 %s%d CHIP" % [session_rounds, "+" if profit >= 0 else "", profit]
 	_play_common(&"back")
 	back_requested.emit()
 
@@ -769,7 +778,7 @@ func _refresh_guide(total: int) -> void:
 	if phase != Phase.BETTING:
 		return
 	if total > 0:
-		guide_label.text = "③ SPINでスタート  •  BET %d CHIP" % total
+		guide_label.text = "③「回す」を押してスタート  •  BET %d CHIP" % total
 	elif has_confirmed_amount:
 		guide_label.text = "② BETエリアをタップ"
 	else:
@@ -930,7 +939,7 @@ func _add_spin_decoration(button: Button) -> void:
 	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	button.add_child(ring)
 
-	var caption := _display_label("SPIN!", 35, Color.WHITE)
+	var caption := _display_label("回す！", 35, Color.WHITE)
 	caption.name = "SpinCaption"
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER

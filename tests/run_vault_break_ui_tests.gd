@@ -21,6 +21,19 @@ func _expect(condition: bool, label: String) -> void:
 	failures += 1
 	push_error("FAIL: %s" % label)
 
+func _assert_how_to(screen: Node) -> void:
+	var panel := screen.find_child("CasinoHowTo3Steps", true, false) as PanelContainer
+	_expect(panel != null, "VAULT BREAK exposes the shared CasinoHowTo3Steps panel")
+	if panel == null:
+		return
+	var headings: Array[String] = ["① 最初に何をする？", "② プレイ中に何をする？", "③ どうなれば勝ち？"]
+	var actions: Array[String] = ["ベットと金庫を選ぶ", "サイコロを振って置く", "6つのロックを埋める"]
+	for index: int in range(3):
+		var heading := panel.find_child("Step%dHeading" % (index + 1), true, false) as Label
+		var detail := panel.find_child("Step%dDetail" % (index + 1), true, false) as Label
+		_expect(heading != null and heading.text == headings[index], "VAULT BREAK keeps shared step heading %d" % (index + 1))
+		_expect(detail != null and actions[index] in detail.text and detail.text.length() <= 48, "VAULT BREAK keeps concise step copy %d" % (index + 1))
+
 func _run() -> void:
 	test_save_path = "user://vault_break_ui_tests_%d.json" % OS.get_process_id()
 	CasinoBankScript.set_test_save_path(test_save_path)
@@ -47,6 +60,7 @@ func _test_scene_setup_and_pending_resume() -> void:
 	_expect(not (screen.tier_buttons.get("bronze") as Button).disabled and (screen.tier_buttons.get("silver") as Button).disabled and (screen.tier_buttons.get("gold") as Button).disabled, "tier availability is derived from wins")
 	_expect(not (screen.tier_buttons.get("black") as Button).visible, "BLACK stays hidden without an active template")
 	_expect((screen.start_button as Button).custom_minimum_size.y >= 96.0 and (screen.back_button as Button).custom_minimum_size.y >= 96.0, "primary touch targets meet the 96-unit minimum")
+	_assert_how_to(screen)
 
 	screen.call("_select_bet", 20)
 	screen.call("_select_tier", "bronze")
@@ -115,7 +129,7 @@ func _test_auto_discard_and_final_roll_failure() -> void:
 	# The placement happens synchronously before the brief failure/result hold.
 	_expect(int((final_screen.model.call("get_placed_faces") as Array)[1]) == 4, "final roll applies its chosen placement before failure evaluation")
 	await _frames(7)
-	_expect(final_screen.view_state == "result" and str(final_screen.result_data.get("result", "")) == "failure" and "LOSE" in final_screen.result_label.text and final_screen.result_payout_label.text == "RETURN 0 CHIP（BET込み）" and "NET -20 CHIP · BET 20" in final_screen.result_detail_label.text, "incomplete final placement reaches an explicit LOSE Result with BET, RETURN, and NET")
+	_expect(final_screen.view_state == "result" and str(final_screen.result_data.get("result", "")) == "failure" and "チップなし" in final_screen.result_label.text and final_screen.result_payout_label.text == "受け取り 0 CHIP（BET込み）" and "収支 -20 CHIP · BET 20" in final_screen.result_detail_label.text, "incomplete final placement reaches an explicit failure Result with BET, return, and net")
 	_expect(CasinoBankScript.balance() == 80, "failure settles with zero payout")
 	await _dispose(final_screen)
 
@@ -133,9 +147,9 @@ func _test_success_settlement_and_progress() -> void:
 	_expect(int(screen.model.get("reward")) == 34, "BET20 BRONZE reward floors to 34")
 	await _frames(7)
 	_expect(screen.view_state == "result" and screen.result_view.visible and not bool(returned["value"]), "Result is shown before any casino return")
-	_expect(screen.result_payout_label.text == "RETURN 34 CHIP（BET込み）" and "NET +14 CHIP" in screen.result_detail_label.text, "Vault success separates stake-inclusive RETURN from NET")
+	_expect(screen.result_payout_label.text == "受け取り 34 CHIP（BET込み）" and "収支 +14 CHIP" in screen.result_detail_label.text, "Vault success separates stake-inclusive return from net")
 	_expect(screen.result_vault_door.visible and screen.result_vault_door_panel.visible and screen.result_vault_door.modulate.a >= 0.95, "Vault success keeps the door visual present and bright in Result")
-	_expect(screen.again_button.text == "NEW VAULT", "Vault setup-return CTA is named NEW VAULT")
+	_expect(screen.again_button.text == "次の金庫を選ぶ", "Vault setup-return CTA explains choosing the next vault")
 	_expect(CasinoBankScript.balance() == 114 and screen.settlement_attempt_count == 1, "success credits 34 once after the committed wager")
 	var saved := CasinoBankScript.load_data()
 	var meta: Dictionary = saved.get("vault_break", {}) as Dictionary

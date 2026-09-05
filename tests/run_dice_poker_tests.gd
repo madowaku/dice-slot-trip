@@ -19,6 +19,19 @@ func _expect(condition: bool, label: String) -> void:
 	failures += 1
 	push_error("FAIL: %s" % label)
 
+func _assert_how_to(screen: Node) -> void:
+	var panel := screen.find_child("CasinoHowTo3Steps", true, false) as PanelContainer
+	_expect(panel != null, "DICE POKER exposes the shared CasinoHowTo3Steps panel")
+	if panel == null:
+		return
+	var headings: Array[String] = ["① 最初に何をする？", "② プレイ中に何をする？", "③ どうなれば勝ち？"]
+	var actions: Array[String] = ["ベットを決める", "キープして振り直す", "役を作る"]
+	for index: int in range(3):
+		var heading := panel.find_child("Step%dHeading" % (index + 1), true, false) as Label
+		var detail := panel.find_child("Step%dDetail" % (index + 1), true, false) as Label
+		_expect(heading != null and heading.text == headings[index], "DICE POKER keeps shared step heading %d" % (index + 1))
+		_expect(detail != null and actions[index] in detail.text and detail.text.length() <= 48, "DICE POKER keeps concise step copy %d" % (index + 1))
+
 func _run() -> void:
 	_configure_test_save()
 	DicePokerScreenScript.suppress_audio_for_tests = true
@@ -109,6 +122,7 @@ func _test_scene_flow() -> void:
 	await process_frame
 	_expect(scene != null and scene.get_script() == DicePokerScreenScript, "DICE POKER scene reaches DicePokerScreen")
 	_expect(scene.setup_view.visible and not scene.active_view.visible and not scene.result_view.visible and scene.back_button.text == "カジノへ戻る", "DICE POKER opens on setup with the shared casino-return label")
+	_assert_how_to(scene)
 	_expect(scene.bet_buttons.size() == 3 and scene.keep_buttons.size() == 5, "screen builds three BET and five KEEP targets")
 	for amount: int in scene.bet_buttons:
 		_expect((scene.bet_buttons[amount] as Button).custom_minimum_size.y >= 96.0, "BET %d meets touch target" % amount)

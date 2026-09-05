@@ -118,6 +118,19 @@ func _expect_control_inside(screen: Control, control: Control, label: String) ->
 	_expect(control_rect.size.x > 0.0 and control_rect.size.y > 0.0, "%s has positive bounds" % label)
 	_expect(screen_rect.encloses(control_rect), "%s stays inside the screen" % label)
 
+func _assert_how_to(screen: Node) -> void:
+	var panel := screen.find_child("CasinoHowTo3Steps", true, false) as PanelContainer
+	_expect(panel != null, "TREASURE 21 exposes the shared CasinoHowTo3Steps panel")
+	if panel == null:
+		return
+	var headings: Array[String] = ["① 最初に何をする？", "② プレイ中に何をする？", "③ どうなれば勝ち？"]
+	var actions: Array[String] = ["ベットを決める", "サイコロを振る", "ここで受け取る"]
+	for index: int in range(3):
+		var heading := panel.find_child("Step%dHeading" % (index + 1), true, false) as Label
+		var detail := panel.find_child("Step%dDetail" % (index + 1), true, false) as Label
+		_expect(heading != null and heading.text == headings[index], "TREASURE 21 keeps shared step heading %d" % (index + 1))
+		_expect(detail != null and actions[index] in detail.text and detail.text.length() <= 48, "TREASURE 21 keeps concise step copy %d" % (index + 1))
+
 func _expect_result_chest(screen: Treasure21Screen, result_kind: String) -> void:
 	screen.game = {
 		"result": result_kind,
@@ -141,6 +154,7 @@ func _test_scene_flow() -> void:
 	_expect(scene is Treasure21Screen, "TREASURE 21 scene instantiates its screen")
 	_expect("CASINO CHIP" in scene.chip_label.text, "TREASURE 21 uses the shared CASINO CHIP balance heading")
 	_expect(scene.setup_view.visible and not scene.active_view.visible and not scene.result_view.visible and scene.back_button.text == "カジノへ戻る", "screen opens on setup with the shared casino-return label")
+	_assert_how_to(scene)
 	_expect_control_inside(scene, scene.find_child("Treasure21Header", true, false) as Control, "setup header")
 	_expect_control_inside(scene, scene.start_button, "setup GAME START")
 	_expect_control_inside(scene, scene.back_button, "setup Casino back")
@@ -148,7 +162,7 @@ func _test_scene_flow() -> void:
 	for label: Node in scene.setup_view.find_children("*", "Label", true, false):
 		setup_text += (label as Label).text + "\n"
 	_expect("18 ×0.55" in setup_text and "21 ×1.7" in setup_text and "18 ×1.25" in setup_text and "20 ×1.6" in setup_text, "setup payout copy matches the Phase A model")
-	_expect(scene.again_button.text == "PLAY AGAIN", "same-BET immediate replay uses PLAY AGAIN")
+	_expect(scene.again_button.text == "もう一度遊ぶ", "same-BET immediate replay uses Japanese replay CTA")
 	_expect(scene.bet_buttons.size() == 4, "screen exposes four authored BET amounts")
 	for amount: int in scene.bet_buttons:
 		_expect((scene.bet_buttons[amount] as Button).custom_minimum_size.y >= 96.0, "BET %d meets touch target" % amount)
@@ -186,7 +200,7 @@ func _test_scene_flow() -> void:
 		if candidate_button.visible and candidate_button.text == "カジノへ戻る":
 			visible_casino_back_actions += 1
 	_expect(visible_casino_back_actions == 1 and scene.find_child("ResultExitButton", true, false) == null, "TREASURE result exposes exactly one Casino-back action")
-	_expect(scene.again_button.visible and scene.again_button.text == "PLAY AGAIN" and scene.change_bet_button.visible and scene.change_bet_button.text == "CHANGE BET", "TREASURE result keeps replay and setup-return actions reachable")
+	_expect(scene.again_button.visible and scene.again_button.text == "もう一度遊ぶ" and scene.change_bet_button.visible and scene.change_bet_button.text == "ベットを変える", "TREASURE result keeps replay and setup-return actions reachable")
 	_expect_control_inside(scene, scene.find_child("ResultCard", true, false) as Control, "result card")
 	_expect_control_inside(scene, scene.again_button, "result PLAY AGAIN")
 	_expect_control_inside(scene, scene.change_bet_button, "result CHANGE BET")

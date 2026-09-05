@@ -27,6 +27,19 @@ func _expect(condition: bool, label: String) -> void:
 	failures += 1
 	push_error("FAIL: %s" % label)
 
+func _assert_how_to(screen: Node) -> void:
+	var panel := screen.find_child("CasinoHowTo3Steps", true, false) as PanelContainer
+	_expect(panel != null, "DICE ROULETTE exposes the shared CasinoHowTo3Steps panel")
+	if panel == null:
+		return
+	var headings: Array[String] = ["① 最初に何をする？", "② プレイ中に何をする？", "③ どうなれば勝ち？"]
+	var actions: Array[String] = ["ベットを決める", "回す", "的中を確認する"]
+	for index: int in range(3):
+		var heading := panel.find_child("Step%dHeading" % (index + 1), true, false) as Label
+		var detail := panel.find_child("Step%dDetail" % (index + 1), true, false) as Label
+		_expect(heading != null and heading.text == headings[index], "DICE ROULETTE keeps shared step heading %d" % (index + 1))
+		_expect(detail != null and actions[index] in detail.text and detail.text.length() <= 48, "DICE ROULETTE keeps concise step copy %d" % (index + 1))
+
 func _run() -> void:
 	test_save_path = "user://dice_slot_trip_dice_roulette_%d.json" % OS.get_process_id()
 	CasinoBankScript.set_test_save_path(test_save_path)
@@ -125,6 +138,7 @@ func _test_ui_contract() -> void:
 	root.add_child(roulette)
 	await process_frame
 	_expect(roulette.get_script() == ScreenScript, "Dice Roulette scene instantiates its screen")
+	_assert_how_to(roulette)
 	_expect(roulette.wheel != null, "Dice Roulette exposes the animated wheel")
 	_expect(roulette.wheel.red_marker != null and roulette.wheel.red_marker.has_method("set_face") and roulette.wheel.red_marker.custom_minimum_size.x >= 92.0, "roulette wheel uses a prominent dimensional red die marker")
 	_expect(roulette.wheel.blue_marker != null and roulette.wheel.blue_marker.has_method("set_face") and roulette.wheel.blue_marker.custom_minimum_size.x >= 92.0, "roulette wheel uses a prominent dimensional blue die marker")
@@ -152,8 +166,8 @@ func _test_ui_contract() -> void:
 	var high_chip_badge := (roulette.main_bet_buttons.get("HIGH") as Button).get_node_or_null("BetChipBadge") as Label
 	_expect(high_chip_badge != null and high_chip_badge.visible and high_chip_badge.text == "10 CHIP", "placed main bet shows a physical chip badge on its table cell")
 	_expect(high_chip_badge != null and is_equal_approx(high_chip_badge.anchor_left, 1.0) and is_equal_approx(high_chip_badge.anchor_top, 1.0) and high_chip_badge.offset_right < 0.0 and high_chip_badge.offset_bottom < 0.0, "placed chip badge stays pinned to the lower-right corner")
-	_expect("③" in roulette.guide_label.text and "SPIN" in roulette.guide_label.text, "placing a bet advances the guide to the primary SPIN action")
-	_expect(not roulette.status_label.text.contains("SPINできます"), "secondary status line does not duplicate the primary SPIN guide")
+	_expect("③" in roulette.guide_label.text and "回す" in roulette.guide_label.text, "placing a bet advances the guide to the primary 回す action")
+	_expect(not roulette.status_label.text.contains("回せます"), "secondary status line does not duplicate the primary 回す guide")
 	_expect("おすすめ" in (roulette.main_bet_buttons.get("HIGH") as Button).text and "大穴" in (roulette.main_bet_buttons.get("JACKPOT") as Button).text, "main table exposes concise Japanese bet personalities")
 	roulette.call("_select_amount", 20)
 	roulette.call("_place_main_bet", "JACKPOT")

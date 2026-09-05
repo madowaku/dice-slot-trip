@@ -6,6 +6,7 @@ signal back_requested
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
+const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const Treasure21Script = preload("res://scripts/game/treasure_21_model.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -242,6 +243,8 @@ func _build_setup(root: VBoxContainer) -> void:
 	golden_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(golden_copy)
 
+	CasinoHowTo3StepsScript.build(root, FACILITY_ID, _how_to_steps())
+
 	var caption := _label("BET", 20, GOLD_LIGHT)
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(caption)
@@ -260,12 +263,19 @@ func _build_setup(root: VBoxContainer) -> void:
 		bet_buttons[amount] = button
 		bet_row.add_child(button)
 
-	start_button = _button("GAME START", true)
+	start_button = _button("ゲーム開始", true)
 	start_button.name = "StartButton"
 	start_button.custom_minimum_size.y = 96
 	start_button.add_theme_font_size_override("font_size", 25)
 	start_button.pressed.connect(_start_game)
 	root.add_child(start_button)
+
+func _how_to_steps() -> Array[Dictionary]:
+	return [
+		{"action": "ベットを決める", "copy": "挑戦するCHIPを選ぼう"},
+		{"action": "サイコロを振る", "copy": "合計を21まで近づけよう"},
+		{"action": "ここで受け取る", "copy": "17〜20で受け取れば勝ち"},
+	]
 
 func _build_active(root: VBoxContainer) -> void:
 	_build_treasure_track(root)
@@ -364,14 +374,14 @@ func _build_active(root: VBoxContainer) -> void:
 	actions.name = "Treasure21Actions"
 	actions.add_theme_constant_override("separation", 7)
 	root.add_child(actions)
-	cashout_button = _button("CASH OUT", true)
+	cashout_button = _button("ここで受け取る", true)
 	cashout_button.name = "CashOutButton"
 	cashout_button.custom_minimum_size = Vector2(0, 102)
 	cashout_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cashout_button.add_theme_font_size_override("font_size", 25)
 	cashout_button.pressed.connect(_on_cashout_pressed)
 	actions.add_child(cashout_button)
-	roll_button = _button("ROLL", false)
+	roll_button = _button("サイコロを振る", false)
 	roll_button.name = "RollButton"
 	roll_button.custom_minimum_size = Vector2(0, 102)
 	roll_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -483,6 +493,7 @@ func _apply_responsive_layout() -> void:
 		roll_button.custom_minimum_size.y = 88.0 if compact else 102.0
 	if back_button != null:
 		back_button.custom_minimum_size.y = 56.0 if compact else 68.0
+		CasinoBackButton.configure(back_button)
 
 func _build_result(root: VBoxContainer) -> void:
 	var spacer := Control.new()
@@ -518,13 +529,13 @@ func _build_result(root: VBoxContainer) -> void:
 	result_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(result_detail_label)
 
-	again_button = _button("PLAY AGAIN", true)
+	again_button = _button("もう一度遊ぶ", true)
 	again_button.name = "AgainButton"
 	again_button.custom_minimum_size.y = 104
 	again_button.add_theme_font_size_override("font_size", 23)
 	again_button.pressed.connect(_on_again_pressed)
 	root.add_child(again_button)
-	change_bet_button = _button("CHANGE BET", false)
+	change_bet_button = _button("ベットを変える", false)
 	change_bet_button.name = "ChangeBetButton"
 	change_bet_button.custom_minimum_size.y = 96
 	change_bet_button.pressed.connect(_show_setup)
@@ -651,7 +662,7 @@ func _on_roll_pressed() -> void:
 	CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 	rolling = true
 	view_state = "rolling"
-	status_label.text = "ROLL中..."
+	status_label.text = "振っている途中…"
 	_refresh_all()
 	_play_ui_sfx(&"roll", false)
 	await _animate_roll(roll)
@@ -685,7 +696,7 @@ func _on_cashout_pressed() -> void:
 		return
 	var next := Treasure21Script.cash_out(game)
 	if next == game or int(next.get("payout", 0)) <= 0:
-		status_label.text = "TOTAL 17以上でCASH OUTできます。"
+		status_label.text = "TOTAL 17以上で「ここで受け取る」を押せます。"
 		_play_ui_sfx(&"blocked", false)
 		return
 	game = next
@@ -739,12 +750,12 @@ func _show_result() -> void:
 				result_chest.modulate = Color.WHITE
 		"golden":
 			result_label.text = "GOLDEN TREASURE!"
-			result_detail_label.text = "GOLDEN %d にぴったり到達。自動CASH OUT。" % int(game.get("golden_number", 19))
+			result_detail_label.text = "GOLDEN %d にぴったり到達。自動で受け取りました。" % int(game.get("golden_number", 19))
 			if result_chest != null:
 				result_chest.texture = CHEST_OPENING
 				result_chest.modulate = Color.WHITE
 		"cashout":
-			result_label.text = "CASH OUT"
+			result_label.text = "受け取り完了"
 			result_detail_label.text = "TOTAL %d で持ち帰りました。" % int(game.get("total", 0))
 			if result_chest != null:
 				result_chest.texture = CHEST_CHARGED
@@ -754,8 +765,8 @@ func _show_result() -> void:
 			result_detail_label.text = "ゲーム終了。"
 	var payout := int(game.get("payout", 0))
 	var bet := int(game.get("bet", selected_bet))
-	result_payout_label.text = "RETURN %d CHIP（BET込み）" % payout
-	result_profit_label.text = "NET  %+d CHIP" % (payout - bet)
+	result_payout_label.text = "受け取り %d CHIP（BET込み）" % payout
+	result_profit_label.text = "収支  %+d CHIP" % (payout - bet)
 	status_label.text = "もう一度、TREASUREを狙う？"
 	roll_button.disabled = true
 	cashout_button.disabled = true
@@ -791,7 +802,7 @@ func _show_setup() -> void:
 
 func _on_back_pressed() -> void:
 	if rolling or (not game.is_empty() and bool(game.get("active", false)) and not bool(game.get("finished", false))):
-		status_label.text = "ゲーム終了までEXITできません。"
+		status_label.text = "ゲーム終了までカジノへ戻れません。"
 		_play_ui_sfx(&"blocked", false)
 		return
 	_play_ui_sfx(&"back", false)
@@ -866,7 +877,7 @@ func _refresh_all() -> void:
 			status_banner_label.text = "ONE AWAY"
 			status_banner.add_theme_stylebox_override("panel", _ornate_panel(Color("#7b1c16"), GOLD_LIGHT, 10, 3))
 		elif total >= 17:
-			status_banner_label.text = "CASH OUT AVAILABLE"
+			status_banner_label.text = "受け取り可能"
 			status_banner.add_theme_stylebox_override("panel", _panel(Color("#79441d"), GOLD, 10, 2))
 	_refresh_track(total)
 	if danger_panel != null:
@@ -877,10 +888,10 @@ func _refresh_all() -> void:
 	if cashout_button != null:
 		cashout_button.disabled = not can_cash
 		var cash_value: int = Treasure21Script.payout_for_total(int(game.get("bet", selected_bet)), total)
-		cashout_button.text = "CASH OUT\n%s" % ("%d CHIP" % cash_value if can_cash else "まだ不可")
+		cashout_button.text = "ここで受け取る\n%s" % ("%d CHIP" % cash_value if can_cash else "まだ不可")
 	if roll_button != null:
 		roll_button.disabled = rolling or not bool(game.get("active", false)) or bool(game.get("finished", false))
-		roll_button.text = "ROLL\n%s" % ("1 / 6でTREASURE" if total == 20 else "次の1D6")
+		roll_button.text = "サイコロを振る\n%s" % ("1 / 6でTREASURE" if total == 20 else "次の1D6")
 	back_button.disabled = rolling or (bool(game.get("active", false)) and not bool(game.get("finished", false)))
 
 func _refresh_track(total: int) -> void:

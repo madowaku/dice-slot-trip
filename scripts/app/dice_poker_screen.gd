@@ -5,6 +5,7 @@ signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
+const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const DicePokerScript = preload("res://scripts/game/dice_poker_model.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -232,7 +233,7 @@ func _build_header(root: VBoxContainer) -> void:
 	title.add_theme_color_override("font_outline_color", Color("#3a1700"))
 	title.add_theme_constant_override("outline_size", 7)
 	title_stack.add_child(title)
-	var subtitle: Label = _label("FIVE DICE  ·  TWO REROLLS", 14, BRIGHT_GOLD)
+	var subtitle: Label = _label("5つのダイス  ·  振り直し2回", 14, BRIGHT_GOLD)
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_color_override("font_outline_color", Color.BLACK)
 	subtitle.add_theme_constant_override("outline_size", 3)
@@ -287,7 +288,7 @@ func _build_header(root: VBoxContainer) -> void:
 	chip_row.add_child(live_badge)
 
 func _build_status(root: VBoxContainer) -> void:
-	status_label = _label("BETを選んで、5つのダイスをDEAL", 19, Color.WHITE)
+	status_label = _label("ベットを選んで、ゲーム開始", 19, Color.WHITE)
 	status_label.name = "StatusLabel"
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -300,6 +301,8 @@ func _build_status(root: VBoxContainer) -> void:
 	root.add_child(status_label)
 
 func _build_setup(root: VBoxContainer) -> void:
+	CasinoHowTo3StepsScript.build(root, FACILITY_ID, _how_to_steps())
+
 	var caption: Label = _display_label("1  ·  SELECT YOUR BET", 24, GOLD_LIGHT)
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(caption)
@@ -319,7 +322,7 @@ func _build_setup(root: VBoxContainer) -> void:
 
 	_build_paytable(root, false, "PAY TABLE")
 
-	deal_button = _button("DEAL HAND", true)
+	deal_button = _button("ゲーム開始", true)
 	deal_button.name = "DealButton"
 	deal_button.custom_minimum_size.y = 128
 	deal_button.add_theme_font_override("font", DISPLAY_FONT)
@@ -341,6 +344,13 @@ func _build_setup(root: VBoxContainer) -> void:
 	hint.add_theme_constant_override("outline_size", 3)
 	root.add_child(hint)
 
+func _how_to_steps() -> Array[Dictionary]:
+	return [
+		{"action": "ベットを決める", "copy": "挑戦するCHIPを選ぼう"},
+		{"action": "キープして振り直す", "copy": "残したいダイスを選ぼう"},
+		{"action": "役を作る", "copy": "役が強いほど配当アップ"},
+	]
+
 func _build_active(root: VBoxContainer) -> void:
 	var stats: HBoxContainer = HBoxContainer.new()
 	stats.name = "DicePokerStats"
@@ -350,7 +360,7 @@ func _build_active(root: VBoxContainer) -> void:
 	bet_label = bet_stat["label"] as Label
 	bet_label.name = "BetLabel"
 	stats.add_child(bet_stat["panel"] as PanelContainer)
-	var reroll_stat: Dictionary = _stat_box("REROLLS")
+	var reroll_stat: Dictionary = _stat_box("振り直し")
 	rerolls_label = reroll_stat["label"] as Label
 	rerolls_label.name = "RerollsLabel"
 	stats.add_child(reroll_stat["panel"] as PanelContainer)
@@ -370,7 +380,7 @@ func _build_active(root: VBoxContainer) -> void:
 	dice_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	dice_box.add_theme_constant_override("separation", 4)
 	dice_panel.add_child(dice_box)
-	var dice_caption: Label = _display_label("FIVE DICE  ·  TAP A CARD TO KEEP", 18, GOLD_LIGHT)
+	var dice_caption: Label = _display_label("5つのダイス  ·  カードをタップしてキープ", 18, GOLD_LIGHT)
 	dice_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	dice_box.add_child(dice_caption)
 	var die_center: CenterContainer = CenterContainer.new()
@@ -394,7 +404,7 @@ func _build_active(root: VBoxContainer) -> void:
 	keep_grid.add_theme_constant_override("v_separation", 7)
 	root.add_child(keep_grid)
 	for index: int in range(DicePokerScript.DIE_COUNT):
-		var keep_button: Button = _button("DIE %d\nOPEN" % (index + 1))
+		var keep_button: Button = _button("ダイス%d\n選択可" % (index + 1))
 		keep_button.name = "KeepDie_%d" % (index + 1)
 		keep_button.custom_minimum_size = Vector2(0, 106)
 		keep_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -408,7 +418,7 @@ func _build_active(root: VBoxContainer) -> void:
 	action_row.name = "ActionRow"
 	action_row.add_theme_constant_override("separation", 9)
 	root.add_child(action_row)
-	reroll_button = _button("REROLL", true)
+	reroll_button = _button("振り直す", true)
 	reroll_button.name = "RerollButton"
 	reroll_button.custom_minimum_size.y = 116
 	reroll_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -418,7 +428,7 @@ func _build_active(root: VBoxContainer) -> void:
 	_add_button_ornament(reroll_button, 3)
 	reroll_button.pressed.connect(_on_reroll_pressed)
 	action_row.add_child(reroll_button)
-	lock_button = _button("LOCK HAND", true)
+	lock_button = _button("この役で決定", true)
 	lock_button.name = "LockHandButton"
 	lock_button.custom_minimum_size.y = 116
 	lock_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -486,7 +496,7 @@ func _build_result(root: VBoxContainer) -> void:
 	var bet_summary: Dictionary = _result_stat_box("BET")
 	result_bet_value = bet_summary["label"] as Label
 	summary.add_child(bet_summary["panel"] as PanelContainer)
-	var return_summary: Dictionary = _result_stat_box("RETURN")
+	var return_summary: Dictionary = _result_stat_box("受け取り")
 	result_return_value = return_summary["label"] as Label
 	# Preserve the public payout label contract while presenting net profit separately.
 	result_payout_label = result_return_value
@@ -495,7 +505,7 @@ func _build_result(root: VBoxContainer) -> void:
 	var divider: HSeparator = HSeparator.new()
 	divider.add_theme_stylebox_override("separator", _separator_style(GOLD))
 	box.add_child(divider)
-	var net_caption: Label = _display_label("NET RESULT", 18, MUTED)
+	var net_caption: Label = _display_label("収支", 18, MUTED)
 	net_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(net_caption)
 	result_net_label = _display_label("±0 CHIP", 48, CREAM)
@@ -508,7 +518,7 @@ func _build_result(root: VBoxContainer) -> void:
 	result_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(result_detail_label)
 
-	again_button = _button("PLAY AGAIN", true)
+	again_button = _button("もう一度遊ぶ", true)
 	again_button.name = "AgainButton"
 	again_button.custom_minimum_size.y = 112
 	again_button.add_theme_font_override("font", DISPLAY_FONT)
@@ -520,7 +530,7 @@ func _build_result(root: VBoxContainer) -> void:
 	_add_button_ornament(again_button, 3)
 	again_button.pressed.connect(_on_again_pressed)
 	root.add_child(again_button)
-	change_bet_button = _button("CHANGE BET", false)
+	change_bet_button = _button("ベットを変える", false)
 	change_bet_button.name = "ChangeBetButton"
 	change_bet_button.custom_minimum_size.y = 88
 	change_bet_button.add_theme_font_override("font", DISPLAY_FONT)
@@ -750,15 +760,15 @@ func _build_help_overlay() -> void:
 	var body: VBoxContainer = VBoxContainer.new()
 	body.add_theme_constant_override("separation", 9)
 	dialog.add_child(body)
-	var title: Label = _display_label("HOW TO PLAY", 38, GOLD_LIGHT)
+	var title: Label = _display_label("遊び方", 38, GOLD_LIGHT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.add_child(title)
-	var copy: Label = _label("DEALで5個のダイスを振り、残したいダイスをKEEP。\n最大2回REROLLできます。5個すべてKEEPするとLOCK HANDで即確定。", 18, CREAM)
+	var copy: Label = _label("ゲーム開始で5個のダイスを振り、残したいダイスをキープ。\n最大2回振り直せます。5個すべてキープすると、この役で決定できます。", 18, CREAM)
 	copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_child(copy)
 	_build_paytable(body, false, "PAYOUTS")
-	var close_button: Button = _button("CLOSE", true)
+	var close_button: Button = _button("閉じる", true)
 	close_button.name = "HelpCloseButton"
 	close_button.custom_minimum_size.y = 90
 	close_button.add_theme_font_override("font", DISPLAY_FONT)
@@ -887,7 +897,7 @@ func _start_game() -> void:
 	setup_view.visible = false
 	active_view.visible = true
 	result_view.visible = false
-	status_label.text = "DEAL中..."
+	status_label.text = "配り中..."
 	_play_ui_sfx(&"start", false)
 	_refresh_all()
 	await _animate_roll(initial, indices)
@@ -900,7 +910,7 @@ func _on_keep_pressed(die_index: int) -> void:
 		return
 	game = DicePokerScript.toggle_keep(game, die_index)
 	CasinoBankScript.update_game(FACILITY_ID, game, game_id)
-	status_label.text = "KEEPを選択。%d個KEEP中。" % DicePokerScript.kept_count(game)
+	status_label.text = "キープを選択。%d個キープ中。" % DicePokerScript.kept_count(game)
 	_play_ui_sfx(&"select", false)
 	_refresh_all()
 
@@ -930,7 +940,7 @@ func _on_reroll_pressed() -> void:
 	CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 	rolling = true
 	view_state = "rolling"
-	status_label.text = "REROLL中..."
+	status_label.text = "振り直し中..."
 	_play_ui_sfx(&"roll", false)
 	_refresh_all()
 	await _animate_roll(full_values, indices)
@@ -956,7 +966,7 @@ func _resolve_pending_roll(pending: Dictionary) -> void:
 		pending_roll = {}
 		rolling = false
 		view_state = "active"
-		status_label.text = "DICEをKEEPして、REROLLまたはLOCK HAND。"
+		status_label.text = "ダイスをキープして、振り直すか、この役で決定。"
 		CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 		game.erase("pending_rolls")
 		_refresh_all()
@@ -972,7 +982,7 @@ func _resolve_pending_roll(pending: Dictionary) -> void:
 		_settle_finished_game()
 		return
 	view_state = "active"
-	status_label.text = "REROLL完了。さらにKEEPするDICEを選ぶ。"
+	status_label.text = "振り直し完了。さらにキープするダイスを選ぶ。"
 	CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 	game.erase("pending_rolls")
 	_refresh_all()
@@ -1026,8 +1036,8 @@ func _show_result() -> void:
 	result_payout_label.text = "%d CHIP" % payout_amount
 	result_net_label.text = _signed_chip_text(profit_amount)
 	result_net_label.add_theme_color_override("font_color", BRIGHT_GOLD if profit_amount > 0 else (CREAM if profit_amount == 0 else Color("#ff9a8e")))
-	result_detail_label.text = "%s  ·  ×%.1f RETURN" % [rank_name, float(game.get("multiplier", DicePokerScript.multiplier_for(rank_name)))]
-	status_label.text = "RESULT  ·  PLAY AGAINで同じBETを続けられます"
+	result_detail_label.text = "%s  ·  ×%.1f 受け取り倍率" % [rank_name, float(game.get("multiplier", DicePokerScript.multiplier_for(rank_name)))]
+	status_label.text = "結果  ·  もう一度遊ぶと同じBETを続けられます"
 	if chip_label != null:
 		chip_label.text = _format_chips(CasinoBankScript.balance())
 	var final_faces: Array[int] = _state_dice(game)
@@ -1052,7 +1062,7 @@ func _show_setup(reset_game: bool = true) -> void:
 	back_button.visible = true
 	if help_overlay != null:
 		help_overlay.visible = false
-	status_label.text = "1  BETを選ぶ   →   2  DEAL   →   3  KEEP & REROLL"
+	status_label.text = "1  BETを選ぶ   →   2  ゲーム開始   →   3  キープ＆振り直す"
 	back_button.disabled = false
 	_refresh_all()
 
@@ -1061,7 +1071,7 @@ func _on_back_pressed() -> void:
 		_toggle_help()
 		return
 	if rolling or (not game.is_empty() and bool(game.get("active", false)) and not bool(game.get("finished", false))):
-		status_label.text = "HANDをLOCK HANDまたはREROLLで確定してからEXIT。"
+		status_label.text = "役を「この役で決定」または「振り直す」で確定してからカジノへ戻る。"
 		_play_ui_sfx(&"blocked", false)
 		return
 	_play_ui_sfx(&"back", false)
@@ -1158,8 +1168,8 @@ func _refresh_dice_and_keep() -> void:
 		var button: Button = keep_buttons.get(index) as Button
 		if button == null:
 			continue
-		var keep_text: String = "◆ HELD" if (index < kept.size() and kept[index]) else "OPEN"
-		button.text = "DIE %d  ·  %s\n%s" % [index + 1, str(face) if face > 0 else "?", keep_text]
+		var keep_text: String = "◆ キープ中" if (index < kept.size() and kept[index]) else "選択可"
+		button.text = "ダイス%d  ·  %s\n%s" % [index + 1, str(face) if face > 0 else "?", keep_text]
 		button.disabled = rolling or not bool(game.get("active", false)) or bool(game.get("finished", false)) or face <= 0
 		_apply_keep_style(button, index < kept.size() and kept[index])
 	_update_die_face_set(active_die_faces, faces, kept)
@@ -1175,8 +1185,8 @@ func _refresh_actions() -> void:
 	lock_button.visible = all_locked
 	reroll_button.disabled = not playable or not DicePokerScript.can_reroll(game)
 	lock_button.disabled = not playable or not DicePokerScript.can_lock_hand(game)
-	reroll_button.text = "REROLL  ·  %d LEFT" % DicePokerScript.remaining_rerolls(game)
-	lock_button.text = "LOCK HAND  ·  FINAL"
+	reroll_button.text = "振り直す  ·  残り%d回" % DicePokerScript.remaining_rerolls(game)
+	lock_button.text = "この役で決定  ·  確定"
 	action_button = lock_button if all_locked else reroll_button
 
 func _refresh_bet_buttons() -> void:

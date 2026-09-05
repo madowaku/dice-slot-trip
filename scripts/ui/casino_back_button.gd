@@ -3,6 +3,7 @@ extends RefCounted
 const LABEL: String = "カジノへ戻る"
 const TOOLTIP: String = "Las Vegas Casinoロビーへ戻る"
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
+const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 
 const TEXT: Color = Color("#f8eefc")
 const TEXT_HOVER: Color = Color.WHITE
@@ -20,7 +21,8 @@ static func configure(button: Button) -> void:
 	button.tooltip_text = TOOLTIP
 	button.focus_mode = Control.FOCUS_ALL
 	button.add_theme_font_override("font", FONT)
-	button.add_theme_font_size_override("font_size", 20)
+	button.add_theme_font_size_override("font_size", UiTokensScript.FONT_CAPTION)
+	button.custom_minimum_size.y = maxf(button.custom_minimum_size.y, UiTokensScript.TOUCH_MIN)
 	button.add_theme_color_override("font_color", TEXT)
 	button.add_theme_color_override("font_hover_color", TEXT_HOVER)
 	button.add_theme_color_override("font_pressed_color", TEXT_HOVER)

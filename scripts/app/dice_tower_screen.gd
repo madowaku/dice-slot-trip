@@ -6,6 +6,7 @@ signal back_requested
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
+const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const TowerScript = preload("res://scripts/game/dice_tower_model.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
@@ -181,7 +182,7 @@ func _build_ui() -> void:
 	setup_view = VBoxContainer.new()
 	setup_view.name = "TowerSetupView"
 	setup_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	setup_view.add_theme_constant_override("separation", 12)
+	setup_view.add_theme_constant_override("separation", 10)
 	root.add_child(setup_view)
 	_build_setup_view(setup_view)
 
@@ -225,7 +226,9 @@ func _build_setup_view(root: VBoxContainer) -> void:
 	preview_texture.texture = TOWER_TEXTURE
 	preview_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	preview_texture.custom_minimum_size = Vector2(218, 600)
+	# Keep the tower art prominent while leaving room for the shared explainer and
+	# the primary start action on the authored 720×1600 surface.
+	preview_texture.custom_minimum_size = Vector2(218, 520)
 	preview_texture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	preview_center.add_child(preview_texture)
 
@@ -233,11 +236,15 @@ func _build_setup_view(root: VBoxContainer) -> void:
 	rules.name = "RulePanel"
 	rules.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rules.size_flags_stretch_ratio = 1.22
-	rules.add_theme_stylebox_override("panel", _panel(Color("#062523f2"), GOLD_LIGHT, 30, 4, 20))
+	# The rule copy itself keeps its large type; a slimmer frame margin recovers
+	# the vertical space needed for the shared explainer and start CTA.
+	rules.add_theme_stylebox_override("panel", _panel(Color("#062523f2"), GOLD_LIGHT, 30, 4, 8))
 	content.add_child(rules)
 	var rule_box: VBoxContainer = VBoxContainer.new()
 	rule_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	rule_box.add_theme_constant_override("separation", 12)
+	# Keep the three rule rows readable while tightening the vertical rhythm for
+	# the shared explainer and the primary start action below.
+	rule_box.add_theme_constant_override("separation", 5)
 	rules.add_child(rule_box)
 	var rule_title: Label = _label("ルール", 42, GOLD_LIGHT)
 	rule_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -253,6 +260,9 @@ func _build_setup_view(root: VBoxContainer) -> void:
 	warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rule_box.add_child(warning)
+
+	var how_to: PanelContainer = CasinoHowTo3StepsScript.build(root, FACILITY_ID, _how_to_steps())
+	_compact_how_to_panel(how_to)
 
 	var bet_caption: Label = _label("★  BETを選択してください  ★", 34, Color("#fff2d4"))
 	bet_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -279,16 +289,48 @@ func _build_setup_view(root: VBoxContainer) -> void:
 	balance_preview_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	balance_panel.add_child(balance_preview_label)
 
-	start_button = _button("GAME START", true)
+	start_button = _button("ゲーム開始", true)
 	start_button.name = "StartButton"
-	start_button.custom_minimum_size.y = 156
+	start_button.custom_minimum_size.y = 144
 	start_button.add_theme_font_size_override("font_size", 50)
 	start_button.pressed.connect(_start_game)
 	root.add_child(start_button)
 
+func _how_to_steps() -> Array[Dictionary]:
+	return [
+		{"action": "ベットを決める", "copy": "挑戦するCHIPを選ぼう"},
+		{"action": "サイコロを振る", "copy": "登るほど配当アップ"},
+		{"action": "引き際を決める", "copy": "危なくなる前に受け取ろう"},
+	]
+
+func _compact_how_to_panel(panel: PanelContainer) -> void:
+	if panel == null:
+		return
+	# The shared component keeps the same font sizes and three-step structure;
+	# this screen only trims decorative padding so its setup CTA remains in view.
+	panel.add_theme_stylebox_override("panel", _panel(Color("#130d20ee"), Color("#c9963d"), 18, 2, 4))
+	var margin: MarginContainer = panel.find_child("HowToMargin", true, false) as MarginContainer
+	if margin != null:
+		margin.add_theme_constant_override("margin_top", 4)
+		margin.add_theme_constant_override("margin_bottom", 4)
+	var stack: VBoxContainer = panel.find_child("HowToStack", true, false) as VBoxContainer
+	if stack != null:
+		stack.add_theme_constant_override("separation", 2)
+	for index: int in range(1, 4):
+		var row: PanelContainer = panel.find_child("HowToStep%d" % index, true, false) as PanelContainer
+		if row == null:
+			continue
+		row.add_theme_stylebox_override("panel", _panel(Color("#261b34cc"), Color("#695176"), 10, 1, 2))
+		var row_margin: MarginContainer = null
+		if row.get_child_count() > 0:
+			row_margin = row.get_child(0) as MarginContainer
+		if row_margin != null:
+			row_margin.add_theme_constant_override("margin_top", 0)
+			row_margin.add_theme_constant_override("margin_bottom", 0)
+
 func _rule_row(parent: VBoxContainer, dice_text: String, value_text: String, result_text: String, accent: Color) -> void:
 	var panel: PanelContainer = PanelContainer.new()
-	panel.custom_minimum_size.y = 104
+	panel.custom_minimum_size.y = 80
 	panel.add_theme_stylebox_override("panel", _panel(Color("#f7e4ae"), Color("#b87b28"), 18, 3, 12))
 	parent.add_child(panel)
 	var row: HBoxContainer = HBoxContainer.new()
@@ -388,7 +430,7 @@ func _build_active_view(root: VBoxContainer) -> void:
 	actions.name = "TowerActions"
 	actions.add_theme_constant_override("separation", 16)
 	root.add_child(actions)
-	cashout_button = _button("CASH OUT", false)
+	cashout_button = _button("ここで受け取る", false)
 	cashout_button.name = "CashOutButton"
 	cashout_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cashout_button.custom_minimum_size.y = 176
@@ -396,7 +438,7 @@ func _build_active_view(root: VBoxContainer) -> void:
 	cashout_button.disabled = true
 	cashout_button.pressed.connect(_on_cashout_pressed)
 	actions.add_child(cashout_button)
-	roll_button = _button("ROLL\nもう1回振る", true)
+	roll_button = _button("サイコロを振る\nもう1回振る", true)
 	roll_button.name = "RollButton"
 	roll_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	roll_button.custom_minimum_size.y = 176
@@ -430,7 +472,7 @@ func _build_tutorial_overlay() -> Control:
 	var box: VBoxContainer = VBoxContainer.new()
 	box.add_theme_constant_override("separation", 24)
 	card.add_child(box)
-	var title: Label = _label("HOW TO PLAY", 48, GOLD_LIGHT)
+	var title: Label = _label("遊び方", 48, GOLD_LIGHT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)
 	tutorial_body = _label("", 38, Color.WHITE)
@@ -444,12 +486,12 @@ func _build_tutorial_overlay() -> Control:
 	var actions: HBoxContainer = HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 16)
 	box.add_child(actions)
-	var skip := _button("SKIP")
+	var skip := _button("スキップ")
 	skip.name = "TutorialSkipButton"
 	skip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	skip.pressed.connect(_close_tutorial)
 	actions.add_child(skip)
-	tutorial_next_button = _button("NEXT", true)
+	tutorial_next_button = _button("次へ", true)
 	tutorial_next_button.name = "TutorialNextButton"
 	tutorial_next_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tutorial_next_button.pressed.connect(_advance_tutorial)
@@ -502,7 +544,7 @@ func _build_result_overlay() -> Control:
 	result_bet_label = _label("BET結果  -20 CHIP", 32, Color("#ff765e"))
 	result_bet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.add_child(result_bet_label)
-	var retry: Button = _button("PLAY AGAIN\nBET 20 CHIP", true)
+	var retry: Button = _button("もう一度遊ぶ\nBET 20 CHIP", true)
 	retry.name = "RetryButton"
 	retry.custom_minimum_size.y = 150
 	retry.add_theme_font_size_override("font_size", 42)
@@ -511,7 +553,7 @@ func _build_result_overlay() -> Control:
 	var secondary: HBoxContainer = HBoxContainer.new()
 	secondary.add_theme_constant_override("separation", 16)
 	body.add_child(secondary)
-	var change_bet: Button = _button("CHANGE BET")
+	var change_bet: Button = _button("ベットを変える")
 	change_bet.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	change_bet.custom_minimum_size.y = 92
 	change_bet.pressed.connect(_restart_after_result)
@@ -563,7 +605,7 @@ func _show_tutorial_page(page: int) -> void:
 		2:
 			tutorial_body.text = "1が出たら\n全部BUST！"
 	tutorial_page_label.text = "%d / 3" % (tutorial_page + 1)
-	tutorial_next_button.text = "PLAY" if tutorial_page == 2 else "NEXT"
+	tutorial_next_button.text = "ゲームへ" if tutorial_page == 2 else "次へ"
 
 func _advance_tutorial() -> void:
 	if tutorial_page >= 2:
@@ -592,7 +634,7 @@ func _refresh_bet_buttons() -> void:
 	start_button.disabled = chips < selected_bet
 	if balance_preview_label != null:
 		balance_preview_label.text = "BET後の所持チップ    %s  →  %s" % [_format_chips(chips), _format_chips(maxi(0, chips - selected_bet))]
-	start_button.text = "GAME START\nBET %d CHIP" % selected_bet
+	start_button.text = "ゲーム開始\nBET %d CHIP" % selected_bet
 	if start_button.disabled:
 		status_label.text = "CHIPが足りない。通常ステージでCOINを持ち帰ろう。"
 	else:
@@ -692,7 +734,7 @@ func _on_roll_pressed() -> void:
 	game["pending_rolls"] = [pending_roll.duplicate(true)]
 	var receipt: Dictionary = CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 	if not bool(receipt.get("ok", false)):
-		status_label.text = "保存できませんでした。もう一度ROLLしてください。"
+		status_label.text = "保存できませんでした。もう一度サイコロを振ってください。"
 		return
 	rolling = true
 	cashout_button.disabled = true
@@ -754,7 +796,7 @@ func _on_cashout_pressed() -> void:
 		return
 	game = TowerScript.take_cashout(game)
 	_play_ui_sfx(&"complete", true)
-	_finish_success(payout, "CASH OUT！ +%d CHIP" % payout)
+	_finish_success(payout, "受け取り完了！ +%d CHIP" % payout)
 
 func _finish_success(payout: int, message: String) -> void:
 	if not _settle_finished_game(payout):
@@ -786,7 +828,7 @@ func _settle_finished_game(payout: int) -> bool:
 func _set_result_finished() -> void:
 	cashout_button.disabled = true
 	roll_button.disabled = false
-	roll_button.text = "CHANGE BET"
+	roll_button.text = "ベットを変える"
 	_apply_roll_style(true)
 	_set_retry_action(true)
 
@@ -826,7 +868,7 @@ func _show_setup() -> void:
 	active_view.visible = false
 	setup_view.visible = true
 	_set_result_overlay_visible(false)
-	roll_button.text = "ROLL\nもう1回振る"
+	roll_button.text = "サイコロを振る\nもう1回振る"
 	_apply_roll_style(false)
 	_set_retry_action(false)
 	_reset_tower_visuals()
@@ -849,7 +891,7 @@ func _refresh_all() -> void:
 	floor_label.text = "%d / 10" % floor_number
 	payout_label.text = "%d CHIP" % planned_payout
 	risk_label.text = "%d CHIP" % planned_payout
-	cashout_button.text = "CASH OUT\n%d CHIP" % planned_payout
+	cashout_button.text = "ここで受け取る\n%d CHIP" % planned_payout
 	cashout_button.disabled = not bool(game.get("active", false)) or floor_number < 1 or rolling
 	var last_roll: int = int(game.get("last_roll", 0))
 	if last_roll_label != null:
@@ -866,25 +908,25 @@ func _show_bust_result() -> void:
 	result_title_label.text = "残念… BUST!"
 	result_dice_label.text = "[1]    BUST"
 	result_floor_label.text = "FLOOR %dまで登ったのに…" % reached_floor
-	result_reward_label.text = "RETURN 0 CHIP（BET込み）\n獲得予定 %d CHIPを失った" % lost_reward
-	result_bet_label.text = "NET  -%d CHIP" % selected_bet
+	result_reward_label.text = "受け取り 0 CHIP（BET込み）\n獲得予定 %d CHIPを失った" % lost_reward
+	result_bet_label.text = "収支  -%d CHIP" % selected_bet
 	var retry: Button = result_overlay.find_child("RetryButton", true, false) as Button
 	if retry != null:
-		retry.text = "PLAY AGAIN\nBET %d CHIP" % selected_bet
+		retry.text = "もう一度遊ぶ\nBET %d CHIP" % selected_bet
 	_set_result_overlay_visible(true)
 	call_deferred("_animate_result_reveal")
 
 func _show_success_result(payout: int) -> void:
 	var floor_number: int = int(game.get("floor", 0))
 	var completed: bool = bool(game.get("completed", false))
-	result_title_label.text = "TOWER COMPLETE!" if completed else "CASH OUT!"
-	result_dice_label.text = "[10]  GOAL" if completed else "SAFE RETURN"
+	result_title_label.text = "タワー制覇！" if completed else "受け取り完了！"
+	result_dice_label.text = "[10]  ゴール" if completed else "安全に受け取り"
 	result_floor_label.text = "FLOOR %dで配当確定" % floor_number
-	result_reward_label.text = "RETURN\n%d CHIP（BET込み）" % payout
-	result_bet_label.text = "NET  %+d CHIP" % (payout - selected_bet)
+	result_reward_label.text = "受け取り\n%d CHIP（BET込み）" % payout
+	result_bet_label.text = "収支  %+d CHIP" % (payout - selected_bet)
 	var retry: Button = result_overlay.find_child("RetryButton", true, false) as Button
 	if retry != null:
-		retry.text = "PLAY AGAIN\nBET %d CHIP" % selected_bet
+		retry.text = "もう一度遊ぶ\nBET %d CHIP" % selected_bet
 	_set_result_overlay_visible(true)
 	call_deferred("_animate_result_reveal")
 

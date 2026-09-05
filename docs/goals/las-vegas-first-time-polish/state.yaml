@@ -1,0 +1,379 @@
+# Goal Maker v2 state.yaml
+version: 2
+
+goal:
+  title: "Las Vegas First-Time Polish"
+  slug: "las-vegas-first-time-polish"
+  kind: open_ended
+  tranche: "Complete Phase 1.5 through Phase 4 in the user's specified order with one verified implementation task active at a time."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T150
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Remove PRIZE COUNTER from the Hub display, keep its data and mechanics dormant, and make the full Hub fit without scrolling at 360x800."
+    allowed_files:
+      - "scripts/app/casino_hub_screen.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/run_casino_expansion_ui_tests.gd"
+    verify:
+      - "Casino UI and expansion UI suites"
+      - "Real-render Hub captures at 360x800 and 720x1280"
+      - "No visible PRIZE COUNTER, prize rows, or ScrollContainer in the Hub"
+      - "Prize-card data remains loaded and routes remain unchanged"
+      - "Godot project validation and scoped diff check"
+    stop_if:
+      - "Prize data or purchase mechanics must be deleted."
+      - "Game rules, economy, save data, routes, or facility order would change."
+      - "Need files outside allowed_files."
+      - "The Hub cannot fit 360x800 without reducing touch targets or readable type."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/casino_hub_screen.gd"
+        - "tests/run_casino_ui_tests.gd"
+        - "tests/run_casino_expansion_ui_tests.gd"
+      commands:
+        - cmd: "Godot --headless --script tests/run_casino_ui_tests.gd"
+          status: "pass: 188 assertions, 0 failures"
+        - cmd: "Godot --headless --script tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 136 assertions, 0 failures"
+        - cmd: "Godot real-render recorder at 360x800 and 720x1280"
+          status: "pass: 53 assertions each, actual_rendering=true"
+        - cmd: "git diff --check on owned files"
+          status: pass
+      summary: "Removed the PRIZE COUNTER title, rows, and ScrollContainer from the Hub; retained six prize cards and dormant purchase code; expanded the six-facility map into the released space; confirmed the entire Hub including 旅へ戻る fits one 360x800 screen without scrolling."
+      evidence:
+        - "C:/tmp/casino-phase-1-5-hub-360/hub-360x800.png"
+        - "C:/tmp/casino-phase-1-5-hub-720/hub-720x1280.png"
+
+  - id: T190
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Map every primary, in-play, result, retry, change-bet, keep, reroll, discard, and casino-exit CTA across the active six facilities to the user's action-first Japanese wording."
+    inputs:
+      - "Six active casino screen scripts"
+      - "Focused per-game tests and capture scripts"
+      - "User's Phase 2 wording map"
+    constraints:
+      - "Read-only."
+      - "Preserve WHERE and BOOST where they remain useful game terms."
+      - "Do not change rules, RTP, transactions, saves, routes, or node identities."
+      - "Flag dynamic labels and result-state variants that need separate assertions."
+    expected_output:
+      - "Exact string occurrence inventory by file and UI state"
+      - "Recommended allowed_files for T200"
+      - "Exact focused verification commands and acceptance assertions"
+    receipt:
+      result: done
+      summary: "Mapped every static and dynamic action CTA across the active six facilities; WHERE and BOOST remain Roulette terms, while unmapped actions use outcome-first Japanese that matches the actual handler behavior."
+      evidence:
+        - "scripts/app/dice_race_screen.gd"
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/app/dice_roulette_screen.gd"
+        - "scripts/app/treasure_21_screen.gd"
+        - "scripts/app/dice_poker_screen.gd"
+        - "scripts/app/vault_break_screen.gd"
+        - "Focused per-game tests and recorders"
+      decisions:
+        - "Race STOP -> ここで止める; NEW RACE -> 次のレースを選ぶ"
+        - "Poker DEAL HAND -> ゲーム開始; LOCK HAND -> この役で決定"
+        - "Roulette same-BET direct spin -> 同じベットでもう一度回す"
+        - "Vault NEW VAULT -> 次の金庫を選ぶ"
+        - "Tower SKIP/NEXT/PLAY -> スキップ/次へ/ゲームへ until Phase 3 replaces the tutorial surface"
+
+  - id: T200
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Localize the six facilities' primary and result CTAs into action-first Japanese while preserving established game-specific terms and behavior."
+    allowed_files:
+      - "scripts/app/dice_race_screen.gd"
+      - "scripts/app/dice_tower_screen.gd"
+      - "scripts/app/dice_roulette_screen.gd"
+      - "scripts/app/treasure_21_screen.gd"
+      - "scripts/app/dice_poker_screen.gd"
+      - "scripts/app/vault_break_screen.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/run_casino_expansion_ui_tests.gd"
+      - "tests/run_dice_roulette_tests.gd"
+      - "tests/run_treasure_21_tests.gd"
+      - "tests/run_dice_poker_tests.gd"
+      - "tests/run_vault_break_ui_tests.gd"
+      - "tests/record_dice_race.gd"
+    verify:
+      - "Focused Hub and six-facility test suites"
+      - "Real-render six-facility captures at 360x800 and 720x1280"
+      - "Race and Tower state-specific recorders"
+      - "Treasure product-state recorder"
+      - "No visible action CTA retains the prohibited English action terms"
+      - "Godot project validation and scoped diff check"
+    stop_if:
+      - "A proposed label changes gameplay meaning or is ambiguous."
+      - "Need game-rule, economy, transaction, or save changes."
+      - "Japanese text cannot fit without reducing current readable type or touch targets."
+      - "Need files outside allowed_files."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/dice_race_screen.gd"
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/app/dice_roulette_screen.gd"
+        - "scripts/app/treasure_21_screen.gd"
+        - "scripts/app/dice_poker_screen.gd"
+        - "scripts/app/vault_break_screen.gd"
+        - "tests/run_casino_ui_tests.gd"
+        - "tests/run_casino_expansion_ui_tests.gd"
+        - "tests/run_dice_roulette_tests.gd"
+        - "tests/run_treasure_21_tests.gd"
+        - "tests/run_dice_poker_tests.gd"
+        - "tests/run_vault_break_ui_tests.gd"
+        - "tests/record_dice_race.gd"
+      commands:
+        - cmd: "Godot --headless --check-only on six facility screen scripts"
+          status: "pass: 6 scripts parse"
+        - cmd: "Godot --headless focused six-facility suites"
+          status: "pass: 611 assertions, 0 failures"
+        - cmd: "Godot real-render tests/record_las_vegas_casino_expansion.gd at 360x800"
+          status: "pass: 53 assertions, 0 failures, actual_rendering=true"
+        - cmd: "Godot real-render tests/record_las_vegas_casino_expansion.gd at 720x1280"
+          status: "pass: 53 assertions, 0 failures, actual_rendering=true"
+      summary: "Localised primary, in-play, retry, result, tutorial, and casino-return actions across all six active facilities with action-first Japanese. Preserved WHERE/BOOST Roulette terms and all gameplay, settlement, save, route, and node contracts. Added Japanese outcome/status copy where English could block a first-time player."
+      evidence:
+        - "C:/tmp/casino-phase-2-cta-360"
+        - "C:/tmp/casino-phase-2-cta-720"
+
+  - id: T300
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Create a shared CasinoHowTo3Steps UI and provide concise per-facility step data for all six games."
+    allowed_files:
+      - "scripts/ui/casino_how_to_3_steps.gd"
+      - "scripts/app/dice_race_screen.gd"
+      - "scripts/app/dice_tower_screen.gd"
+      - "scripts/app/dice_roulette_screen.gd"
+      - "scripts/app/treasure_21_screen.gd"
+      - "scripts/app/dice_poker_screen.gd"
+      - "scripts/app/vault_break_screen.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/run_casino_expansion_ui_tests.gd"
+      - "tests/run_dice_roulette_tests.gd"
+      - "tests/run_treasure_21_tests.gd"
+      - "tests/run_dice_poker_tests.gd"
+      - "tests/run_vault_break_ui_tests.gd"
+    verify:
+      - "All six facilities instantiate the shared CasinoHowTo3Steps component with three concise Japanese steps"
+      - "Focused six-facility suites and existing gameplay contracts pass"
+      - "Real-render setup/help captures at 360x800 and 720x1280 keep text readable and controls inside bounds"
+      - "No new ScrollContainer or route/economy/save changes"
+      - "Godot project validation and scoped diff check"
+    stop_if:
+      - "The shared component cannot preserve each facility's existing visual identity."
+      - "Need game-rule, economy, transaction, or save changes."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/ui/casino_how_to_3_steps.gd"
+        - "scripts/app/dice_race_screen.gd"
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/app/dice_roulette_screen.gd"
+        - "scripts/app/treasure_21_screen.gd"
+        - "scripts/app/dice_poker_screen.gd"
+        - "scripts/app/vault_break_screen.gd"
+        - "tests/run_casino_ui_tests.gd"
+        - "tests/run_casino_expansion_ui_tests.gd"
+        - "tests/run_dice_roulette_tests.gd"
+        - "tests/run_treasure_21_tests.gd"
+        - "tests/run_dice_poker_tests.gd"
+        - "tests/run_vault_break_ui_tests.gd"
+      commands:
+        - cmd: "Godot --headless --editor --quit --debug --ignore-error-breaks"
+          status: "pass: exit 0; existing unrelated warnings only"
+        - cmd: "Godot --headless focused six-facility suites"
+          status: "pass: 687 assertions, 0 failures"
+        - cmd: "Godot real-render tests/record_las_vegas_casino_expansion.gd at 360x800"
+          status: "pass: 53 assertions, 0 failures, actual_rendering=true"
+        - cmd: "Godot real-render tests/record_las_vegas_casino_expansion.gd at 720x1280"
+          status: "pass: 53 assertions, 0 failures, actual_rendering=true"
+        - cmd: "git diff --check"
+          status: "pass: no whitespace errors"
+      summary: "Added a typed CasinoHowTo3Steps shared panel with exact three Japanese headings and concise facility-specific action/copy rows. All six setup surfaces now show the same first-play mental model; focused tests assert panel metadata, headings, and copy while preserving gameplay contracts."
+      evidence:
+        - "C:/tmp/casino-phase-3-howto-gl-360"
+        - "C:/tmp/casino-phase-3-howto-gl-720"
+
+  - id: T500
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Fit the DICE TOWER setup surface back inside the 360x800 / 1560-design recorder after the shared three-step panel was added, without shrinking readable CTA type or touch targets."
+    allowed_files:
+      - "scripts/app/dice_tower_screen.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/record_dice_tower.gd"
+    verify:
+      - "DICE TOWER setup, active, bust, and success recorder controls remain inside bounds"
+      - "Focused Casino UI suite and shared how-to assertions pass"
+      - "No gameplay, economy, save, route, or node-identity changes"
+      - "Godot project validation and scoped diff check"
+    stop_if:
+      - "Readable font or 96-design-unit touch targets must be reduced"
+      - "Need files outside allowed_files"
+      - "Any game rule, settlement, save, or route behavior would change"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/dice_tower_screen.gd"
+      commands:
+        - cmd: "Godot real-render tests/record_dice_tower.gd at 360x800 and 360x780"
+          status: "pass: setup, active, bust, and success captures; 0 failures"
+        - cmd: "Godot --headless --editor --path . --quit"
+          status: "pass: exit 0; existing ObjectDB/resource warnings only"
+        - cmd: "Godot --headless focused Casino UI suite"
+          status: "pass: 204 assertions, 0 failures"
+        - cmd: "git diff --check on owned files"
+          status: "pass: no whitespace errors; CRLF normalization warnings only"
+      summary: "Recovered DICE TOWER setup bounds after adding CasinoHowTo3Steps by tightening decorative spacing, rule-row height, frame padding, and tower art height. Japanese font sizes and touch targets remain unchanged; gameplay, settlement, save, route, and node identity are untouched."
+      evidence:
+        - "C:/tmp/tower-t500-after5/setup-360x800.png"
+        - "C:/tmp/tower-t500-after5/setup-360x780.png"
+
+  - id: T400
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "Run first-time-equivalent six-facility QA near 300 CHIP and record whether each game remains playable after reading help once."
+    inputs:
+      - "User's eight first-time QA criteria"
+      - "Phase 2 and Phase 3 receipts"
+    constraints:
+      - "No implementation unless a concrete defect is moved into a bounded Worker task."
+      - "Use deterministic fixtures and real-render evidence."
+    expected_output:
+      - "Per-facility pass/fail matrix"
+      - "Defects with exact evidence"
+      - "Final verification totals"
+    receipt:
+      result: done
+      commands:
+        - cmd: "Godot --headless focused Casino UI suite"
+          status: "pass: 204 assertions, 0 failures"
+        - cmd: "Godot --headless focused Casino expansion UI suite (250 CHIP fixture)"
+          status: "pass: 168 assertions, 0 failures"
+        - cmd: "Godot --headless Dice Roulette suite"
+          status: "pass: 87 assertions, 0 failures"
+        - cmd: "Godot --headless TREASURE 21 suite"
+          status: "pass: 98 assertions, 0 failures"
+        - cmd: "Godot --headless DICE POKER suite"
+          status: "pass: 62 assertions, 0 failures"
+        - cmd: "Godot --headless Vault Break suite"
+          status: "pass: 68 assertions, 0 failures"
+        - cmd: "Godot real-render DICE RACE recorder at 360x800 (setup, rolling, stopped, win)"
+          status: "pass: 4 captures, layout_fits=true"
+        - cmd: "Godot real-render DICE TOWER recorder at 360x800 and 360x780"
+          status: "pass: setup, active, bust, success; 0 layout failures"
+        - cmd: "Godot real-render Casino expansion recorder at 360x800"
+          status: "pass: 53 assertions, 0 failures, actual_rendering=true"
+        - cmd: "Godot real-render Casino expansion recorder at 720x1280"
+          status: "pass: 53 assertions, 0 failures, actual_rendering=true"
+        - cmd: "Godot real-render TREASURE 21 product recorder at 360x800 and 720x1280"
+          status: "pass: 81 assertions, 0 failures per viewport"
+        - cmd: "Godot --headless --debug --ignore-error-breaks --path . --editor --quit"
+          status: "pass: exit 0; existing unrelated warnings only"
+        - cmd: "git diff --check"
+          status: "pass: exit 0; CRLF normalization warnings only"
+      summary: "初見プレイヤー判定は6施設すべて8/8 pass。ゲーム開始、次の操作、考えること、勝敗理由、BET/受け取り/収支、再プレイ、カジノ帰還を、共通3ステップ・日本語CTA・結果カード・実描画で確認した。英語は施設名とBET/CHIP、WHERE/BOOST、BUSTなど既存ゲーム用語に限定し、操作を妨げる英語は残っていない。250 CHIPの決定的fixtureはユーザー指定の約300 CHIP相当として使用した。"
+      matrix:
+        - "DICE RACE: 8/8 pass — レーサー選択、レース開始、ここで止める、結果/収支、次のレース、カジノへ戻る"
+        - "DICE TOWER: 8/8 pass — BET、ゲーム開始、サイコロを振る/受け取る、BUST/成功結果、再プレイ、カジノへ戻る"
+        - "DICE ROULETTE: 8/8 pass — チップ/エリア選択、回す、的中確認、受け取り/収支、再スピン/ベット変更、カジノへ戻る"
+        - "TREASURE 21: 8/8 pass — BET、ゲーム開始、サイコロを振る/受け取る、21超過/到達理由、再プレイ、カジノへ戻る"
+        - "DICE POKER: 8/8 pass — BET、ゲーム開始、キープ/振り直す/役確定、役/受け取り/収支、再プレイ、カジノへ戻る"
+        - "VAULT BREAK: 8/8 pass — BET/金庫選択、ゲーム開始、サイコロ/ロック/捨てる、開錠成否/受け取り/収支、次の金庫、カジノへ戻る"
+      evidence:
+        - "C:/Dev/Projects/dice-slot-trip-main-verify/.qa-phase4-expansion-360/hub-360x800.png"
+        - "C:/Dev/Projects/dice-slot-trip-main-verify/.qa-phase4-expansion-360/roulette-setup-360x800.png"
+        - "C:/Dev/Projects/dice-slot-trip-main-verify/.qa-phase4-expansion-360/treasure-setup-360x800.png"
+        - "C:/Dev/Projects/dice-slot-trip-main-verify/.qa-phase4-expansion-360/poker-setup-360x800.png"
+        - "C:/Dev/Projects/dice-slot-trip-main-verify/.qa-phase4-expansion-360/vault-setup-360x800.png"
+        - "C:/Dev/Projects/dice-slot-trip-main-verify/.qa-phase4-race/win-360x800.png"
+        - "C:/tmp/casino-phase-4-qa-tower-fixed/setup-360x800.png"
+        - "C:/tmp/casino-phase-4-qa-tower-fixed/bust-floor8-360x800.png"
+        - "C:/tmp/casino-phase-4-qa-tower-fixed/success-floor10-360x800.png"
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit whether Phase 1.5 through Phase 4 satisfy the first-time Japanese player outcome."
+    inputs:
+      - "All completed receipts"
+      - "Real-render evidence"
+      - "Current scoped diff"
+    constraints:
+      - "Read-only."
+      - "Reject completion while any required Worker or QA task remains queued, active, or lacks evidence."
+    expected_output:
+      - "complete | not_complete"
+      - "Evidence mapped to the user's eight QA criteria"
+      - "Missing evidence and next task"
+    receipt:
+      result: done
+      decision: "complete"
+      summary: "Phase 1.5 through Phase 4 satisfy the Japanese first-time player outcome for the active six facilities. The Hub is non-scrolling at 360x800 with PRIZE COUNTER display dormant, action CTAs are outcome-first Japanese, all six setup surfaces share CasinoHowTo3Steps, and the eight first-time criteria pass for every facility."
+      evidence:
+        - "T150/T200/T300/T500/T400 receipts in this state file"
+        - "C:/tmp/casino-phase-1-5-hub-360/hub-360x800.png"
+        - "C:/tmp/casino-phase-3-howto-gl-360"
+        - "C:/tmp/tower-t500-after5/setup-360x800.png"
+        - "C:/Dev/Projects/dice-slot-trip-main-verify/.qa-phase4-expansion-360"
+        - "C:/Dev/Projects/dice-slot-trip-main-verify/.qa-phase4-race"
+      criteria:
+        - "1 game start method is clear: pass for all six"
+        - "2 next action is clear: pass for all six"
+        - "3 game decision objective is clear: pass for all six"
+        - "4 win/loss reason is clear: pass for all six"
+        - "5 BET / return / net are understandable: pass for all six"
+        - "6 replay path is clear: pass for all six"
+        - "7 casino return path is clear: pass for all six"
+        - "8 no English causes an operation block: pass; retained English is branding/game terminology"
+      next_task: null
+
+checks:
+  dirty_fingerprint: "Pre-existing dirty worktree with unrelated APK/import/audio/export and earlier casino beginner-UI changes; preserve all unrelated edits."
+  last_verification:
+    result: pass
+    task: T999
+    commands:
+      - "Godot focused six-facility suites: 687 assertions, 0 failures"
+      - "Real-render expansion 360x800/720x1280: 53 assertions each, 0 failures"
+      - "DICE TOWER recorder: 0 layout failures"
+      - "Godot editor validation: exit 0"
+      - "git diff --check: exit 0"

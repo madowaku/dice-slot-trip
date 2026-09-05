@@ -7,6 +7,7 @@ const HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const RACE_SCENE: PackedScene = preload("res://scenes/casino/DiceRace.tscn")
 const TOWER_SCENE: PackedScene = preload("res://scenes/casino/DiceTower.tscn")
 const CAIRO_SCENE: PackedScene = preload("res://scenes/casino/CairoCasinoPlayScreen.tscn")
+const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 
 var failures := 0
 var assertions := 0
@@ -20,6 +21,19 @@ func _expect(condition: bool, label: String) -> void:
 		return
 	failures += 1
 	push_error("FAIL: %s" % label)
+
+func _assert_how_to(screen: Node, id: String, actions: Array[String]) -> void:
+	var panel := screen.find_child("CasinoHowTo3Steps", true, false) as PanelContainer
+	_expect(panel != null, "%s exposes the shared CasinoHowTo3Steps panel" % id)
+	if panel == null:
+		return
+	_expect(str(panel.get_meta("facility_id", "")) == id, "%s shared how-to metadata identifies the facility" % id)
+	var headings: Array[String] = ["① 最初に何をする？", "② プレイ中に何をする？", "③ どうなれば勝ち？"]
+	for index: int in range(3):
+		var heading := panel.find_child("Step%dHeading" % (index + 1), true, false) as Label
+		var detail := panel.find_child("Step%dDetail" % (index + 1), true, false) as Label
+		_expect(heading != null and heading.text == headings[index], "%s keeps shared step heading %d" % [id, index + 1])
+		_expect(detail != null and index < actions.size() and actions[index] in detail.text and detail.text.length() <= 48, "%s keeps concise step copy %d" % [id, index + 1])
 
 func _run() -> void:
 	var bgm := root.get_node("BgmManager")
@@ -36,19 +50,25 @@ func _run() -> void:
 	_expect(hub is CasinoHubScreen, "Casino Hub scene instantiates its screen script")
 	_expect(bgm.current_track() == &"lasvegas_main", "Casino Hub starts the Las Vegas main-map BGM")
 	_expect(hub.chip_label != null and "100" in hub.chip_label.text, "Casino Hub shows persistent chip balance")
-	_expect(hub.card_data.size() == 6, "Prize Counter loads six initial racer cards")
+	_expect(hub.card_data.size() == 6, "dormant prize-card data still loads for a future dedicated counter")
+	_expect(hub.prize_list == null and hub.find_children("*", "ScrollContainer", true, false).is_empty(), "Casino Hub omits the Prize Counter and all scrolling UI")
+	_expect(hub.find_children("*", "Button", true, false).all(func(button: Button) -> bool: return "CHIP" not in button.text or button == hub.chip_label), "Casino Hub does not expose dormant prize purchase rows")
 	var hub_subtitles: Dictionary = {}
 	for definition: Dictionary in hub.facility_definitions:
 		var facility_id := str(definition.get("id", ""))
 		var facility_button := hub.facility_buttons.get(facility_id) as Button
 		var subtitle := str(definition.get("subtitle", ""))
+		var button_label := str(definition.get("button_label", ""))
 		hub_subtitles[subtitle] = true
-		_expect(facility_button != null and subtitle in facility_button.text and "PLAY" in facility_button.text, "%s exposes its emotional role permanently at the Hub decision point" % facility_id)
+		_expect(facility_button != null and button_label in facility_button.text and "遊ぶ" in facility_button.text and subtitle in facility_button.tooltip_text, "%s exposes a concise Japanese identity, play action, and detailed role" % facility_id)
+		_expect(facility_button != null and facility_button.get_theme_font_size("font_size") == UiTokensScript.FONT_CAPTION and facility_button.custom_minimum_size.y >= UiTokensScript.BUTTON_HEIGHT, "%s uses the shared facility CTA type and height tokens" % facility_id)
 	_expect(hub_subtitles.size() == 6, "all six Hub emotional roles are distinct")
 	var prize_names: Array[String] = []
 	for card: Dictionary in hub.card_data:
 		prize_names.append(str(card.get("name", "")))
-	_expect("ウサギ" in prize_names and "ワニ" not in prize_names, "Prize Counter exposes rabbit and retires crocodile")
+	_expect("ウサギ" in prize_names and "ワニ" not in prize_names, "dormant prize-card data retains rabbit and retires crocodile")
+	var hub_back := hub.find_child("BackToTripButton", true, false) as Button
+	_expect(hub_back != null and hub_back.text == "旅へ戻る" and hub_back.get_global_rect().end.y <= hub.hub_root.get_global_rect().end.y, "Casino Hub keeps the large trip-return action on-screen")
 	hub.call("_open_dice_race")
 	await process_frame
 	_expect(bgm.current_track() == &"dice_race", "opening Dice Race from Casino Hub switches to its race BGM")
@@ -69,7 +89,7 @@ func _run() -> void:
 	_expect(hub.roulette_host.visible and hub.roulette_host.get_child_count() == 1, "opening DICE ROULETTE shows its dedicated host")
 	var roulette := hub.roulette_host.get_child(0) as DiceRouletteScreen
 	_expect(roulette != null and "CASINO CHIP" in roulette.chip_label.text, "DICE ROULETTE uses the shared CASINO CHIP balance heading")
-	_expect(roulette != null and roulette.new_bet_button.text == "CHANGE BET" and roulette.back_button.text == "カジノへ戻る" and roulette.cashout_button.text == "カジノへ戻る", "DICE ROULETTE uses the shared casino-return label without the legacy hall wording")
+	_expect(roulette != null and roulette.new_bet_button.text == "ベットを変える" and roulette.back_button.text == "カジノへ戻る" and roulette.cashout_button.text == "カジノへ戻る", "DICE ROULETTE uses localized action labels")
 	_expect(bgm.current_track() == &"dice_roulette", "opening DICE ROULETTE switches to the roulette BGM")
 	hub.call("_close_dice_roulette")
 	await process_frame
@@ -81,7 +101,9 @@ func _run() -> void:
 	root.add_child(race)
 	await process_frame
 	_expect(race is DiceRaceScreen, "Dice Race scene instantiates its screen script")
-	_expect("CASINO CHIP" in race.chip_label.text and (race.find_child("CasinoBackButton", true, false) as Button).text == "カジノへ戻る", "DICE RACE uses the shared balance heading and casino-return label")
+	var race_back := race.find_child("CasinoBackButton", true, false) as Button
+	_expect("CASINO CHIP" in race.chip_label.text and race_back.text == "カジノへ戻る", "DICE RACE uses the shared balance heading and casino-return label")
+	_expect(race_back.get_theme_font_size("font_size") >= UiTokensScript.FONT_CAPTION and race_back.custom_minimum_size.y >= UiTokensScript.TOUCH_MIN and race_back.has_theme_stylebox_override("focus"), "shared casino-return button uses caption, touch, and focus tokens")
 	_expect(bgm.current_track() == &"dice_race", "Dice Race starts its dedicated race BGM")
 	var ui_sfx := root.get_node_or_null("UiSfxManager")
 	_expect(ui_sfx != null and ui_sfx.call("current_stage_pack") == &"arcade", "Dice Race selects the Las Vegas arcade SFX pack")
@@ -147,6 +169,7 @@ func _run() -> void:
 	var fox_caption := (race.direction_plates.get("fox", {}) as Dictionary).caption as Label
 	_expect(fox_caption.text == "上" and "キツネ" not in fox_caption.text, "direction plates let racer art replace duplicate small names")
 	_expect(race.setup_view.visible and not race.race_view.visible, "Dice Race opens in the pre-race betting view")
+	_assert_how_to(race, "dice_race", ["レーサーを選ぶ", "サイコロを振る", "ゴールを見届ける"])
 	var race_start_balance: int = CasinoBankScript.balance()
 	race.call("_start_race")
 	await process_frame
@@ -245,8 +268,8 @@ func _run() -> void:
 	await create_timer(0.72).timeout
 	var win_card := race.race_fx_layer.find_child("WinCard", true, false) as Control
 	_expect(win_card != null, "the reward card arrives after the GOAL movement and short dramatic hold")
-	_expect("WIN" in race.status_label.text and "最終1位" in race.status_label.text and "RETURN 36" in race.status_label.text and "NET +16" in race.status_label.text, "Race result states outcome, rank, stake-inclusive return, and net change")
-	_expect(race.roll_button.text == "NEW RACE", "Race setup-return CTA is named NEW RACE rather than implying immediate replay")
+	_expect("WIN" in race.status_label.text and "最終1位" in race.status_label.text and "受け取り 36" in race.status_label.text and "収支 +16" in race.status_label.text, "Race result states outcome, rank, stake-inclusive return, and net change")
+	_expect(race.roll_button.text == "次のレースを選ぶ", "Race setup-return CTA names next race selection")
 	_expect(race.race_fx_layer.find_child("ConfettiPiece", true, false) != null, "victory adds restrained gold confetti")
 	_expect(bet_marker.z_index == 18, "the GOAL racer moves to the course foreground")
 	_expect(win_card != null and not win_card.get_global_rect().intersects(bet_marker.get_global_rect()), "the reward card no longer covers the GOAL racer")
@@ -297,10 +320,12 @@ func _run() -> void:
 	root.add_child(tower)
 	await process_frame
 	_expect(tower is DiceTowerScreen and tower.back_button.text == "カジノへ戻る", "Dice Tower scene instantiates with the shared casino-return label")
+	_expect(tower.back_button.get_theme_font_size("font_size") >= UiTokensScript.FONT_CAPTION and tower.back_button.custom_minimum_size.y >= UiTokensScript.TOUCH_MIN and tower.back_button.has_theme_stylebox_override("focus"), "Dice Tower uses the large shared casino-return action")
 	_expect("CASINO CHIP" in tower.chip_label.text, "DICE TOWER uses the shared CASINO CHIP balance heading")
 	_expect(tower.tutorial_overlay.visible, "Dice Tower opens with its three-step tutorial")
 	tower.call("_close_tutorial")
 	_expect(tower.setup_view.visible and not tower.active_view.visible, "tutorial dismissal reveals BET selection")
+	_assert_how_to(tower, "dice_tower", ["ベットを決める", "サイコロを振る", "引き際を決める"])
 	_expect(tower.bet_buttons.size() == 3, "Dice Tower offers the three authored bets")
 	_expect(not tower.start_button.disabled and tower.selected_bet == 20, "twenty CHIP is the default affordable bet")
 	_expect(tower.cashout_button.get_index() < tower.roll_button.get_index(), "CASH OUT stays on the left of ROLL")
@@ -336,9 +361,9 @@ func _run() -> void:
 	tower.call("_on_roll_pressed")
 	await create_timer(1.18).timeout
 	_expect(bool(tower.game.busted) and int(tower.game.payout) == 0 and CasinoBankScript.balance() == tower_start_balance - 20, "rolled one loses only the committed wager")
-	_expect(tower.roll_button.text == "CHANGE BET" and tower.cashout_button.disabled, "BUST setup-return action is named CHANGE BET and closes CASH OUT")
+	_expect(tower.roll_button.text == "ベットを変える" and tower.cashout_button.disabled, "BUST setup-return action changes bet and closes CASH OUT")
 	var tower_retry := tower.result_overlay.find_child("RetryButton", true, false) as Button
-	_expect(tower_retry != null and "PLAY AGAIN" in tower_retry.text and "RETURN 0" in tower.result_reward_label.text and "NET  -20" in tower.result_bet_label.text, "BUST overlay distinguishes immediate replay, return, and net loss")
+	_expect(tower_retry != null and "もう一度遊ぶ" in tower_retry.text and "受け取り 0" in tower.result_reward_label.text and "収支  -20" in tower.result_bet_label.text, "BUST overlay distinguishes immediate replay, return, and net loss")
 	var tower_result_dim := tower.result_overlay.find_child("ResultDim", true, false) as ColorRect
 	_expect(tower_result_dim != null and tower_result_dim.mouse_filter == Control.MOUSE_FILTER_STOP and tower_result_dim.color.a >= 0.64, "TOWER result overlay isolates the result card from the active controls")
 	var tower_balance_after_bust: int = CasinoBankScript.balance()
@@ -356,7 +381,7 @@ func _run() -> void:
 	await process_frame
 	_expect(bool(tower.game.cashed_out) and int(tower.game.payout) == 22 and CasinoBankScript.balance() == tower_start_balance - 18, "successful CASH OUT pays twenty-two chips after the earlier lost run")
 	var tower_result_back := tower.result_overlay.find_child("ResultCasinoBackButton", true, false) as Button
-	_expect(tower.result_overlay.visible and not tower.back_button.visible and tower_result_back != null and tower_result_back.text == "カジノへ戻る" and "CASH OUT" in tower.result_title_label.text and "FLOOR 1" in tower.result_floor_label.text and "RETURN" in tower.result_reward_label.text and "NET  +2" in tower.result_bet_label.text, "successful CASH OUT uses one shared casino-return action with floor, return, net, and reason")
+	_expect(tower.result_overlay.visible and not tower.back_button.visible and tower_result_back != null and tower_result_back.text == "カジノへ戻る" and "受け取り完了" in tower.result_title_label.text and "FLOOR 1" in tower.result_floor_label.text and "受け取り" in tower.result_reward_label.text and "収支  +2" in tower.result_bet_label.text, "successful cash out uses one shared casino-return action with floor, return, net, and reason")
 	var balance_before_play_again: int = CasinoBankScript.balance()
 	tower_retry = tower.result_overlay.find_child("RetryButton", true, false) as Button
 	tower_retry.pressed.emit()

@@ -6,6 +6,7 @@ signal back_requested
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
+const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const OrientationScript = preload("res://scripts/game/dice_race_orientation.gd")
 const RaceScript = preload("res://scripts/game/dice_race_model.gd")
 const TrackViewScript = preload("res://scripts/app/dice_race_track_view.gd")
@@ -181,6 +182,7 @@ func _build_ui() -> void:
 	setup_view.add_theme_constant_override("separation", 8)
 	root.add_child(setup_view)
 	_build_course_overview(setup_view)
+	CasinoHowTo3StepsScript.build(setup_view, FACILITY_ID, _how_to_steps())
 	_build_bet_panel(setup_view)
 
 	race_view = VBoxContainer.new()
@@ -193,7 +195,7 @@ func _build_ui() -> void:
 	_build_spectator_strip(race_view)
 	_build_dice_console(race_view)
 
-	roll_button = _button("ROLL", true)
+	roll_button = _button("サイコロを振る", true)
 	roll_button.name = "RollStopButton"
 	roll_button.custom_minimum_size.y = 92
 	roll_button.add_theme_font_size_override("font_size", 32)
@@ -247,7 +249,7 @@ func _build_status_row(root: VBoxContainer) -> void:
 	bet_label = bet_box.label
 	bet_portrait = bet_box.portrait
 	row.add_child(bet_box.panel)
-	var roll_box := _hud_box("ROLL")
+	var roll_box := _hud_box("サイコロ")
 	roll_count_label = roll_box.label
 	row.add_child(roll_box.panel)
 	win_label = _label("", 1, Color.TRANSPARENT)
@@ -281,6 +283,13 @@ func _hud_box(caption: String, portrait_racer: String = "") -> Dictionary:
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	value_row.add_child(value)
 	return {"panel": panel, "label": value, "portrait": portrait}
+
+func _how_to_steps() -> Array[Dictionary]:
+	return [
+		{"action": "レーサーを選ぶ", "copy": "進ませたい動物とベットを選ぼう"},
+		{"action": "サイコロを振る", "copy": "出た目でレーサーが進む"},
+		{"action": "ゴールを見届ける", "copy": "選んだレーサーが上位なら配当"},
+	]
 
 func _build_course_overview(root: VBoxContainer) -> void:
 	var overview := PanelContainer.new()
@@ -323,11 +332,11 @@ func _build_course_overview(root: VBoxContainer) -> void:
 		portrait.custom_minimum_size = Vector2(100, 100)
 		portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		roster.add_child(portrait)
-	var route := _label("24 GOAL · 狐火 -2 · 急流 +3 · 丸太 STOP", 20, Color("#fff2d2"))
+	var route := _label("24 ゴール · 狐火 -2 · 急流 +3 · 丸太でストップ", 20, Color("#fff2d2"))
 	route.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	route.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(route)
-	var note := _label("推しを選んで、欲しい目を狙え\nSTOP後は見える惰性回転で確定", 19, Color("#f5cf78"))
+	var note := _label("推しを選んで、欲しい目を狙え\n「ここで止める」の後は惰性回転で確定", 19, Color("#f5cf78"))
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(note)
 
@@ -574,7 +583,7 @@ func _build_bet_panel(root: VBoxContainer) -> void:
 		button.pressed.connect(_select_bet.bind(amount))
 		amount_row.add_child(button)
 		amount_buttons[amount] = button
-	start_button = _button("RACE START", true)
+	start_button = _button("レース開始", true)
 	start_button.name = "RaceStartButton"
 	start_button.custom_minimum_size.y = 64
 	start_button.add_theme_font_size_override("font_size", 22)
@@ -718,13 +727,13 @@ func _on_roll_stop() -> void:
 		_set_spectator_focus(false)
 		spinning = true
 		_play_ui_sfx(&"start", false)
-		roll_button.text = "STOP!"
+		roll_button.text = "ここで止める"
 		_apply_roll_button_style(true)
 		status_label.text = "%s面  %dを狙え！" % [RACER_LABELS[selected_racer], int(current_assignments.get(selected_racer, 0))]
 		return
 	spinning = false
 	_play_ui_sfx(&"stop", false)
-	roll_button.text = "ROLL"
+	roll_button.text = "サイコロを振る"
 	roll_button.disabled = true
 	_apply_roll_button_style(false)
 	var start_index: int = orientation_index
@@ -742,7 +751,7 @@ func _on_roll_stop() -> void:
 	race["pending_rolls"] = [pending_roll.duplicate(true)]
 	var update_receipt: Dictionary = CasinoBankScript.update_game(FACILITY_ID, race, game_id)
 	if not bool(update_receipt.get("ok", false)):
-		status_label.text = "保存できませんでした。もう一度STOPしてください。"
+		status_label.text = "保存できませんでした。もう一度「ここで止める」を押してください。"
 		roll_button.disabled = false
 		return
 	await _play_persisted_roll(pending_roll)
@@ -752,7 +761,7 @@ func _play_persisted_roll(pending: Dictionary) -> void:
 		return
 	var start_index: int = posmod(int(pending.get("start_index", orientation_index)), orientations.size())
 	var coast_steps: int = clampi(int(pending.get("coast_steps", 0)), 0, MAX_COAST_STEPS)
-	status_label.text = "STOP！ 惰性回転を見届けよう"
+	status_label.text = "ここで止める！ 惰性回転を見届けよう"
 	for step: int in range(1, coast_steps + 1):
 		status_label.text = "惰性回転  %d / %d" % [step, coast_steps]
 		orientation_index = (start_index + step) % orientations.size()
@@ -835,10 +844,10 @@ func _finish_race() -> void:
 	_play_ui_sfx(&"complete" if winner == selected_racer else &"error", true)
 	var net: int = payout - selected_bet
 	var outcome: String = "WIN" if net > 0 else ("EVEN" if net == 0 else "LOSS")
-	status_label.text = "%s · 最終%d位 · RETURN %d CHIP（BET込み） · NET %+d CHIP" % [outcome, final_rank, payout, net]
+	status_label.text = "%s · 最終%d位 · 受け取り %d CHIP（BET込み） · 収支 %+d CHIP" % [outcome, final_rank, payout, net]
 	if winner == selected_racer:
 		_play_win_fx(RACER_ART_PATHS.get(winner, ""), RACER_LABELS.get(winner, winner), payout)
-	roll_button.text = "NEW RACE"
+	roll_button.text = "次のレースを選ぶ"
 	_apply_roll_button_style(false)
 	roll_button.disabled = false
 	if roll_button.pressed.is_connected(_on_roll_stop):
@@ -852,7 +861,7 @@ func _restart_after_result() -> void:
 	_play_ui_sfx(&"retry", false)
 	if not roll_button.pressed.is_connected(_on_roll_stop):
 		roll_button.pressed.connect(_on_roll_stop)
-	roll_button.text = "ROLL"
+	roll_button.text = "サイコロを振る"
 	_apply_roll_button_style(false)
 	_show_bet_select()
 
@@ -997,7 +1006,7 @@ func _play_win_fx(winner_art: Variant, winner_label: Variant, payout: int) -> vo
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	art.custom_minimum_size = Vector2(40, 40)
 	row.add_child(art)
-	row.add_child(_label("%s WIN!  RETURN %d · NET %+d" % [str(winner_label), payout, payout - selected_bet], 20, GOLD_LIGHT))
+	row.add_child(_label("%s 勝ち！  受け取り %d · 収支 %+d" % [str(winner_label), payout, payout - selected_bet], 20, GOLD_LIGHT))
 	card.reset_size()
 	card.position = Vector2(
 		(race_fx_layer.size.x - card.size.x) * 0.5,
@@ -1032,7 +1041,7 @@ func _movement_summary() -> String:
 		"rapid": extra = "　急流 +3"
 		"log": extra = "　丸太 4+"
 	if bool(move.get("blocked_by_log", false)):
-		extra = "　丸太でSTOP"
+		extra = "　丸太でストップ"
 	return "%s：%d → %dマス%s" % [RACER_LABELS[selected_racer], rolled, effective, extra]
 
 
@@ -1043,7 +1052,7 @@ func _show_selected_movement_event() -> void:
 	match gimmick:
 		"rapid": callout = "急流！ 一気に加速！"
 		"foxfire": callout = "狐火！ -2マス"
-		"log": callout = "丸太でSTOP！" if bool(move.get("blocked_by_log", false)) else "丸太突破！"
+		"log": callout = "丸太でストップ！" if bool(move.get("blocked_by_log", false)) else "丸太突破！"
 	if callout.is_empty():
 		return
 	status_label.text = callout
