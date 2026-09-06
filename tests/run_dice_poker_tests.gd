@@ -115,6 +115,25 @@ func _test_model_rules() -> void:
 	_expect(bool(locked.get("finished", false)) and int(locked.get("payout", 0)) == 4, "LOCK HAND finalizes ONE PAIR without spending reroll")
 	_expect(DicePokerScript.finalize(locked) == locked, "finalization is idempotent")
 
+	# Feel fixtures A/B/D keep the presentation contract honest without changing
+	# the pure five-dice rules: only unkept indices may be supplied to a reroll.
+	var scenario_a: Dictionary = DicePokerScript.apply_initial(DicePokerScript.new_game(20), [3, 3, 2, 5, 6])
+	scenario_a = DicePokerScript.set_keep(scenario_a, 0, true)
+	scenario_a = DicePokerScript.set_keep(scenario_a, 1, true)
+	_expect(DicePokerScript.reroll_indices(scenario_a) == [2, 3, 4], "Scenario A rerolls only the three open dice")
+	var scenario_a_resolved: Dictionary = DicePokerScript.apply_reroll(scenario_a, [3, 5, 5], [2, 3, 4])
+	_expect((scenario_a_resolved["dice"] as Array) == [3, 3, 3, 5, 5], "Scenario A preserves two held 3s while the open dice land")
+
+	var scenario_b: Dictionary = DicePokerScript.apply_initial(DicePokerScript.new_game(20), [3, 3, 2, 5, 6])
+	scenario_b = DicePokerScript.toggle_keep(scenario_b, 0)
+	scenario_b = DicePokerScript.toggle_keep(scenario_b, 0)
+	scenario_b = DicePokerScript.toggle_keep(scenario_b, 0)
+	_expect(DicePokerScript.is_kept(scenario_b, 0) and DicePokerScript.kept_count(scenario_b) == 1, "Scenario B unhold then rehold ends in HOLD")
+
+	var scenario_d: Dictionary = DicePokerScript.apply_initial(DicePokerScript.new_game(20), [4, 4, 4, 4, 2])
+	scenario_d = DicePokerScript.keep_all(scenario_d)
+	_expect(not DicePokerScript.can_reroll(scenario_d) and DicePokerScript.can_lock_hand(scenario_d), "Scenario D keeps the final decision available after intentional holds")
+
 func _test_scene_flow() -> void:
 	var scene_node: Node = DICE_POKER_SCENE.instantiate()
 	var scene: DicePokerScreen = scene_node as DicePokerScreen
@@ -132,28 +151,67 @@ func _test_scene_flow() -> void:
 	scene.selected_bet = 20
 	scene.queued_roll_batch = [[2, 2, 3, 4, 5], [6, 6, 6, 6, 6]]
 	scene.deal_button.pressed.emit()
+	_expect(scene.presentation_locked, "GAME START locks presentation immediately")
 	var active: Dictionary = CasinoBankScript.active_game("dice_poker")
 	var pending: Array = active.get("pending_rolls", []) as Array
 	_expect(not pending.is_empty() and int((pending[0] as Dictionary).get("values", [0])[0]) == 2, "DEAL pending values persist before animation")
 	_expect(CasinoBankScript.balance() == 980, "DEAL charges BET once")
-	await create_timer(0.58).timeout
+	await create_timer(1.30).timeout
 	_expect(scene.active_view.visible and scene.game["dice"] == [2, 2, 3, 4, 5], "DEAL resolves exact five faces")
+	_expect(not scene.presentation_locked, "initial roll unlocks input after presentation")
+	_expect(_trace_contains_in_order(scene.stage_trace, ["roll_start", "land_1", "land_2", "land_3", "land_4", "land_5", "roll_ready"]), "initial roll lands five dice in order")
+	var direct_tap: Button = scene.find_child("DieTap_5", true, false) as Button
+	_expect(direct_tap != null, "die card exposes a full-card HOLD target")
+	if direct_tap != null:
+		direct_tap.pressed.emit()
+		await process_frame
+		_expect(bool((scene.game.get("kept", []) as Array)[4]), "direct die-card tap toggles HOLD")
+		direct_tap.pressed.emit()
+		await process_frame
+		_expect(not bool((scene.game.get("kept", []) as Array)[4]), "direct die-card tap toggles HOLD off")
+		direct_tap.pressed.emit()
+		await process_frame
+		_expect(bool((scene.game.get("kept", []) as Array)[4]), "direct die-card tap supports intentional re-HOLD")
+		direct_tap.pressed.emit()
+		direct_tap.pressed.emit()
+		direct_tap.pressed.emit()
+		await process_frame
+		_expect(not bool((scene.game.get("kept", []) as Array)[4]), "rapid HOLD toggles leave the final OPEN state and do not desync the tween")
 	scene.keep_buttons[0].pressed.emit()
 	await process_frame
 	_expect(bool((scene.game.get("kept", []) as Array)[0]), "KEEP button updates persistent state")
 	scene.reroll_button.pressed.emit()
+	_expect(scene.presentation_locked, "REROLL locks presentation immediately")
+	_expect(scene.dice_presentation.state_name(0) == "LOCKED", "held die is physically locked at reroll start")
 	var pending_reroll: Dictionary = CasinoBankScript.active_game("dice_poker")
 	var pending_values: Array = pending_reroll.get("pending_rolls", []) as Array
 	_expect(not pending_values.is_empty() and (pending_values[0] as Dictionary).has("indices") and (pending_values[0] as Dictionary).has("full_values"), "REROLL persists full index/value mapping")
-	await create_timer(0.58).timeout
+	await create_timer(0.95).timeout
+	_expect(scene.presentation_locked, "normal reroll remains locked before its one-second presentation completes")
+	await create_timer(0.25).timeout
 	_expect(int(scene.game.get("rerolls_used", 0)) == 1 and int((scene.game.get("dice", []) as Array)[0]) == 2, "REROLL keeps die one and decrements remaining")
+	_expect(not scene.presentation_locked, "reroll unlocks input after presentation")
+	_expect(scene.stage_trace.has("intermediate_hand_5"), "normal reroll gives the intermediate hand a tiered pulse")
 	for index: int in range(1, 5):
 		scene.keep_buttons[index].pressed.emit()
 	await process_frame
 	_expect(scene.lock_button.visible and not scene.reroll_button.visible, "all kept state shows LOCK HAND primary action")
 	scene.lock_button.pressed.emit()
+	_expect(scene.presentation_locked, "final result locks while announcing")
 	await process_frame
 	_expect(scene.result_view.visible and int(scene.game.get("payout", 0)) == 34 and CasinoBankScript.balance() == 1014 and not scene.back_button.visible and scene.exit_button.text == "カジノへ戻る", "LOCK HAND settles FOUR once and Result exposes one shared casino-return action")
+	_expect(scene.exit_button.disabled and scene.again_button.disabled and scene.change_bet_button.disabled, "result CTAs stay locked during the staged reveal")
+	scene.exit_button.pressed.emit()
+	_expect(scene.presentation_locked and scene.view_state == "result", "return is guarded while result presentation is locked")
+	await create_timer(1.75).timeout
+	_expect(not scene.presentation_locked, "result unlocks after staged reveal")
+	var expected_trace: Array[String] = ["dice", "hand", "multiplier", "outcome", "metrics", "chip_count", "cta"]
+	_expect(_trace_contains_in_order(scene.stage_trace, expected_trace), "result stages include dice→hand→outcome→metrics→CHIP→CTA")
+	_expect(scene.stage_trace.has("outcome") and scene.stage_trace.has("metrics") and scene.stage_trace.has("chip_count"), "result exposes outcome, metrics, and CHIP stages")
+	_expect(scene.result_outcome_label.visible and scene.result_outcome_label.text == "WIN", "result announces WIN after the hand and multiplier")
+	_expect(scene.result_chip_delta_label.visible and scene.result_chip_delta_label.text == "+34 CHIP", "result announces the final CHIP delta")
+	_expect(scene.chip_label.text == "1,014", "CHIP count finishes on the settled balance after its visible count")
+	_expect(scene._hand_tier_for_rank(DicePokerScript.RANK_NO_HAND) == 0 and scene._hand_tier_for_rank(DicePokerScript.RANK_FIVE) == 5, "result feedback exposes restrained NO HAND through strongest tier five")
 	var settled_balance: int = CasinoBankScript.balance()
 	scene.lock_button.pressed.emit()
 	_expect(CasinoBankScript.balance() == settled_balance, "settlement replay is idempotent")
@@ -169,7 +227,7 @@ func _test_scene_flow() -> void:
 	first.selected_bet = 20
 	first.queued_roll_batch = [[1, 1, 1, 2, 3], [6, 5, 4, 3]]
 	first.deal_button.pressed.emit()
-	await create_timer(0.58).timeout
+	await create_timer(1.30).timeout
 	first.keep_buttons[0].pressed.emit()
 	first.reroll_button.pressed.emit()
 	var before_resume: Dictionary = CasinoBankScript.active_game("dice_poker")
@@ -181,7 +239,7 @@ func _test_scene_flow() -> void:
 	var resumed: DicePokerScreen = resumed_node as DicePokerScreen
 	root.add_child(resumed_node)
 	await process_frame
-	await create_timer(0.58).timeout
+	await create_timer(1.30).timeout
 	_expect(int(resumed.game.get("rerolls_used", 0)) == 1 and int((resumed.game.get("dice", []) as Array)[0]) == 1 and int((resumed.game.get("dice", []) as Array)[1]) == 6, "fresh screen resumes exact pending reroll values")
 	resumed.keep_buttons[1].pressed.emit()
 	resumed.keep_buttons[2].pressed.emit()
@@ -192,3 +250,26 @@ func _test_scene_flow() -> void:
 	_expect(not CasinoBankScript.has_active_game("dice_poker"), "resumed game settles and clears active transaction")
 	resumed.queue_free()
 	await process_frame
+
+	# Deterministic presentation fixtures: pair→three, high role, NO HAND, and
+	# four-held/one-reroll all retain held faces while targets resolve.
+	var fixtures: Array[Dictionary] = [
+		{"name": "C pair to three", "start": [3, 3, 2, 5, 6], "reroll": [3, 3, 3, 5, 6], "rank": DicePokerScript.RANK_THREE},
+		{"name": "E full house", "start": [3, 3, 2, 5, 6], "reroll": [3, 3, 2, 2, 2], "rank": DicePokerScript.RANK_FULL_HOUSE},
+		{"name": "F no hand", "start": [1, 2, 3, 4, 6], "reroll": [1, 2, 3, 4, 6], "rank": DicePokerScript.RANK_NO_HAND},
+		{"name": "G four held", "start": [4, 4, 4, 4, 2], "reroll": [6, 6, 6, 6, 5], "rank": DicePokerScript.RANK_FOUR},
+	]
+	for fixture: Dictionary in fixtures:
+		var state: Dictionary = DicePokerScript.apply_initial(DicePokerScript.new_game(20), fixture["start"] as Array)
+		for index: int in range(4 if fixture["name"] == "G four held" else 2):
+			state = DicePokerScript.toggle_keep(state, index)
+		var resolved: Dictionary = DicePokerScript.apply_reroll(state, fixture["reroll"] as Array)
+		_expect((resolved["dice"] as Array)[0] == (state["dice"] as Array)[0], "%s keeps held die" % fixture["name"])
+		_expect(str((DicePokerScript.evaluate(resolved["dice"] as Array))["rank"]) == str(fixture["rank"]), "%s resolves deterministic rank" % fixture["name"])
+
+func _trace_contains_in_order(trace: Array[String], expected: Array[String]) -> bool:
+	var cursor: int = 0
+	for item: String in trace:
+		if cursor < expected.size() and item == expected[cursor]:
+			cursor += 1
+	return cursor == expected.size()
