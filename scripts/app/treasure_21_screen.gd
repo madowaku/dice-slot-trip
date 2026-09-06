@@ -9,6 +9,7 @@ const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
 const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const Treasure21Script = preload("res://scripts/game/treasure_21_model.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
+const CasinoFeelFXScript = preload("res://scripts/ui/casino_feel_fx.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 const DISPLAY_FONT: Font = preload("res://assets/fonts/cinzel/Cinzel-Variable.ttf")
 const CASINO_BACKGROUND: Texture2D = preload("res://assets/casino/dice_roulette/ui/casino-table-bg-v1.png")
@@ -21,8 +22,8 @@ const FACILITY_ID := "treasure_21"
 const META_KEY := "treasure_21"
 const BET_AMOUNTS := [5, 10, 20, 50]
 const GOLDEN_NUMBERS := [18, 19, 20]
-const ROLL_SECONDS := 0.30
-const SETTLE_SECONDS := 0.14
+const ROLL_SECONDS := 0.65
+const SETTLE_SECONDS := 0.18
 
 const GOLD := Color("#d7a93c")
 const GOLD_LIGHT := Color("#ffe6a1")
@@ -88,6 +89,44 @@ var danger_preview: Array[Dictionary] = []
 var bet_buttons: Dictionary = {}
 var dice_presentation: DicePresentation3D
 var effect_layer: Control
+var feel_fx: CasinoFeelFX
+var presentation_locked := false
+var displayed_total := 0
+var settlement_balance_before := 0
+## Presentation-only trace used by QA and guarded async callbacks.
+var presentation_stage: StringName = &"idle"
+var presentation_trace: Array[Dictionary] = []
+var presentation_tweens: Array[Tween] = []
+var presentation_timers: Array[SceneTreeTimer] = []
+var exiting := false
+
+func _exit_tree() -> void:
+	exiting = true
+	for tween: Tween in presentation_tweens:
+		if is_instance_valid(tween):
+			tween.kill()
+	presentation_tweens.clear()
+	presentation_timers.clear()
+	presentation_locked = true
+	if is_instance_valid(feel_fx):
+		feel_fx.queue_free()
+
+func _set_presentation_stage(stage: StringName, data: Dictionary = {}) -> void:
+	if exiting:
+		return
+	presentation_stage = stage
+	var entry := {"stage": String(stage), "time_ms": Time.get_ticks_msec()}
+	for key: Variant in data.keys():
+		entry[str(key)] = data[key]
+	presentation_trace.append(entry)
+
+func _presentation_wait(seconds: float) -> bool:
+	if exiting or not is_inside_tree():
+		return false
+	var timer := get_tree().create_timer(seconds)
+	presentation_timers.append(timer)
+	await timer.timeout
+	return not exiting and is_inside_tree()
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -100,6 +139,10 @@ func _ready() -> void:
 			ui_sfx.call("set_stage", &"las_vegas")
 	rng.randomize()
 	_build_ui()
+	feel_fx = CasinoFeelFXScript.new()
+	feel_fx.name = "Treasure21FeelFX"
+	feel_fx.audio_enabled = not suppress_audio_for_tests
+	add_child(feel_fx)
 	resized.connect(_apply_responsive_layout)
 	call_deferred("_apply_responsive_layout")
 	_resume_or_show_setup()
@@ -556,6 +599,7 @@ func _resume_or_show_setup() -> void:
 	if not pending_roll.is_empty():
 		view_state = "rolling"
 		rolling = true
+		presentation_locked = true
 		setup_view.visible = false
 		active_view.visible = true
 		result_view.visible = false
@@ -597,18 +641,19 @@ func _resume_pending_roll() -> void:
 	await _animate_roll(int(pending_roll.get("value", 1)))
 	if not is_inside_tree():
 		return
-	_resolve_pending_roll(pending_roll)
+	await _resolve_pending_roll(pending_roll)
 
 func _select_bet(amount: int) -> void:
-	if amount not in BET_AMOUNTS or rolling:
+	if amount not in BET_AMOUNTS or rolling or presentation_locked:
 		return
 	selected_bet = amount
 	_save_meta_last_bet(amount)
+	if is_instance_valid(feel_fx): feel_fx.press_button(bet_buttons.get(amount) as Control, false)
 	_play_ui_sfx(&"select", false)
 	_refresh_bet_buttons()
 
 func _start_game() -> void:
-	if rolling or selected_bet not in BET_AMOUNTS:
+	if rolling or presentation_locked or selected_bet not in BET_AMOUNTS:
 		return
 	if CasinoBankScript.balance() < selected_bet:
 		status_label.text = "CHIPが足りない。"
@@ -633,21 +678,23 @@ func _start_game() -> void:
 	pending_roll = initial_pending.duplicate(true)
 	settled = false
 	rolling = true
+	presentation_locked = true
 	view_state = "rolling"
 	_save_meta_on_start(selected_bet)
 	setup_view.visible = false
 	active_view.visible = true
 	result_view.visible = false
 	_play_ui_sfx(&"start", false)
+	if is_instance_valid(feel_fx): feel_fx.press_button(start_button, true)
 	status_label.text = "GOLDENを決めて、最初の目を振る..."
 	_refresh_all()
 	await _animate_roll(initial)
 	if not is_inside_tree():
 		return
-	_resolve_pending_roll(pending_roll)
+	await _resolve_pending_roll(pending_roll)
 
 func _on_roll_pressed() -> void:
-	if rolling or game.is_empty() or not bool(game.get("active", false)) or bool(game.get("finished", false)):
+	if rolling or presentation_locked or game.is_empty() or not bool(game.get("active", false)) or bool(game.get("finished", false)):
 		return
 	var total := int(game.get("total", 0))
 	var roll := _next_roll_value()
@@ -661,38 +708,58 @@ func _on_roll_pressed() -> void:
 	# The queue is persisted before animation so a process death cannot reroll.
 	CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 	rolling = true
+	presentation_locked = true
 	view_state = "rolling"
 	status_label.text = "振っている途中…"
 	_refresh_all()
 	_play_ui_sfx(&"roll", false)
+	if is_instance_valid(feel_fx): feel_fx.press_button(roll_button, true)
 	await _animate_roll(roll)
 	if not is_inside_tree():
 		return
-	_resolve_pending_roll(pending_roll)
+	await _resolve_pending_roll(pending_roll)
 
 func _resolve_pending_roll(pending: Dictionary) -> void:
 	if pending.is_empty() or game.is_empty():
 		return
+	if exiting or not is_inside_tree():
+		return
+	var old_total := int(game.get("total", game.get("current_total", 0)))
 	var value := clampi(int(pending.get("value", 1)), 1, 6)
 	game = Treasure21Script.apply_roll(game, value)
+	_set_presentation_stage(&"total_confirmed", {"total": int(game.get("total", 0)), "value": value})
+	_set_presentation_stage(&"total_count", {"from": old_total, "to": int(game.get("total", 0)), "direction": "down" if int(game.get("total", 0)) > 21 else "up"})
+	if is_instance_valid(feel_fx): feel_fx.play_dice_land(int(game.get("total", 0)) > 21)
 	game["pending_rolls"] = []
 	pending_roll = {}
-	rolling = false
+	# Persist the confirmed face and cleared queue before any readable beat;
+	# a process death cannot replay the same resolved roll.
+	CasinoBankScript.update_game(FACILITY_ID, game, game_id)
+	displayed_total = old_total
+	_refresh_all()
+	_animate_total_feedback(old_total, int(game.get("total", 0)))
+	if not await _presentation_wait(0.40):
+		return
+	_set_presentation_stage(&"total_readable", {"from": old_total, "to": int(game.get("total", 0))})
 	if bool(game.get("finished", false)):
+		_set_presentation_stage(&"result", {"result": str(game.get("result", ""))})
 		# Clear the queue before settlement as a belt-and-suspenders guard for
 		# devices that briefly suspend between two save writes.
 		CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 		_settle_finished_game()
 	else:
 		view_state = "active"
+		rolling = false
+		presentation_locked = false
 		status_label.text = "TOTAL %d。次の一手を選ぶ。" % int(game.get("total", 0))
 		CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 		game.erase("pending_rolls")
 		_play_ui_sfx(&"progress-step", true)
-	_refresh_all()
+		_refresh_all()
+		_set_presentation_stage(&"preview_refresh", {"total": int(game.get("total", 0))})
 
 func _on_cashout_pressed() -> void:
-	if rolling or game.is_empty() or not bool(game.get("active", false)) or bool(game.get("finished", false)):
+	if rolling or presentation_locked or game.is_empty() or not bool(game.get("active", false)) or bool(game.get("finished", false)):
 		return
 	var next := Treasure21Script.cash_out(game)
 	if next == game or int(next.get("payout", 0)) <= 0:
@@ -700,6 +767,9 @@ func _on_cashout_pressed() -> void:
 		_play_ui_sfx(&"blocked", false)
 		return
 	game = next
+	rolling = true
+	presentation_locked = true
+	if is_instance_valid(feel_fx): feel_fx.press_button(cashout_button, true)
 	_settle_finished_game()
 
 func _settle_finished_game() -> void:
@@ -707,6 +777,7 @@ func _settle_finished_game() -> void:
 		_show_result()
 		return
 	var payout := maxi(0, int(game.get("payout", 0)))
+	settlement_balance_before = CasinoBankScript.balance()
 	var receipt: Dictionary = CasinoBankScript.settle_game(FACILITY_ID, payout, {
 		"result": str(game.get("result", "")),
 		"total": int(game.get("total", 0)),
@@ -717,7 +788,8 @@ func _settle_finished_game() -> void:
 		payout = int(receipt.get("payout", payout))
 		game["payout"] = payout
 	settled = bool(receipt.get("ok", false)) or bool(receipt.get("already_settled", false))
-	rolling = false
+	rolling = true
+	presentation_locked = true
 	view_state = "result"
 	if settled:
 		_mark_meta_completed()
@@ -728,8 +800,17 @@ func _settle_finished_game() -> void:
 		if payout > 0:
 			_spawn_confetti()
 	_show_result()
+	call_deferred("_finish_result_presentation")
+	if is_instance_valid(feel_fx):
+		if str(game.get("result", "")) == "bust":
+			feel_fx.play_lose_feedback()
+		elif str(game.get("result", "")) == "cashout":
+			feel_fx.play_cashout_feedback(chip_label)
+		else:
+			feel_fx.play_win_feedback()
 
 func _show_result() -> void:
+	_set_presentation_stage(&"result_reveal", {"result": str(game.get("result", ""))})
 	view_state = "result"
 	setup_view.visible = false
 	active_view.visible = false
@@ -737,24 +818,28 @@ func _show_result() -> void:
 	var result_kind := str(game.get("result", ""))
 	match result_kind:
 		"bust":
+			_set_presentation_stage(&"bust", {"total": int(game.get("total", 0)), "intensity": -3})
 			result_label.text = "BUST"
 			result_detail_label.text = "TOTAL %d。21を超えたためBETを失いました。" % int(game.get("total", 0))
 			if result_chest != null:
 				result_chest.texture = CHEST_CLOSED
 				result_chest.modulate = Color("#7d756b")
 		"treasure":
+			_set_presentation_stage(&"treasure", {"total": int(game.get("total", 0)), "intensity": 5})
 			result_label.text = "TREASURE 21!"
 			result_detail_label.text = "21に到達。最高配当を獲得しました。"
 			if result_chest != null:
 				result_chest.texture = CHEST_TREASURE
 				result_chest.modulate = Color.WHITE
 		"golden":
+			_set_presentation_stage(&"golden", {"total": int(game.get("total", 0)), "intensity": 3})
 			result_label.text = "GOLDEN TREASURE!"
 			result_detail_label.text = "GOLDEN %d にぴったり到達。自動で受け取りました。" % int(game.get("golden_number", 19))
 			if result_chest != null:
 				result_chest.texture = CHEST_OPENING
 				result_chest.modulate = Color.WHITE
 		"cashout":
+			_set_presentation_stage(&"cashout", {"total": int(game.get("total", 0)), "intensity": 2})
 			result_label.text = "受け取り完了"
 			result_detail_label.text = "TOTAL %d で持ち帰りました。" % int(game.get("total", 0))
 			if result_chest != null:
@@ -767,25 +852,64 @@ func _show_result() -> void:
 	var bet := int(game.get("bet", selected_bet))
 	result_payout_label.text = "受け取り %d CHIP（BET込み）" % payout
 	result_profit_label.text = "収支  %+d CHIP" % (payout - bet)
+	result_detail_label.text += "\nBET %d · RETURN %d CHIP · NET %+d CHIP" % [bet, payout, payout - bet]
 	status_label.text = "もう一度、TREASUREを狙う？"
 	roll_button.disabled = true
 	cashout_button.disabled = true
 	back_button.disabled = false
 	_refresh_all()
+	_animate_result_chest(result_kind)
 	call_deferred("_animate_result_reveal")
 
+func _finish_result_presentation() -> void:
+	if exiting or not is_inside_tree():
+		return
+	var result_kind := str(game.get("result", ""))
+	if result_kind == "bust":
+		_set_presentation_stage(&"result_readable", {"result": result_kind, "return": 0, "net": -int(game.get("bet", selected_bet))})
+		if not await _presentation_wait(0.50):
+			return
+	else:
+		_set_presentation_stage(&"result_readable", {"result": result_kind, "return": int(game.get("payout", 0)), "net": int(game.get("payout", 0)) - int(game.get("bet", selected_bet))})
+		var readable_wait := 0.28 if result_kind == "cashout" else 0.65
+		if not await _presentation_wait(readable_wait):
+			return
+	_set_presentation_stage(&"chip_count", {"from": settlement_balance_before, "to": CasinoBankScript.balance(), "delta": CasinoBankScript.balance() - settlement_balance_before})
+	if is_instance_valid(feel_fx): feel_fx.animate_balance_change(chip_label, settlement_balance_before, CasinoBankScript.balance())
+	var chip_wait := 0.20 if result_kind == "cashout" else 0.45
+	if not await _presentation_wait(chip_wait):
+		return
+	rolling = false
+	presentation_locked = false
+	_refresh_all()
+	_set_presentation_stage(&"cta_unlock", {"result": result_kind})
+
+func _animate_result_chest(result_kind: String) -> void:
+	if exiting or not is_inside_tree() or result_chest == null:
+		return
+	var stage := &"chest_sink" if result_kind == "bust" else (&"chest_open" if result_kind == "treasure" or result_kind == "golden" else &"chest_take_home")
+	_set_presentation_stage(stage, {"result": result_kind, "scale_max": 1.06})
+	result_chest.pivot_offset = result_chest.size * 0.5
+	var tween := create_tween()
+	presentation_tweens.append(tween)
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	var target := Vector2(0.96, 0.96) if result_kind == "bust" else Vector2(1.06, 1.06)
+	tween.tween_property(result_chest, "scale", target, 0.12)
+	tween.tween_property(result_chest, "scale", Vector2.ONE, 0.18)
+
 func _animate_result_reveal() -> void:
-	if result_view == null or not result_view.visible:
+	if exiting or not is_inside_tree() or result_view == null or not result_view.visible:
 		return
 	VisualFeedback.reveal(result_view, 0.26)
 
 func _on_again_pressed() -> void:
-	if rolling:
+	if rolling or presentation_locked:
 		return
+	if is_instance_valid(feel_fx): feel_fx.press_button(again_button, true)
 	_start_game()
 
 func _show_setup() -> void:
-	if rolling:
+	if rolling or presentation_locked:
 		return
 	game = {}
 	game_id = ""
@@ -801,7 +925,7 @@ func _show_setup() -> void:
 	_refresh_all()
 
 func _on_back_pressed() -> void:
-	if rolling or (not game.is_empty() and bool(game.get("active", false)) and not bool(game.get("finished", false))):
+	if rolling or presentation_locked or (not game.is_empty() and bool(game.get("active", false)) and not bool(game.get("finished", false))):
 		status_label.text = "ゲーム終了までカジノへ戻れません。"
 		_play_ui_sfx(&"blocked", false)
 		return
@@ -832,19 +956,68 @@ func _next_golden_number() -> int:
 	return rng.randi_range(18, 20)
 
 func _animate_roll(value: int) -> void:
+	_set_presentation_stage(&"dice_roll", {"value": value})
+	if is_instance_valid(feel_fx): feel_fx.play_dice_roll()
 	if not is_instance_valid(dice_presentation):
-		await get_tree().create_timer(ROLL_SECONDS + SETTLE_SECONDS).timeout
+		await _presentation_wait(ROLL_SECONDS + SETTLE_SECONDS)
 		return
 	var start := int(game.get("last_roll", 1))
 	if start < 1 or start > 6:
 		start = 1
 	dice_presentation.present([start], true, 1)
-	await get_tree().create_timer(ROLL_SECONDS).timeout
-	if not is_inside_tree():
+	if not await _presentation_wait(ROLL_SECONDS):
 		return
+	_set_presentation_stage(&"dice_land", {"value": value})
 	dice_presentation.flip_to_face(value)
 	die_face_label.text = str(value)
-	await get_tree().create_timer(SETTLE_SECONDS).timeout
+	await _presentation_wait(SETTLE_SECONDS)
+
+func _animate_total_feedback(old_total: int, new_total: int) -> void:
+	if exiting or not is_inside_tree() or total_label == null:
+		return
+	var marker_data: Dictionary = track_steps.get(clampi(new_total, 17, 21), {})
+	var marker := marker_data.get("marker") as Label
+	if marker != null:
+		marker.pivot_offset = marker.size * 0.5
+	var direction := "down" if new_total > 21 else ("up" if new_total >= old_total else "down")
+	var stage := &"safe" if new_total == 17 else (&"one_away" if new_total == 20 else (&"progress" if new_total < 17 else &"total_readable"))
+	_set_presentation_stage(stage, {"total": new_total, "intensity": 3 if new_total == 20 else (1 if new_total == 17 else 0), "direction": direction})
+	total_label.pivot_offset = total_label.size * 0.5
+	var tween := create_tween()
+	presentation_tweens.append(tween)
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(total_label, "scale", Vector2(1.14, 1.14) if new_total >= 17 and new_total <= 21 else Vector2(1.05, 1.05), 0.11)
+	tween.tween_property(total_label, "scale", Vector2.ONE, 0.11)
+	if marker != null and new_total >= 17 and new_total <= 21:
+		var marker_tween := create_tween()
+		presentation_tweens.append(marker_tween)
+		marker_tween.tween_property(marker, "scale", Vector2(1.22, 1.22), 0.11)
+		marker_tween.tween_property(marker, "scale", Vector2.ONE, 0.14)
+	if new_total >= 17 and new_total <= 20:
+		var chest := track_chest
+		if chest != null:
+			chest.pivot_offset = chest.size * 0.5
+			var chest_tween := create_tween()
+			presentation_tweens.append(chest_tween)
+			chest_tween.tween_property(chest, "scale", Vector2(1.06, 1.06), 0.12)
+			chest_tween.tween_property(chest, "scale", Vector2.ONE, 0.14)
+	if new_total == 20:
+		_set_presentation_stage(&"one_away_emphasis", {"total": 20, "intensity": 3, "shake_px": 3})
+		if is_instance_valid(feel_fx): feel_fx.vibrate_light()
+	elif new_total == 17:
+		_set_presentation_stage(&"chest_step", {"from": 1, "to": 2, "total": 17, "intensity": 1})
+	elif new_total == 18 or new_total == 19:
+		_set_presentation_stage(&"golden_approach", {"total": new_total, "intensity": 2, "chest": 2})
+
+func _present_total_readable(old_total: int, new_total: int) -> void:
+	if exiting or not is_inside_tree():
+		return
+	if not await _presentation_wait(0.18):
+		return
+	if new_total >= 17 and new_total <= 21:
+		_set_presentation_stage(&"total_readable", {"from": old_total, "to": new_total})
+	else:
+		_set_presentation_stage(&"total_readable", {"from": old_total, "to": new_total, "intensity": 0})
 
 func _refresh_all() -> void:
 	if chip_label != null:
@@ -884,15 +1057,15 @@ func _refresh_all() -> void:
 		danger_panel.visible = bool(game.get("active", false)) and not bool(game.get("finished", false))
 	if danger_panel.visible:
 		_refresh_danger_preview()
-	var can_cash := Treasure21Script.can_cash_out(game) and not rolling
+	var can_cash := Treasure21Script.can_cash_out(game) and not rolling and not presentation_locked
 	if cashout_button != null:
 		cashout_button.disabled = not can_cash
 		var cash_value: int = Treasure21Script.payout_for_total(int(game.get("bet", selected_bet)), total)
 		cashout_button.text = "ここで受け取る\n%s" % ("%d CHIP" % cash_value if can_cash else "まだ不可")
 	if roll_button != null:
-		roll_button.disabled = rolling or not bool(game.get("active", false)) or bool(game.get("finished", false))
+		roll_button.disabled = rolling or presentation_locked or not bool(game.get("active", false)) or bool(game.get("finished", false))
 		roll_button.text = "サイコロを振る\n%s" % ("1 / 6でTREASURE" if total == 20 else "次の1D6")
-	back_button.disabled = rolling or (bool(game.get("active", false)) and not bool(game.get("finished", false)))
+	back_button.disabled = rolling or presentation_locked or (bool(game.get("active", false)) and not bool(game.get("finished", false)))
 
 func _refresh_track(total: int) -> void:
 	var golden: int = int(game.get("golden_number", 19))
@@ -928,6 +1101,19 @@ func _refresh_danger_preview() -> void:
 	var total := int(game.get("total", 0))
 	var golden := int(game.get("golden_number", 19))
 	var bet := int(game.get("bet", selected_bet))
+	if rolling:
+		if preview_title != null:
+			preview_title.text = "ⓘ 次の出目を更新中…"
+		if preview_hint != null:
+			preview_hint.text = "結果が決まるまでお待ちください"
+		if danger_panel != null:
+			danger_panel.modulate = Color(1, 1, 1, 0.65)
+		return
+	if danger_panel != null:
+		var preview_tween := create_tween()
+		presentation_tweens.append(preview_tween)
+		danger_panel.modulate = Color(1, 1, 1, 0.65)
+		preview_tween.tween_property(danger_panel, "modulate", Color.WHITE, 0.15)
 	danger_preview = Treasure21Script.danger_preview(total, golden)
 	if total < 17:
 		if preview_title != null:
@@ -1006,11 +1192,11 @@ func _refresh_bet_buttons() -> void:
 	var chips := CasinoBankScript.balance()
 	for amount: int in bet_buttons:
 		var button := bet_buttons[amount] as Button
-		button.disabled = chips < amount or rolling
+		button.disabled = chips < amount or rolling or presentation_locked
 		button.text = ("● " if amount == selected_bet else "") + "%d CHIP" % amount
 		_apply_button_state(button, amount == selected_bet)
 	if start_button != null:
-		start_button.disabled = chips < selected_bet or rolling
+		start_button.disabled = chips < selected_bet or rolling or presentation_locked
 
 func _restore_affordable_bet() -> void:
 	var meta := _load_meta()

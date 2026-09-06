@@ -1,0 +1,272 @@
+version: 2
+
+goal:
+  title: "TREASURE 21 FEEL POLISH"
+  slug: treasure-21-feel-polish
+  kind: specific
+  tranche: "Map the existing Treasure21 flow, implement the first bounded presentation-only feel slice, verify it at both target resolutions, and audit the protected diff."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Map the current Treasure21 result resolution, settlement order, UI nodes, chest/preview assets, CasinoFeelFX hooks, deterministic fixtures, and teardown risks; recommend the smallest safe Phase 5D boundary."
+    inputs:
+      - "scripts/app/treasure_21_screen.gd"
+      - "scripts/game/treasure_21_model.gd"
+      - "scenes/casino/Treasure21.tscn"
+      - "scripts/ui/casino_feel_fx.gd"
+      - "tests/run_treasure_21_tests.gd"
+      - "tests/record_treasure_21_product_ui.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/run_casino_expansion_ui_tests.gd"
+    constraints:
+      - "Read-only investigation; do not edit implementation files."
+      - "Do not change gameplay, economy, persistence, BGM, routes, or other facilities."
+      - "Use concrete file-path and line-range evidence."
+    expected_output:
+      - "Current event/timing/state/settlement map"
+      - "Exact safe presentation and teardown plan"
+      - "Exact allowed_files, verify commands, and stop conditions"
+      - "Deterministic fixtures for <17, SAFE, 18/19, ONE AWAY, TREASURE, CASH OUT, BUST, and preview refresh"
+    receipt:
+      result: done
+      summary: "Treasure21 is entirely runtime-built in treasure_21_screen.gd; the current flow persists/charges before a short roll animation, applies the fixed model result, settles immediately, then shows an undifferentiated result reveal. Presentation needs TOTAL/chest/status staging, CasinoFeelFX hooks, and explicit exit cleanup while model/Bank/scene/BGM/routes remain untouched."
+      evidence:
+        - "scripts/app/treasure_21_screen.gd:610-780"
+        - "scripts/app/treasure_21_screen.gd:834-1001"
+        - "scripts/game/treasure_21_model.gd:111-188"
+        - "scripts/ui/casino_feel_fx.gd:33-114"
+        - "tests/run_treasure_21_tests.gd:150-248"
+        - "tests/record_treasure_21_product_ui.gd:27-127"
+      safe_boundary:
+        allowed_files:
+          - "scripts/app/treasure_21_screen.gd"
+          - "scripts/ui/casino_feel_fx.gd (only if an essential reusable cue is missing)"
+          - "tests/run_treasure_21_tests.gd"
+          - "tests/record_treasure_21_product_ui.gd"
+          - "tests/record_treasure_21_feel.gd (optional new recorder)"
+        protected:
+          - "scripts/game/treasure_21_model.gd"
+          - "scripts/game/casino_bank.gd"
+          - "BGM, scene, route, and other facility files"
+      verification:
+        - "Godot 4.7 headless Treasure21 suite"
+        - "Casino foundation/Casino/Casino UI/Expansion UI suites"
+        - "DICE TOWER, VAULT BREAK, and DICE ROULETTE regressions"
+        - "360x800 and 720x1280 real GPU recorder with stage logs"
+        - "editor parse, git diff --check, protected diff, and residual process cleanup"
+      fixtures:
+        - "<17 / SAFE17 / 18 / 19 / ONE AWAY20"
+        - "TREASURE21, CASH OUT at 17, BUST from 19+5"
+        - "six-face preview refresh, repeated three games, and queue_free mid-animation"
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Review the Scout receipt and select one bounded Worker slice that satisfies the highest-value Treasure21 feel requirements without touching protected logic."
+    inputs:
+      - "T001 receipt"
+      - "Phase 5D pasted specification"
+    constraints:
+      - "Read-only; do not implement."
+      - "Require exact allowed_files, verification commands, and stop conditions."
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Deferred risks or follow-up tasks"
+    receipt:
+      result: done
+      decision: "approved; activate one bounded presentation-only Worker slice"
+      summary: "Implement staged Treasure21 feel in the screen with existing CasinoFeelFX and UiSfx cues: lock input through presentation, animate TOTAL/current track/chest/status, keep preview visible but marked stale until confirmed refresh, sequence terminal RETURN/NET then CHIP count, and harden exit cleanup. No model, Bank, save, BGM, route, scene, asset, or shared-FX API changes."
+      allowed_files:
+        - "scripts/app/treasure_21_screen.gd"
+        - "tests/run_treasure_21_tests.gd"
+        - "tests/record_treasure_21_feel.gd"
+        - "tests/record_treasure_21_feel.gd.uid"
+      verify:
+        - "Godot 4.7 editor parse"
+        - "tests/run_treasure_21_tests.gd"
+        - "Casino foundation/Casino/Casino UI/Expansion UI"
+        - "VAULT BREAK model/UI, DICE ROULETTE, and UI SFX regressions"
+        - "stage-aware real GPU renders at 360x800 and 720x1280"
+        - "git diff --check, protected diff, temp cleanup, and no residual Godot process"
+      fixtures:
+        - "<17, SAFE17, 18/19, ONE AWAY20, TREASURE21, CASH OUT, BUST, preview refresh, repeat three games, mid-animation queue_free"
+      stop_if:
+        - "Need files/assets/API outside the allowed boundary."
+        - "Any gameplay, economy, persistence, BGM, route, scene, or rule behavior changes."
+        - "Duplicate input reaches model/Bank or CTA unlocks before presentation."
+        - "Old preview misleads, permanent layout displaces 360x800, or queue_free causes callbacks/errors/audio."
+        - "Same verification failure repeats twice."
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: medium
+    objective: "Execute the bounded Treasure21 presentation-only implementation selected by Judge, with deterministic stage assertions and real-render evidence."
+    allowed_files:
+      - "scripts/app/treasure_21_screen.gd"
+      - "tests/run_treasure_21_tests.gd"
+      - "tests/record_treasure_21_feel.gd"
+      - "tests/record_treasure_21_feel.gd.uid"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_treasure_21_tests.gd"
+      - "Casino foundation/Casino/Casino UI/Expansion UI"
+      - "VAULT BREAK model/UI, DICE ROULETTE, and UI SFX regressions"
+      - "stage-aware real GPU renders at 360x800 and 720x1280"
+      - "git diff --check, protected diff, temp cleanup, and no residual Godot process"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Any gameplay, economy, persistence, BGM, route, or rule behavior would change."
+      - "Verification fails twice for the same reason."
+    receipt:
+      result: blocked
+      changed_files:
+        - "scripts/app/treasure_21_screen.gd"
+      commands:
+        - cmd: "tests/run_treasure_21_tests.gd"
+          status: "pass: 98 assertions, 0 failures"
+        - cmd: "Godot editor parse"
+          status: "pass: exit 0; unrelated existing warnings only"
+        - cmd: "git diff --check"
+          status: "pass"
+      summary: "Added typed presentation trace/stage markers, guarded async waits, tracked tween/timer references, exit flag, result intensity markers, and dimmed preview-updating copy. The full staged feel, CasinoFeelFX wiring, and stage-aware recorder remain incomplete."
+      missing:
+        - "TOTAL/current-track/chest/status staged animations and active-flow lock"
+        - "TREASURE/CASH OUT/BUST sequencing and RETURN/NET before CHIP count"
+        - "CasinoFeelFX press/dice/chip/haptic hooks and duplicate CTA coverage"
+        - "Dedicated 360x800/720x1280 stage-aware recorder and deterministic evidence"
+
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Recover and complete the Phase 5D Treasure21 presentation slice within the existing boundary: staged active/terminal feel, CasinoFeelFX hooks, deterministic assertions, and stage-aware two-resolution evidence."
+    allowed_files:
+      - "scripts/app/treasure_21_screen.gd"
+      - "tests/run_treasure_21_tests.gd"
+      - "tests/record_treasure_21_feel.gd"
+      - "tests/record_treasure_21_feel.gd.uid"
+    verify:
+      - "Godot 4.7 editor parse"
+      - "tests/run_treasure_21_tests.gd"
+      - "Casino foundation/Casino/Casino UI/Expansion UI"
+      - "VAULT BREAK model/UI, DICE ROULETTE, and UI SFX regressions"
+      - "stage-aware real GPU renders at 360x800 and 720x1280"
+      - "git diff --check, protected diff, temp cleanup, and no residual Godot process"
+    stop_if:
+      - "Need files/assets/API outside the allowed boundary."
+      - "Any gameplay, economy, persistence, BGM, route, scene, or rule behavior changes."
+      - "Duplicate input reaches model/Bank or CTA unlocks before presentation."
+      - "Old preview misleads, permanent layout displaces 360x800, or queue_free causes callbacks/errors/audio."
+      - "Same verification failure repeats twice."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/treasure_21_screen.gd"
+        - "tests/run_treasure_21_tests.gd"
+        - "tests/record_treasure_21_feel.gd"
+        - "tests/record_treasure_21_feel.gd.uid"
+      summary: "Completed the bounded presentation-only Treasure21 feel slice: shared CasinoFeelFX hooks, 1.23s normal roll staging, TOTAL/current-track/chest/status feedback, SAFE/18–19/ONE AWAY beats, distinct terminal sequencing, strict CTA/back/input locks, immediate resolved-roll persistence, guarded resume and queue_free cleanup, and stage-aware two-resolution recorder evidence. No model, economy, persistence contract, BGM, route, scene, or shared-FX API changes."
+      commands:
+        - cmd: "Godot focused Treasure21 suite"
+          status: "pass: 100 assertions, 0 failures"
+        - cmd: "Godot editor parse"
+          status: "pass: exit 0; unrelated existing warnings only"
+        - cmd: "real GPU recorder TREASURE21_QA_VIEWPORT=360x800"
+          status: "pass: failures=0; 10 non-empty PNGs + stage-log.json at C:\\tmp\\treasure21-feel-360"
+        - cmd: "real GPU recorder TREASURE21_QA_VIEWPORT=720x1280"
+          status: "pass: failures=0; 10 non-empty PNGs + stage-log.json at C:\\tmp\\treasure21-feel-720"
+        - cmd: "git diff --check"
+          status: "pass"
+        - cmd: "protected diff audit"
+          status: "pass: no protected files changed"
+        - cmd: "Godot process inventory"
+          status: "pass: no residual Godot process"
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit whether Phase 5D satisfies the formal Treasure21 feel acceptance and is safe to hand off."
+    inputs:
+      - "All done task receipts"
+      - "Final scoped diff and validation output"
+      - "360x800 and 720x1280 stage-aware render evidence"
+    constraints:
+      - "Read-only; do not implement."
+      - "Reject completion if required Worker work is queued or active."
+    expected_output:
+      - "complete | not_complete"
+      - "Missing evidence"
+      - "Next bounded task if not complete"
+    receipt:
+      result: complete
+      decision: complete
+      summary: "Final read-only Judge audit accepted the Phase 5D presentation-only slice. Scoped files, protected diff, focused suite, editor parse, full casino/Vault/Roulette/UI-SFX regressions, two-resolution GPU evidence, stage order, visual fit, and process cleanup all passed; unrelated dirty worktree files remain out of scope."
+      evidence:
+        - "scripts/app/treasure_21_screen.gd (+236/-28 tracked lines)"
+        - "tests/run_treasure_21_tests.gd (+10/-2 tracked lines)"
+        - "tests/record_treasure_21_feel.gd and .uid (new scoped recorder)"
+        - "C:\\tmp\\treasure21-feel-360 (10 non-empty PNGs + stage-log.json)"
+        - "C:\\tmp\\treasure21-feel-720 (10 non-empty PNGs + stage-log.json)"
+      commands:
+        - cmd: "Godot focused Treasure21 suite"
+          status: "pass: 100 assertions, 0 failures"
+        - cmd: "Godot editor parse"
+          status: "pass: exit 0; unrelated existing warnings only"
+        - cmd: "Casino foundation/Casino/Casino UI/Expansion UI"
+          status: "pass: 36/0, 248/0, 204/0, 168/0"
+        - cmd: "VAULT BREAK model/UI"
+          status: "pass: 452/0, 94/0"
+        - cmd: "DICE ROULETTE/UI SFX/BGM"
+          status: "pass: 110/0, 17/0, 21/0"
+        - cmd: "real GPU recorder at 360x800 and 720x1280"
+          status: "pass: failures=0 at both; stage logs include result → result_readable → chip_count → cta_unlock"
+        - cmd: "git diff --check and protected diff"
+          status: "pass: clean; model/bank/scene/CasinoFeelFX untouched"
+        - cmd: "Godot process inventory"
+          status: "pass: no residual Godot process"
+
+checks:
+  dirty_fingerprint: "pre-existing unrelated worktree changes preserved; scoped Phase 5D files listed in T004/T999 receipts"
+  last_verification:
+    result: pass
+    task: T999
+    commands:
+      - "Godot focused Treasure21 suite: 100 assertions, 0 failures"
+      - "Godot editor parse: exit 0"
+      - "Casino foundation/Casino/Casino UI/Expansion UI: 36/0, 248/0, 204/0, 168/0"
+      - "VAULT BREAK model/UI: 452/0, 94/0"
+      - "DICE ROULETTE/UI SFX/BGM: 110/0, 17/0, 21/0"
+      - "GPU recorder 360x800 + 720x1280: failures=0; 10 PNGs + stage-log.json each"
+      - "git diff --check; protected diff; no residual Godot process"

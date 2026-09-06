@@ -167,17 +167,20 @@ func _test_scene_flow() -> void:
 	for amount: int in scene.bet_buttons:
 		_expect((scene.bet_buttons[amount] as Button).custom_minimum_size.y >= 96.0, "BET %d meets touch target" % amount)
 	_expect(scene.roll_button != null and scene.cashout_button != null and scene.danger_cells.size() == 6, "active console has roll cashout and six danger cells")
+	_expect(scene.feel_fx != null and scene.feel_fx.name == "Treasure21FeelFX", "TREASURE 21 wires the shared CasinoFeelFX node")
 
 	# First ever game keeps the authored GOLDEN 19 and charges exactly once.
 	scene.selected_bet = 20
 	scene.queued_roll_value = 1
 	scene.call("_start_game")
+	scene.call("_on_roll_pressed")
 	var active := CasinoBankScript.active_game("treasure_21")
 	var pending: Array = active.get("pending_rolls", []) as Array
 	_expect(not pending.is_empty() and int((pending[0] as Dictionary).get("value", 0)) == 1, "initial roll is persisted before animation")
 	_expect(CasinoBankScript.balance() == 980, "GAME START charges wager once")
-	await create_timer(0.58).timeout
+	await create_timer(1.40).timeout
 	_expect(int(scene.game.get("total", 0)) == 1 and int(scene.game.get("golden_number", 0)) == 19 and scene.active_view.visible, "first game resolves initial face and fixes GOLDEN19")
+	_expect(scene.presentation_trace.any(func(entry: Dictionary) -> bool: return str(entry.get("stage", "")) == "total_confirmed"), "roll emits a readable TOTAL confirmation trace")
 	_expect_control_inside(scene, scene.danger_panel, "active future preview")
 	_expect_control_inside(scene, scene.cashout_button, "active CASH OUT")
 	_expect_control_inside(scene, scene.roll_button, "active ROLL")
@@ -210,6 +213,7 @@ func _test_scene_flow() -> void:
 	var balance_after_cash := CasinoBankScript.balance()
 	scene.call("_on_cashout_pressed")
 	_expect(CasinoBankScript.balance() == balance_after_cash, "result replay cannot settle twice")
+	await create_timer(0.95).timeout
 
 	# AGAIN keeps the same bet and starts directly from the result card.
 	scene.queued_golden_number = 20
@@ -227,7 +231,7 @@ func _test_scene_flow() -> void:
 	first.queued_golden_number = 18
 	first.queued_roll_value = 2
 	first.call("_start_game")
-	await create_timer(0.58).timeout
+	await create_timer(1.40).timeout
 	first.queued_roll_value = 6
 	first.call("_on_roll_pressed")
 	var before_resume := CasinoBankScript.active_game("treasure_21")
@@ -238,7 +242,7 @@ func _test_scene_flow() -> void:
 	var resumed := TREASURE_SCENE.instantiate()
 	root.add_child(resumed)
 	await process_frame
-	await create_timer(0.58).timeout
+	await create_timer(1.40).timeout
 	_expect(int(resumed.game.get("total", 0)) == 8 and int(resumed.game.get("last_roll", 0)) == 6 and CasinoBankScript.has_active_game("treasure_21"), "new screen resumes the exact pending face")
 	resumed.game["total"] = 17
 	resumed.game["current_total"] = 17
