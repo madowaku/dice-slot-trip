@@ -139,6 +139,7 @@ var status_label: Label
 var setup_view: VBoxContainer
 var active_view: VBoxContainer
 var result_view: VBoxContainer
+var content_scroll: ScrollContainer
 var bet_buttons: Dictionary = {}
 var bet_state_labels: Dictionary = {}
 var bet_value_labels: Dictionary = {}
@@ -229,14 +230,25 @@ func _build_ui() -> void:
 	upper_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(upper_glow)
 
+	content_scroll = ScrollContainer.new()
+	content_scroll.name = "VaultBreakContentScroll"
+	content_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	content_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	content_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	add_child(content_scroll)
+
 	var margin := MarginContainer.new()
 	margin.name = "SafeMargins"
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_theme_constant_override("margin_left", 16)
 	margin.add_theme_constant_override("margin_right", 16)
 	margin.add_theme_constant_override("margin_top", 12)
 	margin.add_theme_constant_override("margin_bottom", 12)
-	add_child(margin)
+	content_scroll.add_child(margin)
 
 	var root_box := VBoxContainer.new()
 	root_box.name = "VaultBreakRoot"
@@ -707,6 +719,7 @@ func _show_resume_error(message: String) -> void:
 	status_label.text = message
 	_refresh_all()
 	start_button.disabled = true
+	_reset_content_scroll()
 
 func _show_setup() -> void:
 	if CasinoBankScript.has_active_game(FACILITY_ID):
@@ -729,11 +742,13 @@ func _show_setup() -> void:
 	_set_state(State.SETUP)
 	status_label.text = "ベットと金庫ランクを選ぼう"
 	_refresh_all()
+	_reset_content_scroll()
 
 func _show_active_views() -> void:
 	setup_view.visible = false
 	active_view.visible = true
 	result_view.visible = false
+	_reset_content_scroll()
 
 func _select_bet(amount: int) -> void:
 	if state != State.SETUP or amount not in BET_AMOUNTS:
@@ -1126,7 +1141,18 @@ func _show_result() -> void:
 		result_detail_label.text += "\nBLACK VAULT %s APPEARED" % spawned
 	status_label.text = "進行とCHIPを保存しました。次の行動を選択。"
 	_refresh_all()
+	_reset_content_scroll()
 	call_deferred("_animate_result_reveal")
+
+func _reset_content_scroll() -> void:
+	if content_scroll == null:
+		return
+	content_scroll.scroll_vertical = 0
+	call_deferred("_apply_content_scroll_top")
+
+func _apply_content_scroll_top() -> void:
+	if content_scroll != null and is_instance_valid(content_scroll):
+		content_scroll.scroll_vertical = 0
 
 func _animate_result_reveal() -> void:
 	if result_view == null or not result_view.visible:

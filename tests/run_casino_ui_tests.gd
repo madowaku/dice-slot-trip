@@ -35,6 +35,18 @@ func _assert_how_to(screen: Node, id: String, actions: Array[String]) -> void:
 		_expect(heading != null and heading.text == headings[index], "%s keeps shared step heading %d" % [id, index + 1])
 		_expect(detail != null and index < actions.size() and actions[index] in detail.text and detail.text.length() <= 48, "%s keeps concise step copy %d" % [id, index + 1])
 
+func _wait_for_race_result_ctas(race: Node, timeout_seconds: float = 3.0) -> bool:
+	var deadline_msec: int = Time.get_ticks_msec() + roundi(timeout_seconds * 1000.0)
+	while Time.get_ticks_msec() < deadline_msec:
+		if race != null and is_instance_valid(race):
+			var again: Button = race.get("again_button") as Button
+			var change_bet: Button = race.get("change_bet_button") as Button
+			var exit_button: Button = race.get("result_exit_button") as Button
+			if again != null and change_bet != null and exit_button != null and not again.disabled and not change_bet.disabled and not exit_button.disabled:
+				return true
+		await process_frame
+	return false
+
 func _run() -> void:
 	var bgm := root.get_node("BgmManager")
 	_expect(ProjectSettings.get_setting("display/window/size/window_width_override") == 360 and ProjectSettings.get_setting("display/window/size/window_height_override") == 800, "casino regression targets the authored 360x800 physical window")
@@ -264,19 +276,23 @@ func _run() -> void:
 	var finished_race_game_id: String = race.game_id
 	race.call("_on_roll_stop")
 	await create_timer(0.22).timeout
-	_expect(race.race_fx_layer.find_child("WinCard", true, false) == null and race.spectator_strip.visible, "GOAL resolution holds the expanded race view until movement finishes")
-	await create_timer(0.72).timeout
-	var win_card := race.race_fx_layer.find_child("WinCard", true, false) as Control
-	_expect(win_card != null, "the reward card arrives after the GOAL movement and short dramatic hold")
-	_expect("WIN" in race.status_label.text and "最終1位" in race.status_label.text and "受け取り 36" in race.status_label.text and "収支 +16" in race.status_label.text, "Race result states outcome, rank, stake-inclusive return, and net change")
-	_expect(race.roll_button.text == "次のレースを選ぶ", "Race setup-return CTA names next race selection")
+	_expect(not race.result_panel.visible or race.again_button.disabled, "GOAL resolution does not expose replay before the staged result is ready")
+	var race_result_ready: bool = await _wait_for_race_result_ctas(race)
+	_expect(race_result_ready, "Race result unlocks all three CTAs after its bounded staged reveal")
+	_expect(race.result_panel.visible and race.result_rank_label.visible and race.result_rank_label.text == "最終順位  1位", "Race result presents the final rank first")
+	_expect(race.result_outcome_label.visible and race.result_outcome_label.text == "WIN", "Race result presents the authored WIN outcome")
+	_expect(race.result_bet_value.visible and race.result_bet_value.text == "20 CHIP" and race.result_return_value.text == "36 CHIP" and race.result_net_value.text == "+16 CHIP", "Race result presents BET, RETURN, and NET as separate readable metrics")
+	_expect(race.result_chip_delta_label.visible and "CHIP" in race.result_chip_delta_label.text, "Race result completes with readable CHIP balance feedback")
+	_expect(race.again_button.text == "もう一度遊ぶ" and race.change_bet_button.text == "ベットを変える" and race.result_exit_button.text == "カジノへ戻る", "Race result exposes the three Japanese next-action CTAs")
+	_expect(str(race.call("_result_outcome_for_net", 0)) == "EVEN", "Race result preserves the authored EVEN outcome for zero net")
 	_expect(race.race_fx_layer.find_child("ConfettiPiece", true, false) != null, "victory adds restrained gold confetti")
 	_expect(bet_marker.z_index == 18, "the GOAL racer moves to the course foreground")
-	_expect(win_card != null and not win_card.get_global_rect().intersects(bet_marker.get_global_rect()), "the reward card no longer covers the GOAL racer")
+	var legacy_win_card: Control = race.race_fx_layer.find_child("WinCard", true, false) as Control
+	_expect(legacy_win_card == null or not legacy_win_card.visible, "the superseded inline reward card stays hidden behind the formal result flow")
 	var race_balance_after_settlement: int = CasinoBankScript.balance()
 	var duplicate_race_settlement: Dictionary = CasinoBankScript.settle_game("dice_race", 36, {"won": true}, finished_race_game_id)
 	_expect(bool(duplicate_race_settlement.get("already_settled", false)) and CasinoBankScript.balance() == race_balance_after_settlement, "Race result replay cannot credit its payout twice")
-	race.roll_button.pressed.emit()
+	race.change_bet_button.pressed.emit()
 	await process_frame
 	_expect(race.setup_view.visible and not race.race_view.visible, "returning to setup restores the betting view")
 	var race_balance_before_loss: int = CasinoBankScript.balance()
@@ -290,11 +306,12 @@ func _run() -> void:
 	race.race["finished"] = true
 	race.race["bet_active"] = true
 	race.call("_finish_race")
-	await process_frame
+	var race_loss_ready: bool = await _wait_for_race_result_ctas(race)
+	_expect(race_loss_ready and race.result_outcome_label.text == "LOSS" and race.result_return_value.text == "16 CHIP" and race.result_net_value.text == "-4 CHIP", "Race loss presents rank, LOSS, RETURN, and NET before enabling replay")
 	_expect(not CasinoBankScript.has_active_game("dice_race") and CasinoBankScript.balance() == race_balance_before_loss - 4, "Race third-place loss settles once with the authored 16 CHIP partial return")
 	var race_stats: Dictionary = CasinoBankScript.load_data()
 	_expect(int(race_stats.get("dice_race_play_count", 0)) == 2 and int(race_stats.get("dice_race_win_count", 0)) == 1, "Race settlement records one win and one loss atomically")
-	race.roll_button.pressed.emit()
+	race.change_bet_button.pressed.emit()
 	await process_frame
 	var race_balance_before_terminal_resume: int = CasinoBankScript.balance()
 	race.call("_start_race")

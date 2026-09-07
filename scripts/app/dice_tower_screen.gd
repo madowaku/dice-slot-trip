@@ -67,6 +67,7 @@ var result_floor_label: Label
 var result_reward_label: Label
 var result_bet_label: Label
 var back_button: Button
+var content_scroll: ScrollContainer
 var bet_buttons: Dictionary = {}
 var floor_panels: Dictionary = {}
 var tutorial_page: int = 0
@@ -109,13 +110,25 @@ func _build_ui() -> void:
 	tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(tint)
 
+	content_scroll = ScrollContainer.new()
+	content_scroll.name = "TowerContentScroll"
+	content_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	content_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	content_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	add_child(content_scroll)
+
 	var margin: MarginContainer = MarginContainer.new()
+	margin.name = "SafeMargins"
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_theme_constant_override("margin_left", 16)
 	margin.add_theme_constant_override("margin_right", 16)
 	margin.add_theme_constant_override("margin_top", 16)
 	margin.add_theme_constant_override("margin_bottom", 16)
-	add_child(margin)
+	content_scroll.add_child(margin)
 
 	var root: VBoxContainer = VBoxContainer.new()
 	root.name = "ScreenVBox"
@@ -667,6 +680,7 @@ func _resume_or_show_setup() -> void:
 	_set_retry_action(false)
 	_reset_tower_visuals()
 	_refresh_all()
+	_reset_content_scroll()
 	if bool(game.get("finished", false)):
 		call_deferred("_after_roll_resolution")
 	elif not pending_roll.is_empty():
@@ -726,6 +740,7 @@ func _start_game() -> void:
 	_play_ui_sfx(&"start", false)
 	_show_banner("BET %d CHIP" % selected_bet, GOLD_LIGHT, Color("#3f2408"), 0.55, "BetBanner")
 	_refresh_all()
+	_reset_content_scroll()
 
 func _on_roll_pressed() -> void:
 	if rolling or not bool(game.get("active", false)) or bool(game.get("finished", false)):
@@ -921,6 +936,17 @@ func _show_setup() -> void:
 	_set_retry_action(false)
 	_reset_tower_visuals()
 	_refresh_all()
+	_reset_content_scroll()
+
+func _reset_content_scroll() -> void:
+	if content_scroll == null:
+		return
+	content_scroll.scroll_vertical = 0
+	call_deferred("_apply_content_scroll_top")
+
+func _apply_content_scroll_top() -> void:
+	if content_scroll != null and is_instance_valid(content_scroll):
+		content_scroll.scroll_vertical = 0
 
 func _reset_tower_visuals() -> void:
 	tower_frame.modulate = Color.WHITE
