@@ -117,8 +117,11 @@ func _run_session_b() -> void:
 		expected_ids.append(str(definition.get("id", "")))
 	var actual_ids: Array[String] = []
 	for definition: Dictionary in hub.facility_definitions:
-		actual_ids.append(str(definition.get("id", "")))
-	_expect(actual_ids == expected_ids, "Session B follows the actual displayed HUB order")
+		# 丁半 joined the hub in the casino renewal and is covered by
+		# run_chohan_tests.gd; this tour covers the original six.
+		if str(definition.get("id", "")) in expected_ids:
+			actual_ids.append(str(definition.get("id", "")))
+	_expect(actual_ids == expected_ids, "Session B follows the HUB registry order of the six feel-pass facilities")
 	var expected_balance: int = 300
 	for index: int in range(FACILITIES.size()):
 		var definition: Dictionary = FACILITIES[index]

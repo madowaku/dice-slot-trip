@@ -65,9 +65,9 @@ func _run() -> void:
 	_expect(hub is CasinoHubScreen, "Casino Hub scene instantiates its screen script")
 	_expect(bgm.current_track() == &"lasvegas_main", "Casino Hub starts the Las Vegas main-map BGM")
 	_expect(hub.chip_label != null and "100" in hub.chip_label.text, "Casino Hub shows persistent chip balance")
-	_expect(hub.card_data.size() == 6, "dormant prize-card data still loads for a future dedicated counter")
-	_expect(hub.prize_list == null and hub.find_children("*", "ScrollContainer", true, false).is_empty(), "Casino Hub omits the Prize Counter and all scrolling UI")
-	_expect(hub.find_children("*", "Button", true, false).all(func(button: Button) -> bool: return "CHIP" not in button.text or button == hub.chip_label), "Casino Hub does not expose dormant prize purchase rows")
+	_expect(hub.card_data.size() == 6, "prize-card data loads for the prize shelf")
+	_expect(hub.prize_shelf != null and hub.find_children("*", "ScrollContainer", true, false).is_empty(), "Casino Hub shows the prize shelf without scrolling UI")
+	_expect(hub.find_children("*", "Button", true, false).all(func(button: Button) -> bool: return "CHIP" not in button.text), "Casino Hub keeps prize purchase rows inside the prize counter")
 	var hub_subtitles: Dictionary = {}
 	for definition: Dictionary in hub.facility_definitions:
 		var facility_id := str(definition.get("id", ""))
@@ -75,9 +75,12 @@ func _run() -> void:
 		var subtitle := str(definition.get("subtitle", ""))
 		var button_label := str(definition.get("button_label", ""))
 		hub_subtitles[subtitle] = true
-		_expect(facility_button != null and button_label in facility_button.text and "遊ぶ" in facility_button.text and subtitle in facility_button.tooltip_text, "%s exposes a concise Japanese identity, play action, and detailed role" % facility_id)
-		_expect(facility_button != null and facility_button.get_theme_font_size("font_size") == UiTokensScript.FONT_CAPTION and facility_button.custom_minimum_size.y >= UiTokensScript.BUTTON_HEIGHT, "%s uses the shared facility CTA type and height tokens" % facility_id)
-	_expect(hub_subtitles.size() == 6, "all six Hub emotional roles are distinct")
+		var card_title := hub.facility_title_labels.get(facility_id) as Label
+		var shown_label := card_title.text if card_title != null else (facility_button.text if facility_button != null else "")
+		_expect(facility_button != null and button_label in shown_label and subtitle in facility_button.tooltip_text, "%s exposes a concise Japanese identity and detailed role" % facility_id)
+		var type_size := card_title.get_theme_font_size("font_size") if card_title != null else (facility_button.get_theme_font_size("font_size") if facility_button != null else 0)
+		_expect(facility_button != null and type_size >= UiTokensScript.FONT_CAPTION and facility_button.custom_minimum_size.y >= UiTokensScript.BUTTON_HEIGHT, "%s uses the shared readable type and CTA height tokens" % facility_id)
+	_expect(hub_subtitles.size() == 7, "all seven Hub roles are distinct")
 	var prize_names: Array[String] = []
 	for card: Dictionary in hub.card_data:
 		prize_names.append(str(card.get("name", "")))

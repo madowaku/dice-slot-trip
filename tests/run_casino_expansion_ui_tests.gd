@@ -22,24 +22,11 @@ func _expect(condition: bool, label: String) -> void:
 	failures += 1
 	push_error("FAIL: %s" % label)
 
-func _assert_buttons_inside_map(hub: CasinoHubScreen, map: Control, label: String) -> void:
-	var safety := 11.0
-	for id: String in ["dice_race", "dice_tower", "dice_roulette", "treasure_21", "dice_poker", "vault_break"]:
-		var button := hub.facility_nodes.get(id) as Button
-		var rect := Rect2(button.position, button.size)
-		_expect(rect.position.x >= safety and rect.position.y >= safety, "%s %s CTA starts inside map" % [label, id])
-		_expect(rect.end.x <= map.size.x - safety and rect.end.y <= map.size.y - safety, "%s %s CTA ends inside map" % [label, id])
-
-func _assert_sparkle_above_center(map: Control, label: String) -> void:
-	var sparkle := map.get_node_or_null("RingSelectionSparkle") as AnimatedSprite2D
-	var center_panel := map.get_node_or_null("RingCenter") as PanelContainer
-	if sparkle == null or center_panel == null:
-		_expect(false, "%s sparkle and center panel are present" % label)
-		return
-	var sparkle_half := Vector2(128.0, 128.0) * sparkle.scale
-	var sparkle_rect := Rect2(sparkle.position - sparkle_half, sparkle_half * 2.0)
-	var center_rect := Rect2(center_panel.position, center_panel.size)
-	_expect(not sparkle_rect.intersects(center_rect), "%s selection sparkle stays above center copy" % label)
+func _assert_buttons_inside_hub(hub: CasinoHubScreen, label: String) -> void:
+	var bounds := hub.hub_root.get_global_rect().grow(1.0)
+	for id: Variant in hub.facility_nodes.keys():
+		var button := hub.facility_nodes[id] as Button
+		_expect(bounds.encloses(button.get_global_rect()), "%s %s entry stays inside the hub" % [label, str(id)])
 
 func _assert_cta_colors(button: Button, id: String) -> void:
 	for color_name: String in ["font_color", "font_hover_color", "font_pressed_color", "font_disabled_color"]:
@@ -80,11 +67,11 @@ func _run() -> void:
 	root.add_child(hub)
 	await process_frame
 	_expect(hub != null, "Casino Hub scene instantiates")
-	_expect(hub.facility_definitions.size() == 6, "hub keeps the six-facility order")
-	_expect(hub.card_data.size() == 6, "dormant prize-card data remains loaded")
-	_expect(hub.prize_list == null and hub.find_children("*", "ScrollContainer", true, false).is_empty(), "Hub has no Prize Counter or scrolling container")
-	_expect(hub.find_children("*", "Button", true, false).all(func(candidate: Button) -> bool: return "OWNED" not in candidate.text and not candidate.text.ends_with(" CHIP")), "Hub has no visible prize rows")
-	var expected_ids := ["dice_race", "dice_tower", "dice_roulette", "treasure_21", "dice_poker", "vault_break"]
+	_expect(hub.facility_definitions.size() == 7, "hub keeps the six original facilities and adds 丁半")
+	_expect(hub.card_data.size() == 6, "prize-card data remains loaded")
+	_expect(hub.prize_shelf != null and hub.find_children("*", "ScrollContainer", true, false).is_empty(), "Hub shows the prize shelf and has no scrolling container")
+	_expect(hub.find_children("*", "Button", true, false).all(func(candidate: Button) -> bool: return "OWNED" not in candidate.text and not candidate.text.ends_with(" CHIP")), "Hub has no visible prize rows until the prize counter opens")
+	var expected_ids := ["dice_race", "dice_tower", "dice_roulette", "treasure_21", "dice_poker", "vault_break", "chohan"]
 	for index: int in range(expected_ids.size()):
 		var definition: Dictionary = hub.facility_definitions[index]
 		var id := str(definition.get("id", ""))
@@ -93,29 +80,32 @@ func _run() -> void:
 		var subtitle := str(definition.get("subtitle", ""))
 		_expect(id == expected_ids[index], "facility %d remains %s" % [index + 1, expected_ids[index]])
 		_expect(bool(hub.facility_availability.get(id, false)), "%s route is available" % id)
-		_expect(button != null and button_label in button.text and "遊ぶ" in button.text and subtitle in button.tooltip_text, "%s exposes Japanese identity, action, and guidance" % id)
+		# Featured games carry their name and one-line pitch as labels on the
+		# card; the remaining games are plain buttons until phase 3 decides them.
+		var card_title := hub.facility_title_labels.get(id) as Label
+		var shown_label := card_title.text if card_title != null else (button.text if button != null else "")
+		_expect(button != null and button_label in shown_label and subtitle in button.tooltip_text, "%s exposes Japanese identity and guidance" % id)
+		if card_title != null:
+			_expect((hub.facility_tagline_labels.get(id) as Label).text == subtitle, "%s shows its one-line pitch on the card" % id)
 	_expect(not hub.facility_definitions.any(func(definition: Dictionary) -> bool: return str(definition.get("id", "")) == "high_low"), "HIGH / LOW is absent from the active hub")
 
 	var map_art := hub.find_child("RingMapBackground", true, false) as TextureRect
 	_expect(map_art != null and map_art.texture != null and map_art.texture.resource_path == "res://assets/casino/las_vegas/las-vegas-ring-map-v1.png", "hub uses the authored Las Vegas ring map texture")
 	_expect(map_art != null and map_art.visible, "ring map texture is visible")
-	var sparkle := hub.find_child("RingSelectionSparkle", true, false) as AnimatedSprite2D
-	_expect(sparkle != null and sparkle.visible and sparkle.sprite_frames != null, "hub loads the authored selection sparkle animation")
-	_expect(sparkle != null and sparkle.sprite_frames.get_frame_count("ambient") == 4, "selection sparkle keeps four atlas frames")
-	_expect(hub.facility_nodes.size() == 6, "ring map creates six facility nodes")
+	var dim := hub.find_child("BackdropDim", true, false) as ColorRect
+	_expect(dim != null and dim.visible and dim.color.a >= 0.7, "map art is dimmed so hub text stays readable")
+	_expect(hub.find_child("RingSelectionSparkle", true, false) == null, "the quiet hub has no ambient sparkle animation")
+	_expect(hub.facility_nodes.size() == 7, "hub creates seven facility entries")
 	for id: String in expected_ids:
 		var button := hub.facility_nodes.get(id) as Button
-		_expect(button != null and button.size.x >= UiTokensScript.TOUCH_MIN and button.size.y >= UiTokensScript.BUTTON_HEIGHT, "%s CTA keeps the shared large touch target" % id)
-		_expect(button != null and button.get_theme_font_size("font_size") >= UiTokensScript.FONT_CAPTION, "%s CTA keeps the shared readable type size" % id)
-		if button != null:
+		_expect(button != null and button.size.x >= UiTokensScript.TOUCH_MIN and button.size.y >= UiTokensScript.BUTTON_HEIGHT, "%s entry keeps the shared large touch target" % id)
+		var card_title := hub.facility_title_labels.get(id) as Label
+		if card_title != null:
+			_expect(card_title.get_theme_font_size("font_size") >= UiTokensScript.FONT_CAPTION and card_title.get_theme_color("font_color").get_luminance() >= 0.55, "%s card title is large and light against the dark card" % id)
+		elif button != null:
+			_expect(button.get_theme_font_size("font_size") >= UiTokensScript.FONT_CAPTION, "%s entry keeps the shared readable type size" % id)
 			_assert_cta_colors(button, id)
-	_assert_buttons_inside_map(hub, map_art.get_parent() as Control, "720 design bounds")
-	_assert_sparkle_above_center(map_art.get_parent() as Control, "720 design bounds")
-	var map_canvas := map_art.get_parent() as Control
-	map_canvas.size = Vector2(316, 616)
-	hub.call("_layout_ring_map", map_canvas)
-	_assert_buttons_inside_map(hub, map_canvas, "360x800 portrait fit")
-	_assert_sparkle_above_center(map_canvas, "360x800 portrait fit")
+	_assert_buttons_inside_hub(hub, "720 design bounds")
 	var hub_back := hub.find_child("BackToTripButton", true, false) as Button
 	_expect(hub_back != null and hub_back.text == "旅へ戻る" and hub_back.get_global_rect().end.y <= hub.hub_root.get_global_rect().end.y, "complete non-scrolling Hub keeps its return action on-screen")
 

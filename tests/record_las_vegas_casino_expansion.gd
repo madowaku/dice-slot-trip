@@ -96,7 +96,7 @@ func _record() -> void:
 	var hub := HUB_SCENE.instantiate()
 	capture_root.add_child(hub)
 	await _settle_frames(10)
-	_expect(hub.facility_definitions.size() == 6, "hub exposes six facilities")
+	_expect(hub.facility_definitions.size() == 7, "hub exposes the six original facilities plus 丁半")
 	_expect(not hub.facility_definitions.any(func(d: Dictionary) -> bool: return str(d.get("id", "")) == "high_low"), "HIGH LOW is absent")
 	_expect(hub.find_child("RingMapBackground", true, false) != null, "ring map artwork is visible")
 	await _capture(hub, "hub")

@@ -20,8 +20,8 @@ const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.t
 const FACILITY_ID := ModelScript.FACILITY_ID
 const TITLE := "丁半"
 const DEFAULT_BET := 20
-const DICE_BOX := Vector2(440, 440)
-const CUP_SIZE := Vector2(470, 340)
+const DICE_BOX := Vector2(540, 540)
+const CUP_SIZE := Vector2(520, 360)
 const CUP_LIFT := 330.0
 
 enum State { CHOOSING, ROLLING, RESULT }
@@ -95,6 +95,10 @@ func _build() -> void:
 	dice_presentation.size = DICE_BOX
 	dice_presentation.visible = false
 	shell.table_root.add_child(dice_presentation)
+	# Look almost straight down: in 丁半 only the top faces count, so the side
+	# faces (which show other numbers) must not compete with them.
+	dice_presentation.camera.fov = 30.0
+	dice_presentation.camera.look_at_from_position(Vector3(0, 12.4, 2.4), Vector3(0, 0.7, 0))
 
 	cup = CupViewScript.new()
 	cup.name = "ChohanCup"

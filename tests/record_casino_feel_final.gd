@@ -55,8 +55,11 @@ func _record() -> void:
 	await _capture("00-hub-start")
 	var actual_ids: Array[String] = []
 	for definition: Dictionary in hub.facility_definitions:
-		actual_ids.append(str(definition.get("id", "")))
-	_expect(actual_ids == FACILITY_IDS, "recorder follows displayed HUB order")
+		# 丁半 joined the hub in the casino renewal and has its own recorder
+		# (record_las_vegas_casino_renewal.gd); this tour covers the original six.
+		if str(definition.get("id", "")) in FACILITY_IDS:
+			actual_ids.append(str(definition.get("id", "")))
+	_expect(actual_ids == FACILITY_IDS, "recorder follows the HUB registry order of the six feel-pass facilities")
 	stage_records.append(_record_state("hub_start", {"balance": BankScript.balance(), "facility_order": actual_ids}))
 
 	for index: int in range(FACILITY_IDS.size()):
