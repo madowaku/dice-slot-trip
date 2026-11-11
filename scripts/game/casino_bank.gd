@@ -2,13 +2,15 @@ extends RefCounted
 class_name CasinoBank
 
 const SAVE_PATH := "user://dice_slot_trip_casino.json"
-const SAVE_VERSION := 2
+const SAVE_VERSION := 3
 const STARTING_CHIPS: int = 300
 const SafeJsonStore = preload("res://scripts/game/safe_json_store.gd")
 const COIN_TO_CHIP_RATE := 2
 const CLEAR_CHIP_BONUS := 5
 const ACTIVE_GAMES_KEY := "active_games"
 const SETTLEMENTS_KEY := "casino_settlements"
+const GUIDES_SEEN_KEY := "guides_seen"
+const TARGET_PRIZE_KEY := "target_prize_id"
 const LEGACY_CARD_ALIASES := {
 	"dice_racer_crocodile": "dice_racer_rabbit",
 }
@@ -33,6 +35,10 @@ static func default_data() -> Dictionary:
 		ACTIVE_GAMES_KEY: {},
 		SETTLEMENTS_KEY: {},
 		"casino_settlement_order": [],
+		# v3: per-facility first-play guides already shown, and the prize the
+		# player is saving up for on the hub shelf ("" = automatic).
+		GUIDES_SEEN_KEY: [],
+		TARGET_PRIZE_KEY: "",
 	}
 
 static func set_test_save_path(path: String) -> void:
@@ -154,6 +160,32 @@ static func own_card(card_id: String, cost: int) -> bool:
 	data["chips"] = chips - price
 	owned.append(id)
 	data["owned_cards"] = owned
+	return save_data(data)
+
+static func owned_cards() -> Array:
+	return (load_data().get("owned_cards", []) as Array).duplicate()
+
+static func has_seen_guide(facility_id: String) -> bool:
+	return _facility_key(facility_id) in (load_data().get(GUIDES_SEEN_KEY, []) as Array)
+
+static func mark_guide_seen(facility_id: String) -> bool:
+	var key := _facility_key(facility_id)
+	if key.is_empty():
+		return false
+	var data := load_data()
+	var seen: Array = data.get(GUIDES_SEEN_KEY, []) as Array
+	if key in seen:
+		return true
+	seen.append(key)
+	data[GUIDES_SEEN_KEY] = seen
+	return save_data(data)
+
+static func target_prize_id() -> String:
+	return str(load_data().get(TARGET_PRIZE_KEY, ""))
+
+static func set_target_prize_id(prize_id: String) -> bool:
+	var data := load_data()
+	data[TARGET_PRIZE_KEY] = _normalize_card_id(prize_id)
 	return save_data(data)
 
 static func record_dice_race(won: bool, payout: int) -> void:
@@ -412,6 +444,16 @@ static func _normalize(source: Dictionary) -> Dictionary:
 	data[ACTIVE_GAMES_KEY] = _normalize_active_games(source.get(ACTIVE_GAMES_KEY, {}))
 	data[SETTLEMENTS_KEY] = source.get(SETTLEMENTS_KEY, {}) as Dictionary if source.get(SETTLEMENTS_KEY, {}) is Dictionary else {}
 	data["casino_settlement_order"] = source.get("casino_settlement_order", []) as Array if source.get("casino_settlement_order", []) is Array else []
+	# v2 saves have neither field; both start empty so every guide shows once
+	# and the hub picks the first unowned prize as the target.
+	var seen_source: Array = source.get(GUIDES_SEEN_KEY, []) as Array if source.get(GUIDES_SEEN_KEY, []) is Array else []
+	var seen: Array[String] = []
+	for value: Variant in seen_source:
+		var facility := _facility_key(str(value))
+		if not facility.is_empty() and facility not in seen:
+			seen.append(facility)
+	data[GUIDES_SEEN_KEY] = seen
+	data[TARGET_PRIZE_KEY] = _normalize_card_id(str(source.get(TARGET_PRIZE_KEY, ""))) if source.get(TARGET_PRIZE_KEY, "") is String else ""
 	return data
 
 static func _facility_key(facility_id: String) -> String:
