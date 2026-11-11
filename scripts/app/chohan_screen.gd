@@ -134,7 +134,7 @@ func _layout_table() -> void:
 	dice_presentation.size = DICE_BOX
 	cup.size = CUP_SIZE
 	var rest := _cup_rest_position()
-	cup.position = rest if state != State.RESULT else rest - Vector2(0, CUP_LIFT)
+	cup.position = rest
 	total_label.position = Vector2(0, minf(area.y - 76.0, center.y + 150.0))
 	total_label.size = Vector2(area.x, 60)
 
@@ -264,7 +264,7 @@ func _start_round() -> void:
 		return
 	state = State.ROLLING
 	_set_inputs_locked(true)
-	shell.set_balance(int(receipt.get("balance_after", CasinoBankScript.balance())), true)
+	shell.set_balance(int(receipt.get("balance_after", CasinoBankScript.balance())), not instant_for_tests)
 	shell.set_primary("壺を振っている…", false)
 	shell.set_status("%s（%s）に %d チップ" % [ModelScript.choice_name(choice), ModelScript.choice_caption(choice), selected_bet])
 	feel_fx.press_button(shell.primary_button, true)
@@ -272,8 +272,9 @@ func _start_round() -> void:
 	var round_bet := selected_bet
 	var game_id := str(receipt.get("game_id", ""))
 	await _play_shake()
-	_finish_round(round_choice, dice, round_bet, game_id)
+	var result := _settle_round(round_choice, dice, round_bet, game_id)
 	await _play_lift()
+	_show_round_result(result)
 
 
 func _resume_active_round() -> void:
@@ -294,33 +295,42 @@ func _resume_active_round() -> void:
 	choice = saved_choice
 	selected_bet = bet
 	var dice: Array[int] = [int((saved_dice as Array)[0]), int((saved_dice as Array)[1])]
-	_finish_round(saved_choice, dice, bet, game_id)
-	shell.set_status("前の勝負の結果")
+	var result := _settle_round(saved_choice, dice, bet, game_id)
 	cup.visible = false
-	dice_presentation.visible = true
+	_show_round_result(result)
+	shell.set_status("前の勝負の結果")
 
 
-func _finish_round(round_choice: String, dice: Array[int], bet: int, game_id: String) -> void:
+## Pay out and put the decided dice under the cup. Chips are settled before
+## the reveal so an interrupted lift can never leave a round unpaid.
+func _settle_round(round_choice: String, dice: Array[int], bet: int, game_id: String) -> Dictionary:
 	var result: Dictionary = ModelScript.resolve(round_choice, dice, bet)
-	var payout := int(result.get("payout", 0))
-	var won := bool(result.get("won", false))
-	CasinoBankScript.settle_game(FACILITY_ID, payout, {
-		"won": won,
+	CasinoBankScript.settle_game(FACILITY_ID, int(result.get("payout", 0)), {
+		"won": bool(result.get("won", false)),
 		"choice": round_choice,
 		"dice": dice,
 		"total": int(result.get("total", 0)),
 	}, game_id)
 	last_result = result
-	state = State.RESULT
 	choice = round_choice
 	selected_bet = bet
 	dice_presentation.present(dice, false, 2)
 	dice_presentation.visible = true
+	return result
+
+
+## Called once the cup is off the dice.
+func _show_round_result(result: Dictionary) -> void:
+	state = State.RESULT
+	var dice: Array = result.get("dice", [1, 1])
+	var total := int(result.get("total", 0))
+	var payout := int(result.get("payout", 0))
+	var won := bool(result.get("won", false))
 	var parity := str(result.get("parity", ""))
-	total_label.text = "%d ＋ %d ＝ %d" % [dice[0], dice[1], int(result.get("total", 0))]
-	var detail := "合計 %d は %s（%s）" % [int(result.get("total", 0)), ModelScript.choice_name(parity), ModelScript.choice_caption(parity)]
+	total_label.text = "%d ＋ %d ＝ %d" % [int(dice[0]), int(dice[1]), total]
+	var detail := "合計 %d は %s（%s）" % [total, ModelScript.choice_name(parity), ModelScript.choice_caption(parity)]
 	shell.show_result(won, "当たり！ +%d" % payout if won else "はずれ", detail)
-	shell.set_balance(CasinoBankScript.balance(), true)
+	shell.set_balance(CasinoBankScript.balance(), not instant_for_tests)
 	shell.set_status("もう一度なら、丁か半をそのまま選べる")
 	shell.set_primary("もう一度", true)
 	_set_inputs_locked(false)
@@ -364,5 +374,4 @@ func _play_lift() -> void:
 	tween.tween_property(cup, "position", rest - Vector2(0, CUP_LIFT), 0.42).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.parallel().tween_property(cup, "modulate:a", 0.0, 0.42)
 	await tween.finished
-	if state == State.RESULT:
-		cup.visible = false
+	cup.visible = false
