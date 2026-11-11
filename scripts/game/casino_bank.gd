@@ -3,7 +3,9 @@ class_name CasinoBank
 
 const SAVE_PATH := "user://dice_slot_trip_casino.json"
 const SAVE_VERSION := 3
-const STARTING_CHIPS: int = 300
+## A first visit can afford three minimum bets but not the cheapest prize (50),
+## so the casino is playable at once and chips are still worth collecting.
+const STARTING_CHIPS: int = 30
 const SafeJsonStore = preload("res://scripts/game/safe_json_store.gd")
 const COIN_TO_CHIP_RATE := 2
 const CLEAR_CHIP_BONUS := 5

@@ -58,7 +58,8 @@ func _configure_test_save() -> void:
 	CasinoBankScript.set_test_save_path(test_save_path)
 	if FileAccess.file_exists(test_save_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(test_save_path))
-	CasinoBankScript.add_chips(1000)
+	# Top up to an exact 1000 so the checks do not depend on the starting gift.
+	CasinoBankScript.add_chips(1000 - CasinoBankScript.balance())
 
 func _cleanup_test_save() -> void:
 	if not test_save_path.is_empty() and FileAccess.file_exists(test_save_path):
