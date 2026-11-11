@@ -178,7 +178,7 @@ func _test_hud_copy_contract(screen: Control) -> void:
 	_expect(screen.call("_open_three_roll_onboarding_if_eligible"), "untouched journey opens the three-roll onboarding")
 	_expect(bool(screen.get("_three_roll_onboarding_open")) and landing_art.texture.resource_path.ends_with("slot-tray-luxury-v1.png"), "onboarding uses the shared overlay and luxury slot tray art")
 	var onboarding_copy := (screen.get_node("%LandingArtCaption") as Label).text
-	_expect((screen.get_node("%LandingArtTitle") as Label).text == "振って止めて、3投で役をつくる" and onboarding_copy.contains("1マス = 1ポイント") and onboarding_copy.contains("PAIR：同じ数字が2つ → TRIP COIN +1") and onboarding_copy.contains("STRAIGHT：連続した3つ → TRIP COIN +3") and onboarding_copy.contains("TRIPLE：同じ数字が3つ → TRIP COIN +5") and onboarding_copy.contains("MIX：そのほか → 報酬なし") and onboarding_copy.contains("満タンREST：SKILL +1") and onboarding_copy.contains("盾・加速・必殺") and landing_prompt.text == "わかった！ 旅を始める", "onboarding explains distance scoring, coin role rewards, and the REST skill charge")
+	_expect((screen.get_node("%LandingArtTitle") as Label).text == "振る → 止める → 進む" and onboarding_copy.contains("もう一度") and onboarding_copy.contains("3投分") and onboarding_copy.contains("2・2・5") and onboarding_copy.contains("コイン +1") and landing_prompt.text == "さっそく振ってみよう", "onboarding teaches the next action and one concrete reward example")
 	var elapsed_before: int = int(onboarding_session.elapsed_ms(Time.get_ticks_msec()))
 	screen.call("_on_landing_art_gui_input", InputEventMouseButton.new())
 	screen.call("_request_back")

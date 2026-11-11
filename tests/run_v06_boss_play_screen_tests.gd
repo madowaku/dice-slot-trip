@@ -11,12 +11,24 @@ func _init() -> void:
 
 
 func _run() -> void:
+	OS.set_environment("DICE_QA_V06_SCENARIO", "boss_quality")
+	var summary_screen: Control = ScreenScene.instantiate()
+	var summary_copy: String = summary_screen.call("_boss_finish_summary", {"turn_count": 3, "player_position_before": 8, "boss_position_before": 8, "player_position_after": 14, "boss_position_after": 10})
+	_expect(summary_copy.contains("最後の差 4マス"), "result gap uses final positions including the final turn instead of the previous tie")
+	summary_screen.free()
 	_test_boss_victory_and_clock()
 	_test_defeat_and_retry()
 	_test_damaged_hp_carry()
 	_test_boss_finished_guards()
 	await _test_pre_purchased_head_start_entry()
 	await _test_screen_contract()
+	var bgm: Node = root.get_node_or_null("BgmManager")
+	if bgm != null:
+		bgm.call("stop")
+	var sfx: Node = root.get_node_or_null("UiSfxManager")
+	if sfx != null:
+		sfx.call("stop_all")
+	await create_timer(0.15).timeout
 	print("V06_BOSS_PLAY_SCREEN_TESTS failures=%d" % failures)
 	quit(1 if failures else 0)
 

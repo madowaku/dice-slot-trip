@@ -1118,9 +1118,9 @@ func _settle_finished_game() -> void:
 	result_balance_captured = true
 	rolling = false
 	view_state = "result"
-	if payout_value > 0:
+	if payout_value > int(game.get("bet", selected_bet)):
 		_play_ui_sfx(&"complete", true)
-	else:
+	elif payout_value < int(game.get("bet", selected_bet)):
 		_play_ui_sfx(&"error", true)
 	_show_result()
 
@@ -1136,20 +1136,20 @@ func _show_result() -> void:
 	var rank_name: String = str(game.get("rank", game.get("result", DicePokerScript.RANK_NO_HAND)))
 	var bet_amount: int = int(game.get("bet", selected_bet))
 	var payout_amount: int = int(game.get("payout", 0))
-	var profit_amount: int = int(game.get("profit", payout_amount - bet_amount))
+	var profit_amount: int = payout_amount - bet_amount
 	result_hand_tier = _hand_tier_for_rank(rank_name)
 	if not result_balance_captured:
 		result_balance_before = CasinoBankScript.balance()
 		result_balance_after = result_balance_before
 	result_label.text = rank_name
-	result_outcome_label.text = "WIN" if payout_amount > 0 else "LOSE"
-	result_outcome_label.add_theme_color_override("font_color", BRIGHT_GOLD if payout_amount > 0 else Color("#ff9a8e"))
+	result_outcome_label.text = "WIN" if profit_amount > 0 else ("EVEN" if profit_amount == 0 else "LOSE")
+	result_outcome_label.add_theme_color_override("font_color", BRIGHT_GOLD if profit_amount > 0 else (CREAM if profit_amount == 0 else Color("#ff9a8e")))
 	result_bet_value.text = "%d CHIP" % bet_amount
 	result_payout_label.text = "%d CHIP" % payout_amount
 	result_net_label.text = _signed_chip_text(profit_amount)
 	result_net_label.add_theme_color_override("font_color", BRIGHT_GOLD if profit_amount > 0 else (CREAM if profit_amount == 0 else Color("#ff9a8e")))
 	result_detail_label.text = "%s  ·  ×%.1f 受け取り倍率" % [rank_name, float(game.get("multiplier", DicePokerScript.multiplier_for(rank_name)))]
-	result_chip_delta_label.text = _signed_chip_text(result_balance_after - result_balance_before)
+	result_chip_delta_label.text = "払戻 " + _signed_chip_text(result_balance_after - result_balance_before)
 	status_label.text = "結果を確認中..."
 	result_label.visible = false
 	result_outcome_label.visible = false
@@ -1193,9 +1193,9 @@ func _present_result_stages() -> void:
 	presentation_phase = "result_outcome"
 	result_outcome_label.visible = true
 	if casino_feel_fx != null:
-		if int(game.get("payout", 0)) > 0:
+		if int(game.get("payout", 0)) > int(game.get("bet", selected_bet)):
 			casino_feel_fx.play_win_feedback()
-		else:
+		elif int(game.get("payout", 0)) < int(game.get("bet", selected_bet)):
 			casino_feel_fx.play_lose_feedback()
 	_animate_result_outcome()
 	stage_trace.append("outcome")

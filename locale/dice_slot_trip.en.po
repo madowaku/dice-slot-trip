@@ -42,14 +42,110 @@ msgstr "An entrance to another route. In a ring, it can lead you toward the exit
 msgid "TILE_HELP_TAP_TO_CLOSE"
 msgstr "Tap anywhere to continue"
 
+msgid "RULES_TITLE"
+msgstr "How to play"
+
+msgid "RULES_MOVE"
+msgstr "Move"
+
+msgid "RULES_SLOT"
+msgstr "Slots"
+
+msgid "RULES_HP"
+msgstr "HP / Tools"
+
+msgid "RULES_CLOSE"
+msgstr "Back to menu"
+
+msgid "RULES_MOVE_0_TITLE"
+msgstr "1. Roll, then tap again"
+
+msgid "RULES_MOVE_0_BODY"
+msgstr "Tap Roll, then tap again to choose the number."
+
+msgid "RULES_MOVE_1_TITLE"
+msgstr "2. Move and explore"
+
+msgid "RULES_MOVE_1_BODY"
+msgstr "Each space traveled earns one point. Landing spaces can give you coins or items."
+
+msgid "RULES_MOVE_2_TITLE"
+msgstr "3. Three rolls make a slot"
+
+msgid "RULES_MOVE_2_BODY"
+msgstr "Each roll fills one slot. After three rolls, the combination is scored. Face the Sphinx ahead!"
+
+msgid "RULES_SLOT_0_TITLE"
+msgstr "2 · 2 · 5   Pair"
+
+msgid "RULES_SLOT_0_BODY"
+msgstr "Two matching numbers → +1 coin"
+
+msgid "RULES_SLOT_1_TITLE"
+msgstr "1 · 2 · 3   Straight"
+
+msgid "RULES_SLOT_1_BODY"
+msgstr "In order, rising or falling by one → +3 coins"
+
+msgid "RULES_SLOT_2_TITLE"
+msgstr "3 · 3 · 3   Triple"
+
+msgid "RULES_SLOT_2_BODY"
+msgstr "Three matching numbers → +5 coins"
+
+msgid "RULES_SLOT_3_TITLE"
+msgstr "Spend your coins"
+
+msgid "RULES_SLOT_3_BODY"
+msgstr "Other combinations give no reward. Use coins from the Coin button below. These rewards apply to the normal journey."
+
+msgid "RULES_HP_0_TITLE"
+msgstr "Risk and rest"
+
+msgid "RULES_HP_0_BODY"
+msgstr "Risk: −1 HP. Rest: +1 HP. Resting at full HP adds one skill charge."
+
+msgid "RULES_HP_1_TITLE"
+msgstr "When HP reaches zero"
+
+msgid "RULES_HP_1_BODY"
+msgstr "Use one remaining revive to return with full HP. If no revives remain, the journey ends."
+
+msgid "RULES_HP_2_TITLE"
+msgstr "Items and skills"
+
+msgid "RULES_HP_2_BODY"
+msgstr "Use collected tools from Items. A full skill gauge lets you choose your next number."
+
 msgid "THREE_ROLL_ONBOARDING_TITLE"
-msgstr "ROLL, STOP, COMPLETE A SET"
+msgstr "ROLL → STOP → MOVE"
 
 msgid "THREE_ROLL_ONBOARDING_BODY"
-msgstr "Tap again while the die rolls. It stops on the face you see.\nMove that many spaces: 1 space = 1 point!\n\nPAIR: two matching faces → TRIP COIN +1\nSTRAIGHT: three consecutive faces → TRIP COIN +3\nTRIPLE: three matching faces → TRIP COIN +5\nMIX: anything else → no reward\nFULL REST: SKILL +1\n\nIn the boss race they become Shield, Boost, and Finisher."
+msgstr "Tap Roll. Tap again to stop the die.\nYour cat moves that many spaces.\nThree rolls make one slot combination!\n\nExample: 2 · 2 · 5 → Pair, +1 coin"
 
 msgid "THREE_ROLL_ONBOARDING_CTA"
-msgstr "GOT IT — START THE JOURNEY"
+msgstr "LET'S ROLL"
+
+msgid "JOURNEY_INTRO_TITLE"
+msgstr "SET OUT FOR THE SPHINX"
+
+msgid "JOURNEY_INTRO_BODY"
+msgstr "Explore Cairo and face the boss ahead!\nEach space traveled earns one point.\n\nRisk: −1 HP. Rest: +1 HP.\nOut of HP? Revive, or end if none remain."
+
+msgid "JOURNEY_INTRO_CTA"
+msgstr "NEXT — HOW TO ROLL"
+
+msgid "FIRST_ROLL_START"
+msgstr "Tap Roll to begin"
+
+msgid "FIRST_ROLL_STOP"
+msgstr "Tap again to choose your number"
+
+msgid "FIRST_ROLL_SECOND"
+msgstr "Two more rolls complete your slot"
+
+msgid "FIRST_ROLL_THIRD"
+msgstr "One more roll completes your slot"
 
 msgid "TRAVEL_MENU_BUTTON"
 msgstr "MENU"
@@ -127,3 +223,12 @@ msgid "EVENT_DISCOVERY_SCORE"
 msgstr "FIRST DISCOVERY!"
 msgid "EVENT_CONTINUE_CTA"
 msgstr "CONTINUE JOURNEY"
+
+msgid "MISSION_PROGRESS_REMAINING"
+msgstr "%d/%d · %d left"
+
+msgid "MISSION_NEXT_LAP_HINT"
+msgstr "A new mission awaits next lap"
+
+msgid "MISSION_ONE_MORE"
+msgstr "One more to clear! COIN +%d"

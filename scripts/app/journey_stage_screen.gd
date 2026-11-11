@@ -3227,7 +3227,7 @@ func _aquafall_rules_slide_view(slide_index: int, compact: bool) -> Control:
 	match slide_index:
 		0:
 			title_text = "① 頂上まで登れば勝ち！"
-			subtitle_text = "頂上の高さ24に着けば勝ち！　／　丸太に3回ぶつかるとゲームオーバー"
+			subtitle_text = "高さ24に着けば勝ち！　HPが0になると敗北。ガードでダメージを防げます。"
 			slide.add_child(_aquafall_rules_goal_illustration(compact))
 		1:
 			title_text = "② 出目を見て「左」か「右」を選ぶ"

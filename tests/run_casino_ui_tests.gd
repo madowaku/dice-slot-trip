@@ -54,6 +54,9 @@ func _run() -> void:
 	CasinoBankScript.set_test_save_path(test_save_path)
 	if FileAccess.file_exists(test_save_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(test_save_path))
+	var fixture: Dictionary = CasinoBankScript.default_data()
+	fixture["chips"] = 0
+	CasinoBankScript.save_data(fixture)
 	CasinoBankScript.add_chips(100)
 
 	var hub := HUB_SCENE.instantiate()

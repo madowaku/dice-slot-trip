@@ -85,7 +85,10 @@ func _test_chip_bank() -> void:
 	var path := CasinoBankScript.save_path()
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
-	_expect(CasinoBankScript.balance() == 0, "new Casino Bank starts at zero")
+	_expect(CasinoBankScript.balance() == 300, "new Casino Bank starts with 300 chips")
+	var fixture: Dictionary = CasinoBankScript.default_data()
+	fixture["chips"] = 0
+	_expect(CasinoBankScript.save_data(fixture), "casino economy tests reset their balance fixture")
 	var result: Dictionary = CasinoBankScript.stage_clear_conversion(24, true)
 	_expect(int(result.converted_chip) == 12, "24 leftover trip coin converts to 12 chip")
 	_expect(int(result.clear_bonus) == 5, "stage clear grants five chip bonus")

@@ -341,7 +341,7 @@ func show_result(result: Dictionary) -> void:
 	result_body.text = (
 		"白狐との距離を読み切った。\n御朱印の道が、次の旅を照らす。"
 		if victory
-		else ("白狐が一周先へ逃げ切った。\n次の周回はステージの最初から。" if defeat_reason == "FOX_LAPPED_PLAYER" else "狐火で進める外周がなくなった。\n次の周回はステージの最初から。")
+		else ("白狐が一周先へ逃げ切った。\n次は役を揃えて、加速を狙おう。" if defeat_reason == "FOX_LAPPED_PLAYER" else "狐火で進める外周がなくなった。\n次は狐火を越える選択を見直そう。")
 	)
 	result_art.visible = victory
 	result_button.text = "次の周回へ" if victory else "ステージの最初へ"

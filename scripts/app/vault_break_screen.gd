@@ -1346,7 +1346,7 @@ func _refresh_all() -> void:
 	if setup_reward_label != null and repository != null:
 		var setup_config: Dictionary = repository.call("get_tier_config", selected_tier) as Dictionary
 		var setup_reward := floori(float(selected_bet) * float(setup_config.get("payout_multiplier", 0.0)))
-		setup_reward_label.text = "成功報酬  %d チップ" % setup_reward
+		setup_reward_label.text = "成功時 %d CHIP（BET込み）" % setup_reward
 	if start_button != null:
 		start_button.disabled = state != State.SETUP or resume_error or CasinoBankScript.balance() < selected_bet or not _is_tier_playable(selected_tier) or not _repository_loaded
 	if back_button != null:
@@ -1362,7 +1362,7 @@ func _refresh_all() -> void:
 	if roll_counter != null:
 		roll_counter.text = "%d / %d" % [maxi(0, int(model.get("max_rolls")) - int(model.get("rolls_used"))), int(model.get("max_rolls"))]
 	if reward_label != null:
-		reward_label.text = "獲得チップ  %d CHIP" % floori(float(selected_bet) * float(config.get("payout_multiplier", 0.0)))
+		reward_label.text = "受け取り %d CHIP（BET込み）" % floori(float(selected_bet) * float(config.get("payout_multiplier", 0.0)))
 	if template_label != null:
 		template_label.text = "%s VAULT · %s · %d LOCKS" % [str(TIER_NAMES.get(active_tier, active_tier.to_upper())), str(active_template.get("id", "")), lock_views.size()]
 	if die_face_label != null:

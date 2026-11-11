@@ -37,6 +37,18 @@ jobs:
       - name: Run core regression tests
         run: godot --headless --path . --script tests/run_tests.gd
 
+      - name: Run save corruption and recovery regression tests
+        run: godot --headless --path . --script tests/run_save_integrity_tests.gd
+
+      - name: Run Cairo checkpoint regression tests
+        run: godot --headless --path . --script tests/run_v06_save_tests.gd
+
+      - name: Run first journey onboarding flow
+        run: godot --headless --path . --script tests/run_onboarding_flow_tests.gd
+
+      - name: Run in-game rules guide flow
+        run: godot --headless --path . --script tests/run_travel_rules_tests.gd
+
       - name: Run Amazon and Kyoto stage tests
         run: godot --headless --path . --script tests/run_amazon_kyoto_stage_tests.gd
 

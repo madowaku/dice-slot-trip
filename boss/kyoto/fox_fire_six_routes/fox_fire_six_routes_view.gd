@@ -700,7 +700,7 @@ func show_result(result: Variant) -> void:
 	result_body.text = (
 		"白狐「見事。道は、しかと繋がった。」\n\n封印 %d/3 ・ %dターン"
 		if won else
-		"白狐に道を閉ざされた……\n\n封印 %d/3 ・ %dターン"
+		"次は鳥居にぴったり止まる道を探そう。\n\n封印 %d/3 ・ %dターン"
 	) % [int(data.get("seal_count", 0)), int(data.get("turns_used", 0))]
 	result_button.text = "旅へ戻る" if won else "結果を受け取る"
 	result_overlay.visible = true

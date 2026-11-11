@@ -33,6 +33,8 @@ func _assert_how_to(screen: Node) -> void:
 		_expect(detail != null and actions[index] in detail.text and detail.text.length() <= 48, "DICE POKER keeps concise step copy %d" % (index + 1))
 
 func _run() -> void:
+	root.size = Vector2i(360, 800)
+	root.content_scale_size = Vector2i(720, 1600)
 	_configure_test_save()
 	DicePokerScreenScript.suppress_audio_for_tests = true
 	var ui_sfx: Node = root.get_node_or_null("UiSfxManager")
@@ -209,12 +211,34 @@ func _test_scene_flow() -> void:
 	_expect(_trace_contains_in_order(scene.stage_trace, expected_trace), "result stages include dice→hand→outcome→metrics→CHIP→CTA")
 	_expect(scene.stage_trace.has("outcome") and scene.stage_trace.has("metrics") and scene.stage_trace.has("chip_count"), "result exposes outcome, metrics, and CHIP stages")
 	_expect(scene.result_outcome_label.visible and scene.result_outcome_label.text == "WIN", "result announces WIN after the hand and multiplier")
-	_expect(scene.result_chip_delta_label.visible and scene.result_chip_delta_label.text == "+34 CHIP", "result announces the final CHIP delta")
+	_expect(scene.result_chip_delta_label.visible and scene.result_chip_delta_label.text == "払戻 +34 CHIP", "result announces the final CHIP delta")
 	_expect(scene.chip_label.text == "1,014", "CHIP count finishes on the settled balance after its visible count")
 	_expect(scene._hand_tier_for_rank(DicePokerScript.RANK_NO_HAND) == 0 and scene._hand_tier_for_rank(DicePokerScript.RANK_FIVE) == 5, "result feedback exposes restrained NO HAND through strongest tier five")
 	var settled_balance: int = CasinoBankScript.balance()
 	scene.lock_button.pressed.emit()
 	_expect(CasinoBankScript.balance() == settled_balance, "settlement replay is idempotent")
+	for fixture: Dictionary in [
+		{"payout": 4, "outcome": "LOSE", "net": "-16 CHIP"},
+		{"payout": 20, "outcome": "EVEN", "net": "±0 CHIP"},
+		{"payout": 34, "outcome": "WIN", "net": "+14 CHIP"},
+	]:
+		scene.game["bet"] = 20
+		scene.game["payout"] = fixture.payout
+		scene.game["profit"] = 999
+		var fixture_rank: String = DicePokerScript.RANK_ONE_PAIR if int(fixture.payout) == 4 else (DicePokerScript.RANK_FULL_HOUSE if int(fixture.payout) == 20 else DicePokerScript.RANK_FOUR)
+		scene.game["rank"] = fixture_rank
+		scene.game["multiplier"] = DicePokerScript.multiplier_for(fixture_rank)
+		scene.game["dice"] = [1, 1, 2, 4, 6] if int(fixture.payout) == 4 else ([2, 2, 3, 3, 3] if int(fixture.payout) == 20 else [2, 2, 2, 2, 6])
+		scene.result_balance_before = 980
+		scene.result_balance_after = 980 + int(fixture.payout)
+		scene._show_result()
+		await create_timer(1.85).timeout
+		_expect(scene.result_outcome_label.text == fixture.outcome and scene.result_net_label.text == fixture.net, "result uses actual net return even when stored profit is stale: %s" % fixture.outcome)
+		_expect(CasinoBankScript.balance() == settled_balance, "repainting an outcome never settles chips again")
+		var capture_dir: String = OS.get_environment("DICE_QA_POKER_OUTCOME_DIR")
+		if not capture_dir.is_empty() and DisplayServer.get_name() != "headless":
+			await process_frame
+			root.get_texture().get_image().save_png(capture_dir.path_join(str(fixture.outcome) + ".png"))
 	scene.queue_free()
 	await process_frame
 

@@ -3,6 +3,8 @@ class_name CasinoBank
 
 const SAVE_PATH := "user://dice_slot_trip_casino.json"
 const SAVE_VERSION := 2
+const STARTING_CHIPS: int = 300
+const SafeJsonStore = preload("res://scripts/game/safe_json_store.gd")
 const COIN_TO_CHIP_RATE := 2
 const CLEAR_CHIP_BONUS := 5
 const ACTIVE_GAMES_KEY := "active_games"
@@ -19,7 +21,7 @@ static var _transaction_nonce := 0
 static func default_data() -> Dictionary:
 	return {
 		"version": SAVE_VERSION,
-		"chips": 0,
+		"chips": STARTING_CHIPS,
 		"owned_cards": [],
 		"conversion_keys": [],
 		"dice_race_play_count": 0,
@@ -53,25 +55,14 @@ static func _effective_save_path() -> String:
 	return _test_save_path if not _test_save_path.is_empty() else SAVE_PATH
 
 static func load_data() -> Dictionary:
-	var path := _effective_save_path()
-	if not FileAccess.file_exists(path):
-		return default_data()
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		return default_data()
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	if not parsed is Dictionary:
-		return default_data()
-	return _normalize(parsed as Dictionary)
+	var data: Dictionary = SafeJsonStore.load_data(_effective_save_path(), _valid_save)
+	return _normalize(data) if not data.is_empty() else default_data()
+
+static func _valid_save(data: Dictionary) -> bool:
+	return data.has("chips") and (data.chips is int or data.chips is float) and data.get("owned_cards", []) is Array
 
 static func save_data(data: Dictionary) -> bool:
-	var normalized := _normalize(data)
-	var file := FileAccess.open(_effective_save_path(), FileAccess.WRITE)
-	if file == null:
-		push_warning("CasinoBank could not open its save file.")
-		return false
-	file.store_string(JSON.stringify(normalized, "  "))
-	return true
+	return SafeJsonStore.save_data(_effective_save_path(), _normalize(data), _valid_save)
 
 static func balance() -> int:
 	return int(load_data().get("chips", 0))
@@ -79,7 +70,8 @@ static func balance() -> int:
 static func add_chips(amount: int) -> int:
 	var data := load_data()
 	data["chips"] = maxi(0, int(data.get("chips", 0)) + maxi(0, amount))
-	save_data(data)
+	if not save_data(data):
+		return balance()
 	return int(data["chips"])
 
 static func spend_chips(amount: int) -> bool:
@@ -138,11 +130,11 @@ static func _conversion_receipt(remaining_trip_coin: int, cleared_boss: bool, pe
 	if persist:
 		after = add_chips(gained)
 	return {
-		"ok": true,
+		"ok": not persist or after == before + gained,
 		"remaining_trip_coin": remainder,
 		"converted_chip": converted,
 		"clear_bonus": clear_bonus,
-		"gained_chip": gained,
+		"gained_chip": gained if not persist or after == before + gained else 0,
 		"balance_before": before,
 		"balance_after": after,
 	}

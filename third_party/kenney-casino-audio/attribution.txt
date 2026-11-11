@@ -1,0 +1,16 @@
+Casino Audio by Kenney Vleugels (Kenney.nl)
+License: Creative Commons Zero v1.0 Universal (CC0 1.0)
+Attribution is not required. This record is kept for source and asset provenance.
+
+Selected runtime copies:
+- assets/audio/kenney/casino/dice-throw-1.ogg
+- assets/audio/kenney/casino/dice-throw-2.ogg
+- assets/audio/kenney/casino/dice-throw-3.ogg
+- assets/audio/kenney/casino/chip-lay-1.ogg
+- assets/audio/kenney/casino/chip-lay-2.ogg
+- assets/audio/kenney/casino/chip-lay-3.ogg
+- assets/audio/kenney/casino/chips-collide-1.ogg through chips-collide-4.ogg
+- assets/audio/kenney/casino/chips-stack-1.ogg through chips-stack-6.ogg
+
+Asset pack: Casino Audio 1.1
+Official site: https://kenney.nl/assets
