@@ -187,7 +187,8 @@ func _run() -> void:
 	var fox_caption := (race.direction_plates.get("fox", {}) as Dictionary).caption as Label
 	_expect(fox_caption.text == "上" and "キツネ" not in fox_caption.text, "direction plates let racer art replace duplicate small names")
 	_expect(race.setup_view.visible and not race.race_view.visible, "Dice Race opens in the pre-race betting view")
-	_assert_how_to(race, "dice_race", ["レーサーを選ぶ", "サイコロを振る", "ゴールを見届ける"])
+	# DICE RACE keeps its how-to in the shared guide (first visit, then 「？」).
+	_expect(race.find_child("CasinoHowTo3Steps", true, false) == null and race.guide_step_count() >= 1 and race.guide_step_count() <= 3 and race.find_child("HelpButton", true, false) != null, "dice_race keeps a how-to of three steps or fewer behind the shared help button")
 	var race_start_balance: int = CasinoBankScript.balance()
 	race.call("_start_race")
 	await process_frame
@@ -286,10 +287,10 @@ func _run() -> void:
 	var race_result_ready: bool = await _wait_for_race_result_ctas(race)
 	_expect(race_result_ready, "Race result unlocks all three CTAs after its bounded staged reveal")
 	_expect(race.result_panel.visible and race.result_rank_label.visible and race.result_rank_label.text == "最終順位  1位", "Race result presents the final rank first")
-	_expect(race.result_outcome_label.visible and race.result_outcome_label.text == "WIN", "Race result presents the authored WIN outcome")
+	_expect(race.result_outcome_label.visible and str(race.result_outcome_label.get_meta("outcome", "")) == "WIN" and race.result_outcome_label.text == "勝ち！  +36", "Race result presents the authored WIN outcome with the chips returned")
 	_expect(race.result_bet_value.visible and race.result_bet_value.text == "20 CHIP" and race.result_return_value.text == "36 CHIP" and race.result_net_value.text == "+16 CHIP", "Race result presents BET, RETURN, and NET as separate readable metrics")
 	_expect(race.result_chip_delta_label.visible and "CHIP" in race.result_chip_delta_label.text, "Race result completes with readable CHIP balance feedback")
-	_expect(race.again_button.text == "もう一度遊ぶ" and race.change_bet_button.text == "ベットを変える" and race.result_exit_button.text == "カジノへ戻る", "Race result exposes the three Japanese next-action CTAs")
+	_expect(race.again_button.text == "もう一度遊ぶ" and race.change_bet_button.text == "賭け金を変える" and race.result_exit_button.text == "カジノへ戻る", "Race result exposes the three Japanese next-action CTAs")
 	_expect(str(race.call("_result_outcome_for_net", 0)) == "EVEN", "Race result preserves the authored EVEN outcome for zero net")
 	_expect(race.race_fx_layer.find_child("ConfettiPiece", true, false) != null, "victory adds restrained gold confetti")
 	_expect(bet_marker.z_index == 18, "the GOAL racer moves to the course foreground")
@@ -313,7 +314,7 @@ func _run() -> void:
 	race.race["bet_active"] = true
 	race.call("_finish_race")
 	var race_loss_ready: bool = await _wait_for_race_result_ctas(race)
-	_expect(race_loss_ready and race.result_outcome_label.text == "LOSS" and race.result_return_value.text == "16 CHIP" and race.result_net_value.text == "-4 CHIP", "Race loss presents rank, LOSS, RETURN, and NET before enabling replay")
+	_expect(race_loss_ready and str(race.result_outcome_label.get_meta("outcome", "")) == "LOSS" and race.result_outcome_label.text == "負け  +16" and race.result_return_value.text == "16 CHIP" and race.result_net_value.text == "-4 CHIP", "Race loss presents rank, LOSS, RETURN, and NET before enabling replay")
 	_expect(not CasinoBankScript.has_active_game("dice_race") and CasinoBankScript.balance() == race_balance_before_loss - 4, "Race third-place loss settles once with the authored 16 CHIP partial return")
 	var race_stats: Dictionary = CasinoBankScript.load_data()
 	_expect(int(race_stats.get("dice_race_play_count", 0)) == 2 and int(race_stats.get("dice_race_win_count", 0)) == 1, "Race settlement records one win and one loss atomically")

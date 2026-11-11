@@ -388,21 +388,29 @@ func is_guide_open() -> bool:
 func open_guide() -> void:
 	if is_guide_open() or _guide_steps.is_empty():
 		return
-	guide_overlay = Control.new()
-	guide_overlay.name = "GuideOverlay"
-	guide_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(guide_overlay)
+	guide_overlay = build_guide_overlay(self, _guide_title, _guide_steps, _guide_reference, close_guide)
+
+
+## Build the shared how-to overlay on any host. Screens that keep their own
+## layout (DICE RACE) use this directly so every guide looks the same.
+static func build_guide_overlay(host: Control, title: String, steps: Array[String], reference: String, on_close: Callable) -> Control:
+	var shown_steps: Array[String] = steps.slice(0, MAX_GUIDE_STEPS)
+	var overlay := Control.new()
+	overlay.name = "GuideOverlay"
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.z_index = 60
+	host.add_child(overlay)
 
 	var dim := ColorRect.new()
 	dim.name = "GuideDim"
 	dim.color = Color(0.03, 0.02, 0.06, 0.82)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	guide_overlay.add_child(dim)
+	overlay.add_child(dim)
 
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	guide_overlay.add_child(center)
+	overlay.add_child(center)
 
 	var panel := PanelContainer.new()
 	panel.name = "GuidePanel"
@@ -414,12 +422,12 @@ func open_guide() -> void:
 	box.add_theme_constant_override("separation", 18)
 	panel.add_child(box)
 
-	var heading := _label(_guide_title, UiTokensScript.FONT_TITLE, GOLD_BRIGHT)
+	var heading := _make_label(title, UiTokensScript.FONT_TITLE, GOLD_BRIGHT)
 	heading.name = "GuideTitle"
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(heading)
 
-	for index: int in range(_guide_steps.size()):
+	for index: int in range(shown_steps.size()):
 		var row := HBoxContainer.new()
 		row.name = "GuideStep%d" % (index + 1)
 		row.add_theme_constant_override("separation", 16)
@@ -429,23 +437,23 @@ func open_guide() -> void:
 		badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		badge.add_theme_stylebox_override("panel", _box(GOLD, GOLD_BRIGHT, 32, 0, 0))
 		row.add_child(badge)
-		var number := _label(str(index + 1), UiTokensScript.FONT_BODY, INK)
+		var number := _make_label(str(index + 1), UiTokensScript.FONT_BODY, INK)
 		number.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		number.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		badge.add_child(number)
-		var copy := _label(_guide_steps[index], UiTokensScript.FONT_BODY, CREAM)
+		var copy := _make_label(shown_steps[index], UiTokensScript.FONT_BODY, CREAM)
 		copy.name = "GuideStepText%d" % (index + 1)
 		copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		copy.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		row.add_child(copy)
 
-	if not _guide_reference.is_empty():
-		var reference := _label(_guide_reference, 24, MUTED)
-		reference.name = "GuideReference"
-		reference.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		reference.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		box.add_child(reference)
+	if not reference.is_empty():
+		var note := _make_label(reference, 24, MUTED)
+		note.name = "GuideReference"
+		note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(note)
 
 	var ok := Button.new()
 	ok.name = "GuideCloseButton"
@@ -455,8 +463,9 @@ func open_guide() -> void:
 	ok.add_theme_font_size_override("font_size", UiTokensScript.FONT_BODY)
 	_style_primary(ok)
 	VisualFeedback.bind_button(ok)
-	ok.pressed.connect(close_guide)
+	ok.pressed.connect(on_close)
 	box.add_child(ok)
+	return overlay
 
 
 func close_guide() -> void:
@@ -472,6 +481,10 @@ func close_guide() -> void:
 # ---------------------------------------------------------------- styling
 
 func _label(text: String, size: int, color: Color) -> Label:
+	return _make_label(text, size, color)
+
+
+static func _make_label(text: String, size: int, color: Color) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_override("font", FONT)

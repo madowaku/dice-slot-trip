@@ -7,7 +7,8 @@ const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
 const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const CasinoFeelFXScript = preload("res://scripts/ui/casino_feel_fx.gd")
 const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
-const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
+const ShellScript = preload("res://scripts/ui/casino_table_shell.gd")
+const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 const OrientationScript = preload("res://scripts/game/dice_race_orientation.gd")
 const RaceScript = preload("res://scripts/game/dice_race_model.gd")
 const TrackViewScript = preload("res://scripts/app/dice_race_track_view.gd")
@@ -142,6 +143,8 @@ var again_button: Button
 var change_bet_button: Button
 var result_exit_button: Button
 var casino_back_button: Button
+var help_button: Button
+var guide_overlay: Control
 var casino_feel_fx: CasinoFeelFX
 var final_stretch_shown := false
 var spectator_layout_tween: Tween
@@ -173,7 +176,10 @@ func _ready() -> void:
 	orientations = OrientationScript.all_orientations()
 	rng.randomize()
 	_build_ui()
+	set_meta("facility_id", FACILITY_ID)
 	_resume_or_show_setup()
+	if setup_view.visible and not CasinoBankScript.has_seen_guide(FACILITY_ID):
+		open_guide()
 
 func _exit_tree() -> void:
 	exiting = true
@@ -218,10 +224,10 @@ func _build_ui() -> void:
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 14)
-	margin.add_theme_constant_override("margin_right", 14)
-	margin.add_theme_constant_override("margin_top", 12)
-	margin.add_theme_constant_override("margin_bottom", 12)
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_bottom", 24)
 	add_child(margin)
 
 	var root := VBoxContainer.new()
@@ -233,10 +239,10 @@ func _build_ui() -> void:
 	_build_header(root)
 	_build_status_row(root)
 
-	status_label = _label("勝たせたいレーサーを選ぼう", 18, Color.WHITE)
+	status_label = _label("勝たせたいレーサーを選ぼう", UiTokensScript.FONT_CAPTION, Color.WHITE)
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	status_label.custom_minimum_size.y = 34
+	status_label.custom_minimum_size.y = 40
 	root.add_child(status_label)
 
 	setup_view = VBoxContainer.new()
@@ -245,7 +251,6 @@ func _build_ui() -> void:
 	setup_view.add_theme_constant_override("separation", 8)
 	root.add_child(setup_view)
 	_build_course_overview(setup_view)
-	CasinoHowTo3StepsScript.build(setup_view, FACILITY_ID, _how_to_steps())
 	_build_bet_panel(setup_view)
 
 	race_view = VBoxContainer.new()
@@ -260,8 +265,8 @@ func _build_ui() -> void:
 
 	roll_button = _button("サイコロを振る", true)
 	roll_button.name = "RollStopButton"
-	roll_button.custom_minimum_size.y = 92
-	roll_button.add_theme_font_size_override("font_size", 32)
+	roll_button.custom_minimum_size.y = 116
+	roll_button.add_theme_font_size_override("font_size", UiTokensScript.FONT_TITLE)
 	roll_button.pressed.connect(_on_roll_stop)
 	race_view.add_child(roll_button)
 
@@ -278,43 +283,89 @@ func _build_ui() -> void:
 	add_child(casino_feel_fx)
 	_build_result_view(effect_layer)
 
-	var back := _button("カジノへ戻る")
-	back.name = "CasinoBackButton"
-	back.custom_minimum_size.y = 48
-	back.pressed.connect(_on_back_pressed)
-	CasinoBackButton.configure(back)
-	casino_back_button = back
-	root.add_child(back)
-
 
 func _build_header(root: VBoxContainer) -> void:
-	var header := PanelContainer.new()
-	header.custom_minimum_size.y = 62
-	header.add_theme_stylebox_override("panel", _panel(RED, GOLD, 22, 3))
-	root.add_child(header)
+	# Same top row as every renewed casino table.
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	header.add_child(row)
-	var title := _label("DICE RACE", 34, GOLD_LIGHT)
+	row.name = "RaceHeader"
+	row.add_theme_constant_override("separation", 12)
+	root.add_child(row)
+	var back := Button.new()
+	back.name = "CasinoBackButton"
+	back.custom_minimum_size = Vector2(216, UiTokensScript.TOUCH_MIN)
+	CasinoBackButton.configure(back)
+	VisualFeedback.bind_button(back)
+	back.pressed.connect(_on_back_pressed)
+	casino_back_button = back
+	row.add_child(back)
+	var title := _label("DICE RACE", UiTokensScript.FONT_TITLE, GOLD_LIGHT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.add_theme_color_override("font_outline_color", Color("#4e1715"))
-	title.add_theme_constant_override("outline_size", 5)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(title)
+	help_button = Button.new()
+	help_button.name = "HelpButton"
+	help_button.text = "？"
+	help_button.tooltip_text = "遊び方"
+	help_button.custom_minimum_size = Vector2(UiTokensScript.TOUCH_MIN, UiTokensScript.TOUCH_MIN)
+	help_button.add_theme_font_override("font", FONT)
+	help_button.add_theme_font_size_override("font_size", UiTokensScript.FONT_BODY)
+	ShellScript._style_button(help_button, ShellScript.PANEL, ShellScript.PANEL_EDGE, ShellScript.CREAM, 48)
+	VisualFeedback.bind_button(help_button)
+	help_button.pressed.connect(open_guide)
+	row.add_child(help_button)
 	var chip_panel := PanelContainer.new()
-	chip_panel.custom_minimum_size.x = 146
-	chip_panel.add_theme_stylebox_override("panel", _panel(Color("#211c19"), GOLD, 16, 2))
-	chip_label = _label("CASINO CHIP\n0", 14, Color("#fff4cd"))
+	chip_panel.name = "ChipPanel"
+	chip_panel.add_theme_stylebox_override("panel", ShellScript._box(ShellScript.PANEL, ShellScript.PANEL_EDGE, 18, 2, 8))
+	root.add_child(chip_panel)
+	chip_label = _label("CASINO CHIP  0", UiTokensScript.FONT_CAPTION, ShellScript.CREAM)
 	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	chip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	chip_panel.add_child(chip_label)
-	row.add_child(chip_panel)
+
+
+# ---- shared guide: first visit, then behind 「？」 -------------------------
+
+func _guide_steps() -> Array[String]:
+	var steps: Array[String] = [
+		"勝たせたいレーサーと賭け金を選ぶ",
+		"回るサイコロを止めると、出た目のぶんレーサーが進む",
+		"推しが上位でゴールすればチップが戻る",
+	]
+	return steps
+
+
+func guide_step_count() -> int:
+	return _guide_steps().size()
+
+
+func is_guide_open() -> bool:
+	return guide_overlay != null and is_instance_valid(guide_overlay)
+
+
+func open_guide() -> void:
+	if is_guide_open() or presentation_locked or spinning:
+		return
+	var first: int = roundi(20.0 * RaceScript.final_multiplier_for_rank(1))
+	var second: int = roundi(20.0 * RaceScript.final_multiplier_for_rank(2))
+	var third: int = roundi(20.0 * RaceScript.final_multiplier_for_rank(3))
+	var reference := "賭け金 20 のとき戻るチップ\n1位 +%d ・ 2位 +%d ・ 3位 +%d" % [first, second, third]
+	guide_overlay = ShellScript.build_guide_overlay(self, "DICE RACE の遊び方", _guide_steps(), reference, close_guide)
+
+
+func close_guide() -> void:
+	if not is_guide_open():
+		return
+	guide_overlay.queue_free()
+	guide_overlay = null
+	CasinoBankScript.mark_guide_seen(FACILITY_ID)
+
 
 func _build_status_row(root: VBoxContainer) -> void:
 	var row := HBoxContainer.new()
-	row.custom_minimum_size.y = 48
+	row.custom_minimum_size.y = 72
 	row.add_theme_constant_override("separation", 7)
 	root.add_child(row)
-	var bet_box := _hud_box("BET", selected_racer)
+	var bet_box := _hud_box("賭け金", selected_racer)
 	bet_label = bet_box.label
 	bet_portrait = bet_box.portrait
 	row.add_child(bet_box.panel)
@@ -332,7 +383,7 @@ func _hud_box(caption: String, portrait_racer: String = "") -> Dictionary:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 0)
 	panel.add_child(box)
-	var cap := _label(caption, 13, Color("#70451d"))
+	var cap := _label(caption, 20, Color("#70451d"))
 	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(cap)
 	var value_row := HBoxContainer.new()
@@ -345,20 +396,13 @@ func _hud_box(caption: String, portrait_racer: String = "") -> Dictionary:
 		portrait.name = "BetPortrait"
 		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		portrait.custom_minimum_size = Vector2(24, 24)
+		portrait.custom_minimum_size = Vector2(36, 36)
 		portrait.texture = _racer_art(portrait_racer)
 		value_row.add_child(portrait)
-	var value := _label("-", 18, INK)
+	var value := _label("-", 28, INK)
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	value_row.add_child(value)
 	return {"panel": panel, "label": value, "portrait": portrait}
-
-func _how_to_steps() -> Array[Dictionary]:
-	return [
-		{"action": "レーサーを選ぶ", "copy": "進ませたい動物とベットを選ぼう"},
-		{"action": "サイコロを振る", "copy": "出た目でレーサーが進む"},
-		{"action": "ゴールを見届ける", "copy": "選んだレーサーが上位なら配当"},
-	]
 
 func _build_course_overview(root: VBoxContainer) -> void:
 	var overview := PanelContainer.new()
@@ -638,28 +682,34 @@ func _build_bet_panel(root: VBoxContainer) -> void:
 	for racer_id: String in RaceScript.RACERS:
 		var button := _button(RACER_LABELS[racer_id])
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 50
-		button.add_theme_font_size_override("font_size", 17)
+		button.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
+		button.add_theme_font_size_override("font_size", 26)
 		button.icon = _racer_art(racer_id)
-		button.add_theme_constant_override("icon_max_width", 30)
+		button.add_theme_constant_override("icon_max_width", 56)
 		button.pressed.connect(_select_racer.bind(racer_id))
 		racer_grid.add_child(button)
 		racer_buttons[racer_id] = button
 	var amount_row := HBoxContainer.new()
 	amount_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	amount_row.add_theme_constant_override("separation", 8)
+	amount_row.add_theme_constant_override("separation", 12)
 	bet_panel.add_child(amount_row)
+	var amount_caption := _label("賭け金", UiTokensScript.FONT_CAPTION, ShellScript.MUTED)
+	amount_caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	amount_caption.custom_minimum_size.x = 104
+	amount_row.add_child(amount_caption)
 	for amount: int in BET_AMOUNTS:
-		var button := _button("%d CHIP" % amount)
+		var button := _button(str(amount))
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 48
+		button.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
+		button.add_theme_font_size_override("font_size", UiTokensScript.FONT_BODY)
 		button.pressed.connect(_select_bet.bind(amount))
 		amount_row.add_child(button)
 		amount_buttons[amount] = button
 	start_button = _button("ゲーム開始", true)
 	start_button.name = "RaceStartButton"
-	start_button.custom_minimum_size.y = 64
-	start_button.add_theme_font_size_override("font_size", 30)
+	start_button.custom_minimum_size.y = 116
+	start_button.add_theme_font_size_override("font_size", UiTokensScript.FONT_TITLE)
+	ShellScript._style_primary(start_button)
 	start_button.pressed.connect(_start_race)
 	bet_panel.add_child(start_button)
 
@@ -676,7 +726,7 @@ func _build_result_view(effect_layer: Control) -> void:
 	effect_layer.add_child(center)
 	result_panel = PanelContainer.new()
 	result_panel.name = "RaceResultPanel"
-	result_panel.custom_minimum_size = Vector2(324, 0)
+	result_panel.custom_minimum_size = Vector2(600, 0)
 	result_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	result_panel.add_theme_stylebox_override("panel", _panel(Color("#241735f7"), GOLD, 18, 3))
 	result_panel.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -688,18 +738,18 @@ func _build_result_view(effect_layer: Control) -> void:
 	result_view.add_theme_constant_override("separation", 6)
 	result_view.visible = false
 	result_panel.add_child(result_view)
-	var title := _label("レース結果", 30, GOLD_LIGHT)
+	var title := _label("レース結果", UiTokensScript.FONT_BODY, GOLD_LIGHT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	result_view.add_child(title)
-	result_rank_label = _label("最終順位  ?位", 36, Color.WHITE)
+	result_rank_label = _label("最終順位  ?位", UiTokensScript.FONT_TITLE, Color.WHITE)
 	result_rank_label.name = "ResultRankLabel"
 	result_rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	result_view.add_child(result_rank_label)
-	result_outcome_label = _label("", 34, GOLD_LIGHT)
+	result_outcome_label = _label("", UiTokensScript.FONT_DISPLAY, GOLD_LIGHT)
 	result_outcome_label.name = "ResultOutcomeLabel"
 	result_outcome_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	result_view.add_child(result_outcome_label)
-	result_detail_label = _label("", 18, Color("#e8d8c4"))
+	result_detail_label = _label("", 26, Color("#e8d8c4"))
 	result_detail_label.name = "ResultDetailLabel"
 	result_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	result_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -708,16 +758,16 @@ func _build_result_view(effect_layer: Control) -> void:
 	metrics.name = "ResultMetrics"
 	metrics.add_theme_constant_override("separation", 4)
 	result_view.add_child(metrics)
-	var bet_stat := _result_stat_box("BET")
+	var bet_stat := _result_stat_box("賭け金")
 	result_bet_value = bet_stat.get("label") as Label
 	metrics.add_child(bet_stat.get("panel") as PanelContainer)
-	var return_stat := _result_stat_box("RETURN")
+	var return_stat := _result_stat_box("受け取り")
 	result_return_value = return_stat.get("label") as Label
 	metrics.add_child(return_stat.get("panel") as PanelContainer)
-	var net_stat := _result_stat_box("NET")
+	var net_stat := _result_stat_box("増減")
 	result_net_value = net_stat.get("label") as Label
 	metrics.add_child(net_stat.get("panel") as PanelContainer)
-	result_chip_delta_label = _label("残高  0 CHIP", 18, GOLD_LIGHT)
+	result_chip_delta_label = _label("残高  0 CHIP", 26, GOLD_LIGHT)
 	result_chip_delta_label.name = "ResultChipDeltaLabel"
 	result_chip_delta_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	result_chip_delta_label.visible = false
@@ -725,20 +775,20 @@ func _build_result_view(effect_layer: Control) -> void:
 
 	again_button = _button("もう一度遊ぶ", true)
 	again_button.name = "AgainButton"
-	again_button.custom_minimum_size.y = 96
-	again_button.add_theme_font_size_override("font_size", 30)
+	again_button.custom_minimum_size.y = 116
+	again_button.add_theme_font_size_override("font_size", UiTokensScript.FONT_TITLE)
+	ShellScript._style_primary(again_button)
 	again_button.pressed.connect(_on_again_result)
 	result_view.add_child(again_button)
-	change_bet_button = _button("ベットを変える")
+	change_bet_button = _button("賭け金を変える")
 	change_bet_button.name = "ChangeBetButton"
-	change_bet_button.custom_minimum_size.y = 88
-	change_bet_button.add_theme_font_size_override("font_size", 22)
+	change_bet_button.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
+	change_bet_button.add_theme_font_size_override("font_size", UiTokensScript.FONT_CAPTION)
 	change_bet_button.pressed.connect(_on_change_bet_result)
 	result_view.add_child(change_bet_button)
 	result_exit_button = _button("カジノへ戻る")
 	result_exit_button.name = "ResultExitButton"
-	result_exit_button.custom_minimum_size.y = 88
-	result_exit_button.add_theme_font_size_override("font_size", 22)
+	result_exit_button.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
 	CasinoBackButton.configure(result_exit_button)
 	result_exit_button.pressed.connect(_on_result_exit)
 	result_view.add_child(result_exit_button)
@@ -749,15 +799,15 @@ func _build_result_view(effect_layer: Control) -> void:
 func _result_stat_box(caption: String) -> Dictionary:
 	var panel := PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.custom_minimum_size.y = 58
+	panel.custom_minimum_size.y = 84
 	panel.add_theme_stylebox_override("panel", _panel(Color("#30233e"), Color("#80643c"), 10, 1))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", -3)
 	panel.add_child(box)
-	var cap := _label(caption, 14, Color("#cbbba8"))
+	var cap := _label(caption, 22, Color("#cbbba8"))
 	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(cap)
-	var value := _label("-", 20, GOLD_LIGHT)
+	var value := _label("-", 28, GOLD_LIGHT)
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(value)
 	return {"panel": panel, "label": value}
@@ -906,15 +956,23 @@ func _refresh_bet_buttons() -> void:
 	for amount: int in amount_buttons:
 		var button := amount_buttons[amount] as Button
 		button.disabled = chips < amount
-		button.text = ("● " if amount == selected_bet else "") + "%d CHIP" % amount
+		button.text = str(amount)
 		_apply_button_state(button, amount == selected_bet)
 	start_button.disabled = chips < selected_bet
 	if start_button.disabled:
-		status_label.text = "CHIPが足りない。通常ステージでCOINを持ち帰ろう。"
+		status_label.text = "チップが足りない。旅でチップを集めよう"
+	elif setup_view != null and setup_view.visible:
+		# Say what the chosen wager can return instead of quoting a multiplier.
+		status_label.text = "%sに %d チップ。1位なら +%d" % [
+			RACER_LABELS.get(selected_racer, selected_racer),
+			selected_bet,
+			roundi(float(selected_bet) * RaceScript.final_multiplier_for_rank(1)),
+		]
 
 func _start_race() -> void:
 	if presentation_locked:
 		return
+	close_guide()
 	_set_phase("start")
 	presentation_locked = true
 	if casino_feel_fx != null:
@@ -1221,7 +1279,8 @@ func _show_result_view() -> void:
 	var net: int = payout - selected_bet
 	var outcome: String = _result_outcome_for_net(net)
 	result_rank_label.text = "最終順位  %d位" % final_rank
-	result_outcome_label.text = outcome
+	result_outcome_label.set_meta("outcome", outcome)
+	result_outcome_label.text = _outcome_copy(outcome, payout)
 	var outcome_color := GOLD_LIGHT if outcome == "WIN" else (Color("#f7d58b") if outcome == "EVEN" else Color("#ff9a8e"))
 	result_outcome_label.add_theme_color_override("font_color", outcome_color)
 	result_detail_label.text = "%s  ·  %sのゴールを確認" % [RACER_LABELS.get(selected_racer, selected_racer), RACER_LABELS.get(winner, winner)]
@@ -1266,9 +1325,9 @@ func _present_result_stages() -> void:
 	result_outcome_label.visible = true
 	status_label.text = "勝敗を確認中..."
 	if casino_feel_fx != null:
-		if result_outcome_label.text == "WIN":
+		if str(result_outcome_label.get_meta("outcome", "")) == "WIN":
 			casino_feel_fx.play_win_feedback()
-		elif result_outcome_label.text == "LOSS":
+		elif str(result_outcome_label.get_meta("outcome", "")) == "LOSS":
 			casino_feel_fx.play_lose_feedback()
 		else:
 			casino_feel_fx.press_button(null, true)
@@ -1308,7 +1367,7 @@ func _animate_result_chip_count(duration: float) -> void:
 		if exiting or not is_inside_tree():
 			return
 		var value: int = roundi(lerpf(float(from_value), float(to_value), float(index) / float(steps)))
-		chip_label.text = "CASINO CHIP\n%d" % value
+		chip_label.text = "CASINO CHIP  %d" % value
 		result_chip_delta_label.text = "残高  %d CHIP" % value
 		await get_tree().create_timer(duration / float(steps)).timeout
 
@@ -1318,6 +1377,17 @@ func _result_outcome_for_net(net: int) -> String:
 	# break-even return is EVEN, and a negative return is LOSS. Feel polish must
 	# never reinterpret a payout as a different game result.
 	return "WIN" if net > 0 else ("EVEN" if net == 0 else "LOSS")
+
+
+## Player-facing copy for an outcome key, with the chips actually returned.
+func _outcome_copy(outcome: String, payout: int) -> String:
+	var returned := "  +%d" % payout if payout > 0 else ""
+	match outcome:
+		"WIN":
+			return "勝ち！" + returned
+		"EVEN":
+			return "引き分け" + returned
+	return "負け" + returned
 
 
 func _on_again_result() -> void:
@@ -1558,7 +1628,7 @@ func _show_selected_movement_event() -> void:
 	_show_race_banner(callout, GOLD_LIGHT, Color("#3f2408"), 0.38, "GimmickCallout")
 
 func _refresh_all(animate_track: bool = false) -> void:
-	chip_label.text = "CASINO CHIP\n%d" % CasinoBankScript.balance()
+	chip_label.text = "CASINO CHIP  %d" % CasinoBankScript.balance()
 	bet_label.text = "★ %s  %d" % [RACER_LABELS.get(selected_racer, selected_racer), selected_bet] if wager_committed else "-"
 	roll_count_label.text = "%d / 6" % int(race.get("roll_count", 0))
 	var payout := RaceScript.winning_payout(race)

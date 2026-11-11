@@ -115,7 +115,7 @@ func _run() -> void:
 		var screen: ScreenScript = screen_node as ScreenScript
 		_expect(screen.start_button != null and screen.start_button.text == "ゲーム開始", "start CTA is explicit")
 		_expect(screen.roll_button != null and screen.roll_button.text == "サイコロを振る", "roll CTA is explicit")
-		_expect(screen.result_panel != null and screen.result_panel.custom_minimum_size.x <= 324.0, "result panel is compact for 360px")
+		_expect(screen.result_panel != null and screen.result_panel.custom_minimum_size.x <= 672.0, "result panel fits inside the 720-wide design canvas")
 		_expect(screen.result_view != null and not screen.result_view.visible, "result view starts hidden")
 		screen.stage_trace.clear()
 		screen._set_phase("result_rank")

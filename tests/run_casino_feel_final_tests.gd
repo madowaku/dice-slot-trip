@@ -78,6 +78,9 @@ func _assert_facility_shell(screen: Node, definition: Dictionary, round_index: i
 	_expect(back != null and back.text == "カジノへ戻る", "%s round %d exposes the shared casino-return CTA" % [facility_id, round_index])
 	var how_to: PanelContainer = screen.find_child("CasinoHowTo3Steps", true, false) as PanelContainer
 	var table_shell: Node = screen.find_child("CasinoTableShell", true, false)
+	if table_shell == null and screen.has_method("guide_step_count"):
+		# DICE RACE keeps its own layout but uses the same shared guide.
+		table_shell = screen
 	if table_shell != null:
 		# Renewed tables carry the how-to in the shared guide instead.
 		_expect(str(table_shell.get_meta("facility_id", "")) == facility_id and int(table_shell.call("guide_step_count")) in [1, 2, 3], "%s round %d retains the three-step how-to identity" % [facility_id, round_index])
