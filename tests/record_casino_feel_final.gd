@@ -324,6 +324,9 @@ func _exercise_tour_gameplay(screen: Node, facility_id: String, index: int) -> v
 			await _wait_for_visible(screen.get("result_view") as Control, 180)
 			_expect((screen.get("result_view") as Control).visible, "treasure_21 real rolls reach GOLDEN result")
 		"dice_poker":
+			# The renewed table opens its first-visit guide; dismiss it first.
+			(screen.get("shell") as Node).call("close_guide")
+			await _settle_frames(2)
 			screen.set("queued_roll_batch", [[2, 2, 3, 4, 6]])
 			(screen.get("deal_button") as Button).pressed.emit()
 			await _wait_for_unlocked(screen, 180)
@@ -337,7 +340,7 @@ func _exercise_tour_gameplay(screen: Node, facility_id: String, index: int) -> v
 			_expect((screen.get("result_view") as Control).visible, "dice_poker real HOLD and lock actions reach result")
 	await _capture("%02d-%s-result" % [index, facility_id])
 	var result_copy: String = _visible_text(screen)
-	_expect(result_copy.contains("BET") and (result_copy.contains("収支") or result_copy.contains("受け取り") or result_copy.contains("RETURN") and result_copy.contains("NET")), "%s result shows BET and outcome accounting" % facility_id)
+	_expect((result_copy.contains("BET") or result_copy.contains("賭け金")) and (result_copy.contains("収支") or result_copy.contains("受け取り") or result_copy.contains("RETURN") and result_copy.contains("NET")), "%s result shows BET and outcome accounting" % facility_id)
 	stage_records.append(_record_state("tour_gameplay_result", {
 		"facility": facility_id,
 		"balance_before": balance_before,

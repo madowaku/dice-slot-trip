@@ -19,19 +19,6 @@ func _expect(condition: bool, label: String) -> void:
 	failures += 1
 	push_error("FAIL: %s" % label)
 
-func _assert_how_to(screen: Node) -> void:
-	var panel := screen.find_child("CasinoHowTo3Steps", true, false) as PanelContainer
-	_expect(panel != null, "DICE POKER exposes the shared CasinoHowTo3Steps panel")
-	if panel == null:
-		return
-	var headings: Array[String] = ["① 最初に何をする？", "② プレイ中に何をする？", "③ どうなれば勝ち？"]
-	var actions: Array[String] = ["ベットを決める", "キープして振り直す", "役を作る"]
-	for index: int in range(3):
-		var heading := panel.find_child("Step%dHeading" % (index + 1), true, false) as Label
-		var detail := panel.find_child("Step%dDetail" % (index + 1), true, false) as Label
-		_expect(heading != null and heading.text == headings[index], "DICE POKER keeps shared step heading %d" % (index + 1))
-		_expect(detail != null and actions[index] in detail.text and detail.text.length() <= 48, "DICE POKER keeps concise step copy %d" % (index + 1))
-
 func _run() -> void:
 	root.size = Vector2i(360, 800)
 	root.content_scale_size = Vector2i(720, 1600)
@@ -137,147 +124,190 @@ func _test_model_rules() -> void:
 	scenario_d = DicePokerScript.keep_all(scenario_d)
 	_expect(not DicePokerScript.can_reroll(scenario_d) and DicePokerScript.can_lock_hand(scenario_d), "Scenario D keeps the final decision available after intentional holds")
 
-func _test_scene_flow() -> void:
-	var scene_node: Node = DICE_POKER_SCENE.instantiate()
-	var scene: DicePokerScreen = scene_node as DicePokerScreen
-	root.add_child(scene_node)
+func _open_table() -> DicePokerScreen:
+	var node: Node = DICE_POKER_SCENE.instantiate()
+	root.add_child(node)
 	await process_frame
-	_expect(scene != null and scene.get_script() == DicePokerScreenScript, "DICE POKER scene reaches DicePokerScreen")
-	_expect(scene.setup_view.visible and not scene.active_view.visible and not scene.result_view.visible and scene.back_button.text == "カジノへ戻る", "DICE POKER opens on setup with the shared casino-return label")
-	_assert_how_to(scene)
-	_expect(scene.bet_buttons.size() == 3 and scene.keep_buttons.size() == 5, "screen builds three BET and five KEEP targets")
-	for amount: int in scene.bet_buttons:
-		_expect((scene.bet_buttons[amount] as Button).custom_minimum_size.y >= 96.0, "BET %d meets touch target" % amount)
-	for index: int in scene.keep_buttons:
-		_expect((scene.keep_buttons[index] as Button).custom_minimum_size.y >= 96.0, "DIE %d KEEP meets touch target" % (index + 1))
+	await process_frame
+	return node as DicePokerScreen
 
-	scene.selected_bet = 20
+func _visible_label_text(screen: Node) -> String:
+	var parts: Array[String] = []
+	for node: Node in screen.find_children("*", "Label", true, false):
+		if (node as Label).is_visible_in_tree():
+			parts.append((node as Label).text)
+	for node: Node in screen.find_children("*", "Button", true, false):
+		if (node as Button).is_visible_in_tree():
+			parts.append((node as Button).text)
+	return "\n".join(parts)
+
+func _test_scene_flow() -> void:
+	DicePokerScreenScript.instant_for_tests = true
+
+	# --- first visit and the shared table frame -------------------------
+	var scene: DicePokerScreen = await _open_table()
+	_expect(scene.shell.is_guide_open() and scene.shell.guide_step_count() <= 3, "first visit opens a guide of three steps or fewer")
+	var reference := scene.find_child("GuideReference", true, false) as Label
+	_expect(reference != null and "ファイブ" in reference.text and "ワンペア" in reference.text, "the hand list lives in the guide, not on the table")
+	(scene.find_child("GuideCloseButton", true, false) as Button).pressed.emit()
+	await process_frame
+	_expect(not scene.shell.is_guide_open() and CasinoBankScript.has_seen_guide("dice_poker"), "closing the guide remembers it")
+	_expect(scene.view_state == "setup" and scene.back_button.text == "カジノへ戻る", "setup uses the shared return label")
+	_expect(scene.find_children("PrimaryButton", "Button", true, false).size() == 1 and scene.deal_button.text == "ダイスを配る", "setup has exactly one primary action")
+	_expect(scene.find_child("CasinoHowTo3Steps", true, false) == null, "the always-on how-to panel is gone")
+	var setup_copy := _visible_label_text(scene)
+	_expect("×" not in setup_copy and "PAY TABLE" not in setup_copy and "FULL HOUSE" not in setup_copy, "setup shows no pay table or multiplier notation")
+	_expect(scene.keep_buttons.size() == 5, "five dice tap targets exist")
+	for index: int in scene.keep_buttons:
+		_expect((scene.keep_buttons[index] as Button).custom_minimum_size.y >= 96.0 and (scene.keep_buttons[index] as Button).custom_minimum_size.x >= 96.0, "die %d tap target meets the touch size" % (index + 1))
+		_expect(not (scene.keep_buttons[index] as Button).is_visible_in_tree(), "die %d cannot be kept before the deal" % (index + 1))
+
+	# --- deal: the wager and the decided dice are saved before animation --
+	DicePokerScreenScript.instant_for_tests = false
+	(scene.bet_buttons[20] as Button).pressed.emit()
 	scene.queued_roll_batch = [[2, 2, 3, 4, 5], [6, 6, 6, 6, 6]]
 	scene.deal_button.pressed.emit()
-	_expect(scene.presentation_locked, "GAME START locks presentation immediately")
+	_expect(scene.presentation_locked and scene.view_state == "rolling", "dealing locks the table at once")
 	var active: Dictionary = CasinoBankScript.active_game("dice_poker")
 	var pending: Array = active.get("pending_rolls", []) as Array
-	_expect(not pending.is_empty() and int((pending[0] as Dictionary).get("values", [0])[0]) == 2, "DEAL pending values persist before animation")
-	_expect(CasinoBankScript.balance() == 980, "DEAL charges BET once")
-	await create_timer(1.30).timeout
-	_expect(scene.active_view.visible and scene.game["dice"] == [2, 2, 3, 4, 5], "DEAL resolves exact five faces")
-	_expect(not scene.presentation_locked, "initial roll unlocks input after presentation")
-	_expect(_trace_contains_in_order(scene.stage_trace, ["roll_start", "land_1", "land_2", "land_3", "land_4", "land_5", "roll_ready"]), "initial roll lands five dice in order")
-	var direct_tap: Button = scene.find_child("DieTap_5", true, false) as Button
-	_expect(direct_tap != null, "die card exposes a full-card HOLD target")
-	if direct_tap != null:
-		direct_tap.pressed.emit()
-		await process_frame
-		_expect(bool((scene.game.get("kept", []) as Array)[4]), "direct die-card tap toggles HOLD")
-		direct_tap.pressed.emit()
-		await process_frame
-		_expect(not bool((scene.game.get("kept", []) as Array)[4]), "direct die-card tap toggles HOLD off")
-		direct_tap.pressed.emit()
-		await process_frame
-		_expect(bool((scene.game.get("kept", []) as Array)[4]), "direct die-card tap supports intentional re-HOLD")
-		direct_tap.pressed.emit()
-		direct_tap.pressed.emit()
-		direct_tap.pressed.emit()
-		await process_frame
-		_expect(not bool((scene.game.get("kept", []) as Array)[4]), "rapid HOLD toggles leave the final OPEN state and do not desync the tween")
+	_expect(not pending.is_empty() and int((pending[0] as Dictionary).get("values", [0])[0]) == 2, "dealt values persist before the animation")
+	_expect(CasinoBankScript.balance() == 980, "the deal charges the wager once")
+	scene.deal_button.pressed.emit()
+	_expect(CasinoBankScript.balance() == 980, "a second press while rolling charges nothing")
+	scene.back_button.pressed.emit()
+	await create_timer(1.4).timeout
+	DicePokerScreenScript.instant_for_tests = true
+	_expect(scene.view_state == "active" and not scene.presentation_locked, "the hand becomes playable after the roll")
+	_expect((scene.game.get("dice", []) as Array) == [2, 2, 3, 4, 5], "the dealt hand matches the saved values")
+
+	# --- active: one line says the hand and what it returns ---------------
+	_expect("ワンペア" in scene.shell.status_label.text and "+4" in scene.shell.status_label.text, "the status names the current hand and its return for this wager")
+	_expect("×" not in _visible_label_text(scene), "play shows no multiplier notation")
+	_expect("振り直す" in scene.reroll_button.text and "あと2回" in scene.reroll_button.text and scene.lock_button.is_visible_in_tree(), "the primary re-rolls while taking the hand stays a quiet secondary")
+	_expect(not scene.shell.bet_row.visible, "the wager row is hidden during the hand")
 	scene.keep_buttons[0].pressed.emit()
-	await process_frame
-	_expect(bool((scene.game.get("kept", []) as Array)[0]), "KEEP button updates persistent state")
+	scene.keep_buttons[1].pressed.emit()
+	_expect((scene.keep_buttons[0] as Button).button_pressed and (scene.keep_tags[0] as Label).visible and not (scene.keep_tags[2] as Label).visible, "kept dice are framed and tagged")
+	_expect(scene.dice_presentation.base_positions[0].y > scene.dice_presentation.base_positions[2].y, "kept dice lift off the felt")
+	var saved_kept: Array = (CasinoBankScript.active_game("dice_poker").get("session", {}) as Dictionary).get("kept", []) as Array
+	_expect(saved_kept.size() == 5 and bool(saved_kept[0]) and bool(saved_kept[1]) and not bool(saved_kept[2]), "keeps are saved with the round")
+	scene.keep_buttons[1].pressed.emit()
+	_expect(not (scene.keep_buttons[1] as Button).button_pressed, "tapping a kept die releases it")
+	scene.keep_buttons[1].pressed.emit()
+
+	# --- re-roll only the dice that were not kept -------------------------
 	scene.reroll_button.pressed.emit()
-	_expect(scene.presentation_locked, "REROLL locks presentation immediately")
-	_expect(scene.dice_presentation.state_name(0) == "LOCKED", "held die is physically locked at reroll start")
-	var pending_reroll: Dictionary = CasinoBankScript.active_game("dice_poker")
-	var pending_values: Array = pending_reroll.get("pending_rolls", []) as Array
-	_expect(not pending_values.is_empty() and (pending_values[0] as Dictionary).has("indices") and (pending_values[0] as Dictionary).has("full_values"), "REROLL persists full index/value mapping")
-	await create_timer(0.95).timeout
-	_expect(scene.presentation_locked, "normal reroll remains locked before its one-second presentation completes")
-	await create_timer(0.25).timeout
-	_expect(int(scene.game.get("rerolls_used", 0)) == 1 and int((scene.game.get("dice", []) as Array)[0]) == 2, "REROLL keeps die one and decrements remaining")
-	_expect(not scene.presentation_locked, "reroll unlocks input after presentation")
-	_expect(scene.stage_trace.has("intermediate_hand_5"), "normal reroll gives the intermediate hand a tiered pulse")
-	for index: int in range(1, 5):
+	await process_frame
+	_expect((scene.game.get("dice", []) as Array) == [2, 2, 6, 6, 6] and int(scene.game.get("rerolls_used", 0)) == 1, "the re-roll replaces only the unkept dice")
+	_expect("フルハウス" in scene.shell.status_label.text and "+20" in scene.shell.status_label.text and "あと1回" in scene.reroll_button.text, "the status and the remaining re-rolls update")
+	_expect(CasinoBankScript.balance() == 980, "re-rolling costs nothing")
+
+	# --- take the hand ----------------------------------------------------
+	scene.lock_button.pressed.emit()
+	await process_frame
+	_expect(scene.view_state == "result" and scene.result_view.visible, "taking the hand shows the result on the table")
+	_expect(CasinoBankScript.balance() == 1000 and not CasinoBankScript.has_active_game("dice_poker"), "a full house returns the 20 wager and clears the round")
+	_expect("フルハウス" in scene.shell.result_headline.text and "+20" in scene.shell.result_headline.text, "the result names the hand and the chips returned")
+	_expect("賭け金 20" in scene.shell.result_detail.text and "受け取り 20" in scene.shell.result_detail.text, "the result states wager and return")
+	scene.call("_settle_finished_game")
+	_expect(CasinoBankScript.balance() == 1000, "a repeated settlement pays nothing more")
+	_expect("もう一度" in scene.deal_button.text and scene.shell.bet_row.visible, "the result offers another hand and the wager row")
+
+	# --- again, then take a hand without keeping anything -----------------
+	scene.queued_roll_batch = [[1, 2, 3, 4, 6]]
+	scene.deal_button.pressed.emit()
+	await process_frame
+	_expect(scene.view_state == "active" and CasinoBankScript.balance() == 980, "「もう一度」 deals a new hand at the same wager")
+	scene.lock_button.pressed.emit()
+	await process_frame
+	_expect(scene.view_state == "result" and CasinoBankScript.balance() == 980 and scene.shell.result_headline.text == "役なし", "a hand can be taken as dealt; no hand returns nothing")
+
+	# --- all kept: the primary itself takes the hand ----------------------
+	scene.queued_roll_batch = [[4, 4, 4, 4, 2]]
+	scene.deal_button.pressed.emit()
+	await process_frame
+	for index: int in range(5):
 		scene.keep_buttons[index].pressed.emit()
+	_expect(scene.reroll_button.text == "この役で受け取る" and not scene.lock_button.is_visible_in_tree(), "with every die kept there is one action: take the hand")
+	scene.reroll_button.pressed.emit()
 	await process_frame
-	_expect(scene.lock_button.visible and not scene.reroll_button.visible, "all kept state shows LOCK HAND primary action")
-	scene.lock_button.pressed.emit()
-	_expect(scene.presentation_locked, "final result locks while announcing")
+	_expect(scene.view_state == "result" and CasinoBankScript.balance() == 960 + 34 and "フォー" in scene.shell.result_headline.text, "four of a kind returns 34 on a 20 wager")
+
+	# --- the second re-roll ends the hand ---------------------------------
+	scene.queued_roll_batch = [[1, 2, 3, 4, 6], [1, 1, 3, 4, 6], [1, 1, 1, 4, 6]]
+	scene.deal_button.pressed.emit()
 	await process_frame
-	_expect(scene.result_view.visible and int(scene.game.get("payout", 0)) == 34 and CasinoBankScript.balance() == 1014 and not scene.back_button.visible and scene.exit_button.text == "カジノへ戻る", "LOCK HAND settles FOUR once and Result exposes one shared casino-return action")
-	_expect(scene.exit_button.disabled and scene.again_button.disabled and scene.change_bet_button.disabled, "result CTAs stay locked during the staged reveal")
-	scene.exit_button.pressed.emit()
-	_expect(scene.presentation_locked and scene.view_state == "result", "return is guarded while result presentation is locked")
-	await create_timer(1.75).timeout
-	_expect(not scene.presentation_locked, "result unlocks after staged reveal")
-	var expected_trace: Array[String] = ["dice", "hand", "multiplier", "outcome", "metrics", "chip_count", "cta"]
-	_expect(_trace_contains_in_order(scene.stage_trace, expected_trace), "result stages include dice→hand→outcome→metrics→CHIP→CTA")
-	_expect(scene.stage_trace.has("outcome") and scene.stage_trace.has("metrics") and scene.stage_trace.has("chip_count"), "result exposes outcome, metrics, and CHIP stages")
-	_expect(scene.result_outcome_label.visible and scene.result_outcome_label.text == "WIN", "result announces WIN after the hand and multiplier")
-	_expect(scene.result_chip_delta_label.visible and scene.result_chip_delta_label.text == "払戻 +34 CHIP", "result announces the final CHIP delta")
-	_expect(scene.chip_label.text == "1,014", "CHIP count finishes on the settled balance after its visible count")
-	_expect(scene._hand_tier_for_rank(DicePokerScript.RANK_NO_HAND) == 0 and scene._hand_tier_for_rank(DicePokerScript.RANK_FIVE) == 5, "result feedback exposes restrained NO HAND through strongest tier five")
-	var settled_balance: int = CasinoBankScript.balance()
-	scene.lock_button.pressed.emit()
-	_expect(CasinoBankScript.balance() == settled_balance, "settlement replay is idempotent")
-	for fixture: Dictionary in [
-		{"payout": 4, "outcome": "LOSE", "net": "-16 CHIP"},
-		{"payout": 20, "outcome": "EVEN", "net": "±0 CHIP"},
-		{"payout": 34, "outcome": "WIN", "net": "+14 CHIP"},
-	]:
-		scene.game["bet"] = 20
-		scene.game["payout"] = fixture.payout
-		scene.game["profit"] = 999
-		var fixture_rank: String = DicePokerScript.RANK_ONE_PAIR if int(fixture.payout) == 4 else (DicePokerScript.RANK_FULL_HOUSE if int(fixture.payout) == 20 else DicePokerScript.RANK_FOUR)
-		scene.game["rank"] = fixture_rank
-		scene.game["multiplier"] = DicePokerScript.multiplier_for(fixture_rank)
-		scene.game["dice"] = [1, 1, 2, 4, 6] if int(fixture.payout) == 4 else ([2, 2, 3, 3, 3] if int(fixture.payout) == 20 else [2, 2, 2, 2, 6])
-		scene.result_balance_before = 980
-		scene.result_balance_after = 980 + int(fixture.payout)
-		scene._show_result()
-		await create_timer(1.85).timeout
-		_expect(scene.result_outcome_label.text == fixture.outcome and scene.result_net_label.text == fixture.net, "result uses actual net return even when stored profit is stale: %s" % fixture.outcome)
-		_expect(CasinoBankScript.balance() == settled_balance, "repainting an outcome never settles chips again")
-		var capture_dir: String = OS.get_environment("DICE_QA_POKER_OUTCOME_DIR")
-		if not capture_dir.is_empty() and DisplayServer.get_name() != "headless":
-			await process_frame
-			root.get_texture().get_image().save_png(capture_dir.path_join(str(fixture.outcome) + ".png"))
+	scene.reroll_button.pressed.emit()
+	await process_frame
+	_expect(scene.view_state == "active" and "あと1回" in scene.reroll_button.text, "one re-roll remains after the first")
+	scene.reroll_button.pressed.emit()
+	await process_frame
+	_expect(scene.view_state == "result" and "スリー" in scene.shell.result_headline.text and CasinoBankScript.balance() == 994 - 20 + 12, "the last re-roll settles the hand automatically")
+
+	# --- changing the wager from the result -------------------------------
+	(scene.bet_buttons[50] as Button).pressed.emit()
+	_expect(scene.view_state == "setup" and scene.selected_bet == 50 and not scene.result_view.visible, "choosing a wager on the result returns to setup")
+	var backs: Array[int] = []
+	scene.back_requested.connect(func() -> void: backs.append(1))
+	scene.back_button.pressed.emit()
+	_expect(backs.size() == 1, "「カジノへ戻る」 leaves the table")
 	scene.queue_free()
 	await process_frame
 
-	# Kill a screen while a reroll is animating and resume the exact persisted
-	# pending faces on a fresh screen.
-	var first_node: Node = DICE_POKER_SCENE.instantiate()
-	var first: DicePokerScreen = first_node as DicePokerScreen
-	root.add_child(first_node)
+	# --- an interrupted re-roll resumes on the same dice ------------------
+	DicePokerScreenScript.instant_for_tests = false
+	scene = await _open_table()
+	_expect(not scene.shell.is_guide_open(), "the guide does not reopen on later visits")
+	(scene.bet_buttons[20] as Button).pressed.emit()
+	scene.queued_roll_batch = [[1, 2, 3, 4, 5], [1, 6, 6, 6, 6]]
+	scene.deal_button.pressed.emit()
+	await create_timer(1.4).timeout
+	scene.keep_buttons[0].pressed.emit()
+	scene.reroll_button.pressed.emit()
+	_expect(scene.presentation_locked, "the re-roll locks the table")
+	var before_close: int = CasinoBankScript.balance()
+	scene.queue_free()
 	await process_frame
-	first.selected_bet = 20
-	first.queued_roll_batch = [[1, 1, 1, 2, 3], [6, 5, 4, 3]]
-	first.deal_button.pressed.emit()
-	await create_timer(1.30).timeout
-	first.keep_buttons[0].pressed.emit()
-	first.reroll_button.pressed.emit()
-	var before_resume: Dictionary = CasinoBankScript.active_game("dice_poker")
-	var stored: Array = before_resume.get("pending_rolls", []) as Array
-	_expect(not stored.is_empty() and int((stored[0] as Dictionary).get("full_values", [0, 0, 0, 0, 0])[0]) == 1, "resume fixture stores pending full values")
-	first.queue_free()
+	var resumed: DicePokerScreen = await _open_table()
+	await create_timer(1.4).timeout
+	_expect(int(resumed.game.get("rerolls_used", 0)) == 1 and (resumed.game.get("dice", []) as Array) == [1, 6, 6, 6, 6], "a fresh screen resumes the exact pending re-roll")
+	_expect(CasinoBankScript.balance() == before_close and resumed.view_state == "active", "resuming charges nothing and returns to the hand")
+
+	# --- leaving mid-hand keeps the round ---------------------------------
+	DicePokerScreenScript.instant_for_tests = true
+	var left: Array[int] = []
+	resumed.back_requested.connect(func() -> void: left.append(1))
+	resumed.back_button.pressed.emit()
+	_expect(left.size() == 1 and CasinoBankScript.has_active_game("dice_poker"), "leaving mid-hand is allowed and keeps the round saved")
+	resumed.queue_free()
 	await process_frame
-	var resumed_node: Node = DICE_POKER_SCENE.instantiate()
-	var resumed: DicePokerScreen = resumed_node as DicePokerScreen
-	root.add_child(resumed_node)
-	await process_frame
-	await create_timer(1.30).timeout
-	_expect(int(resumed.game.get("rerolls_used", 0)) == 1 and int((resumed.game.get("dice", []) as Array)[0]) == 1 and int((resumed.game.get("dice", []) as Array)[1]) == 6, "fresh screen resumes exact pending reroll values")
-	resumed.keep_buttons[1].pressed.emit()
-	resumed.keep_buttons[2].pressed.emit()
-	resumed.keep_buttons[3].pressed.emit()
-	resumed.keep_buttons[4].pressed.emit()
+	resumed = await _open_table()
+	# Faces read back from JSON are floats, so compare through the screen's int view.
+	_expect(resumed.view_state == "active" and resumed.call("_state_dice", resumed.game) == [1, 6, 6, 6, 6], "returning finds the same hand")
 	resumed.lock_button.pressed.emit()
 	await process_frame
-	_expect(not CasinoBankScript.has_active_game("dice_poker"), "resumed game settles and clears active transaction")
+	_expect(not CasinoBankScript.has_active_game("dice_poker") and CasinoBankScript.balance() == before_close + 34, "the resumed hand settles once")
 	resumed.queue_free()
 	await process_frame
 
-	# Deterministic presentation fixtures: pair→three, high role, NO HAND, and
-	# four-held/one-reroll all retain held faces while targets resolve.
+	# --- too few chips ----------------------------------------------------
+	var poor: Dictionary = CasinoBankScript.load_data()
+	poor["chips"] = 15
+	CasinoBankScript.save_data(poor)
+	scene = await _open_table()
+	_expect(scene.selected_bet == 10 and (scene.bet_buttons[20] as Button).disabled and not scene.deal_button.disabled, "with 15 chips only the 10 wager is offered")
+	scene.queue_free()
+	await process_frame
+	poor["chips"] = 3
+	CasinoBankScript.save_data(poor)
+	scene = await _open_table()
+	scene.deal_button.pressed.emit()
+	_expect(scene.deal_button.disabled and CasinoBankScript.balance() == 3 and not CasinoBankScript.has_active_game("dice_poker"), "no hand starts without chips")
+	scene.queue_free()
+	await process_frame
+	DicePokerScreenScript.instant_for_tests = false
+
+	# Deterministic model fixtures: held faces stay while targets resolve.
 	var fixtures: Array[Dictionary] = [
 		{"name": "C pair to three", "start": [3, 3, 2, 5, 6], "reroll": [3, 3, 3, 5, 6], "rank": DicePokerScript.RANK_THREE},
 		{"name": "E full house", "start": [3, 3, 2, 5, 6], "reroll": [3, 3, 2, 2, 2], "rank": DicePokerScript.RANK_FULL_HOUSE},

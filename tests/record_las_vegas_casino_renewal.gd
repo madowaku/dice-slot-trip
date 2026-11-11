@@ -11,6 +11,8 @@ extends SceneTree
 
 const HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const CHOHAN_SCENE: PackedScene = preload("res://scenes/casino/Chohan.tscn")
+const POKER_SCENE: PackedScene = preload("res://scenes/casino/DicePoker.tscn")
+const Poker = preload("res://scripts/app/dice_poker_screen.gd")
 const Bank = preload("res://scripts/game/casino_bank.gd")
 const Hub = preload("res://scripts/app/casino_hub_screen.gd")
 const Chohan = preload("res://scripts/app/chohan_screen.gd")
@@ -74,9 +76,11 @@ func _record() -> void:
 	_reset_bank(38)
 	Hub.suppress_audio_for_tests = true
 	Chohan.suppress_audio_for_tests = true
+	Poker.suppress_audio_for_tests = true
 
 	await _capture_hub()
 	await _capture_chohan()
+	await _capture_poker()
 
 	var bgm := root.get_node_or_null("BgmManager")
 	if bgm != null:
@@ -85,6 +89,7 @@ func _record() -> void:
 	Bank.clear_test_save_path()
 	Hub.suppress_audio_for_tests = false
 	Chohan.suppress_audio_for_tests = false
+	Poker.suppress_audio_for_tests = false
 	capture_viewport.queue_free()
 	print("LAS_VEGAS_RENEWAL_CAPTURE size=%s assertions=%d failures=%d output=%s" % [viewport_size, assertions, failures, output_dir])
 	quit(1 if failures > 0 else 0)
@@ -153,6 +158,39 @@ func _capture_chohan() -> void:
 	screen.shell.primary_button.pressed.emit()
 	await _settle_seconds(3.0)
 	await _capture("chohan-lose")
+	screen.queue_free()
+	await _settle_frames(3)
+
+
+func _capture_poker() -> void:
+	_reset_bank(120)
+	var screen := POKER_SCENE.instantiate()
+	capture_root.add_child(screen)
+	await _settle_frames(10)
+	_expect(screen.shell.is_guide_open(), "poker opens its first-play guide")
+	await _capture("poker-first-guide")
+	screen.shell.close_guide()
+	await _settle_frames(4)
+	_assert_inside(screen.shell.primary_button, "poker primary button")
+	await _capture("poker-setup")
+	screen.queued_roll_batch = [[3, 3, 5, 2, 6], [3, 3, 3, 5, 5]]
+	screen.shell.primary_button.pressed.emit()
+	await _settle_seconds(1.6)
+	_expect(screen.view_state == "active", "poker deals into its active hand")
+	(screen.keep_buttons[0] as Button).pressed.emit()
+	(screen.keep_buttons[1] as Button).pressed.emit()
+	await _settle_frames(8)
+	for index: Variant in screen.keep_buttons.keys():
+		_assert_inside(screen.keep_buttons[index] as Control, "poker die %d tap target" % (int(index) + 1))
+	_assert_inside(screen.lock_button, "poker take-hand button")
+	await _capture("poker-keep")
+	screen.shell.primary_button.pressed.emit()
+	await _settle_seconds(1.6)
+	await _capture("poker-after-reroll")
+	screen.lock_button.pressed.emit()
+	await _settle_frames(12)
+	_expect(screen.view_state == "result", "poker reaches its result")
+	await _capture("poker-result")
 	screen.queue_free()
 	await _settle_frames(3)
 

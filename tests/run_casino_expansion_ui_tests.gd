@@ -128,7 +128,14 @@ func _run() -> void:
 				how_to_actions = ["ベットを決める", "キープして振り直す", "役を作る"]
 			"vault_break":
 				how_to_actions = ["ベットと金庫を選ぶ", "サイコロを振って置く", "6つのロックを埋める"]
-		_assert_how_to(screen, id, how_to_actions)
+		var table_shell := screen.find_child("CasinoTableShell", true, false)
+		if table_shell != null:
+			# Renewed tables keep the how-to behind the shared guide (first
+			# visit, then 「？」), capped at three steps.
+			_expect(int(table_shell.call("guide_step_count")) >= 1 and int(table_shell.call("guide_step_count")) <= 3, "%s keeps a how-to of three steps or fewer in the shared guide" % id)
+			_expect(screen.find_child("CasinoHowTo3Steps", true, false) == null, "%s no longer shows the always-on how-to panel" % id)
+		else:
+			_assert_how_to(screen, id, how_to_actions)
 		screen.emit_signal("back_requested")
 		await process_frame
 		_expect(hub.hub_root.visible and not host.visible, "back from %s restores the Casino Hub" % id)

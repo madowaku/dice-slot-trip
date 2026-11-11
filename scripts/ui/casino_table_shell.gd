@@ -59,6 +59,7 @@ var _balance_shown := 0
 var _balance_tween: Tween
 var _guide_steps: Array[String] = []
 var _guide_title := ""
+var _guide_reference := ""
 var _selected_bet := 0
 
 
@@ -289,6 +290,23 @@ func _on_bet_pressed(amount: int) -> void:
 
 # ---------------------------------------------------------------- choices
 
+## Add a quiet secondary action beside the choices. It must never compete
+## with the primary button, so it keeps the muted panel look.
+func add_action(id: String, text: String) -> Button:
+	var button := Button.new()
+	button.name = "Action_%s" % id
+	button.text = text
+	button.custom_minimum_size = Vector2(0, UiTokensScript.TOUCH_MIN)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.add_theme_font_override("font", FONT)
+	button.add_theme_font_size_override("font_size", UiTokensScript.FONT_CAPTION)
+	_style_button(button, PANEL, PANEL_EDGE, CREAM, 20)
+	VisualFeedback.bind_button(button)
+	choice_row.add_child(button)
+	choice_row.visible = true
+	return button
+
+
 ## Add a large game-choice toggle (the game decides what it means).
 func add_choice(id: String, text: String) -> Button:
 	var button := Button.new()
@@ -340,6 +358,12 @@ func clear_result() -> void:
 func set_guide(title: String, steps: Array[String]) -> void:
 	_guide_title = title
 	_guide_steps = steps.slice(0, MAX_GUIDE_STEPS)
+
+
+## Optional small print under the steps (e.g. what each hand returns), so a
+## table that needs a lookup keeps it out of the play screen.
+func set_guide_reference(text: String) -> void:
+	_guide_reference = text
 
 
 func guide_step_count() -> int:
@@ -415,6 +439,13 @@ func open_guide() -> void:
 		copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		copy.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		row.add_child(copy)
+
+	if not _guide_reference.is_empty():
+		var reference := _label(_guide_reference, 24, MUTED)
+		reference.name = "GuideReference"
+		reference.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		reference.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(reference)
 
 	var ok := Button.new()
 	ok.name = "GuideCloseButton"

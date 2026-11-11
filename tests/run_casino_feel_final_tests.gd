@@ -8,7 +8,7 @@ const FACILITIES: Array[Dictionary] = [
 	{"id": "dice_tower", "label": "欲張りタワー", "primary": "ゲーム開始", "scene": preload("res://scenes/casino/DiceTower.tscn")},
 	{"id": "dice_roulette", "label": "一発ルーレット", "primary": "回す", "scene": preload("res://scenes/casino/DiceRoulette.tscn")},
 	{"id": "treasure_21", "label": "宝箱21", "primary": "ゲーム開始", "scene": preload("res://scenes/casino/Treasure21.tscn")},
-	{"id": "dice_poker", "label": "役そろえ", "primary": "ゲーム開始", "scene": preload("res://scenes/casino/DicePoker.tscn")},
+	{"id": "dice_poker", "label": "役そろえ", "primary": "ダイスを配る", "scene": preload("res://scenes/casino/DicePoker.tscn")},
 	{"id": "vault_break", "label": "金庫破り", "primary": "ゲーム開始", "scene": preload("res://scenes/casino/VaultBreak.tscn")},
 ]
 const FORBIDDEN_EXACT_CTAS: Array[String] = [
@@ -77,7 +77,12 @@ func _assert_facility_shell(screen: Node, definition: Dictionary, round_index: i
 	var back: Button = screen.find_child("CasinoBackButton", true, false) as Button
 	_expect(back != null and back.text == "カジノへ戻る", "%s round %d exposes the shared casino-return CTA" % [facility_id, round_index])
 	var how_to: PanelContainer = screen.find_child("CasinoHowTo3Steps", true, false) as PanelContainer
-	_expect(how_to != null and str(how_to.get_meta("facility_id", "")) == facility_id, "%s round %d retains the three-step how-to identity" % [facility_id, round_index])
+	var table_shell: Node = screen.find_child("CasinoTableShell", true, false)
+	if table_shell != null:
+		# Renewed tables carry the how-to in the shared guide instead.
+		_expect(str(table_shell.get_meta("facility_id", "")) == facility_id and int(table_shell.call("guide_step_count")) in [1, 2, 3], "%s round %d retains the three-step how-to identity" % [facility_id, round_index])
+	else:
+		_expect(how_to != null and str(how_to.get_meta("facility_id", "")) == facility_id, "%s round %d retains the three-step how-to identity" % [facility_id, round_index])
 	var buttons: Array[Node] = screen.find_children("*", "Button", true, false)
 	var has_primary: bool = false
 	var has_forbidden: bool = false
