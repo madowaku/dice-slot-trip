@@ -1,0 +1,222 @@
+{
+  "actual_rendering": true,
+  "assertions": 30,
+  "failures": 0,
+  "fixture_removed": true,
+  "production_save_hash_after": "6b7ab50cd54e8060f9eb2ed1f42f7f5835d040db679250ce478173e02e0c4555",
+  "production_save_hash_before": "6b7ab50cd54e8060f9eb2ed1f42f7f5835d040db679250ce478173e02e0c4555",
+  "records": [
+    {
+      "bytes": 275687,
+      "event": "capture",
+      "label": "00-hub-start",
+      "path": "C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-renewal/phase4/after/tour-360x800/00-hub-start-360x800.png",
+      "time_ms": 2045
+    },
+    {
+      "balance": 300,
+      "event": "hub_start",
+      "facility_order": [
+        "dice_race",
+        "dice_tower",
+        "dice_poker"
+      ],
+      "time_ms": 2045
+    },
+    {
+      "balance": 300,
+      "elapsed_ms": 204,
+      "event": "facility_open",
+      "facility": "dice_race",
+      "layout": {
+        "all_visible_buttons_inside": true,
+        "button_labels": [
+          "カジノへ戻る",
+          "？",
+          "ラクダ",
+          "ウサギ",
+          "キツネ",
+          "● アヒル",
+          "恐竜",
+          "ロボット",
+          "10",
+          "20",
+          "50",
+          "ゲーム開始",
+          "わかった"
+        ],
+        "outside_buttons": [],
+        "scrollable_outside_buttons": [],
+        "visible_button_count": 13
+      },
+      "time_ms": 2250
+    },
+    {
+      "bytes": 86618,
+      "event": "capture",
+      "label": "01-dice_race-setup",
+      "path": "C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-renewal/phase4/after/tour-360x800/01-dice_race-setup-360x800.png",
+      "time_ms": 2331
+    },
+    {
+      "bytes": 164373,
+      "event": "capture",
+      "label": "01-dice_race-result",
+      "path": "C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-renewal/phase4/after/tour-360x800/01-dice_race-result-360x800.png",
+      "time_ms": 5402
+    },
+    {
+      "balance_after": 316,
+      "balance_before": 300,
+      "event": "tour_gameplay_result",
+      "facility": "dice_race",
+      "result_copy": "DICE RACE | CASINO CHIP  316 | 賭け金 | - | サイコロ | 1 / 6 | 結果を確認しました。次の遊び方を選ぼう。 | 16 | 17 | 18 | 19 | 21 | 22 | 23 | GOAL | STOP | -2 | GOAL | START | 5 火 | 10 水 | 15 丸 | 20 火 | 1位 アヒル | 2位 ウサギ | 3位 ラクダ | アヒル  5!! | レース結果 | 最終順位  1位 | 勝ち！  +36 | アヒル  ·  アヒルのゴールを確認 | 賭け金 | 20 CHIP | 受け取り | 36 CHIP | 増減 | +16 CHIP | 残高  316 CHIP | ？ | もう一度遊ぶ | 賭け金を変える | カジノへ戻る",
+      "time_ms": 5403
+    },
+    {
+      "balance": 316,
+      "event": "facility_close",
+      "facility": "dice_race",
+      "host_children": 0,
+      "hub_visible": true,
+      "time_ms": 5451
+    },
+    {
+      "bytes": 275552,
+      "event": "capture",
+      "label": "01-dice_race-hub-return",
+      "path": "C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-renewal/phase4/after/tour-360x800/01-dice_race-hub-return-360x800.png",
+      "time_ms": 5581
+    },
+    {
+      "balance": 316,
+      "elapsed_ms": 136,
+      "event": "facility_open",
+      "facility": "dice_tower",
+      "layout": {
+        "all_visible_buttons_inside": true,
+        "button_labels": [
+          "カジノへ戻る",
+          "？",
+          "10",
+          "20",
+          "50",
+          "サイコロを振る",
+          "わかった"
+        ],
+        "outside_buttons": [],
+        "scrollable_outside_buttons": [],
+        "visible_button_count": 7
+      },
+      "time_ms": 5717
+    },
+    {
+      "bytes": 60317,
+      "event": "capture",
+      "label": "02-dice_tower-setup",
+      "path": "C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-renewal/phase4/after/tour-360x800/02-dice_tower-setup-360x800.png",
+      "time_ms": 5789
+    },
+    {
+      "bytes": 54476,
+      "event": "capture",
+      "label": "02-dice_tower-result",
+      "path": "C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-renewal/phase4/after/tour-360x800/02-dice_tower-result-360x800.png",
+      "time_ms": 8300
+    },
+    {
+      "balance_after": 318,
+      "balance_before": 316,
+      "event": "tour_gameplay_result",
+      "facility": "dice_tower",
+      "result_copy": "DICE TOWER | CASINO CHIP  300 | 10F | +84 | 9F | +72 | 8F | +62 | 7F | +54 | 6F | +46 | 5F | +40 | 4F | +36 | 3F | +30 | 2F | +25 | 1F | +22 | 2〜5：1段　6：2段 / 1：ぜんぶなくなる | +22 受け取り | 1F で降りた ・ 賭け金 20 | 賭け金を変えるなら、下から選び直せる | 賭け金 | カジノへ戻る | ？ | 10 | 20 | 50 | もう一度（賭け金 20）",
+      "time_ms": 8300
+    },
+    {
+      "balance": 318,
+      "event": "facility_close",
+      "facility": "dice_tower",
+      "host_children": 0,
+      "hub_visible": true,
+      "time_ms": 8359
+    },
+    {
+      "bytes": 275570,
+      "event": "capture",
+      "label": "02-dice_tower-hub-return",
+      "path": "C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-renewal/phase4/after/tour-360x800/02-dice_tower-hub-return-360x800.png",
+      "time_ms": 8513
+    },
+    {
+      "balance": 318,
+      "elapsed_ms": 99,
+      "event": "facility_open",
+      "facility": "dice_poker",
+      "layout": {
+        "all_visible_buttons_inside": true,
+        "button_labels": [
+          "カジノへ戻る",
+          "？",
+          "10",
+          "20",
+          "50",
+          "ダイスを配る",
+          "わかった"
+        ],
+        "outside_buttons": [],
+        "scrollable_outside_buttons": [],
+        "visible_button_count": 7
+      },
+      "time_ms": 8613
+    },
+    {
+      "bytes": 65408,
+      "event": "capture",
+      "label": "03-dice_poker-setup",
+      "path": "C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-renewal/phase4/after/tour-360x800/03-dice_poker-setup-360x800.png",
+      "time_ms": 8686
+    },
+    {
+      "bytes": 47018,
+      "event": "capture",
+      "label": "03-dice_poker-result",
+      "path": "C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-renewal/phase4/after/tour-360x800/03-dice_poker-result-360x800.png",
+      "time_ms": 9943
+    },
+    {
+      "balance_after": 302,
+      "balance_before": 318,
+      "event": "tour_gameplay_result",
+      "facility": "dice_poker",
+      "result_copy": "DICE POKER | CASINO CHIP  298 | ワンペア  +4 | 賭け金 20 ・ 受け取り 4 | 賭け金を変えるなら、下から選び直せる | 賭け金 | カジノへ戻る | ？ | 10 | 20 | 50 | もう一度（賭け金 20）",
+      "time_ms": 9943
+    },
+    {
+      "balance": 302,
+      "event": "facility_close",
+      "facility": "dice_poker",
+      "host_children": 0,
+      "hub_visible": true,
+      "time_ms": 10000
+    },
+    {
+      "bytes": 275623,
+      "event": "capture",
+      "label": "03-dice_poker-hub-return",
+      "path": "C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-renewal/phase4/after/tour-360x800/03-dice_poker-hub-return-360x800.png",
+      "time_ms": 10138
+    },
+    {
+      "balance": 302,
+      "event": "tour_complete",
+      "objective_status": "PASS",
+      "time_ms": 10138,
+      "trip_cta": "旅へ戻る"
+    }
+  ],
+  "status": "CASINO_FEEL_FINAL_OBJECTIVE_PASS",
+  "viewport": {
+    "height": 800,
+    "width": 360
+  }
+}
