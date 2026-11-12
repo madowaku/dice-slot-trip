@@ -19,6 +19,7 @@ const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.t
 const CARD_DATA_PATH := "res://data/casino/prize_cards.json"
 const LAS_VEGAS_MAP_PATH := "res://assets/casino/las_vegas/las-vegas-ring-map-v1.png"
 const RACER_ART_PATH := "res://assets/casino/dice_race/racers/%s.png"
+const TOWER_ART_PATH := "res://assets/casino/dice_tower/ui/dice-tower-ten-floor-v2.png"
 const PRIZE_ID_PREFIX := "dice_racer_"
 const GOLD := Color("#f2bf4c")
 const GOLD_BRIGHT := Color("#ffe6a0")
@@ -28,7 +29,7 @@ const CARD_FILL := Color("#241a31f2")
 const CARD_EDGE := Color("#8c72a4")
 
 ## Order is the stable facility registry (saves, tests and tours rely on it);
-## what the player sees is decided by MAIN_FACILITY_IDS / OTHER_FACILITY_IDS.
+## what the player can open is decided by HUB_FACILITY_IDS.
 const FACILITY_DEFINITIONS: Array[Dictionary] = [
 	{
 		"id": "dice_race",
@@ -41,7 +42,7 @@ const FACILITY_DEFINITIONS: Array[Dictionary] = [
 		"id": "dice_tower",
 		"name": "DICE TOWER",
 		"button_label": "欲張りタワー",
-		"subtitle": "あと1段だけ欲張る",
+		"subtitle": "1が出る前に降りる",
 		"scene_path": "res://scenes/casino/DiceTower.tscn",
 	},
 	{
@@ -81,9 +82,15 @@ const FACILITY_DEFINITIONS: Array[Dictionary] = [
 	},
 ]
 ## Featured games, in the order a first-time visitor should meet them.
-const MAIN_FACILITY_IDS: Array[String] = ["chohan", "dice_race", "dice_poker"]
-## Still reachable until the "push your luck" game is chosen (renewal phase 3).
-const OTHER_FACILITY_IDS: Array[String] = ["dice_tower", "treasure_21", "vault_break", "dice_roulette"]
+const HUB_FACILITY_IDS: Array[String] = ["chohan", "dice_race", "dice_poker", "dice_tower"]
+## Kept for compatibility with older callers: the featured games are the hub games.
+const MAIN_FACILITY_IDS: Array[String] = HUB_FACILITY_IDS
+## Removed from the hub in the casino renewal (phase 3). Their scenes, code
+## and tests stay in the project so they can come back; the hub just has no
+## way to open them.
+const RETIRED_FACILITY_IDS: Array[String] = ["treasure_21", "vault_break", "dice_roulette"]
+## Kept for compatibility: nothing is listed as "other" any more.
+const OTHER_FACILITY_IDS: Array[String] = []
 
 static var suppress_audio_for_tests := false
 
@@ -186,25 +193,14 @@ func _build_ui() -> void:
 	var games_heading := _label("ゲームを選ぶ", 26, MUTED)
 	games_heading.name = "GamesHeading"
 	root.add_child(games_heading)
-	root.add_child(_build_main_card(_facility_definition("chohan"), true))
-	var pair := HBoxContainer.new()
-	pair.name = "MainFacilityRow"
-	pair.add_theme_constant_override("separation", 12)
-	root.add_child(pair)
-	pair.add_child(_build_main_card(_facility_definition("dice_race"), false))
-	pair.add_child(_build_main_card(_facility_definition("dice_poker"), false))
-
-	var other_heading := _label("そのほかのゲーム", 24, MUTED)
-	other_heading.name = "OtherGamesHeading"
-	root.add_child(other_heading)
-	var other_grid := GridContainer.new()
-	other_grid.name = "OtherFacilityGrid"
-	other_grid.columns = 2
-	other_grid.add_theme_constant_override("h_separation", 12)
-	other_grid.add_theme_constant_override("v_separation", 12)
-	root.add_child(other_grid)
-	for id: String in OTHER_FACILITY_IDS:
-		other_grid.add_child(_build_other_button(_facility_definition(id)))
+	var grid := GridContainer.new()
+	grid.name = "FacilityGrid"
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
+	root.add_child(grid)
+	for id: String in HUB_FACILITY_IDS:
+		grid.add_child(_build_main_card(_facility_definition(id), id == "chohan"))
 
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -495,42 +491,50 @@ func _facility_art(id: String) -> Control:
 			var pair: Control = DiceGlyphScript.new()
 			var pair_faces: Array[int] = [3, 5]
 			pair.faces = pair_faces
-			pair.custom_minimum_size = Vector2(190, 110)
+			pair.custom_minimum_size = Vector2(200, 120)
 			return pair
 		"dice_poker":
 			var hand: Control = DiceGlyphScript.new()
 			var hand_faces: Array[int] = [6, 6, 6, 2, 2]
 			hand.faces = hand_faces
 			hand.tilt_degrees = 0.0
-			hand.custom_minimum_size = Vector2(260, 60)
+			hand.custom_minimum_size = Vector2(270, 120)
 			return hand
 		"dice_race":
 			var racers := HBoxContainer.new()
 			racers.alignment = BoxContainer.ALIGNMENT_CENTER
 			racers.add_theme_constant_override("separation", 4)
-			racers.custom_minimum_size = Vector2(260, 60)
+			racers.custom_minimum_size = Vector2(260, 120)
 			racers.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			for racer: String in ["fox", "rabbit", "duck"]:
 				var picture := TextureRect.new()
 				var path := RACER_ART_PATH % racer
 				picture.texture = load(path) as Texture2D if ResourceLoader.exists(path) else null
-				picture.custom_minimum_size = Vector2(64, 60)
+				picture.custom_minimum_size = Vector2(80, 96)
 				picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 				picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 				picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 				racers.add_child(picture)
 			return racers
+		"dice_tower":
+			var tower := TextureRect.new()
+			tower.texture = load(TOWER_ART_PATH) as Texture2D if ResourceLoader.exists(TOWER_ART_PATH) else null
+			tower.custom_minimum_size = Vector2(160, 120)
+			tower.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tower.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			tower.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			return tower
 	return null
 
 
-func _build_main_card(definition: Dictionary, wide: bool) -> Button:
+func _build_main_card(definition: Dictionary, featured: bool) -> Button:
 	var id := str(definition.get("id", ""))
 	var button := Button.new()
 	button.name = "FacilityButton_%s" % _pascal_case(id)
 	button.set_meta("facility_id", id)
-	button.custom_minimum_size = Vector2(0, 156 if wide else 204)
+	button.custom_minimum_size = Vector2(0, 280)
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.add_theme_stylebox_override("normal", _panel(CARD_FILL, GOLD if wide else CARD_EDGE, 24, 3 if wide else 2))
+	button.add_theme_stylebox_override("normal", _panel(CARD_FILL, GOLD if featured else CARD_EDGE, 24, 3 if featured else 2))
 	button.add_theme_stylebox_override("hover", _panel(Color("#33254af2"), GOLD_BRIGHT, 24, 3))
 	button.add_theme_stylebox_override("pressed", _panel(Color("#4a3410f2"), GOLD_BRIGHT, 24, 3))
 	button.add_theme_stylebox_override("focus", _panel(Color.TRANSPARENT, GOLD_BRIGHT, 24, 3))
@@ -542,37 +546,30 @@ func _build_main_card(definition: Dictionary, wide: bool) -> Button:
 	inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for side: String in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		inset.add_theme_constant_override(side, 14)
+		inset.add_theme_constant_override(side, 12)
 	button.add_child(inset)
-	var layout: BoxContainer = HBoxContainer.new() if wide else VBoxContainer.new()
+	var layout := VBoxContainer.new()
 	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layout.alignment = BoxContainer.ALIGNMENT_CENTER
-	layout.add_theme_constant_override("separation", 16 if wide else 6)
+	layout.add_theme_constant_override("separation", 4)
 	inset.add_child(layout)
+	var badge := _label("はじめての人はここから" if featured else "", 22, GOLD)
+	badge.name = "FirstVisitBadge" if featured else "CardSpacer"
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	layout.add_child(badge)
 	var art := _facility_art(id)
 	if art != null:
-		art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		art.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		layout.add_child(art)
-	var copy := VBoxContainer.new()
-	copy.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	copy.alignment = BoxContainer.ALIGNMENT_CENTER
-	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	copy.add_theme_constant_override("separation", 2)
-	layout.add_child(copy)
-	var align := HORIZONTAL_ALIGNMENT_LEFT if wide else HORIZONTAL_ALIGNMENT_CENTER
-	if wide:
-		var badge := _label("はじめての人はここから", 22, GOLD)
-		badge.name = "FirstVisitBadge"
-		copy.add_child(badge)
-	var title := _label(str(definition.get("button_label", id)), 40 if wide else 32, GOLD_BRIGHT)
+	var title := _label(str(definition.get("button_label", id)), 34, GOLD_BRIGHT)
 	title.name = "FacilityTitle"
-	title.horizontal_alignment = align
-	copy.add_child(title)
-	var tagline := _label(str(definition.get("subtitle", "")), UiTokensScript.FONT_CAPTION if wide else 24, CREAM)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	layout.add_child(title)
+	var tagline := _label(str(definition.get("subtitle", "")), 24, CREAM)
 	tagline.name = "FacilityTagline"
-	tagline.horizontal_alignment = align
+	tagline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tagline.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	copy.add_child(tagline)
+	layout.add_child(tagline)
 	facility_nodes[id] = button
 	facility_buttons[id] = button
 	facility_title_labels[id] = title
@@ -630,7 +627,7 @@ func _on_facility_pressed(facility_id: String) -> void:
 func _open_facility(facility_id: String) -> bool:
 	var id := _facility_key(facility_id)
 	var definition := _facility_definition(id)
-	if definition.is_empty():
+	if definition.is_empty() or id not in HUB_FACILITY_IDS:
 		return false
 	var path := str(definition.get("scene_path", ""))
 	if path.is_empty() or not ResourceLoader.exists(path):
@@ -714,6 +711,8 @@ func _refresh_facilities() -> void:
 
 
 func _facility_available(facility_id: String) -> bool:
+	if _facility_key(facility_id) not in HUB_FACILITY_IDS:
+		return false
 	var definition := _facility_definition(facility_id)
 	var path := str(definition.get("scene_path", ""))
 	return not path.is_empty() and ResourceLoader.exists(path)

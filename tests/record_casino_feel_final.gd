@@ -53,17 +53,21 @@ func _record() -> void:
 	capture_root.add_child(hub)
 	await _settle_frames(8)
 	await _capture("00-hub-start")
+	var tour_ids: Array[String] = []
+	for facility_id: String in FACILITY_IDS:
+		if facility_id in hub.HUB_FACILITY_IDS:
+			tour_ids.append(facility_id)
 	var actual_ids: Array[String] = []
 	for definition: Dictionary in hub.facility_definitions:
 		# 丁半 joined the hub in the casino renewal and has its own recorder
 		# (record_las_vegas_casino_renewal.gd); this tour covers the original six.
-		if str(definition.get("id", "")) in FACILITY_IDS:
+		if str(definition.get("id", "")) in tour_ids:
 			actual_ids.append(str(definition.get("id", "")))
-	_expect(actual_ids == FACILITY_IDS, "recorder follows the HUB registry order of the six feel-pass facilities")
+	_expect(actual_ids == tour_ids, "recorder follows the HUB registry order of the reachable feel-pass facilities")
 	stage_records.append(_record_state("hub_start", {"balance": BankScript.balance(), "facility_order": actual_ids}))
 
-	for index: int in range(FACILITY_IDS.size()):
-		var facility_id: String = FACILITY_IDS[index]
+	for index: int in range(tour_ids.size()):
+		var facility_id: String = tour_ids[index]
 		var button: Button = hub.facility_buttons.get(facility_id) as Button
 		var open_started: int = Time.get_ticks_msec()
 		button.pressed.emit()
@@ -86,7 +90,7 @@ func _record() -> void:
 			"layout": layout,
 		}))
 		await _capture("%02d-%s-setup" % [index + 1, facility_id])
-		if screen != null and facility_id in ["dice_tower", "vault_break"]:
+		if screen != null and facility_id == "vault_break":
 			await _exercise_responsive_scroll(screen, facility_id, index + 1)
 		elif screen != null:
 			await _exercise_tour_gameplay(screen, facility_id, index + 1)
@@ -323,6 +327,16 @@ func _exercise_tour_gameplay(screen: Node, facility_id: String, index: int) -> v
 				await _wait_for_unlocked(screen, 120)
 			await _wait_for_visible(screen.get("result_view") as Control, 180)
 			_expect((screen.get("result_view") as Control).visible, "treasure_21 real rolls reach GOLDEN result")
+		"dice_tower":
+			(screen.get("shell") as Node).call("close_guide")
+			await _settle_frames(2)
+			screen.set("queued_roll_value", 4)
+			(screen.get("start_button") as Button).pressed.emit()
+			await _wait_for_unlocked(screen, 180)
+			await create_timer(1.3).timeout
+			(screen.get("cashout_button") as Button).pressed.emit()
+			await _wait_for_visible(screen.get("result_view") as Control, 180)
+			_expect((screen.get("result_view") as Control).visible, "dice_tower real roll and step-off reach result")
 		"dice_poker":
 			# The renewed table opens its first-visit guide; dismiss it first.
 			(screen.get("shell") as Node).call("close_guide")

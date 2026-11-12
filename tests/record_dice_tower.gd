@@ -16,6 +16,13 @@ func _init() -> void:
 	call_deferred("_record")
 
 func _record() -> void:
+	# Retired with the casino renewal: this recorder drove the pre-renewal
+	# DICE TOWER layout (tutorial pages, scrolling setup). DICE TOWER is now
+	# recorded by record_las_vegas_casino_renewal.gd.
+	print("DICE_TOWER_CAPTURE retired: use tests/record_las_vegas_casino_renewal.gd")
+	quit(0)
+	return
+	@warning_ignore("unreachable_code")
 	var output_dir: String = OS.get_environment("DICE_TOWER_QA_OUTPUT_DIR")
 	if output_dir.is_empty():
 		output_dir = ProjectSettings.globalize_path("res://artifacts/playtest/dice-tower-v1")

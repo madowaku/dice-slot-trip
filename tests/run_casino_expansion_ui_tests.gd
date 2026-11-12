@@ -79,6 +79,9 @@ func _run() -> void:
 		var button_label := str(definition.get("button_label", ""))
 		var subtitle := str(definition.get("subtitle", ""))
 		_expect(id == expected_ids[index], "facility %d remains %s" % [index + 1, expected_ids[index]])
+		if id in hub.RETIRED_FACILITY_IDS:
+			_expect(not bool(hub.facility_availability.get(id, false)) and button == null, "%s is retired from the hub" % id)
+			continue
 		_expect(bool(hub.facility_availability.get(id, false)), "%s route is available" % id)
 		# Featured games carry their name and one-line pitch as labels on the
 		# card; the remaining games are plain buttons until phase 3 decides them.
@@ -95,8 +98,8 @@ func _run() -> void:
 	var dim := hub.find_child("BackdropDim", true, false) as ColorRect
 	_expect(dim != null and dim.visible and dim.color.a >= 0.7, "map art is dimmed so hub text stays readable")
 	_expect(hub.find_child("RingSelectionSparkle", true, false) == null, "the quiet hub has no ambient sparkle animation")
-	_expect(hub.facility_nodes.size() == 7, "hub creates seven facility entries")
-	for id: String in expected_ids:
+	_expect(hub.facility_nodes.size() == 4, "hub creates four facility entries")
+	for id: String in hub.HUB_FACILITY_IDS:
 		var button := hub.facility_nodes.get(id) as Button
 		_expect(button != null and button.size.x >= UiTokensScript.TOUCH_MIN and button.size.y >= UiTokensScript.BUTTON_HEIGHT, "%s entry keeps the shared large touch target" % id)
 		var card_title := hub.facility_title_labels.get(id) as Label
@@ -109,8 +112,8 @@ func _run() -> void:
 	var hub_back := hub.find_child("BackToTripButton", true, false) as Button
 	_expect(hub_back != null and hub_back.text == "旅へ戻る" and hub_back.get_global_rect().end.y <= hub.hub_root.get_global_rect().end.y, "complete non-scrolling Hub keeps its return action on-screen")
 
-	for id: String in ["dice_roulette", "treasure_21", "dice_poker", "vault_break"]:
-		_expect(bool(hub.call("_open_facility", id)), "%s opens from the Las Vegas ring" % id)
+	for id: String in ["chohan", "dice_poker", "dice_tower"]:
+		_expect(bool(hub.call("_open_facility", id)), "%s opens from the Las Vegas hub" % id)
 		await process_frame
 		var host := hub.facility_hosts.get(id) as Control
 		_expect(host != null and host.visible and host.get_child_count() == 1, "%s host is visible" % id)

@@ -13,6 +13,8 @@ const HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const CHOHAN_SCENE: PackedScene = preload("res://scenes/casino/Chohan.tscn")
 const POKER_SCENE: PackedScene = preload("res://scenes/casino/DicePoker.tscn")
 const Poker = preload("res://scripts/app/dice_poker_screen.gd")
+const TOWER_SCENE: PackedScene = preload("res://scenes/casino/DiceTower.tscn")
+const Tower = preload("res://scripts/app/dice_tower_screen.gd")
 const Bank = preload("res://scripts/game/casino_bank.gd")
 const Hub = preload("res://scripts/app/casino_hub_screen.gd")
 const Chohan = preload("res://scripts/app/chohan_screen.gd")
@@ -77,10 +79,12 @@ func _record() -> void:
 	Hub.suppress_audio_for_tests = true
 	Chohan.suppress_audio_for_tests = true
 	Poker.suppress_audio_for_tests = true
+	Tower.suppress_audio_for_tests = true
 
 	await _capture_hub()
 	await _capture_chohan()
 	await _capture_poker()
+	await _capture_tower()
 
 	var bgm := root.get_node_or_null("BgmManager")
 	if bgm != null:
@@ -90,6 +94,7 @@ func _record() -> void:
 	Hub.suppress_audio_for_tests = false
 	Chohan.suppress_audio_for_tests = false
 	Poker.suppress_audio_for_tests = false
+	Tower.suppress_audio_for_tests = false
 	capture_viewport.queue_free()
 	print("LAS_VEGAS_RENEWAL_CAPTURE size=%s assertions=%d failures=%d output=%s" % [viewport_size, assertions, failures, output_dir])
 	quit(1 if failures > 0 else 0)
@@ -191,6 +196,44 @@ func _capture_poker() -> void:
 	await _settle_frames(12)
 	_expect(screen.view_state == "result", "poker reaches its result")
 	await _capture("poker-result")
+	screen.queue_free()
+	await _settle_frames(3)
+
+
+func _capture_tower() -> void:
+	_reset_bank(120)
+	var screen := TOWER_SCENE.instantiate()
+	capture_root.add_child(screen)
+	await _settle_frames(10)
+	_expect(screen.shell.is_guide_open(), "tower opens its first-play guide")
+	await _capture("tower-first-guide")
+	screen.shell.close_guide()
+	await _settle_frames(4)
+	_assert_inside(screen.shell.primary_button, "tower primary button")
+	await _capture("tower-setup")
+	screen.queued_roll_value = 4
+	screen.shell.primary_button.pressed.emit()
+	await _settle_seconds(1.4)
+	screen.queued_roll_value = 6
+	screen.shell.primary_button.pressed.emit()
+	await _settle_seconds(1.4)
+	_expect(screen.view_state == "active" and int(screen.game.get("floor", 0)) == 3, "tower climbs to the third floor")
+	_assert_inside(screen.cashout_button, "tower step-off button")
+	await _capture("tower-climbing")
+	screen.queued_roll_value = 1
+	screen.shell.primary_button.pressed.emit()
+	await _settle_seconds(1.4)
+	_expect(screen.view_state == "result", "tower reaches its result")
+	await _capture("tower-bust")
+	screen.shell.primary_button.pressed.emit()
+	await _settle_frames(2)
+	screen.queued_roll_value = 5
+	await _settle_seconds(0.05)
+	await _settle_seconds(1.4)
+	if screen.view_state == "active":
+		screen.cashout_button.pressed.emit()
+		await _settle_frames(8)
+	await _capture("tower-cashout")
 	screen.queue_free()
 	await _settle_frames(3)
 

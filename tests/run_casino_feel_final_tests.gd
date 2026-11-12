@@ -5,7 +5,7 @@ const HubScript = preload("res://scripts/app/casino_hub_screen.gd")
 const HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const FACILITIES: Array[Dictionary] = [
 	{"id": "dice_race", "label": "推しレース", "primary": "ゲーム開始", "scene": preload("res://scenes/casino/DiceRace.tscn")},
-	{"id": "dice_tower", "label": "欲張りタワー", "primary": "ゲーム開始", "scene": preload("res://scenes/casino/DiceTower.tscn")},
+	{"id": "dice_tower", "label": "欲張りタワー", "primary": "サイコロを振る", "scene": preload("res://scenes/casino/DiceTower.tscn")},
 	{"id": "dice_roulette", "label": "一発ルーレット", "primary": "回す", "scene": preload("res://scenes/casino/DiceRoulette.tscn")},
 	{"id": "treasure_21", "label": "宝箱21", "primary": "ゲーム開始", "scene": preload("res://scenes/casino/Treasure21.tscn")},
 	{"id": "dice_poker", "label": "役そろえ", "primary": "ダイスを配る", "scene": preload("res://scenes/casino/DicePoker.tscn")},
@@ -120,9 +120,14 @@ func _run_session_b() -> void:
 	root.add_child(hub)
 	await process_frame
 	await process_frame
+	# The tour visits what the hub can still open (renewal phase 3 retired
+	# three facilities); 丁半 has its own suite.
 	var expected_ids: Array[String] = []
+	var tour: Array[Dictionary] = []
 	for definition: Dictionary in FACILITIES:
-		expected_ids.append(str(definition.get("id", "")))
+		if str(definition.get("id", "")) in hub.HUB_FACILITY_IDS:
+			expected_ids.append(str(definition.get("id", "")))
+			tour.append(definition)
 	var actual_ids: Array[String] = []
 	for definition: Dictionary in hub.facility_definitions:
 		# 丁半 joined the hub in the casino renewal and is covered by
@@ -131,8 +136,8 @@ func _run_session_b() -> void:
 			actual_ids.append(str(definition.get("id", "")))
 	_expect(actual_ids == expected_ids, "Session B follows the HUB registry order of the six feel-pass facilities")
 	var expected_balance: int = 300
-	for index: int in range(FACILITIES.size()):
-		var definition: Dictionary = FACILITIES[index]
+	for index: int in range(tour.size()):
+		var definition: Dictionary = tour[index]
 		var facility_id: String = str(definition.get("id", ""))
 		var button: Button = hub.facility_buttons.get(facility_id) as Button
 		_expect(button != null and not button.disabled, "Tour stop %d %s is selectable" % [index + 1, facility_id])

@@ -58,7 +58,7 @@ func _test_screen_bindings() -> void:
 			continue
 		var screen: Object = script.new()
 		var button: Button
-		if script_path.ends_with("dice_poker_screen.gd"):
+		if script_path.ends_with("dice_poker_screen.gd") or script_path.ends_with("dice_tower_screen.gd"):
 			# Tables rebuilt in the casino renewal take every CTA from the
 			# shared table shell instead of a per-screen _button helper.
 			var shell: Control = load("res://scripts/ui/casino_table_shell.gd").new()

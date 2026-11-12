@@ -74,9 +74,11 @@ func _test_prize_shelf() -> void:
 	_expect("ウサギ" in hub.prize_name_label.text and hub.prize_remaining_label.text == "あと 12 チップ", "with 38 chips the first 50-chip prize needs 12 more")
 	_expect(is_equal_approx(hub.prize_progress.value, 38.0) and is_equal_approx(hub.prize_progress.max_value, 50.0), "the progress bar shows 38 of 50")
 	_expect(hub.prize_picture.texture != null, "the target prize has a picture")
-	var shelf_index := hub.prize_shelf.get_index()
-	var first_game := hub.facility_buttons.get("chohan") as Control
-	_expect(hub.prize_shelf.get_parent() == first_game.get_parent() and shelf_index < first_game.get_index(), "the prize shelf sits above every game")
+	var shelf_bottom := hub.prize_shelf.get_global_rect().end.y
+	var games_below := true
+	for id: Variant in hub.facility_buttons.keys():
+		games_below = games_below and (hub.facility_buttons[id] as Control).get_global_rect().position.y >= shelf_bottom
+	_expect(games_below, "the prize shelf sits above every game")
 	hub.queue_free()
 	await process_frame
 
@@ -128,8 +130,8 @@ func _test_prize_counter() -> void:
 func _test_facilities() -> void:
 	_fresh_bank(100)
 	var hub := await _open_hub()
-	_expect(hub.MAIN_FACILITY_IDS == ["chohan", "dice_race", "dice_poker"], "the featured games are 丁半, DICE RACE and DICE POKER")
-	for id: String in hub.MAIN_FACILITY_IDS:
+	_expect(hub.HUB_FACILITY_IDS == ["chohan", "dice_race", "dice_poker", "dice_tower"], "the hub offers 丁半, DICE RACE, DICE POKER and DICE TOWER")
+	for id: String in hub.HUB_FACILITY_IDS:
 		var title := hub.facility_title_labels.get(id) as Label
 		var tagline := hub.facility_tagline_labels.get(id) as Label
 		_expect(title != null and not title.text.is_empty() and tagline != null and not tagline.text.is_empty(), "%s shows a name and a one-line pitch" % id)
@@ -141,12 +143,13 @@ func _test_facilities() -> void:
 				has_art = true
 		_expect(has_art, "%s shows a small picture of how it plays" % id)
 	_expect((hub.facility_tagline_labels.get("chohan") as Label).text == "丁か半か、当てるだけ", "丁半 is pitched in one phrase")
-	for id: String in hub.OTHER_FACILITY_IDS:
-		_expect(hub.facility_buttons.has(id) and bool(hub.facility_availability.get(id, false)), "%s stays reachable until phase 3" % id)
+	for id: String in hub.RETIRED_FACILITY_IDS:
+		_expect(not hub.facility_buttons.has(id) and not bool(hub.call("_open_facility", id)), "%s is retired from the hub" % id)
+	_expect(hub.find_child("FirstVisitBadge", true, false) != null and (hub.facility_buttons.get("chohan") as Button).find_child("FirstVisitBadge", true, false) != null, "丁半 is marked as the first stop")
 	var play_texts: Array[String] = []
 	for id: Variant in hub.facility_buttons.keys():
 		play_texts.append((hub.facility_buttons[id] as Button).text)
-	_expect(not play_texts.has("PLAY") and play_texts.count("") == 3, "no entry is a bare PLAY button")
+	_expect(not play_texts.has("PLAY") and play_texts.count("") == 4, "no entry is a bare PLAY button")
 	(hub.facility_buttons.get("chohan") as Button).pressed.emit()
 	await process_frame
 	await process_frame
