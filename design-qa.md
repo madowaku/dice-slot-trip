@@ -43,6 +43,215 @@ final result: passed
 
 ---
 
+# Design QA — DICE ROULETTE Button Ornament Pass
+
+## Evidence
+
+- Source visual target: `C:/Dev/Projects/dice-slot-trip-main-verify/.codex-remote-attachments/01a04234-876e-7380-8b87-f0196567661c/b209788e-84d6-4ccb-ada0-1301fe0ff304/1-Photo-1.jpg`.
+- Bet-ready implementation: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-expansion/button-polish-final-360/roulette-bet-ready-360x800.png`.
+- Responsive implementation: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-expansion/button-polish-final-720/roulette-bet-ready-720x1280.png`.
+- Same-state comparison: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-expansion/roulette-button-polish-reference-vs-implementation-720x1280.png`.
+- State: 20 CHIP placed on LUCKY 7 plus DRAW; SPIN enabled.
+
+## Findings
+
+No actionable P0/P1/P2 findings remain for this pass. The implementation preserves the Japanese three-step onboarding and live game state while adopting the reference's gold-framed denomination controls, colored betting faces, dice-led color bets, selected chip markers, and dominant illuminated circular SPIN action.
+
+- Typography and hierarchy: WHERE bets retain uncluttered two-line labels at 360px instead of forcing ornate raster frames behind every word. Gold ornament art is reserved for denomination and utility controls where it remains legible.
+- Interaction states: selected denomination and bet areas use bright gold emphasis; placed bets retain centered CHIP badges; disabled SPIN is visibly subdued and enabled SPIN restores the amber marquee glow.
+- Image fidelity: the SPIN face is a dedicated transparent raster asset generated for the measured 132x132 design-pixel slot. Existing production ornament and dice textures are reused without screenshot cropping or placeholder artwork.
+- Touch layout: the fixed action dock remains reachable at 360x800. The SPIN hit target stays 192x132 design pixels (96x66 physical pixels at the 360 capture), with the circular art centered inside the larger forgiving target.
+- Responsive behavior: native OpenGL captures pass at 360x800 and 720x1280 with the action dock, amount controls, bet labels, and selection badges readable and free of edge clipping.
+
+## Comparison history
+
+1. Applying the heavy ornament strip to every betting face reduced label contrast at 360px.
+2. The final hierarchy limits detailed metalwork to denomination and utility buttons, restores clean colored WHERE faces, adds real dice art to RED/DRAW/BLUE, centers active CHIP markers, and replaces the stretched rectangular CTA with a dedicated round amber marquee button.
+3. A duplicate Button caption exposed during the same-state comparison was removed before the final capture.
+
+## Verification
+
+- Dice Roulette: 75 assertions, 0 failures.
+- Casino rules: 246 assertions, 0 failures.
+- Casino foundation: 36 assertions, 0 failures.
+- Casino UI: 145 assertions, 0 failures.
+- Casino expansion UI: 116 assertions, 0 failures.
+- Native capture: 360x800 and 720x1280, 44 assertions each, 0 failures, `actual_rendering=true`.
+- P0: none. P1: none. P2: none.
+
+final result: passed
+
+---
+
+# Design QA — VAULT BREAK Product UI Pass
+
+## Evidence
+
+- Source visual truth: `C:/Users/hiro/AppData/Local/Temp/codex-clipboard-a71ecbb2-de65-49b4-ab15-fc8b09171a7c.png`.
+- Setup implementation: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/vault-break-product-v3/vault-setup-360x800.png` and `vault-setup-720x1280.png`.
+- Active implementation: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/vault-break-product-v3/vault-360x800.png` and `vault-720x1280.png`.
+- Normalized comparison: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/vault-break-product-v3/vault-reference-vs-implementation-720x800.png`.
+
+## Findings
+
+No actionable P0/P1/P2 visual issues remain for the responsive Godot implementation. The screen now reads as a casino vault game at first glance: the same brass vault is the dominant setup and active-game object, BET and Tier choices have distinct selected/locked states, and the red velvet BREAK THE VAULT action has the strongest control hierarchy.
+
+- Typography and hierarchy: title, balance, three-step instruction, BET, Tier multiplier/state, and CTA remain readable at both captures. Stateful copy remains live Godot UI rather than baked into artwork.
+- Layout: 360x800 and 720x1280 captures keep the header, primary action, and casino return control reachable. The active screen retains the vault behind the lock controls instead of switching to an unrelated game surface.
+- Color and materials: oxblood, midnight plum, antique brass, copper, desaturated silver, deep gold, and black-purple extend the established Las Vegas palette. Selected and locked states use border, label, brightness, and lift rather than color alone.
+- Asset fidelity: the generated 512px transparent vault door is the only new visual asset and is shared across setup and gameplay. It has no baked text or state.
+- Motion and audio: BET/Tier selection uses a restrained 1.02 lift, CHIP changes pop briefly, success turns the vault mechanism, failure shakes it, and `忍び足.mp3` is routed as the dedicated looping VAULT BREAK track through the existing crossfade manager.
+
+## Verification
+
+- VAULT BREAK model: 452 assertions, 0 failures.
+- VAULT BREAK UI: 57 assertions, 0 failures.
+- Casino rules: 246 assertions, 0 failures.
+- Casino UI: 145 assertions, 0 failures.
+- Casino expansion UI: 116 assertions, 0 failures.
+- Native OpenGL compatibility capture: 360x800 (40 assertions) and 720x1280 (44 assertions), 0 failures.
+- The bundled `run_scenario`/`validate_project` dispatcher currently crashes inside the Godot 4.7 Windows binary before emitting JSON; direct project tests and native render capture complete normally with no script/runtime diagnostics.
+
+## Follow-up polish
+
+- P3: a future pass could add a dedicated compact chip raster set and a vault-door open frame sequence; this pass deliberately keeps the asset budget to one shared static vault and uses runtime motion.
+
+final result: passed
+
+---
+
+# Design QA — DICE ROULETTE Casino Product Pass
+
+## Evidence
+
+- Source visual truth: `C:/Users/hiro/AppData/Local/Temp/codex-clipboard-700d9dd7-cb11-4787-a8cb-a2ac21aebac6.png` (944×1664).
+- Betting implementation: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-expansion/roulette-bet-ready-360x800.png` (native 360×800).
+- Retained result implementation: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-expansion/roulette-result-360x800.png` (native 360×800).
+- Responsive implementation: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-expansion/roulette-bet-ready-720x1280.png` (native 720×1280).
+- Full-view result comparison: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/las-vegas-casino-expansion/roulette-result-reference-vs-implementation-360x800.png` (720×800 contact sheet).
+- Viewport normalization: the 944×1664 source was proportionally fitted inside a 360×800 comparison column; the Godot capture remained native 360×800. The source is wider than the target runtime, so the implementation preserves hierarchy and art direction rather than copying its exact vertical allocation.
+- State: guaranteed LUCKY 7 + DRAW win with retained payout actions; the recorder also captures setup, bet-ready, and spinning states.
+
+## Findings
+
+No actionable P0/P1/P2 differences remain for the responsive Godot implementation. The source's premium casino hierarchy is present: a branded navigation and balance row, display title, dominant jeweled wheel, red/blue result lanes, explicitly numbered betting flow, semantic bet colors, retained win banner, and one visually dominant enabled SPIN action.
+
+## Required fidelity surfaces
+
+- Fonts and typography: Cinzel carries the display title and SPIN action; Noto Sans JP carries rules, balances, bets, and Japanese guidance. Gold/dark outlines preserve readability over the generated casino background. The smallest persistent text remains readable at native 360×800, while the 720×1280 compact layout keeps the primary CTA in the first viewport.
+- Spacing and layout rhythm: the normal state protects a 450-design-pixel wheel and presents controls in the exact play order. The compact breakpoint reduces the wheel and hides the duplicated footer exit because the header CASINO action remains available. During SPIN/result, the wheel expands and betting controls retire so attention moves to the outcome.
+- Colors and visual tokens: near-black, emerald enamel, antique gold, ruby red, sapphire blue, purple LUCKY 7, and oxblood JACKPOT replace the former flat navy/default-button treatment. Gold is reserved for hierarchy, selection, payout, and the enabled primary action.
+- Image quality and asset fidelity: the screen uses a real generated text-free casino background, a transparent generated brass/emerald bezel, the existing ivory/brass dice asset, and a normalized four-frame RGBA sparkle set. Text, results, bets, balances, and controls remain live Godot UI; no labels are baked into generated assets.
+- Copy and content: the persistent `1 BET CHIP → 2 BET AREA → 3 SPIN` strip, numbered section labels, selection acknowledgement, total-bet receipt, red/blue result rows, and retained profit receipt make the first play understandable without a rules modal.
+- Interaction states: amount, main, and side selections have distinct selected borders/fills; disabled SPIN is subdued and enabled SPIN becomes bright orange-gold. Deterministic capture covers setup, bet-ready, spinning, and retained win states.
+
+## Comparison history
+
+1. The first implementation capture used a flat navy background, default cream buttons, duplicated low-weight text, a small fixed wheel, and no premium asset layer; hierarchy read as a prototype.
+2. Image generation supplied a text-free casino interior and a transparent jeweled wheel bezel. Sprite normalization produced four shared-anchor sparkle frames from the existing Las Vegas strip.
+3. The first post-fix capture exposed duplicate wheel title text and excess empty space during SPIN. The central copy became `WHERE / DICE BOOST`, captions moved inward, and the wheel now expands only during outcome states.
+4. The 720×1280 pass exposed a below-fold CTA. A compact breakpoint reduced the wheel/control heights and hides the duplicated footer exit while retaining the header CASINO action.
+5. Final 360×800 and 720×1280 captures show readable hierarchy, visible/reachable primary controls, deterministic win feedback, and no overlap or horizontal clipping.
+
+## Verification
+
+- DICE ROULETTE: 61 assertions, 0 failures.
+- Casino UI: 145 assertions, 0 failures.
+- Casino rules/economy: 246 assertions, 0 failures.
+- Casino foundation: 36 assertions, 0 failures (pre-existing exit cleanup warnings remain).
+- Casino expansion UI: 116 assertions, 0 failures.
+- DICE POKER: 55 assertions, 0 failures.
+- TREASURE 21: 43 assertions, 0 failures.
+- VAULT BREAK core/UI: 452 and 57 assertions, 0 failures.
+- Native OpenGL compatibility capture: 360×800 and 720×1280, 40 assertions each, 0 failures.
+
+## Follow-up polish
+
+- P3: replace compact R/B marker blocks with dedicated red/blue dice-face sprites if the result presentation later needs to match the reference's oversized dice more literally.
+- P3: add a reduced-motion toggle for the normalized sparkle overlay when the project gains a shared accessibility settings surface.
+
+final result: passed
+
+---
+
+# Design QA - DICE RACE Product UI Pass 2
+
+## Evidence
+
+- Runtime capture: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/dice-race-product-ui-v2-360x800.png`.
+- Viewport: 360x800, Godot 4.7 compatibility renderer, live `DiceRace.tscn` data.
+- State: active race with official racer PNGs, a committed BET, physical orientation values, ranking, and course positions.
+
+## Findings
+
+- The race is now the dominant surface: a nine-space vertical window fills the upper play area while the slim right-side map keeps all 24 spaces, hazards, racers, START, and GOAL visible.
+- The central die is a rendered ivory/brass cube with three readable faces. Its pose is sourced from the same one of 24 physical orientations used by racer assignments and STOP resolution.
+- Four visible direction plates surround the die; the two hidden faces remain legible in the compressed opposite-face strip. Only the BET racer's pair receives full gold emphasis.
+- Official racer art is readable in the course window. Idle motion remains within three logical pixels and movement uses a short slide and restrained bounce.
+- The ranking is presented as three floating result plates, the dice area uses a dark casino-table surface, and the gold ROLL / red STOP control is the largest action.
+- DICE RACE now selects the Las Vegas arcade SFX pack. Selection, ROLL/STOP, movement, hazards, rewards, win/loss, retry, and back actions use semantic cues without firing one sound per racer.
+- No clipping or overlap reaches the header, CTA, or back action at 360x800. The minimap is intentionally narrow but remains readable. Racer density is high when several competitors occupy adjacent spaces; this is acceptable for this pass and worth watching during longer playtests.
+
+## Verification
+
+- Casino rules: `226 assertions, 0 failures`.
+- Casino UI: `68 assertions, 0 failures`.
+- Casino UI after SFX integration: `72 assertions, 0 failures`.
+- UI SFX routing/assets: `failures=0`.
+- Full foundational suite: `DICE_SLOT_TRIP_TESTS failures=0`.
+- Amazon/Kyoto integration: passed.
+- Journey-stage UI regression: `failures=0`.
+- Fox-fire core/UI regression: `failures=0`.
+- Scene parse/instantiate: passed in Godot 4.7.
+
+final result: passed
+
+---
+
+# Design QA — DICE RACE Physical Direction Console
+
+## Evidence
+
+- Source visual truth: `C:/Users/hiro/AppData/Local/Temp/codex-clipboard-890f9b6f-a912-4085-995b-2544ebb063a0.png` (374×806), plus the approved fixed-direction console specification.
+- Implementation: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/dice-race-directions-360x800-v3.png` (native 360×800, density 1).
+- Full comparison: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/dice-race-design-comparison.png` (731×800).
+- State: active race, rabbit BET, known physical orientation, all six racers near START.
+- Renderer: Godot 4.7 stable, Windows OpenGL Compatibility.
+
+## Findings
+
+No actionable P0/P1/P2 issues remain. The new composition preserves the reference header, full course, TOP 3 strip, central die, ROLL action, and casino return action. The older arbitrary six-result card list is intentionally replaced by the approved fixed directional compass and three opposite-face rows.
+
+- Fonts and typography: bundled Noto Sans JP remains consistent; the BET value, die value, direction captions, and ROLL action have a clear hierarchy. Opposite-pair copy is the smallest readable tier at 360px.
+- Spacing and layout rhythm: all persistent controls fit inside 360×800. The course remains the largest region, while the direction console has enough height to show six portraits without overlapping the primary action.
+- Colors and visual tokens: the existing navy, cream, gold, red, and racer identity colors are preserved. BET selection uses gold and red emphasis.
+- Image quality and asset fidelity: all six official racer PNGs use aspect-preserving TextureRects on both course markers and direction plates. No placeholder glyphs or generated substitutes are used.
+- Copy and content: the console names the six fixed directions, opposite-face total of seven, current BET value, and STOP behavior without describing the physical result as random distribution.
+
+## Comparison history
+
+1. Initial capture: the course consumed too much empty height; racers and gimmick labels were undersized.
+2. Second capture: course allocation improved, but direction plates, opposite pairs, and racer identification remained too small.
+3. Final capture: direction console scaled up, racer names were added to course markers, and track/console height was rebalanced. Earlier P1/P2 readability findings are resolved.
+
+## Verification
+
+- Casino UI: `67 assertions, 0 failures`.
+- Casino rules: `58 assertions, 0 failures`.
+- STOP applies the same six-value snapshot shown by the direction console and emits one visual feedback burst.
+- Capture harness: `size=(360, 800) layout_fits=true result=0`.
+- Full foundational suite: `DICE_SLOT_TRIP_TESTS failures=0`.
+- Amazon/Kyoto, 狐火追陣 core/UI, and Journey-stage UI regressions pass.
+
+## Follow-up polish
+
+- P3: opposite-face rows are intentionally compact at 360px and could gain an enlarged first-play tutorial state later.
+- P3: a shaded 3D die would strengthen the physical-orientation metaphor beyond the current animated face panel.
+
+final result: passed
+
+---
+
 # Design QA — 狐火追陣 UIブラッシュアップ v1.0
 
 ## Evidence
@@ -584,5 +793,51 @@ The first implementation capture exposed two P2 issues: one obsolete semantic ro
 - 狐火追陣 core/UI regression: `failures=0`.
 - Full foundational suite: `DICE_SLOT_TRIP_TESTS failures=0`.
 - P0: none. P1: none. P2: none.
+
+final result: passed
+
+---
+
+# Design QA — DICE RACE Paid-quality Product Pass
+
+## Evidence
+
+- Source visual target: `C:/Users/hiro/AppData/Local/Temp/codex-clipboard-3582f5f4-e298-4692-9cf7-22bcf45e2a22.png`.
+- Active implementation: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/dice-race-product-paid-pass-360x800.png`.
+- Setup implementation: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/dice-race-setup-final-360x800.png`.
+- Normalized active comparison: `C:/Dev/Projects/dice-slot-trip-main-verify/artifacts/playtest/dice-race-product-final-comparison.png`.
+- Viewport/state: native Godot 4.7 capture at 360x800; active race uses the adopted nine-space camera plus full-course minimap rather than the reference's full 24-space lane.
+
+## Findings
+
+No actionable P0/P1/P2 findings remain for this pass. The setup screen now uses its full available height as a racer-selection scene, and the active screen reads as a race first: six stable racer lanes, a textured desert course, persistent full-course context, top-three standings, a large three-face die, and one dominant ROLL/STOP action.
+
+- Fonts and typography: DICE RACE, TOP3, direction values, opposite-face pairs, setup copy, and button labels use larger Noto Sans JP optical sizes. Unsupported emoji glyphs were removed, so no tofu boxes remain at 360px.
+- Spacing and layout rhythm: the setup course expands into previously empty space while the betting controls and back action remain visible. The active layout fits 360x800 with no clipping; clustered racers span stable X lanes instead of collapsing into one stack.
+- Colors and visual tokens: oxblood, brass, parchment, and midnight plum now carry both setup and active states. Gold is reserved for selection, rank, goal pressure, and the primary action.
+- Image quality and asset fidelity: `desert-track-bg-v1.png` is a real generated raster background with no baked labels, racers, dice, or rules. All stateful content remains live Godot Control or 3D data.
+- Copy and content: compact Japanese hazard text replaces unsupported emoji while preserving the same `-2`, `+3`, `STOP`, and opposite-face-seven information.
+- Interaction and motion: BET highlighting, idle bob, movement slide/bounce, STOP flash, overtake sparks, FINAL STRETCH lighting, reward card, and restrained confetti are state-driven. The 24 physical orientations and exact STOP snapshot remain unchanged.
+
+## Comparison history
+
+1. The initial implementation had a large empty setup lower half, a flat ochre course, clustered racer silhouettes, and a small die.
+2. A text-free desert course asset was generated and integrated beneath live race nodes. Setup became a full-height roster scene, and racers received stable lane offsets.
+3. The die camera moved closer, key typography increased, disabled controls gained readable contrast, and unsupported emoji were removed.
+4. The final 360x800 capture confirms all six racers, the minimap, die, TOP3, ROLL, and back action remain visible without overlap.
+
+## Verification
+
+- Casino rules: 226 assertions, 0 failures.
+- Casino UI: 107 assertions, 0 failures.
+- UI SFX: `failures=0`.
+- Amazon/Kyoto stage regression: pass.
+- Fox Fire Chase core/UI: `failures=0`.
+- Journey stage UI regression: `failures=0`.
+- Full foundational suite: `DICE_SLOT_TRIP_TESTS failures=0`.
+- Native capture: 360x800, `layout_fits=true`.
+- P0: none. P1: none. P2: none.
+
+P3 follow-up: replace the code-styled START/GOAL and hazard plates with a matching modular raster badge set, then extend deterministic capture coverage to rolling, final-stretch, and win states.
 
 final result: passed

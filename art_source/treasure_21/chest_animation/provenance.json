@@ -1,0 +1,11 @@
+{
+  "asset": "treasure_21_chest_open",
+  "generator": "Codex built-in imagegen",
+  "generation_mode": "reference-guided generation plus background-extraction edit",
+  "source_reference_count": 3,
+  "generated_source": "raw/treasure-chest-strip-generated.png",
+  "background_edit_source": "raw/treasure-chest-strip-bgextract.png",
+  "normalized_frame_count": 4,
+  "license": "project-generated asset",
+  "notes": "The built-in outputs contained a painted checkerboard despite requesting alpha; local processing removes only edge-connected neutral checker pixels."
+}

@@ -1,0 +1,383 @@
+version: 2
+
+goal:
+  title: "DICE RACE FEEL POLISH"
+  slug: dice-race-feel-polish
+  kind: specific
+  tranche: "Map the existing Dice Race flow, implement the first bounded presentation-only feel slice, verify both target resolutions, and audit the protected diff."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Map the existing Dice Race model/screen/track/scene flow, presentation hooks, deterministic fixture APIs, recorder patterns, and teardown risks; recommend the smallest safe Phase 5F boundary."
+    inputs:
+      - "scripts/app/dice_race_screen.gd"
+      - "scripts/app/dice_race_track_view.gd"
+      - "scripts/game/dice_race_model.gd"
+      - "scenes/casino/DiceRace.tscn"
+      - "scripts/ui/casino_feel_fx.gd"
+      - "tests/record_dice_race.gd"
+      - "tests/run_tests.gd"
+    constraints:
+      - "Read-only investigation; do not edit implementation files."
+      - "Do not change gameplay, economy, persistence, BGM, HUB, routes, or other facilities."
+      - "Use concrete file-path and line-range evidence."
+    expected_output:
+      - "Current state/event/timing/settlement map"
+      - "Exact safe presentation and teardown plan"
+      - "Exact allowed_files, verify commands, and stop conditions"
+      - "Deterministic fixtures for progress, overtake, leader, drop, goal, photo, loss, extra roll, and teardown"
+    receipt:
+      result: done
+      summary: "DICE RACE currently resolves model state immediately, has no presentation lock/start phase, uses a 0–0.36s coast before a 0.56s track motion, leaves PHOTO FINISH as a status-only wait, and settles to one inline CTA. The model and shared CasinoFeelFX are clean protected boundaries."
+      evidence:
+        - "scripts/app/dice_race_screen.gd:691-721 (start commits and enables roll immediately)"
+        - "scripts/app/dice_race_screen.gd:723-808 (two-tap roll, persisted pending roll, resolve-before-motion, rank/final stretch)"
+        - "scripts/app/dice_race_screen.gd:810-859 (photo status-only and one inline result CTA)"
+        - "scripts/app/dice_race_track_view.gd:105-129,427-436 (selected cue, 0.56s motion, rank signal)"
+        - "scripts/game/dice_race_model.gd:44-113,188-207 (pure movement/goal/photo/cashout rules)"
+        - "tests/record_dice_race.gd (existing capture modes and 360x800 harness)"
+      safe_boundary:
+        allowed_files:
+          - "scripts/app/dice_race_screen.gd"
+          - "scripts/app/dice_race_track_view.gd"
+          - "tests/run_dice_race_feel_tests.gd"
+          - "tests/run_dice_race_feel_tests.gd.uid"
+          - "tests/record_dice_race_feel.gd"
+          - "tests/record_dice_race_feel.gd.uid"
+        protected:
+          - "scripts/game/dice_race_model.gd"
+          - "scripts/game/dice_race_orientation.gd"
+          - "scripts/game/casino_bank.gd"
+          - "scripts/ui/casino_feel_fx.gd (shared API)"
+          - "scenes/casino/DiceRace.tscn"
+          - "autoload/bgm_manager.gd"
+          - "scripts/app/casino_hub_screen.gd"
+          - "other facility screens/routes"
+      fixtures:
+        - "A normal progress: all zero + valid [3,6,1,2,5,4] assignment"
+        - "B selected rabbit 3rd→2nd, C rabbit 2nd→1st, D rabbit 1st→2nd"
+        - "E rabbit goal, F rabbit/camel photo tie, G selected loss"
+        - "H roll-3 cashout offer then ride-on/extra roll, I queue_free during await"
+      verification:
+        - "Godot 4.7 focused Dice Race feel suite"
+        - "Godot editor parse --headless --debug --ignore-error-breaks --path . --editor --quit"
+        - "Casino foundation/Casino/Casino UI/Expansion UI and all-facility regressions"
+        - "stage-aware real GPU recorder at 360x800 and 720x1280"
+        - "git diff --check, protected diff, temporary cleanup, and no residual Godot process"
+      risks:
+        - "PHOTO FINISH is a model-required follow-up roll; presentation must not silently alter that rule."
+        - "TrackView motion is self-timed; any timing extension must remain presentation-only and keep rank emission after movement."
+        - "Deferred banners/tweens and result CHIP counting need exit guards."
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Review the Scout receipt and select one bounded Worker slice that satisfies the highest-value Dice Race feel requirements without touching protected logic."
+    inputs:
+      - "T001 receipt"
+      - "Phase 5F pasted specification"
+    constraints:
+      - "Read-only; do not implement."
+      - "Require exact allowed_files, verification commands, and stop conditions."
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Deferred risks or follow-up tasks"
+    receipt:
+      result: approved
+      decision: "select exactly one bounded presentation-only Worker slice"
+      summary: "Implement a phase coordinator in the Race screen/track and dedicated deterministic tests/recorder. Keep model apply and Bank settlement immediate and untouched; expose the model-required PHOTO FINISH follow-up roll instead of deadlocking."
+      allowed_files:
+        - "scripts/app/dice_race_screen.gd"
+        - "scripts/app/dice_race_track_view.gd"
+        - "tests/run_dice_race_feel_tests.gd"
+        - "tests/run_dice_race_feel_tests.gd.uid"
+        - "tests/record_dice_race_feel.gd"
+        - "tests/record_dice_race_feel.gd.uid"
+      verify:
+        - "Godot 4.7 focused Dice Race feel suite"
+        - "Godot editor parse --headless --debug --ignore-error-breaks --path . --editor --quit"
+        - "aggregate/full casino/facility/Poker regressions"
+        - "real GPU recorder at 360x800 and 720x1280 with non-empty PNGs, stage logs, and rect fit"
+        - "git diff --check, exact protected diff, cleanup, and no residual Godot process"
+      fixtures:
+        - "A normal progress, B 3rd→2nd overtake, C 2nd→1st leader, D 1st→2nd drop"
+        - "E goal, F PHOTO FINISH tie requiring the existing second roll, G loss"
+        - "H roll-3 cashout/ride-on extra roll, I queue_free during every presentation phase"
+      stop_if:
+        - "Need files outside the exact allowlist."
+        - "Any model/economy/RNG/payout/movement/rank/photo/BET/Bank/save/BGM/HUB/route/scene/shared-FX API change."
+        - "Duplicate model/Bank input, premature unlock, photo spinner/blank/deadlock, or unreadable/clipped 360x800."
+        - "Teardown leaves callback/audio/tween work or the same verification failure repeats twice."
+      deferred_risks:
+        - "TrackView currently self-times a 0.56s motion and has untracked layout tweens; add only presentation-safe guards/timing."
+        - "Result overlay must keep rank visible before outcome/metrics and preserve existing retry semantics."
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: low
+    objective: "Execute the bounded Dice Race presentation-only implementation selected by Judge, with deterministic fixture assertions and real-render evidence."
+    allowed_files:
+      - "scripts/app/dice_race_screen.gd"
+      - "scripts/app/dice_race_track_view.gd"
+      - "tests/run_dice_race_feel_tests.gd"
+      - "tests/run_dice_race_feel_tests.gd.uid"
+      - "tests/record_dice_race_feel.gd"
+      - "tests/record_dice_race_feel.gd.uid"
+    verify:
+      - "Godot 4.7 focused Dice Race feel suite"
+      - "Godot editor parse --headless --debug --ignore-error-breaks --path . --editor --quit"
+      - "aggregate/full casino/facility/Poker regressions"
+      - "real GPU recorder at 360x800 and 720x1280 with stage logs and layout assertions"
+      - "git diff --check, protected diff, cleanup, and no residual Godot process"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Any gameplay/economy/persistence/BGM/HUB/route/scene/shared-FX API change is required."
+      - "Duplicate input, premature CTA unlock, unreadable 360x800 layout, or unsafe teardown is observed."
+      - "Verification fails twice for the same reason."
+    receipt:
+      result: blocked
+      changed_files:
+        - "scripts/app/dice_race_screen.gd"
+        - "tests/run_dice_race_feel_tests.gd"
+        - "tests/record_dice_race_feel.gd"
+      commands:
+        - cmd: "git diff --check"
+          status: "pass"
+        - cmd: "Godot 4.7 focused test with --audio-driver Dummy --rendering-method gl_compatibility"
+          status: "blocked: signal 11 after about 31s before test output"
+      summary: "Partial screen phase/lock/start-roll timing, PHOTO banner, teardown guard, and minimal focused/recorder scaffolds landed. Full result CTAs, CHIP count, non-deadlocking PHOTO follow-up, A–I assertions, and two-resolution evidence are not complete; recovery is required."
+      missing:
+        - "staged result rank→WIN/LOSS→BET/RETURN/NET→CHIP→3 CTAs"
+        - "PHOTO FINISH visible hold plus existing follow-up roll unlock"
+        - "deterministic A–I UI/teardown assertions and 360x800/720x1280 recorder"
+        - "signal 11 root-cause isolation and focused verification"
+
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: high
+    objective: "Recover and complete the Phase 5F Dice Race feel slice inside the exact allowlist: fix the focused-run crash or isolate it, implement missing result/photo/CTA presentation, and add real A–I tests and two-resolution recorder evidence without changing protected logic."
+    allowed_files:
+      - "scripts/app/dice_race_screen.gd"
+      - "scripts/app/dice_race_track_view.gd"
+      - "tests/run_dice_race_feel_tests.gd"
+      - "tests/run_dice_race_feel_tests.gd.uid"
+      - "tests/record_dice_race_feel.gd"
+      - "tests/record_dice_race_feel.gd.uid"
+    verify:
+      - "Godot 4.7 focused Dice Race feel suite with absolute CLI path, Dummy audio, and gl_compatibility"
+      - "Godot editor parse --headless --debug --ignore-error-breaks --path . --editor --quit"
+      - "existing casino UI/expansion tests and aggregate tests/run_tests.gd"
+      - "real GPU recorder at 360x800 and 720x1280 with non-empty PNGs, stage logs, and rect-fit assertions"
+      - "git diff --check, exact protected diff, temporary cleanup, and no residual Godot process"
+    stop_if:
+      - "Need files outside the exact allowlist."
+      - "Any model/economy/RNG/payout/movement/rank/photo/BET/Bank/save/BGM/HUB/route/scene/shared-FX API change."
+      - "Duplicate model/Bank input, premature unlock, photo spinner/blank/deadlock, unreadable/clipped 360x800, or unsafe teardown."
+      - "The same verification failure repeats twice without a materially safer diagnostic change."
+    receipt:
+      result: blocked
+      changed_files: []
+      commands:
+        - cmd: "Godot 4.7 focused test with Dummy audio and gl_compatibility"
+          status: "blocked: prior process pair hung/crashed with signal 11 before output"
+      summary: "Recovery worker was interrupted after the partial T003 screen/test scaffolds remained insufficient for the approved slice. Residual Godot processes were terminated by PM. Missing result CTAs, CHIP count, non-deadlocking PHOTO follow-up, A–I assertions, and two-resolution evidence remain."
+
+  - id: T005
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Complete the smallest production recovery slice in the existing Race screen/track: staged result view with rank→WIN/LOSS→BET/RETURN/NET→CHIP count→three CTAs, compact PHOTO FINISH that re-enables the existing follow-up roll, and robust input/teardown guards; keep all model and Bank behavior unchanged."
+    allowed_files:
+      - "scripts/app/dice_race_screen.gd"
+      - "scripts/app/dice_race_track_view.gd"
+      - "tests/run_dice_race_feel_tests.gd"
+      - "tests/run_dice_race_feel_tests.gd.uid"
+    verify:
+      - "Godot 4.7 focused Race feel test with absolute console path, Dummy audio, and gl_compatibility"
+      - "Godot editor parse --headless --debug --ignore-error-breaks --path . --editor --quit"
+      - "existing casino UI/expansion tests and git diff --check"
+      - "protected diff and no residual Godot process"
+    stop_if:
+      - "Need recorder or files outside the listed production/test paths before this slice is complete."
+      - "Any model/economy/RNG/payout/movement/rank/photo/BET/Bank/save/BGM/HUB/route/scene/shared-FX API change."
+      - "Duplicate settlement/input, deadlocked PHOTO, premature CTA unlock, unreadable/clipped layout, or unsafe teardown."
+      - "The same test failure repeats twice without a safer diagnostic change."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/dice_race_screen.gd"
+        - "scripts/app/dice_race_track_view.gd"
+        - "tests/run_dice_race_feel_tests.gd"
+        - "tests/run_dice_race_feel_tests.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 focused Dice Race feel suite with Dummy audio/gl_compatibility"
+          status: "pass: 24 assertions, 0 failures; existing ObjectDB leak warnings only"
+        - cmd: "Godot editor parse --headless --debug --ignore-error-breaks --path . --editor --quit"
+          status: "pass"
+        - cmd: "git diff --check"
+          status: "pass"
+      summary: "Completed the bounded production recovery: runtime RaceResultPanel stages rank→outcome→BET/RETURN/NET→500ms CHIP count→three guarded Japanese CTAs; PHOTO FINISH uses a compact 180ms pop/480ms hold/fade then leaves the model-required next roll; goal settlement works while the presentation lock is held; selected BET racer remains marked; movement timing is presentation-only and TrackView teardown is guarded. No protected gameplay/economy/BGM/HUB/scene/shared-FX API changed."
+      remaining_risks:
+        - "Dedicated recorder still needs both target resolutions and full A–I teardown evidence."
+        - "Existing legacy casino UI assertions may need compatibility review after the new result panel."
+
+  - id: T006
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: high
+    objective: "Create and run the dedicated non-mutating Dice Race feel recorder for deterministic A–I fixtures at 360x800 and 720x1280, with stage logs, layout/CTA assertions, and queue_free probes; do not change production behavior."
+    allowed_files:
+      - "tests/record_dice_race_feel.gd"
+      - "tests/record_dice_race_feel.gd.uid"
+      - "tests/run_dice_race_feel_tests.gd"
+    verify:
+      - "Godot 4.7 recorder at 360x800 and 720x1280 with Dummy audio/gl_compatibility"
+      - "non-empty PNGs, stage-log.json, A–I fixture records, CTA/rect-fit checks, and queue_free probes"
+      - "focused suite remains passing, git diff --check, protected diff, and no residual Godot process"
+    stop_if:
+      - "Need production/model/economy/scene/BGM/HUB/shared-FX changes."
+      - "Recorder mutates gameplay/RNG/Bank or masks a production failure."
+      - "Either target resolution cannot produce readable evidence or the same failure repeats twice."
+    receipt:
+      result: blocked
+      changed_files: []
+      commands: []
+      summary: "Recorder worker did not produce the two-resolution evidence within the bounded turn and was interrupted. PM will finish the compact recorder/test evidence directly inside the already-approved allowlist."
+
+  - id: T007
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "Finish the approved Dice Race tranche as a PM hardening pass: inspect/fix focused tests and recorder, run both target resolutions and regression suites, audit protected diff and teardown, then hand off to a fresh final Judge."
+    allowed_files:
+      - "scripts/app/dice_race_screen.gd"
+      - "scripts/app/dice_race_track_view.gd"
+      - "tests/run_dice_race_feel_tests.gd"
+      - "tests/run_dice_race_feel_tests.gd.uid"
+      - "tests/record_dice_race_feel.gd"
+      - "tests/record_dice_race_feel.gd.uid"
+      - "docs/goals/dice-race-feel-polish/goal.md"
+      - "docs/goals/dice-race-feel-polish/state.yaml"
+    verify:
+      - "focused Race feel suite and editor parse"
+      - "existing casino/facility/Poker regressions and aggregate tests/run_tests.gd"
+      - "real GPU recorder at 360x800 and 720x1280 with stage logs/PNG/rect-fit"
+      - "protected diff, git diff --check, temporary cleanup, and no residual Godot process"
+    stop_if:
+      - "Any gameplay/economy/model/Bank/RNG/payout/BGM/HUB/route/scene/shared-FX API change is needed."
+      - "Verification cannot pass after two materially different safe diagnostics."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/dice_race_screen.gd"
+        - "scripts/app/dice_race_track_view.gd"
+        - "tests/run_dice_race_feel_tests.gd"
+        - "tests/run_dice_race_feel_tests.gd.uid"
+        - "tests/record_dice_race_feel.gd"
+        - "tests/record_dice_race_feel.gd.uid"
+      commands:
+        - cmd: "Godot 4.7.2 editor parse --headless --path . --editor --quit"
+          status: "pass"
+        - cmd: "tests/run_dice_race_feel.gd focused suite"
+          status: "pass: 25 assertions, 0 failures"
+        - cmd: "tests/record_dice_race_feel.gd headless at 360x800"
+          status: "pass: failures=0; A–I stage-log and rect assertions"
+        - cmd: "tests/record_dice_race_feel.gd headless at 720x1280"
+          status: "pass: failures=0; A–I stage-log and rect assertions"
+        - cmd: "tests/record_dice_race_feel.gd Windows GPU at 360x800"
+          status: "pass: 8 non-empty PNGs + 61-record stage-log; visual inspection pass"
+        - cmd: "tests/record_dice_race_feel.gd Windows GPU at 720x1280"
+          status: "pass: 8 non-empty PNGs + 61-record stage-log; visual inspection pass"
+        - cmd: "Casino foundation/Casino/Expansion UI/Roulette/Poker/Treasure 21/Vault Break/aggregate regressions"
+          status: "pass: 36/248/168/110/97/100/452 assertions and aggregate failures=0"
+        - cmd: "tests/run_casino_ui_tests.gd (legacy UI harness)"
+          status: "known legacy mismatch: 204 assertions, 13 failures only in superseded Race result timing/card expectations; no model/economy failures"
+        - cmd: "git diff --check, exact protected diff, and process cleanup"
+          status: "pass: scoped whitespace clean, protected files unchanged, no Godot process remains"
+      summary: "PM hardening completed the presentation-only Race slice. Start uses the explicit ゲーム開始 CTA; normal/final rolls resolve the persisted model before a 300–450ms staggered movement and rank phase; selected racer keeps star/crown/ring cues; PHOTO FINISH is a compact pop/hold/shutter overlay that leaves the model-required follow-up roll available; result stages rank → WIN/LOSS → BET/RETURN/NET → 500ms CHIP count → もう一度遊ぶ／ベットを変える／カジノへ戻る with large touch targets. Result effects are layered and cleaned on replay, and all tweens/deferred callbacks/audio hooks are guarded for teardown. No protected gameplay, economy, RNG, save, BGM, HUB, route, scene, or shared-FX API changed."
+      evidence:
+        - "artifacts/qa/dice-race-feel-360-gpu-final2/stage-log.json and 8 PNGs"
+        - "artifacts/qa/dice-race-feel-720-gpu-final2/stage-log.json and 8 PNGs"
+        - "360x800 visual checks: setup, overtake, PHOTO FINISH, WIN, LOSS"
+        - "720x1280 visual check: staged result panel and three CTAs remain in bounds"
+      remaining_risks:
+        - "The pre-Phase-5F casino UI harness still asserts the removed inline WinCard/result timing; its 13 failures are intentionally superseded by the dedicated 25-assertion Race feel suite and new result-panel behavior."
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit whether the implemented Dice Race slice satisfies the Phase 5F acceptance and is safe to hand off."
+    inputs:
+      - "All done task receipts"
+      - "Final scoped diff and validation output"
+      - "360x800 and 720x1280 stage-aware render evidence"
+    constraints:
+      - "Read-only; do not implement."
+      - "Reject completion if required Worker work is still queued or active."
+    expected_output:
+      - "complete | not_complete"
+      - "Acceptance evidence or missing evidence"
+      - "One bounded follow-up task only if not complete"
+    receipt:
+      result: done
+      decision: complete
+      summary: "Phase 5F satisfies the approved presentation-only Dice Race boundary and is safe to hand off. The final result display preserves the existing net-based WIN/EVEN/LOSS semantics; staged presentation, PHOTO FINISH follow-up, Japanese CTAs, teardown guards, and both target resolutions are verified."
+      evidence:
+        - "Post-patch focused Dice Race feel suite: 25 assertions, 0 failures"
+        - "Post-patch recorder headless at 360x800 and 720x1280: failures=0"
+        - "Windows GPU evidence already recorded at both resolutions: 8 non-empty PNGs and 61 stage-log records per resolution; visual inspection pass"
+        - "Protected gameplay/economy/model/Bank/RNG/payout/photo/BGM/HUB/route/scene/shared-FX files unchanged"
+        - "git diff --check clean and no Godot process remains"
+      remaining_risks:
+        - "Legacy run_casino_ui_tests retains 13 superseded Race timing/inline WinCard assertions; dedicated Phase 5F suite is the current contract."
+      next_task: commit_push
+
+checks:
+  dirty_fingerprint: "pre-existing unrelated worktree changes preserved; Phase 5F scope will be listed in task receipts"
+  last_verification:
+    result: complete
+    task: T999
+    commands:
+      - "Godot 4.7.2 editor parse --headless --path . --editor --quit"
+      - "focused Dice Race feel: 25 assertions, 0 failures"
+      - "dedicated recorder headless: 360x800 and 720x1280 failures=0"
+      - "dedicated recorder Windows GPU: both resolutions, 8 non-empty PNGs and 61-record stage-log each"
+      - "casino/facility/Poker regressions: all scoped suites 0 failures; aggregate DICE_SLOT_TRIP_TESTS failures=0"
+      - "legacy run_casino_ui_tests: 13 superseded Race result timing/card assertion mismatches"
+      - "git diff --check; protected diff empty; no Godot process"

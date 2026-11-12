@@ -48,11 +48,11 @@ func _record() -> void:
 
 func _configure_mode(screen: DiceRaceScreen, mode: String) -> void:
 	if mode in ["setup", "setup_chip0"]:
-		screen.chip_label.text = "CHIP  0" if mode == "setup_chip0" else screen.chip_label.text
+		screen.chip_label.text = "CASINO CHIP\n0" if mode == "setup_chip0" else screen.chip_label.text
 		return
 	if mode == "setup_ready":
 		screen.call("_select_racer", "rabbit")
-		screen.chip_label.text = "CHIP  100"
+		screen.chip_label.text = "CASINO CHIP\n100"
 		screen.start_button.disabled = false
 		screen.status_label.text = "ウサギを応援する"
 		return
@@ -70,7 +70,7 @@ func _configure_mode(screen: DiceRaceScreen, mode: String) -> void:
 				overtake.queue_free()
 		"rolling":
 			screen.spinning = true
-			screen.roll_button.text = "STOP!"
+			screen.roll_button.text = "ここで止める"
 			screen.status_label.text = "ウサギの6を狙え！"
 		"stopped":
 			screen.call("_play_stop_assignment_feedback", QA_ASSIGNMENTS)
@@ -94,8 +94,9 @@ func _configure_mode(screen: DiceRaceScreen, mode: String) -> void:
 			for overtake: Node in screen.race_fx_layer.find_children("OvertakeBanner", "Label", true, false):
 				overtake.queue_free()
 			screen.track_view.set_winner_presentation("rabbit")
-			screen.call("_play_win_fx", screen.RACER_ART_PATHS["rabbit"], "ウサギ", 80)
-			screen.status_label.text = "ウサギ WIN！ 80 CHIP獲得！"
+			screen.call("_play_win_fx", screen.RACER_ART_PATHS["rabbit"], "ウサギ", 36)
+			screen.status_label.text = "WIN · 最終1位 · 受け取り 36 CHIP（BET込み） · 収支 +16 CHIP"
+			screen.roll_button.text = "次のレースを選ぶ"
 		"cashout", "roll3":
 			screen.race["roll_count"] = 3
 			screen.race["cashout_offered"] = true
@@ -113,7 +114,7 @@ func _configure_active_race(screen: DiceRaceScreen) -> void:
 	screen.roll_button.disabled = false
 	screen.current_assignments = QA_ASSIGNMENTS.duplicate()
 	screen.call("_refresh_all", false)
-	screen.status_label.text = "ウサギに20 CHIP。欲しい目を狙ってSTOP！"
+	screen.status_label.text = "ウサギに20 CHIP。欲しい目を狙って「ここで止める」！"
 
 
 func _set_positions(screen: DiceRaceScreen, positions: Dictionary) -> void:

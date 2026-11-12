@@ -6,10 +6,17 @@ const ROULETTE_SCENE: PackedScene = preload("res://scenes/casino/DiceRoulette.ts
 const HUB_SCENE: PackedScene = preload("res://scenes/casino/CasinoHub.tscn")
 const ScreenScript = preload("res://scripts/app/dice_roulette_screen.gd")
 const HubScript = preload("res://scripts/app/casino_hub_screen.gd")
+const ROULETTE_BGM_PATH := "res://assets/audio/bgm/lasvegas/ルーレット.mp3"
+const ROULETTE_BACKGROUND_PATH := "res://assets/casino/dice_roulette/ui/casino-table-bg-v1.png"
+const ROULETTE_BEZEL_PATH := "res://assets/casino/dice_roulette/ui/roulette-bezel-v1.png"
+const ROULETTE_SPARKLE_PATH := "res://assets/casino/dice_roulette/ui/sparkle_frames/03.png"
+const BUTTON_ORNAMENTS_PATH := "res://assets/art/ui/common/roll-button-ornaments.png"
+const SPIN_RING_PATH := "res://assets/casino/dice_roulette/ui/spin-button-amber-v1.png"
 
 var failures := 0
 var assertions := 0
 var test_save_path := ""
+var back_request_count := 0
 
 func _init() -> void:
 	call_deferred("_run")
@@ -20,6 +27,54 @@ func _expect(condition: bool, label: String) -> void:
 		return
 	failures += 1
 	push_error("FAIL: %s" % label)
+
+func _on_back_requested() -> void:
+	back_request_count += 1
+
+func _teardown_at_event(test_root: Node, event_name: String) -> void:
+	var probe := ROULETTE_SCENE.instantiate()
+	test_root.add_child(probe)
+	await process_frame
+	probe.call("_place_main_bet", "HIGH")
+	probe.rng.seed = 7
+	probe.call("_spin")
+	var elapsed := 0.0
+	while event_name not in probe.presentation_events and elapsed < 4.0:
+		await create_timer(0.02).timeout
+		elapsed += 0.02
+	_expect(event_name in probe.presentation_events, "teardown probe reaches %s" % event_name)
+	probe.queue_free()
+	await process_frame
+	_expect(not is_instance_valid(probe), "roulette frees safely during %s" % event_name)
+
+func _teardown_at_motion_phase(test_root: Node, phase_name: String) -> void:
+	var probe := ROULETTE_SCENE.instantiate()
+	test_root.add_child(probe)
+	await process_frame
+	probe.call("_place_main_bet", "HIGH")
+	probe.rng.seed = 7
+	probe.call("_spin")
+	var elapsed := 0.0
+	while str(probe.wheel.motion_phase) != phase_name and elapsed < 4.0:
+		await create_timer(0.02).timeout
+		elapsed += 0.02
+	_expect(str(probe.wheel.motion_phase) == phase_name, "wheel enters %s phase" % phase_name)
+	probe.queue_free()
+	await process_frame
+	_expect(not is_instance_valid(probe), "roulette frees safely during wheel %s" % phase_name)
+
+func _assert_how_to(screen: Node) -> void:
+	var panel := screen.find_child("CasinoHowTo3Steps", true, false) as PanelContainer
+	_expect(panel != null, "DICE ROULETTE exposes the shared CasinoHowTo3Steps panel")
+	if panel == null:
+		return
+	var headings: Array[String] = ["① 最初に何をする？", "② プレイ中に何をする？", "③ どうなれば勝ち？"]
+	var actions: Array[String] = ["ベットを決める", "回す", "的中を確認する"]
+	for index: int in range(3):
+		var heading := panel.find_child("Step%dHeading" % (index + 1), true, false) as Label
+		var detail := panel.find_child("Step%dDetail" % (index + 1), true, false) as Label
+		_expect(heading != null and heading.text == headings[index], "DICE ROULETTE keeps shared step heading %d" % (index + 1))
+		_expect(detail != null and actions[index] in detail.text and detail.text.length() <= 48, "DICE ROULETTE keeps concise step copy %d" % (index + 1))
 
 func _run() -> void:
 	test_save_path = "user://dice_slot_trip_dice_roulette_%d.json" % OS.get_process_id()
@@ -105,19 +160,51 @@ func _test_bank_settlement() -> void:
 	_expect(not bool(duplicate.get("ok", true)) and bool(duplicate.get("already_settled", false)) and CasinoBankScript.balance() == 136, "duplicate roulette settlement cannot credit twice")
 
 func _test_ui_contract() -> void:
+	_expect(FileAccess.file_exists(ROULETTE_BGM_PATH), "roulette BGM asset is present for runtime import")
+	var roulette_bgm: Resource = ResourceLoader.load(ROULETTE_BGM_PATH)
+	_expect(roulette_bgm is AudioStreamMP3, "roulette BGM imports as an AudioStreamMP3")
+	_expect(ResourceLoader.load(ROULETTE_BACKGROUND_PATH) is Texture2D, "roulette casino background imports as a production texture")
+	_expect(ResourceLoader.load(ROULETTE_BEZEL_PATH) is Texture2D, "roulette jeweled bezel imports with transparency")
+	_expect(ResourceLoader.load(ROULETTE_SPARKLE_PATH) is Texture2D, "roulette normalized sparkle frame imports as a texture")
+	_expect(ResourceLoader.load(BUTTON_ORNAMENTS_PATH) is Texture2D, "roulette button ornament strip imports as a production texture")
+	_expect(ResourceLoader.load(SPIN_RING_PATH) is Texture2D, "roulette round SPIN ring imports as a production texture")
 	CasinoBankScript.save_data(CasinoBankScript.default_data())
 	CasinoBankScript.add_chips(100)
 	var roulette := ROULETTE_SCENE.instantiate()
 	root.add_child(roulette)
 	await process_frame
 	_expect(roulette.get_script() == ScreenScript, "Dice Roulette scene instantiates its screen")
+	_assert_how_to(roulette)
 	_expect(roulette.wheel != null, "Dice Roulette exposes the animated wheel")
+	_expect(roulette.wheel.red_marker != null and roulette.wheel.red_marker.has_method("set_face") and roulette.wheel.red_marker.custom_minimum_size.x >= 92.0, "roulette wheel uses a prominent dimensional red die marker")
+	_expect(roulette.wheel.blue_marker != null and roulette.wheel.blue_marker.has_method("set_face") and roulette.wheel.blue_marker.custom_minimum_size.x >= 92.0, "roulette wheel uses a prominent dimensional blue die marker")
 	_expect(roulette.amount_buttons.size() == 3 and roulette.selected_bet_amount == 10, "roulette defaults to LONG PLAY 10 chip")
 	_expect(roulette.main_bet_buttons.size() == 6, "roulette creates all six main WHERE bet areas")
 	_expect(roulette.side_bet_buttons.size() == 3, "roulette creates red draw blue side bets")
+	_expect(roulette.spin_button != null and roulette.spin_button.custom_minimum_size.x >= 192.0 and roulette.spin_button.custom_minimum_size.y >= 124.0, "roulette SPIN keeps a forgiving physical touch target on the 360px canvas")
+	_expect(roulette.spin_button.get_node_or_null("SpinGoldRing") is TextureRect and roulette.spin_button.get_node_or_null("SpinCaption") is Label, "roulette SPIN uses the premium round gold ring and readable live caption")
+	_expect(roulette.guide_label != null and "①" in roulette.guide_label.text and "チップ" in roulette.guide_label.text, "roulette opens with a Japanese current-step guide")
+	_expect(roulette.betting_shell != null and roulette.betting_shell.visible, "roulette lower controls sit on a decorated betting-table panel")
+	_expect(roulette.wager_surface != null and roulette.wager_surface.visible and roulette.wager_surface.name == "WagerSurface", "roulette groups main and side wagers on one felt table surface")
+	_expect(roulette.red_result_label != null and roulette.red_result_label.custom_minimum_size.y >= 64.0 and roulette.red_result_label.get_theme_font_size("font_size") >= 21, "roulette result band gives each die readable two-line headroom")
+	_expect(roulette.status_label != null and not roulette.status_label.visible, "roulette hides the secondary status strip while betting")
+	_expect((roulette.amount_buttons.get(10) as Button).get_node_or_null("ButtonOrnament") is TextureRect, "roulette amount buttons use the production gold ornament frames")
+	_expect((roulette.side_bet_buttons.get("RED_LEADS") as Button).get_node_or_null("SideDiceIcon") is TextureRect, "roulette color bets carry readable dice art")
+	_expect(roulette.action_dock != null and roulette.action_dock.visible and roulette.action_dock.is_ancestor_of(roulette.spin_button), "roulette keeps a visible fixed action dock independent of the scrolling betting table")
+	var undo_caption := roulette.undo_button.get_node_or_null("ButtonCaption") as Label
+	var clear_caption := roulette.clear_button.get_node_or_null("ButtonCaption") as Label
+	_expect(undo_caption != null and undo_caption.text == "もどす" and clear_caption != null and clear_caption.text == "消す", "roulette utility controls use first-play Japanese labels")
+	var casino_back := roulette.find_child("CasinoBackButton", true, false) as Button
+	_expect(casino_back != null and casino_back.text == "カジノへ戻る" and casino_back.custom_minimum_size.y >= 54.0 and roulette.find_child("ResultCasinoBackButton", true, false) is Button, "roulette uses the shared casino-return label for setup and Result")
 	_expect(int(roulette.get("phase")) == 1, "roulette opens in BETTING phase")
 	roulette.call("_place_main_bet", "HIGH")
 	_expect(int(roulette.main_bets.get("HIGH", 0)) == 10 and roulette.call("_current_total_bet") == 10, "main bet tap places selected chip amount")
+	var high_chip_badge := (roulette.main_bet_buttons.get("HIGH") as Button).get_node_or_null("BetChipBadge") as Label
+	_expect(high_chip_badge != null and high_chip_badge.visible and high_chip_badge.text == "10 CHIP", "placed main bet shows a physical chip badge on its table cell")
+	_expect(high_chip_badge != null and is_equal_approx(high_chip_badge.anchor_left, 1.0) and is_equal_approx(high_chip_badge.anchor_top, 1.0) and high_chip_badge.offset_right < 0.0 and high_chip_badge.offset_bottom < 0.0, "placed chip badge stays pinned to the lower-right corner")
+	_expect("③" in roulette.guide_label.text and "回す" in roulette.guide_label.text, "placing a bet advances the guide to the primary 回す action")
+	_expect(not roulette.status_label.text.contains("回せます"), "secondary status line does not duplicate the primary 回す guide")
+	_expect("おすすめ" in (roulette.main_bet_buttons.get("HIGH") as Button).text and "大穴" in (roulette.main_bet_buttons.get("JACKPOT") as Button).text, "main table exposes concise Japanese bet personalities")
 	roulette.call("_select_amount", 20)
 	roulette.call("_place_main_bet", "JACKPOT")
 	roulette.call("_place_side_bet", "DRAW")
@@ -126,9 +213,42 @@ func _test_ui_contract() -> void:
 	_expect(roulette.call("_current_total_bet") == 50, "bet placement cannot push total beyond 50")
 	roulette.call("_undo")
 	_expect(roulette.call("_current_total_bet") == 30, "UNDO restores the previous bet snapshot")
+	# Deterministic feel contract: one SPIN emits the complete readable beat sequence,
+	# while a second input during the presentation cannot charge or start another round.
+	roulette.call("_clear_bets")
+	roulette.call("_select_amount", 10)
+	roulette.call("_place_main_bet", "HIGH")
+	roulette.rng.seed = 7
+	var balance_before_spin: int = CasinoBankScript.balance()
+	roulette.call("_spin")
+	roulette.call("_spin")
+	_expect(CasinoBankScript.balance() == balance_before_spin - 10, "second SPIN is ignored while the first presentation is running")
+	var spin_timeout: float = 0.0
+	while int(roulette.phase) != 7 and spin_timeout < 4.0:
+		await create_timer(0.05).timeout
+		spin_timeout += 0.05
+	_expect(int(roulette.phase) == 7, "roulette feel fixture reaches ROUND_END")
+	var expected_events: Array[String] = ["spin_press", "land", "where", "boost"]
+	var events: Array[String] = roulette.presentation_events
+	var prefix_ok: bool = events.size() >= expected_events.size()
+	for event_index: int in range(expected_events.size()):
+		prefix_ok = prefix_ok and events[event_index] == expected_events[event_index]
+	_expect(prefix_ok, "roulette presentation events keep SPIN -> land -> WHERE -> BOOST order")
+	_expect(events.size() >= 6 and (events[4] == "win" or events[4] == "lose") and events[5] == "chip_count", "roulette emits outcome before CHIP count")
+	_expect("BET" in roulette.payout_label.text and "受け取り" in roulette.payout_label.text and "収支" in roulette.payout_label.text, "roulette payout summary explains BET, return, and net")
+	back_request_count = 0
+	roulette.back_requested.connect(_on_back_requested)
+	roulette.call("_cash_out")
+	roulette.call("_cash_out")
+	_expect(back_request_count == 1, "cash out is idempotent and emits back_requested once")
+	for teardown_event: String in ["spin_press", "land", "where", "boost", "chip_count"]:
+		await _teardown_at_event(root, teardown_event)
+	for motion_phase_name: String in ["acceleration", "cruise", "deceleration"]:
+		await _teardown_at_motion_phase(root, motion_phase_name)
+	# Teardown safety: freeing during the active spin must not leave a live screen.
 	roulette.queue_free()
 	await process_frame
-
+	_expect(not is_instance_valid(roulette), "roulette screen can be freed during presentation safely")
 	var hub := HUB_SCENE.instantiate()
 	root.add_child(hub)
 	await process_frame

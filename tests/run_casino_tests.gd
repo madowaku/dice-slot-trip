@@ -111,7 +111,7 @@ func _test_chip_bank() -> void:
 	_expect("test:lap:1" in ledger.conversion_keys, "conversion ledger persists with bank data")
 
 func _test_dice_tower_rules() -> void:
-	var expected_payouts := [23, 26, 31, 36, 42, 48, 56, 65, 76, 88]
+	var expected_payouts := [22, 25, 30, 36, 40, 46, 54, 62, 72, 84]
 	for floor_number: int in range(1, 11):
 		_expect(TowerScript.payout_for_floor(20, floor_number) == int(expected_payouts[floor_number - 1]), "bet 20 pays the authored DICE TOWER table at floor %d" % floor_number)
 
@@ -134,11 +134,11 @@ func _test_dice_tower_rules() -> void:
 	var complete_from_nine: Dictionary = TowerScript.new_game(20)
 	complete_from_nine.floor = 9
 	complete_from_nine = TowerScript.apply_roll(complete_from_nine, 6)
-	_expect(bool(complete_from_nine.completed) and int(complete_from_nine.floor) == 10 and int(complete_from_nine.payout) == 88, "golden leap from nine completes and auto-cashes at ten")
+	_expect(bool(complete_from_nine.completed) and int(complete_from_nine.floor) == 10 and int(complete_from_nine.payout) == 84, "golden leap from nine completes and auto-cashes at ten")
 	var complete_from_eight: Dictionary = TowerScript.new_game(10)
 	complete_from_eight.floor = 8
 	complete_from_eight = TowerScript.apply_roll(complete_from_eight, 6)
-	_expect(bool(complete_from_eight.completed) and int(complete_from_eight.payout) == 44, "climbing onto ten also completes the tower")
+	_expect(bool(complete_from_eight.completed) and int(complete_from_eight.payout) == 42, "climbing onto ten also completes the tower")
 
 	var zero_floor: Dictionary = TowerScript.new_game(20)
 	_expect(TowerScript.take_cashout(zero_floor) == zero_floor, "the player cannot cash out before leaving START")
@@ -199,4 +199,10 @@ func _test_bet_and_cashout() -> void:
 	race = RaceScript.new_race("duck", 20)
 	race.winner = "duck"
 	race.finished = true
-	_expect(RaceScript.winning_payout(race) == 80, "standard win pays bet times four including stake")
+	race.racers.duck.position = RaceScript.GOAL
+	_expect(RaceScript.winning_payout(race) == 36, "first place returns the Phase A x1.8 rank payout")
+	_expect(RaceScript.final_multiplier_for_rank(2) == 1.0 and RaceScript.final_multiplier_for_rank(6) == 0.3, "final rank payouts preserve a break-even second and partial lower-rank returns")
+	race.winner = "fox"
+	race.racers.fox.position = RaceScript.GOAL + 1
+	race.racers.duck.position = RaceScript.GOAL - 1
+	_expect(RaceScript.final_rank_for_racer(race, "duck") == 2 and RaceScript.final_payout(race) == 20, "second place returns the stake without a win")

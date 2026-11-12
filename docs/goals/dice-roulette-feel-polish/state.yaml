@@ -1,0 +1,457 @@
+version: 2
+goal:
+  title: "DICE ROULETTE FEEL POLISH"
+  slug: dice-roulette-feel-polish
+  mode: specific
+  status: done
+  active_task: null
+  summary: "Make the fixed Roulette result compelling through a paced WHERE then BOOST reveal without changing gameplay or economy."
+  constraints:
+    - "Presentation, sound, haptics, display timing, and teardown safety only"
+    - "No WHERE/BOOST logic, BET, payout, RTP, RNG, CasinoBank, save, BGM, route, or CHANGE BET changes"
+    - "Preserve 360x800 and 720x1280 layouts and existing result CTA structure"
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    objective: "Map Roulette result resolution, persistence/settlement order, wheel animation, audio, UI nodes, deterministic fixtures, teardown risks, and the smallest safe presentation-only implementation boundary."
+    inputs:
+      - "scripts/app/dice_roulette_screen.gd"
+      - "scripts/app/dice_roulette_wheel.gd"
+      - "scripts/app/dice_roulette_die_marker.gd"
+      - "scripts/game/dice_roulette_model.gd"
+      - "scripts/ui/casino_feel_fx.gd"
+      - "tests/run_dice_roulette_tests.gd"
+      - "tests/run_casino_expansion_ui_tests.gd"
+    constraints:
+      - "Read-only investigation"
+      - "Do not alter gameplay, economy, persistence, BGM, routes, or other facilities"
+    expected_output:
+      - "Current event/timing/state/settlement map"
+      - "Exact local/shared feel plan and safe input-lock/teardown strategy"
+      - "Exact allowed_files, verification commands, and stop conditions"
+      - "Deterministic real-render fixtures for normal/special WHERE, normal/high BOOST, WIN, and LOSE"
+    receipt:
+      result: done
+      summary: "Roulette is transaction-safe but presentation is one ease-out plus combined WHERE/BOOST. The safe slice is screen and wheel feel orchestration with deterministic QA; model, bank, autoload, scene, BGM, and routes remain untouched."
+      current_order:
+        - "SPIN validates, locks phase, rolls red/blue, persists both pending rolls with the atomic BET charge, pure-resolves, then awaits presentation."
+        - "Current presentation is a 1.18/1.38 second single QUART ease-out, WHERE-only 0.38 second hold, combined WHERE+BOOST 0.42 second hold, settlement, instant payout display, then CTA."
+        - "Resume pure-resolves stored pending rolls and replays presentation without another charge; settlement receipts prevent duplicate credit."
+      decisions:
+        - "Keep RNG count/order, begin_game persistence, pure result, and settlement semantics unchanged."
+        - "Wheel owns a tracked accelerate/cruise/decelerate/linger tween landing on pre-resolved slots; Screen owns staged WHERE, BOOST, result, and CHIP presentation."
+        - "Use CasinoFeelFX for generic press, land, haptics, result, and balance only; keep Roulette cues local."
+        - "Treat LUCKY_7 and JACKPOT as special WHERE; treat BOOST >=2.0 as high, with face 6 remaining MAX."
+      fixtures:
+        - "Normal win: HIGH10, red slot1 face3, blue slot14 face1 => RETURN17 NET+7."
+        - "Special WHERE loss: HIGH10, red slot11 LUCKY_7 face2, blue slot14 face1 => RETURN0 NET-10."
+        - "High BOOST win: HIGH10, red slot1 face6, blue slot14 face2 => RETURN42 NET+32."
+        - "Normal loss: HIGH10, red slot14 face3, blue slot6 face4 => RETURN0 NET-10."
+      baseline:
+        - "Roulette: 87 assertions, 0 failures"
+        - "Casino foundation: 36 assertions, 0 failures; known exit warnings only"
+        - "Casino: 248 assertions, 0 failures"
+        - "Casino UI: 204 assertions, 0 failures"
+        - "Casino expansion UI: 168 assertions, 0 failures"
+        - "VAULT model/UI: 546 assertions, 0 failures"
+      evidence:
+        - "scripts/app/dice_roulette_screen.gd"
+        - "scripts/app/dice_roulette_wheel.gd"
+        - "scripts/game/dice_roulette_model.gd"
+        - "scripts/game/casino_bank.gd"
+        - "scripts/ui/casino_feel_fx.gd"
+        - "tests/run_dice_roulette_tests.gd"
+
+  - id: T010
+    type: worker
+    assignee: Worker
+    status: blocked
+    objective: "Implement the bounded Roulette feel layer selected from T001 and its deterministic two-resolution QA."
+    allowed_files:
+      - "scripts/app/dice_roulette_screen.gd"
+      - "scripts/app/dice_roulette_wheel.gd"
+      - "tests/run_dice_roulette_tests.gd"
+      - "tests/record_dice_roulette_feel.gd"
+      - "tests/record_dice_roulette_feel.gd.uid"
+      - "scripts/ui/casino_feel_fx.gd"
+    verify:
+      - "Godot 4.7 headless editor validation"
+      - "tests/run_dice_roulette_tests.gd"
+      - "tests/run_casino_foundation_tests.gd"
+      - "tests/run_casino_tests.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/run_casino_expansion_ui_tests.gd"
+      - "DICE TOWER shared-feel and VAULT model/UI regressions"
+      - "Real rendered recorder at 360x800 and 720x1280"
+      - "Queue-free during acceleration, cruise, slowdown, WHERE, BOOST, and CHIP result"
+      - "git diff --check, protected-file no-diff gate, and residual-process inventory"
+    stop_if:
+      - "Need files outside allowed_files"
+      - "Any gameplay/model/bank/save/economy/route/BGM behavior would change"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: blocked
+      changed_files:
+        - "scripts/app/dice_roulette_screen.gd"
+        - "scripts/app/dice_roulette_wheel.gd"
+        - "tests/record_dice_roulette_feel.gd"
+      commands:
+        - cmd: "tests/run_dice_roulette_tests.gd"
+          status: "pass: 87 assertions, 0 failures"
+        - cmd: "git diff --check"
+          status: "pass; line ending warnings only"
+      summary: "Initial worker added a tracked three-phase wheel, partial WHERE/BOOST stage markers, CasinoFeelFX press/balance hooks, and a recorder skeleton, but did not satisfy the full staged reveal, special/high emphasis, deterministic fixture, teardown, or two-resolution evidence requirements. Recovery is required within the same allowed boundary."
+      missing:
+        - "Explicit WHERE pop and BOOST pop/count presentation"
+        - "WIN/LOSE and BET/RETURN/NET timing plus CHIP count completion"
+        - "Special WHERE/high BOOST cues and queue-free coverage"
+        - "Deterministic normal/special/high/lose captures at both resolutions"
+
+  - id: T011
+    type: worker
+    assignee: Worker
+    status: blocked
+    objective: "Complete and harden Phase 5C within the existing T010 boundary: implement the full two-stage Roulette reveal, safe teardown, deterministic fixtures, and real two-resolution QA."
+    allowed_files:
+      - "scripts/app/dice_roulette_screen.gd"
+      - "scripts/app/dice_roulette_wheel.gd"
+      - "tests/run_dice_roulette_tests.gd"
+      - "tests/record_dice_roulette_feel.gd"
+      - "tests/record_dice_roulette_feel.gd.uid"
+      - "scripts/ui/casino_feel_fx.gd"
+    verify:
+      - "Godot 4.7 headless editor validation"
+      - "tests/run_dice_roulette_tests.gd"
+      - "tests/run_casino_foundation_tests.gd"
+      - "tests/run_casino_tests.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/run_casino_expansion_ui_tests.gd"
+      - "DICE TOWER shared-feel and VAULT model/UI regressions"
+      - "Real rendered normal/special/high/lose result fixtures at 360x800 and 720x1280"
+      - "Queue-free during acceleration, cruise, slowdown, WHERE, BOOST, and CHIP count"
+      - "git diff --check, protected-file no-diff gate, and residual-process inventory"
+    stop_if:
+      - "Need files outside allowed_files"
+      - "Any gameplay/model/bank/save/economy/route/BGM behavior would change"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: blocked
+      changed_files:
+        - "scripts/app/dice_roulette_screen.gd"
+        - "scripts/app/dice_roulette_wheel.gd"
+        - "tests/record_dice_roulette_feel.gd"
+        - "tests/record_dice_roulette_feel.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 editor validation"
+          status: "pass; pre-existing project warnings only"
+        - cmd: "tests/run_dice_roulette_tests.gd"
+          status: "pass: 87 assertions, 0 failures"
+        - cmd: "real recorder 360x800"
+          status: "pass: 4 PNGs, 0 failures"
+        - cmd: "real recorder 720x1280"
+          status: "pass: 4 PNGs, 0 failures"
+        - cmd: "scoped git diff --check and protected gameplay/model/bank/scene gate"
+          status: "pass"
+      summary: "Added the phased wheel and staged Screen presentation with exit guards and four real fixtures at both resolutions, but deterministic stage-order/teardown assertions and full cross-casino regression remain."
+      missing:
+        - "Roulette UI contract assertions for staged events, duplicate input, and queue-free safety"
+        - "PM cross-casino regression and final Judge audit"
+      render_evidence:
+        - "C:/tmp/dice-roulette-feel-360b"
+        - "C:/tmp/dice-roulette-feel-720"
+
+  - id: T012
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Finish Phase 5C QA within the existing boundary by adding deterministic stage-order, result-copy, duplicate-input, and teardown assertions to the Roulette suite; do not broaden implementation scope."
+    allowed_files:
+      - "tests/run_dice_roulette_tests.gd"
+      - "tests/record_dice_roulette_feel.gd"
+      - "tests/record_dice_roulette_feel.gd.uid"
+    verify:
+      - "Godot 4.7 headless editor validation"
+      - "tests/run_dice_roulette_tests.gd"
+      - "existing real recorder outputs remain intact at 360x800 and 720x1280"
+      - "protected implementation/model/bank/scene/BGM/route diff gate"
+    stop_if:
+      - "Need implementation files beyond the already completed Screen/Wheel scope"
+      - "Any gameplay/model/bank/save/economy/route/BGM behavior would change"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: done
+      changed_files:
+        - "tests/run_dice_roulette_tests.gd"
+      commands:
+        - cmd: "Godot 4.7 editor validation"
+          status: "pass; pre-existing project warnings only"
+        - cmd: "tests/run_dice_roulette_tests.gd"
+          status: "pass: 93 assertions, 0 failures"
+        - cmd: "git diff --check"
+          status: "pass; line-ending notices only"
+      summary: "Added deterministic stage-order, one-charge duplicate-SPIN, result-copy, ROUND_END, and active-presentation queue-free assertions without touching implementation/model/bank/scene/BGM/routes."
+
+  - id: T013
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Remove the high-BOOST result capture's opaque full-wheel flash while preserving the existing sparkle identity, then rerun focused Roulette validation and real captures."
+    allowed_files:
+      - "scripts/app/dice_roulette_screen.gd"
+      - "tests/record_dice_roulette_feel.gd"
+    verify:
+      - "Godot 4.7 headless editor validation"
+      - "tests/run_dice_roulette_tests.gd"
+      - "Real high-BOOST and normal-win renders at 360x800 and 720x1280 show no opaque full-wheel flash"
+      - "Protected gameplay/model/bank/scene/BGM/route diff gate"
+      - "git diff --check and exact Godot process inventory"
+    stop_if:
+      - "Any gameplay/model/bank/save/economy/route/BGM behavior would change"
+      - "Need files outside allowed_files"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/dice_roulette_screen.gd"
+      commands:
+        - cmd: "Godot 4.7 editor validation"
+          status: "pass; pre-existing project warnings only"
+        - cmd: "tests/run_dice_roulette_tests.gd"
+          status: "pass: 93 assertions, 0 failures"
+        - cmd: "real GPU recorder 360x800"
+          status: "pass: 4 PNGs, 0 failures; high-BOOST result has no opaque full-wheel flash"
+        - cmd: "real GPU recorder 720x1280"
+          status: "pass: 4 PNGs, 0 failures; high-BOOST result has no opaque full-wheel flash"
+        - cmd: "protected gameplay/model/bank/scene/BGM/route diff gate"
+          status: "pass; no protected files changed"
+        - cmd: "git diff --check and exact Godot process inventory"
+          status: "pass; no residual Godot process"
+      summary: "Kept the sparkle identity during spin, keyed out its matte, and hid the broad overlay at payout so high-BOOST results remain readable without a full-wheel flash. No gameplay, payout, RNG, bank, save, BGM, or route changes."
+      render_evidence:
+        - "C:/tmp/dice-roulette-feel-final-qa-360"
+        - "C:/tmp/dice-roulette-feel-final-qa-720"
+
+  - id: T014
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Close the Judge-identified exit idempotence and deterministic stage-teardown proof gaps without changing Roulette gameplay or economy."
+    allowed_files:
+      - "scripts/app/dice_roulette_screen.gd"
+      - "scripts/app/dice_roulette_wheel.gd"
+      - "tests/run_dice_roulette_tests.gd"
+    verify:
+      - "Godot 4.7 headless editor validation"
+      - "tests/run_dice_roulette_tests.gd"
+      - "Deterministic queue-free coverage during acceleration, cruise, deceleration, WHERE, BOOST, and CHIP presentation"
+      - "Duplicate _cash_out invocation is idempotent"
+      - "Protected gameplay/model/bank/scene/BGM/route diff gate"
+      - "git diff --check and exact Godot process inventory"
+    stop_if:
+      - "Need files outside allowed_files"
+      - "Any gameplay/model/bank/save/economy/route/BGM behavior would change"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/dice_roulette_screen.gd"
+        - "scripts/app/dice_roulette_wheel.gd"
+        - "tests/run_dice_roulette_tests.gd"
+      commands:
+        - cmd: "Godot 4.7 editor validation"
+          status: "pass; exit 0; pre-existing project warnings only"
+        - cmd: "tests/run_dice_roulette_tests.gd"
+          status: "pass: 110 assertions, 0 failures"
+        - cmd: "stage teardown probes"
+          status: "pass; queue_free during acceleration, cruise, deceleration, SPIN event, land, WHERE, BOOST, and CHIP count"
+        - cmd: "duplicate CASH_OUT probe"
+          status: "pass; back_requested emitted once"
+        - cmd: "protected gameplay/model/bank/save/BGM/route/scene diff gate"
+          status: "pass; no protected files changed"
+        - cmd: "git diff --check and exact Godot process inventory"
+          status: "pass; no residual Godot process"
+      summary: "Closed both Judge gaps: CASH_OUT is explicitly idempotent, and deterministic tests identify every wheel motion phase plus WHERE/BOOST/CHIP presentation before queue_free. No gameplay or economy changes."
+
+  - id: T015
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Add stage-aware real-render evidence for Roulette feel QA at both target resolutions without changing game behavior."
+    allowed_files:
+      - "tests/record_dice_roulette_feel.gd"
+    verify:
+      - "Godot 4.7 headless editor validation"
+      - "Stage-aware recorder captures or timestamps start, acceleration, cruise, deceleration, land, WHERE, BOOST, WIN/LOSE, and CHIP at 360x800"
+      - "Stage-aware recorder captures or timestamps the same states at 720x1280"
+      - "All fixtures finish with non-empty PNGs and failures=0"
+      - "No residual Godot process"
+      - "git diff --check and protected implementation/model/bank/scene/BGM/route diff gate"
+    stop_if:
+      - "Need implementation files outside the recorder"
+      - "Any gameplay/model/bank/save/economy/route/BGM behavior would change"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: done
+      changed_files:
+        - "tests/record_dice_roulette_feel.gd"
+      commands:
+        - cmd: "Godot 4.7 editor validation"
+          status: "pass; exit 0; pre-existing project warnings only"
+        - cmd: "stage-aware real GPU recorder 360x800"
+          status: "pass: 4 non-empty PNGs, stage-log.json; every fixture includes all required events and motion phases"
+        - cmd: "stage-aware real GPU recorder 720x1280"
+          status: "pass: 4 non-empty PNGs, stage-log.json; every fixture includes all required events and motion phases"
+        - cmd: "stage-log coverage audit"
+          status: "pass: each fixture has spin_start, acceleration, cruise, deceleration, land, where, boost, win/lose, chip_count, final_cta"
+        - cmd: "no residual Godot process"
+          status: "pass"
+        - cmd: "git diff --check"
+          status: "pass"
+      summary: "Recorder now writes non-mutating elapsed-ms stage evidence for every presentation event and wheel motion phase, including short WIN/LOSE transitions, at both target resolutions. Four deterministic fixtures remain unchanged."
+      render_evidence:
+        - "C:/tmp/dice-roulette-stage-final3-360"
+        - "C:/tmp/dice-roulette-stage-final3-720"
+
+  - id: T021
+    type: pm
+    assignee: PM
+    status: done
+    objective: "Independently re-audit Phase 5C after stage-aware recorder completion and prepare the final Judge handoff."
+    inputs:
+      - "T013 receipt"
+      - "T014 receipt"
+      - "T015 receipt"
+      - "T020 receipt"
+      - "Current scoped diff"
+      - "Stage-aware 360/720 evidence"
+    constraints:
+      - "No implementation edits unless a recovery Worker is activated"
+    expected_output:
+      - "Fresh assertion and failure counts"
+      - "Stage-log coverage and timing summary"
+      - "Protected-file and process-cleanup result"
+    receipt:
+      result: done
+      changed_files: []
+      commands:
+        - cmd: "Godot 4.7 editor validation"
+          status: "pass; exit 0; no Roulette parse errors; pre-existing project warnings only"
+        - cmd: "tests/run_dice_roulette_tests.gd"
+          status: "pass: 110 assertions, 0 failures"
+        - cmd: "tests/run_casino_foundation_tests.gd"
+          status: "pass: 36 assertions, 0 failures; known pre-existing ObjectDB/resource leak warnings"
+        - cmd: "tests/run_casino_tests.gd"
+          status: "pass: 248 assertions, 0 failures"
+        - cmd: "tests/run_casino_ui_tests.gd"
+          status: "pass: 204 assertions, 0 failures; includes DICE TOWER shared-feel coverage"
+        - cmd: "tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 168 assertions, 0 failures"
+        - cmd: "tests/run_vault_break_tests.gd"
+          status: "pass: 452 assertions, 0 failures"
+        - cmd: "tests/run_vault_break_ui_tests.gd"
+          status: "pass: 94 assertions, 0 failures"
+        - cmd: "stage-aware real GPU recorder 360x800 and 720x1280"
+          status: "pass: stage_coverage_ok=true; 44 records and 4 non-empty PNGs per resolution"
+        - cmd: "stage-log timing audit"
+          status: "pass: every fixture includes spin_start, acceleration, cruise, deceleration, land, where, boost, win/lose, chip_count, final_cta; completion 2230-2585ms"
+        - cmd: "protected diff and exact Godot process inventory"
+          status: "pass; no protected files changed and no residual Godot process"
+        - cmd: "git diff --check"
+          status: "pass"
+      summary: "Independent post-recorder PM audit confirms all cross-casino regressions, stage-aware real GPU evidence at both resolutions, teardown/CASH_OUT coverage, protected no-diff, and process cleanup."
+      render_evidence:
+        - "C:/tmp/dice-roulette-stage-final3-360"
+        - "C:/tmp/dice-roulette-stage-final3-720"
+
+  - id: T020
+    type: pm
+    assignee: PM
+    status: done
+    objective: "Run independent model/UI/shared-feel regressions and real-render QA at 360x800 and 720x1280, including safe teardown and no residual audio/process."
+    inputs:
+      - "T010 receipt"
+    constraints:
+      - "No implementation edits unless a recovery Worker is activated"
+    expected_output:
+      - "Assertion and failure counts"
+      - "Rendered timing-state evidence"
+      - "Gameplay/economy/persistence no-diff result"
+    receipt:
+      result: done
+      changed_files: []
+      commands:
+        - cmd: "Godot 4.7 editor validation"
+          status: "pass; exit 0; pre-existing project warnings only"
+        - cmd: "tests/run_dice_roulette_tests.gd"
+          status: "pass: 93 assertions, 0 failures"
+        - cmd: "tests/run_casino_foundation_tests.gd"
+          status: "pass: 36 assertions, 0 failures; known pre-existing ObjectDB/resource leak warnings"
+        - cmd: "tests/run_casino_tests.gd"
+          status: "pass: 248 assertions, 0 failures"
+        - cmd: "tests/run_casino_ui_tests.gd"
+          status: "pass: 204 assertions, 0 failures; includes DICE TOWER shared-feel coverage"
+        - cmd: "tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 168 assertions, 0 failures"
+        - cmd: "tests/run_vault_break_tests.gd"
+          status: "pass: 452 assertions, 0 failures"
+        - cmd: "tests/run_vault_break_ui_tests.gd"
+          status: "pass: 94 assertions, 0 failures"
+        - cmd: "real GPU recorder 360x800 and 720x1280"
+          status: "pass: 4 non-empty PNGs per resolution; normal/special/high/loss result fixtures"
+        - cmd: "protected gameplay/economy/persistence/BGM/route diff gate"
+          status: "pass; no protected files changed"
+        - cmd: "scoped git diff --check and exact Godot process inventory"
+          status: "pass; no residual Godot process"
+      summary: "Independent PM audit confirms the staged Roulette presentation and all requested cross-casino regressions. Real GPU captures at both resolutions show readable WHERE/BOOST, WIN/LOSE, BET/RETURN/NET, CHIP, and CTAs; high-BOOST has no opaque full-wheel flash. Known foundation exit leak warnings predate this phase."
+      render_evidence:
+        - "C:/tmp/dice-roulette-feel-final-qa-360"
+        - "C:/tmp/dice-roulette-feel-final-qa-720"
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    objective: "Audit whether Phase 5C satisfies the formal DICE ROULETTE feel acceptance and is safe to hand off."
+    inputs:
+      - "All done task receipts"
+      - "Current scoped diff and validation output"
+      - "Real-render evidence"
+    expected_output:
+      - "complete | not_complete"
+      - "Missing evidence"
+      - "Next bounded task if not complete"
+    receipt:
+      result: complete
+      decision: complete
+      changed_files: []
+      commands:
+        - cmd: "Final Judge audit after stage-aware recorder"
+          status: "complete; no material missing proof"
+      summary: "Phase 5C is accepted. Stage logs at both resolutions cover spin_start, acceleration, cruise, deceleration, land, WHERE, BOOST, WIN/LOSE, CHIP count, and final CTA for all four deterministic fixtures; final renders are readable and high-BOOST has no opaque full-wheel flash."
+      evidence:
+        - "C:/tmp/dice-roulette-stage-final3-360/stage-log.json"
+        - "C:/tmp/dice-roulette-stage-final3-720/stage-log.json"
+        - "C:/tmp/dice-roulette-stage-final3-360"
+        - "C:/tmp/dice-roulette-stage-final3-720"
+        - "Roulette 110/0; foundation 36/0; Casino 248/0; Casino UI 204/0; expansion UI 168/0; VAULT model 452/0; VAULT UI 94/0"
+        - "Protected gameplay/economy/persistence/BGM/scene/route diff clean; no residual Godot process"
+      missing_evidence: []

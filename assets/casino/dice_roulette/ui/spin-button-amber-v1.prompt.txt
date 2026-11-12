@@ -1,0 +1,9 @@
+Use case: stylized-concept
+Asset type: production 2D game UI button face for a Godot mobile casino game
+Primary request: Generate one isolated premium circular casino SPIN button base matching the large orange-gold illuminated SPIN button in the provided DICE ROULETTE reference image.
+Subject: one perfectly centered round button, with a rich amber-orange enamel center, concentric polished gold/brass rings, small warm marquee bulbs around the outer rim, subtle star glints, embossed bevels and realistic casino-machine depth.
+Composition: square canvas, button occupies about 90% of canvas, perfectly front-facing and symmetric, generous transparent padding, no cropping.
+Lighting: warm celebratory casino glow, crisp highlights, deep readable shadows.
+Palette: amber orange, yellow gold, warm white bulbs, tiny dark green accents only if needed.
+Text: no text at all.
+Constraints: genuinely transparent background and preserved alpha; isolated UI asset; no square plate; no surrounding interface; no dice; no chips; no letters; no watermark; clean edges that remain readable at 132x132 pixels.

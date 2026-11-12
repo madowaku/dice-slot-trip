@@ -8,6 +8,7 @@ const VAULT_SCENE: PackedScene = preload("res://scenes/casino/VaultBreak.tscn")
 const Bank = preload("res://scripts/game/casino_bank.gd")
 const Hub = preload("res://scripts/app/casino_hub_screen.gd")
 const Roulette = preload("res://scripts/app/dice_roulette_screen.gd")
+const RouletteModel = preload("res://scripts/game/dice_roulette_model.gd")
 const Treasure = preload("res://scripts/app/treasure_21_screen.gd")
 const Poker = preload("res://scripts/app/dice_poker_screen.gd")
 const Vault = preload("res://scripts/app/vault_break_screen.gd")
@@ -165,13 +166,32 @@ func _capture_roulette(hub: Node) -> void:
 	screen.call("_select_amount", 10)
 	screen.call("_place_main_bet", "LUCKY_7")
 	screen.call("_place_side_bet", "DRAW")
+	await _capture(screen, "roulette-bet-ready")
+	screen.rng.seed = _find_roulette_win_seed()
 	screen.call("_spin")
 	await _settle_frames(24)
 	await _capture(screen, "roulette")
 	_expect(screen.phase != screen.Phase.BETTING, "roulette leaves setup and resolves a spin")
+	for _frame: int in range(240):
+		if screen.phase == screen.Phase.ROUND_END:
+			break
+		await process_frame
+	await _capture(screen, "roulette-result")
+	var result_back := screen.find_child("ResultCasinoBackButton", true, false) as Button
+	_expect(screen.phase == screen.Phase.ROUND_END and not screen.back_button.visible and result_back != null and result_back.visible and result_back.text == "カジノへ戻る", "roulette reaches a retained win result with one casino-return action")
 	screen.emit_signal("back_requested")
 	screen.queue_free()
 	await _settle_frames(3)
+
+func _find_roulette_win_seed() -> int:
+	var probe := RandomNumberGenerator.new()
+	for candidate: int in range(1, 200000):
+		probe.seed = candidate
+		var red: Dictionary = RouletteModel.roll_die(probe)
+		var blue: Dictionary = RouletteModel.roll_die(probe)
+		if RouletteModel.area_for_slot(int(red.slot)) == "LUCKY_7" and RouletteModel.area_for_slot(int(blue.slot)) == "LUCKY_7" and int(red.face) == int(blue.face) and int(red.face) >= 4:
+			return candidate
+	return 1
 
 func _capture_treasure(_hub: Node) -> void:
 	var screen := TREASURE_SCENE.instantiate()
@@ -199,8 +219,17 @@ func _capture_poker(_hub: Node) -> void:
 	await _settle_frames(8)
 	_expect(screen.view_state == "setup", "poker setup state")
 	await _capture(screen, "poker-setup")
+	screen.call("_toggle_help")
+	await _settle_frames(3)
+	var help_overlay: Control = screen.find_child("HelpOverlay", true, false) as Control
+	_expect(help_overlay != null and help_overlay.visible, "poker help opens from setup")
+	await _capture(screen, "poker-help")
+	screen.call("_toggle_help")
+	await _settle_frames(2)
+	_expect(help_overlay != null and not help_overlay.visible, "poker help closes before play")
 	screen.call("_select_bet", 20)
-	screen.queued_roll_batch = [[1, 2, 3, 4, 5]]
+	# Match the retained-result design reference with a break-even FULL HOUSE.
+	screen.queued_roll_batch = [[3, 3, 3, 5, 5]]
 	screen.call("_start_game")
 	await _settle_frames(30)
 	await _capture(screen, "poker")
@@ -209,6 +238,8 @@ func _capture_poker(_hub: Node) -> void:
 		for index in range(5): screen.call("_on_keep_pressed", index)
 		screen.call("_on_lock_pressed")
 		await _settle_frames(20)
+	await _capture(screen, "poker-result")
+	_expect(screen.view_state == "result", "poker reaches a retained result")
 	screen.emit_signal("back_requested")
 	screen.queue_free()
 	await _settle_frames(3)

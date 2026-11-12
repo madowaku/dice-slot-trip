@@ -1,0 +1,402 @@
+version: 2
+
+goal:
+  title: "CASINO FEEL FINAL QA"
+  slug: casino-feel-final-qa
+  kind: audit
+  tranche: "Update stale Race UI assertions, run six-facility individual and continuous-tour QA at both target resolutions, fix only HIGH/MEDIUM findings, and obtain CASINO_FEEL_FINAL_PASS."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: high
+    objective: "Map the exact stale Race assertions, all six feel suites/recorders, CasinoBank fixture/restore APIs, HUB route order, audio/teardown hooks, and the smallest deterministic Phase 5G test boundary."
+    inputs:
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/run_*casino*_tests.gd"
+      - "tests/run_dice_*_tests.gd"
+      - "tests/run_vault_break*_tests.gd"
+      - "tests/run_treasure_21_tests.gd"
+      - "tests/record_*feel.gd"
+      - "scripts/app/casino_hub_screen.gd"
+      - "scripts/game/casino_bank.gd"
+    constraints:
+      - "Read-only; do not edit files."
+      - "Identify evidence and exact commands, not speculative redesign."
+      - "Preserve all protected gameplay/economy/save/BGM/HUB route behavior."
+    expected_output:
+      - "Exact legacy Race assertion update scope"
+      - "Six-facility and casino-tour coverage map"
+      - "Fixture restore and teardown strategy"
+      - "Allowed files, verification commands, and stop conditions"
+    receipt:
+      result: done
+      summary: "The smallest complete boundary is to update the stale asynchronous Race result assertions, add a test-only six-facility final harness/recorder, and touch no gameplay/economy/scene/BGM behavior."
+      evidence:
+        - "tests/run_casino_ui_tests.gd:220,270-315 contain the 13 stale/cascade Race failures; current result contract is scripts/app/dice_race_screen.gd:1211-1313."
+        - "Existing dedicated suites cover Race 25, Vault model/UI, Poker 97, Roulette 110, Treasure 100; Tower is covered by Casino model/UI suites."
+        - "All QA can use process-specific CasinoBank test save paths with 300 CHIP; production save safety is proven by before/after SHA-256 equality."
+        - "Existing HUB source order is race, tower, roulette, treasure, poker, vault and is protected by foundation/expansion tests."
+        - "Each facility has a recorder; Phase 5G needs one cross-facility tour/restore/teardown harness and two-resolution evidence."
+      allowed_files:
+        - "tests/run_casino_ui_tests.gd"
+        - "tests/run_casino_feel_final_tests.gd"
+        - "tests/run_casino_feel_final_tests.gd.uid"
+        - "tests/record_casino_feel_final.gd"
+        - "tests/record_casino_feel_final.gd.uid"
+        - "docs/goals/casino-feel-final-qa/**"
+        - "scripts/app/casino_hub_screen.gd only if residual shared SE is reproduced"
+      stop_if:
+        - "Any protected model/economy/save/BGM selection/HUB count/route change is required."
+        - "Do not fabricate subjective player answers; separate recorded evidence from subjective LOW notes."
+      ambiguity:
+        - "The pasted desired order conflicts with the actual protected HUB order. Phase 5G should follow the actual UI order; reordering is a separate product change."
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Review the Scout receipt and approve the smallest complete Phase 5G implementation/QA boundary."
+    inputs:
+      - "T001 receipt"
+      - "Phase 5G specification"
+    constraints:
+      - "Read-only; do not implement."
+      - "Require normal Casino regression 0 failures before final QA."
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Deferred LOW findings"
+    receipt:
+      result: done
+      decision: "Approve one test-only Worker slice; no production file is currently justified."
+      summary: "Modernize stale Race integration assertions without weakening settlement checks, then add deterministic Session A/Session B final QA and a two-resolution recorder. Follow the actual displayed HUB order and record the prose-table mismatch as LOW."
+      next_allowed_task: T003
+      allowed_files:
+        - "tests/run_casino_ui_tests.gd"
+        - "tests/run_casino_feel_final_tests.gd"
+        - "tests/run_casino_feel_final_tests.gd.uid"
+        - "tests/record_casino_feel_final.gd"
+        - "tests/record_casino_feel_final.gd.uid"
+      verify:
+        - "run_casino_ui_tests.gd: 0 failures before continuing"
+        - "run_casino_feel_final_tests.gd: 0 failures"
+        - "All listed Casino/facility regressions: 0 failures"
+        - "Real GPU recorder at 360x800 and 720x1280 with non-empty PNGs and stage-log"
+        - "Production save SHA-256 unchanged, fixture removed, no Godot process"
+      stop_if:
+        - "A production file or protected behavior change is required."
+        - "Three-round Session A cannot be deterministic through existing test seams."
+        - "Production save hash differs or cleanup cannot be proven."
+      deferred_low:
+        - "The Phase 5G prose table differs from actual HUB order; QA follows actual displayed order."
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: blocked
+    reasoning_hint: high
+    objective: "Execute the Judge-approved legacy-test update and deterministic six-facility final QA harness, fixing only verified HIGH/MEDIUM presentation findings inside the allowlist."
+    allowed_files:
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/run_casino_feel_final_tests.gd"
+      - "tests/run_casino_feel_final_tests.gd.uid"
+      - "tests/record_casino_feel_final.gd"
+      - "tests/record_casino_feel_final.gd.uid"
+    verify:
+      - "Godot editor parse"
+      - "run_casino_ui_tests.gd and run_casino_feel_final_tests.gd: 0 failures"
+      - "Production save hash unchanged and test fixture removed"
+      - "git diff --check and no Godot process"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Any probability, BET, payout, RTP, Bank rule, save format, BGM selection, HUB count, or route change is required."
+      - "Fixture restore/hash cannot be proven or the same verification failure repeats twice."
+    receipt:
+      result: blocked
+      changed_files:
+        - "tests/run_casino_ui_tests.gd"
+      summary: "Worker modernized the stale Race result assertions and CTA route, then hit its external usage limit before verification or the final harness/recorder could be created. PM recovery will inspect and finish the same bounded scope."
+      remaining:
+        - "Verify/fix run_casino_ui_tests.gd"
+        - "Create final cross-facility test and recorder"
+
+  - id: T005
+    type: pm
+    assignee: PM
+    status: blocked
+    reasoning_hint: high
+    objective: "Recover the interrupted test-only Worker slice, preserve its valid Race test changes, create the final cross-facility harness/recorder, and verify the exact Judge-approved scope."
+    allowed_files:
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/run_casino_feel_final_tests.gd"
+      - "tests/run_casino_feel_final_tests.gd.uid"
+      - "tests/record_casino_feel_final.gd"
+      - "tests/record_casino_feel_final.gd.uid"
+      - "docs/goals/casino-feel-final-qa/**"
+    verify:
+      - "Godot editor parse"
+      - "run_casino_ui_tests.gd and run_casino_feel_final_tests.gd: 0 failures"
+      - "Real GPU recorder at 360x800 and 720x1280"
+      - "Production save hash unchanged, fixture removed, no Godot process"
+    stop_if:
+      - "Any production or protected behavior change is required."
+      - "Production save hash changes or cleanup cannot be proven."
+    receipt:
+      result: blocked
+      changed_files:
+        - "tests/run_casino_ui_tests.gd"
+        - "tests/run_casino_feel_final_tests.gd"
+        - "tests/run_casino_feel_final_tests.gd.uid"
+        - "tests/record_casino_feel_final.gd"
+        - "tests/record_casino_feel_final.gd.uid"
+      commands:
+        - cmd: "run_casino_ui_tests.gd"
+          status: "pass: 209 assertions, 0 failures"
+        - cmd: "run_casino_feel_final_tests.gd"
+          status: "pass: 200 assertions, 0 failures; production save hash unchanged"
+        - cmd: "record_casino_feel_final.gd GPU 360x800"
+          status: "pass: 36 assertions, 0 failures"
+        - cmd: "record_casino_feel_final.gd GPU 720x1280"
+          status: "blocked: 2 verified responsive findings"
+      summary: "Legacy Race tests and objective cross-facility/tour harness are complete. Real 720x1280 capture proves Tower BET/start controls and Vault start/back controls extend below the viewport without a scroll path; a Judge-approved production UI recovery is required."
+      evidence:
+        - "artifacts/qa/casino-feel-final/gpu-720/02-dice_tower-setup-720x1280.png"
+        - "artifacts/qa/casino-feel-final/gpu-720/06-vault_break-setup-720x1280.png"
+
+  - id: T006
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit the two real-GPU 720x1280 responsive findings and approve or reject the smallest production UI recovery."
+    inputs:
+      - "T005 receipt"
+      - "Tower and Vault 720x1280 screenshots and layout receipts"
+      - "scripts/app/dice_tower_screen.gd"
+      - "scripts/app/vault_break_screen.gd"
+    constraints:
+      - "Read-only; do not implement."
+      - "Do not change gameplay, economy, content order, or BGM."
+    expected_output:
+      - "Severity and decision"
+      - "Exact allowed files"
+      - "Minimal implementation"
+      - "Verification and stop conditions"
+    receipt:
+      result: done
+      decision: "HIGH severity; approve a bounded production recovery in Tower and Vault only."
+      summary: "At real 720x1280, Tower Start and Vault Start/Back are outside the viewport with no scroll path. Add one vertical-only content ScrollContainer per screen and reset it at presentation-state boundaries."
+      allowed_files:
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/app/vault_break_screen.gd"
+        - "tests/run_casino_feel_final_tests.gd"
+        - "tests/record_casino_feel_final.gd"
+        - "docs/goals/casino-feel-final-qa/**"
+      verify:
+        - "Real GPU 360x800 and 720x1280: CTA reachability and outside_buttons=[]"
+        - "Scroll resets at setup/active/result boundaries"
+        - "All Casino regressions 0 failures and production save hash unchanged"
+
+  - id: T007
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "Implement the Judge-approved vertical content scroll recovery for Tower and Vault, add deterministic reachability/reset evidence, and verify both target resolutions."
+    allowed_files:
+      - "scripts/app/dice_tower_screen.gd"
+      - "scripts/app/vault_break_screen.gd"
+      - "tests/run_casino_feel_final_tests.gd"
+      - "tests/record_casino_feel_final.gd"
+      - "docs/goals/casino-feel-final-qa/**"
+    verify:
+      - "Godot editor parse"
+      - "Final test/recorder 0 failures"
+      - "Real GPU 360x800 and 720x1280 with Tower/Vault CTA reachability"
+      - "Production save hash unchanged and no Godot process"
+    stop_if:
+      - "Protected gameplay/economy/save/BGM behavior changes."
+      - "Text or touch targets must shrink, horizontal scrolling appears, or 360x800 regresses."
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/app/vault_break_screen.gd"
+        - "tests/record_casino_feel_final.gd"
+      summary: "Added a vertical-only content scroller to Tower and Vault without shrinking copy or controls. Setup/active/resume/error/result presentation boundaries reset to the top immediately and deferred."
+      evidence:
+        - "Godot editor parse: pass"
+        - "GPU 360x800: 55 assertions, 0 failures"
+        - "GPU 720x1280: 57 assertions, 0 failures"
+        - "At 720x1280 Tower max scroll is 295 and Vault max scroll is 227; Start and Vault Back become fully reachable, and transitions reset scroll_vertical to 0."
+        - "Both stage logs have outside_buttons=[] and unchanged production save SHA-256."
+
+  - id: T004
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "Run Session A, Session B Casino Tour, two-resolution GPU evidence, audio/teardown checks, all regressions, cleanup, and assemble the final facility/Judge matrix."
+    allowed_files:
+      - "tests/**"
+      - "docs/goals/casino-feel-final-qa/**"
+      - "artifacts/qa/casino-feel-final/**"
+    verify:
+      - "Godot editor parse"
+      - "All Casino regressions 0 failures"
+      - "360x800 and 720x1280 real GPU evidence"
+      - "CasinoBank restore and fixture hash equality"
+      - "No temporary fixture files or Godot processes"
+    stop_if:
+      - "A HIGH/MEDIUM finding requires protected product behavior changes."
+      - "Actual Android hardware is required; defer it to the next smoke-test phase."
+    receipt:
+      result: done
+      summary: "Shell/Bank/navigation automation probes, both target resolutions, audio/teardown, save isolation, and all Casino regressions pass. This does not yet prove three real gameplay rounds per facility or a real-operation Casino Tour."
+      evidence:
+        - "run_casino_feel_final_tests.gd: 200 assertions, 0 failures"
+        - "run_casino_ui_tests.gd: 209 assertions, 0 failures"
+        - "15 regression suites: 0 failing suites; Casino model 248, foundation 36, expansion UI 168, Race 25, Roulette 110, Poker 97, Treasure 100, Vault 452+94, visual 29."
+        - "UI SFX, BGM, tall-phone layout, and project core suites: 0 failures"
+        - "GPU recorders: 360x800 55/0; 720x1280 57/0; actual_rendering=true"
+        - "Production save SHA-256 1682990277a6b6c98042dbbfb8eb6766cab48ac36f5e2624193f9d750f9d7e86 unchanged; test fixture removed; no Godot process."
+      findings:
+        high_open: 0
+        medium_open: 0
+        low_open: 1
+        low_note: "The prose facility order differs from the protected actual HUB display order; QA follows the actual order. Subjective first-time comprehension remains an Android human smoke-test question, not an automated claim."
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit whether Phase 5G earns CASINO_FEEL_FINAL_PASS with HIGH/MEDIUM findings at zero."
+    inputs:
+      - "All completed task receipts"
+      - "Facility matrix and common audit results"
+      - "Regression, render, teardown, restore, and cleanup evidence"
+      - "Final scoped diff"
+    constraints:
+      - "Read-only; do not implement."
+      - "Reject completion if stale Race failures remain or any required Worker/PM task is active or queued."
+    expected_output:
+      - "CASINO_FEEL_FINAL_PASS | not_complete"
+      - "HIGH/MEDIUM/LOW finding counts"
+      - "Acceptance evidence or one bounded follow-up"
+    receipt:
+      result: not_complete
+      decision: "Responsive recovery and functional regressions pass, but real gameplay feel evidence is insufficient for CASINO_FEEL_FINAL_PASS."
+      findings:
+        high_open: 0
+        medium_open: 3
+        low_open: 1
+      evidence:
+        - "Current Session A instantiates each shell and directly calls CasinoBank begin/settle; it does not operate six games for three rounds."
+        - "Current Tour opens each facility and directly settles Bank; it does not record each game's result/retry/feel path."
+        - "Representative Race/Tower/Roulette/Treasure/Poker/Vault moments, measured tempo/max-scale, and player-comprehension questions need evidence."
+      blocked_claims:
+        - "CASINO_FEEL_FINAL_PASS"
+        - "FEEL/TEMPO/UNIQUE all-facility PASS"
+
+  - id: T008
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "At 360x800, execute three real UI-operated rounds per facility and one continuous real-operation Casino Tour from 300 CHIP; record representative results, timing, max scale, audio/focus/teardown, retry, and comprehension evidence without production edits."
+    allowed_files:
+      - "tests/**"
+      - "docs/goals/casino-feel-final-qa/**"
+      - "artifacts/qa/casino-feel-final/**"
+    verify:
+      - "Six facilities x 3 actual gameplay rounds through screen actions"
+      - "One actual-operation six-stop HUB Casino Tour with balance carry"
+      - "Representative feel evidence and timing/scale receipts"
+      - "Production save hash unchanged, fixture removed, no Godot process"
+    stop_if:
+      - "A production edit appears necessary; return to Judge first."
+      - "Protected gameplay/economy/save/BGM/HUB behavior would change."
+    receipt:
+      result: done
+      summary: "The final recorder now performs one complete real screen-operated round in all six facilities per HUB tour. Three separate real-GPU tours provide at least three rounds per facility; a fourth audio-enabled final rerun and a headless deterministic run also pass."
+      evidence:
+        - "gpu-360-real-tour: 71 assertions, 0 failures"
+        - "gpu-720-real-tour: 73 assertions, 0 failures"
+        - "gpu-360-real-tour-audio and audio-final: 89 assertions, 0 failures each"
+        - "Each tour uses actual Start/Spin/Roll/HOLD/Lock controls, waits for result, checks BET/RETURN/NET-equivalent copy, carries balance, returns through HUB, and releases the scene."
+        - "Audio final verifies six dedicated BGM routes, Las Vegas UI SFX stage, and lasvegas_main restoration after every facility."
+        - "Six Phase 5A-F real-GPU feel recorders rerun at 360x800: all 0 failures; representative win/loss/special/teardown moments captured."
+        - "docs/goals/casino-feel-final-qa/notes/t008-real-play.md"
+        - "Production save SHA-256 unchanged; fixture absent; no Godot process; editor parse and diff check pass."
+
+  - id: T009
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Re-audit Phase 5G after T008 real-play evidence and decide whether CASINO_FEEL_FINAL_PASS is earned."
+    inputs:
+      - "T008 receipt and notes/t008-real-play.md"
+      - "Real-tour and facility feel stage logs/screenshots"
+      - "Scoped final diff and all earlier receipts"
+    constraints:
+      - "Read-only; do not implement."
+      - "Do not treat subjective player preference as automated fact."
+    expected_output:
+      - "CASINO_FEEL_FINAL_PASS | not_complete"
+      - "HIGH/MEDIUM/LOW open counts"
+      - "Acceptance evidence or one bounded follow-up"
+    receipt:
+      result: done
+      decision: "complete"
+      outcome: "CASINO_FEEL_FINAL_PASS"
+      summary: "Four real-GPU HUB tours, the audio-enabled final tour, both target resolutions, representative Phase 5A-F evidence, regressions, save isolation, and teardown satisfy the current Phase 5G tranche."
+      findings:
+        high_open: 0
+        medium_open: 0
+        low_open: 1
+        low_note: "Android実機での初見プレイヤー主観確認は次の人間スモークとして残す。"
+      evidence:
+        - "Final 360 audio tour: 89 assertions, 0 failures; six BGM routes, Las Vegas SFX stage, and HUB BGM restoration pass."
+        - "720x1280 real tour: 73 assertions, 0 failures; Tower/Vault CTA reachability and scroll reset pass."
+        - "15 regression suites: 0 failing suites; Race UI 209/0; final harness 200/0."
+        - "Production save SHA-256 unchanged; fixture absent; no Godot process; diff check passes."
+
+checks:
+  dirty_fingerprint: "Pre-existing unrelated APK/import/audio/artifact/export changes and QA directories are preserved; only explicit Phase 5G files may be staged."
+  last_verification:
+    result: pass
+    task: T009
+    commands:
+      - "Godot editor parse"
+      - "run_casino_feel_final_tests.gd: 200/0"
+      - "GPU real tour 360x800 audio enabled: 89/0"
+      - "GPU real tour 720x1280: 73/0"
+      - "Six Phase 5A-F feel recorders at 360x800: 0 failures"
+      - "15 regression suites: 0 failing suites"
+      - "git diff --check"

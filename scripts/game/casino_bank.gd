@@ -130,7 +130,7 @@ static func stage_clear_conversion_once(conversion_key: String, remaining_trip_c
 
 static func _conversion_receipt(remaining_trip_coin: int, cleared_boss: bool, persist: bool) -> Dictionary:
 	var remainder := maxi(0, remaining_trip_coin)
-	var converted := int(remainder / COIN_TO_CHIP_RATE)
+	var converted := floori(float(remainder) / float(COIN_TO_CHIP_RATE))
 	var clear_bonus := CLEAR_CHIP_BONUS if cleared_boss else 0
 	var gained := converted + clear_bonus
 	var before := balance()
@@ -339,6 +339,11 @@ static func settle_game(facility_id: String, payout: int, result: Dictionary = {
 		if amount > bet_amount:
 			data["dice_roulette_win_count"] = int(data.get("dice_roulette_win_count", 0)) + 1
 		data["dice_roulette_best_payout"] = maxi(int(data.get("dice_roulette_best_payout", 0)), amount)
+	elif key == "dice_race":
+		data["dice_race_play_count"] = int(data.get("dice_race_play_count", 0)) + 1
+		if bool(result.get("won", false)):
+			data["dice_race_win_count"] = int(data.get("dice_race_win_count", 0)) + 1
+		data["dice_race_best_payout"] = maxi(int(data.get("dice_race_best_payout", 0)), amount)
 	if not save_data(data):
 		return {"ok": false, "reason": "save_failed", "facility_id": key, "game_id": active_game_id}
 	return {

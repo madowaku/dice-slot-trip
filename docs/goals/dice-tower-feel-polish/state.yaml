@@ -1,0 +1,357 @@
+version: 2
+goal:
+  title: "DICE TOWER FEEL POLISH"
+  slug: dice-tower-feel-polish
+  mode: specific
+  status: done
+  active_task: null
+  summary: "Make DICE TOWER feel responsive and rewarding without changing gameplay or economy."
+  constraints:
+    - "Presentation, sound, tactility, and timing only"
+    - "No rules, probability, BET, payout, BUST, save, economy, or route changes"
+    - "DICE TOWER only; VAULT BREAK and DICE ROULETTE are deferred"
+    - "Preserve Japanese-first labels, touch targets, and 360x800/720x1280 fit"
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    objective: "Map the existing DICE TOWER roll, result, audio, haptic, and deterministic QA surfaces and identify the smallest safe feel slice."
+    inputs:
+      - "scripts/app/dice_tower_screen.gd"
+      - "scripts/game/dice_tower_model.gd"
+      - "scripts/game/dice_presentation_3d.gd"
+      - "autoload/ui_sfx_manager.gd"
+      - "scripts/ui/v06_feedback_controller.gd"
+      - "tests/record_dice_tower.gd"
+      - "tests/run_casino_ui_tests.gd"
+    constraints:
+      - "Read-only investigation"
+      - "Do not expand scope to other casino facilities"
+    expected_output:
+      - "Current event/timing map"
+      - "Available audio and haptic primitives"
+      - "Safe allowed_files list for one Worker"
+      - "Concrete verification commands and stop conditions"
+    receipt:
+      result: done
+      summary: "DICE TOWER has deterministic pending-roll animation and semantic UI cues but no dedicated feel base or haptics. The smallest safe slice is a new CasinoFeelFX helper plus tower-only presentation wiring; keep the existing 0.75s roll and 0.32s settle timing unless tests prove otherwise."
+      evidence:
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/game/dice_tower_model.gd"
+        - "scripts/game/dice_presentation_3d.gd"
+        - "autoload/ui_sfx_manager.gd"
+        - "scripts/game/dice_audio_controller.gd"
+        - "scripts/ui/v06_feedback_controller.gd"
+        - "tests/run_casino_ui_tests.gd"
+        - "tests/record_dice_tower.gd"
+      decisions:
+        - "Use existing dice WAV assets and arcade semantic cues; requested dedicated cue names do not exist in the current asset pack."
+        - "Use container-safe offset_transform_scale for button/result/floor punches and offset_transform_position for tower jerk/shake."
+        - "Do not edit dice_tower_model.gd, casino_bank.gd, routes, or BGM tempo."
+      allowed_files_for_worker:
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/ui/casino_feel_fx.gd"
+        - "scripts/ui/casino_feel_fx.gd.uid"
+        - "tests/record_dice_tower.gd"
+      verify:
+        - "Godot headless editor validation"
+        - "tests/run_casino_ui_tests.gd"
+        - "tests/record_dice_tower.gd at 360x800 and 720x1280 real render"
+        - "git diff --check"
+  - id: T010
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Implement the bounded DICE TOWER feel layer selected from T001, keeping all gameplay and persistence logic unchanged."
+    allowed_files:
+      - "scripts/app/dice_tower_screen.gd"
+      - "scripts/ui/casino_feel_fx.gd"
+      - "scripts/ui/casino_feel_fx.gd.uid"
+      - "tests/record_dice_tower.gd"
+    verify:
+      - "Godot headless editor validation"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/record_dice_tower.gd at 360x800 and 720x1280 real render"
+      - "git diff --check"
+    stop_if:
+      - "Need to edit a file outside allowed_files"
+      - "A change would alter model outcomes, payouts, persistence, economy, or routes"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/ui/casino_feel_fx.gd"
+        - "scripts/ui/casino_feel_fx.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 headless editor validation"
+          status: "pass: exit 0; pre-existing warnings only"
+        - cmd: "tests/run_casino_ui_tests.gd"
+          status: "pass: 204 assertions, 0 failures"
+      summary: "Added a Tower-only CasinoFeelFX hook and immediate button/dice/result feedback without touching the model or bank. Follow-up is required to ensure existing dice WAVs are actually routed and to complete the requested floor/BUST/complete feedback contract."
+      limitations:
+        - "Initial helper routed nonexistent semantic cue names for dice/chip sounds, so direct existing WAV playback and several visual beats remain incomplete."
+
+  - id: T011
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Complete and harden the DICE TOWER feel layer: route real existing dice WAVs, add bounded floor/payout/BUST/FLOOR10 feedback, and keep all gameplay state contracts unchanged."
+    allowed_files:
+      - "scripts/app/dice_tower_screen.gd"
+      - "scripts/ui/casino_feel_fx.gd"
+      - "scripts/ui/casino_feel_fx.gd.uid"
+      - "tests/record_dice_tower.gd"
+    verify:
+      - "Godot headless editor validation"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/record_dice_tower.gd at 360x800 and 720x1280 real render"
+      - "git diff --check"
+    stop_if:
+      - "Need to edit a file outside allowed_files"
+      - "Any gameplay/model/bank/persistence/economy/route behavior would change"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/ui/casino_feel_fx.gd"
+        - "scripts/ui/casino_feel_fx.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 headless editor validation"
+          status: "pass: exit 0; pre-existing warnings only"
+        - cmd: "tests/run_casino_ui_tests.gd"
+          status: "pass: 204 assertions, 0 failures"
+        - cmd: "tests/record_dice_tower.gd with non-headless Windows renderer at 360x800"
+          status: "pass: captures saved; layout checks pass"
+      summary: "CasinoFeelFX now pools and plays the existing dice roll/land WAVs, honors GameState haptics on Android/iOS, and Tower adds floor/completion punches plus a short BUST jerk without changing model timing or settlement."
+      limitations:
+        - "The current recorder still emits 360x800/360x780 captures only; a 720x1280 capture and explicit payout count-up/advanced floor intensity evidence remain to be added."
+
+  - id: T012
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Finish Phase 5A evidence and remaining bounded presentation beats: add a recorder resolution switch, explicit payout/floor/BUST/complete feel observability, and verify no sound-bus or haptic regressions."
+    allowed_files:
+      - "scripts/app/dice_tower_screen.gd"
+      - "scripts/ui/casino_feel_fx.gd"
+      - "scripts/ui/casino_feel_fx.gd.uid"
+      - "tests/record_dice_tower.gd"
+    verify:
+      - "Godot headless editor validation"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/record_dice_tower.gd at 360x800 and 720x1280 real render"
+      - "git diff --check"
+    stop_if:
+      - "Need to edit a file outside allowed_files"
+      - "Any gameplay/model/bank/persistence/economy/route behavior would change"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/ui/casino_feel_fx.gd"
+        - "scripts/ui/casino_feel_fx.gd.uid"
+      commands:
+        - cmd: "Godot 4.7 headless editor validation"
+          status: "pass: exit 0; pre-existing warnings only"
+        - cmd: "tests/run_casino_ui_tests.gd"
+          status: "pass: 204 assertions, 0 failures"
+        - cmd: "tests/record_dice_tower.gd with non-headless Windows renderer at 360x800 and 360x780"
+          status: "pass: captures saved; layout checks pass"
+      summary: "Added bounded semantic Tower completion/BUST/floor-up/cashout hooks and haptic calls while preserving the existing model timing and settlement path."
+      limitations:
+        - "The recorder still needs a 720x1280 mode, and the feel helper needs final audio-bus/volume hardening plus explicit payout/floor observability before PM QA."
+  - id: T013
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Close the remaining Phase 5A feel gaps in the allowed Tower files: add a recorder resolution switch for real 360x800 and 720x1280 evidence, harden CasinoFeelFX audio routing/SE volume, and make payout plus floor/BUST/complete feedback visibly observable without changing gameplay or economy."
+    allowed_files:
+      - "scripts/app/dice_tower_screen.gd"
+      - "scripts/ui/casino_feel_fx.gd"
+      - "scripts/ui/casino_feel_fx.gd.uid"
+      - "tests/record_dice_tower.gd"
+    verify:
+      - "Godot headless editor validation"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/record_dice_tower.gd at 360x800 and 720x1280 real render"
+      - "git diff --check"
+    stop_if:
+      - "Need to edit a file outside allowed_files"
+      - "Any gameplay/model/bank/persistence/economy/route behavior would change"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/ui/casino_feel_fx.gd"
+        - "tests/record_dice_tower.gd"
+      commands:
+        - cmd: "Godot 4.7 headless editor validation"
+          status: "pass: exit 0; pre-existing warnings only"
+        - cmd: "tests/run_casino_ui_tests.gd"
+          status: "pass: 204 assertions, 0 failures"
+        - cmd: "tests/record_dice_tower.gd with non-headless Windows renderer at 720x1280"
+          status: "pass: captures saved; layout checks pass"
+        - cmd: "git diff --check"
+          status: "pass: only existing CRLF normalization warnings"
+      summary: "Hardened CasinoFeelFX to the existing Master bus, applied GameState.se_volume and platform/haptics gating, and added DICE_TOWER_QA_VIEWPORT=720x1280 while preserving default captures."
+      limitations:
+        - "The remaining PM/Judge audit must verify that payout count-up and advanced floor/BUST/FLOOR10 observability are sufficient for the Phase 5A acceptance, since no model or bank changes are permitted."
+  - id: T020
+    type: pm
+    assignee: PM
+    status: done
+    objective: "Run focused model/UI regressions plus rendered 360x800 and 720x1280 feel QA, then record evidence and any bounded follow-up."
+    inputs:
+      - "T010 Worker receipt"
+      - "tests/record_dice_tower.gd"
+      - "Existing DICE TOWER assertions"
+    constraints:
+      - "No implementation edits unless a new Worker task is activated"
+    expected_output:
+      - "Assertions and failure counts"
+      - "Rendered screenshots or recorder evidence"
+      - "Gameplay/economy/persistence regression result"
+    receipt:
+      result: done
+      commands:
+        - cmd: "Godot 4.7 headless editor validation"
+          status: "pass: exit 0; pre-existing warnings only"
+        - cmd: "tests/run_casino_tests.gd"
+          status: "pass: 248 assertions, 0 failures"
+        - cmd: "tests/run_casino_ui_tests.gd"
+          status: "pass: 204 assertions, 0 failures"
+        - cmd: "tests/run_casino_expansion_ui_tests.gd"
+          status: "pass: 168 assertions, 0 failures"
+        - cmd: "tests/run_las_vegas_phase_c_visual_tests.gd"
+          status: "pass: 29 assertions, 0 failures"
+        - cmd: "tests/run_dice_roulette_tests.gd"
+          status: "pass: 87 assertions, 0 failures"
+        - cmd: "tests/run_dice_poker_tests.gd"
+          status: "pass: 62 assertions, 0 failures"
+        - cmd: "tests/run_treasure_21_tests.gd"
+          status: "pass: 98 assertions, 0 failures"
+        - cmd: "tests/run_vault_break_ui_tests.gd"
+          status: "pass: 68 assertions, 0 failures"
+        - cmd: "tests/run_casino_foundation_tests.gd"
+          status: "pass: 36 assertions, 0 failures"
+        - cmd: "tests/record_dice_tower.gd with non-headless Windows renderer at 360x800"
+          status: "pass: setup/active/bust/success captures saved and required controls stayed inside"
+        - cmd: "tests/record_dice_tower.gd with DICE_TOWER_QA_VIEWPORT=720x1280"
+          status: "pass: setup/active/bust/success captures saved and required controls stayed inside"
+      rendered_evidence:
+        - "C:\\tmp\\dice-tower-feel-final-360\\setup-360x800.png"
+        - "C:\\tmp\\dice-tower-feel-final-360\\active-floor5-360x800.png"
+        - "C:\\tmp\\dice-tower-feel-final-360\\bust-floor8-360x800.png"
+        - "C:\\tmp\\dice-tower-feel-final-720\\setup-720x1280.png"
+        - "C:\\tmp\\dice-tower-feel-final-720\\active-floor5-720x1280.png"
+        - "C:\\tmp\\dice-tower-feel-final-720\\bust-floor8-720x1280.png"
+        - "C:\\tmp\\dice-tower-feel-final-720\\success-floor10-720x1280.png"
+      summary: "Regression suites and both real-render resolutions pass. Visual review confirms Japanese-first setup, active, BUST, and FLOOR10 overlays are readable and reachable."
+      findings:
+        - "Current implementation still lacks a distinct payout count-up/tick sequence."
+        - "Floor-up feedback is a uniform punch; high-floor tension and FLOOR10-specific fanfare are not yet observable."
+        - "BUST has tint/jerk/collapse visuals but no explicit 250ms stillness or dedicated collapse cue."
+      decision: "Activate one final Worker to close these presentation-only gaps before Judge audit; gameplay/economy/persistence remain green."
+  - id: T014
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Finish the remaining Phase 5A DICE TOWER presentation contract: add bounded payout count-up/tick visuals, floor-aware intensity and FLOOR10 distinction, explicit ROLL haptic, and clearer BUST/CASH OUT timing cues without changing model outcomes, settlement, or routes."
+    allowed_files:
+      - "scripts/app/dice_tower_screen.gd"
+      - "scripts/ui/casino_feel_fx.gd"
+      - "scripts/ui/casino_feel_fx.gd.uid"
+      - "tests/record_dice_tower.gd"
+    verify:
+      - "Godot headless editor validation"
+      - "tests/run_casino_tests.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/record_dice_tower.gd at 360x800 and 720x1280 real render"
+      - "git diff --check"
+    stop_if:
+      - "Need to edit a file outside allowed_files"
+      - "Any gameplay/model/bank/persistence/economy/route behavior would change"
+      - "Verification fails twice for the same reason"
+    receipt:
+      result: done
+      changed_files:
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/ui/casino_feel_fx.gd"
+        - "scripts/ui/casino_feel_fx.gd.uid"
+        - "tests/record_dice_tower.gd"
+      commands:
+        - cmd: "Godot 4.7 headless editor validation"
+          status: "pass: exit 0; no new errors"
+        - cmd: "tests/run_casino_tests.gd"
+          status: "pass: 248 assertions, 0 failures"
+        - cmd: "tests/run_casino_ui_tests.gd"
+          status: "pass: 204 assertions, 0 failures"
+        - cmd: "tests/record_dice_tower.gd with non-headless Windows renderer at 360x800"
+          status: "pass: setup/active/bust/success captures saved; layout checks pass"
+        - cmd: "tests/record_dice_tower.gd with DICE_TOWER_QA_VIEWPORT=720x1280"
+          status: "pass: setup/active/bust/success captures saved; layout checks pass"
+        - cmd: "git diff --check"
+          status: "pass: existing LF/CRLF normalization warnings only"
+      summary: "Completed the bounded DICE TOWER feel contract: direct dice roll/land WAVs, immediate ROLL press scale and light haptic, floor-aware semantic cues with high-floor pulse and FLOOR10 achievement pulse, visual payout/balance count-up, BUST error/drop plus tower jerk, CASH OUT result feedback, Master-bus and se_volume/haptics gating. Model, bank, routes, BUST condition, payout values, and BGM timing remain unchanged."
+      limitations:
+        - "The requested dedicated cue filenames are absent from the project, so existing shipped dice WAVs and semantic UI SFX are used. Shared Sonniss/Adobe bundles were inspected but not vendored in this tranche."
+        - "Payout and balance count-up are presentation-only label tweens; settlement remains immediate and unchanged."
+      rendered_evidence:
+        - "C:\\tmp\\dice-tower-feel-contract-final-360\\setup-360x800.png"
+        - "C:\\tmp\\dice-tower-feel-contract-final-360\\active-floor5-360x800.png"
+        - "C:\\tmp\\dice-tower-feel-contract-final-360\\bust-floor8-360x800.png"
+        - "C:\\tmp\\dice-tower-feel-contract-final-720\\setup-720x1280.png"
+        - "C:\\tmp\\dice-tower-feel-contract-final-720\\active-floor5-720x1280.png"
+        - "C:\\tmp\\dice-tower-feel-contract-final-720\\bust-floor8-720x1280.png"
+        - "C:\\tmp\\dice-tower-feel-contract-final-720\\success-floor10-720x1280.png"
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    objective: "Audit whether the Phase 5A DICE TOWER feel tranche satisfies the original acceptance and is safe to hand off for later facility ports."
+    inputs:
+      - "All completed task receipts"
+      - "T020 QA evidence"
+      - "Current diff and validation output"
+    expected_output:
+      - "complete | not_complete"
+      - "Missing evidence, if any"
+      - "Next bounded task, if not complete"
+    receipt:
+      result: complete
+      decision: complete
+      audit_summary: "Phase 5A bounded tranche complete; DICE TOWER feel layer is safe to hand off for later VAULT BREAK and DICE ROULETTE ports."
+      evidence:
+        - "git diff confirms scripts/game/dice_tower_model.gd, scripts/game/casino_bank.gd, autoload/bgm_manager.gd, and scripts/app/casino_hub_screen.gd are unchanged; ROLL/BET/payout/BUST condition/settlement/economy/routes/BGM remain on existing paths."
+        - "Godot 4.7 headless editor validation exits 0 with no new errors."
+        - "tests/run_casino_tests.gd: 248 assertions, 0 failures."
+        - "tests/run_casino_ui_tests.gd: 204 assertions, 0 failures."
+        - "ROLL press scale 0.96 for 60ms plus light mobile haptic, existing dice roll WAV before animation, land WAV on visual land, and bounded result settle."
+        - "Floor-aware semantic cues, high-floor pulse, FLOOR10 achievement cue/pulse, payout tween, cash-out balance tween, and BUST error/drop/jerk/collapse feedback are presentation-only."
+        - "Real recorder captures and bounds checks pass at 360x800 and 720x1280; Japanese-first setup, active, BUST, FLOOR10, replay, and casino-return paths were visually reviewed."
+      limitations:
+        - "Dedicated cue filenames from the brief are not present; the tranche uses shipped dice WAVs and semantic UI SFX. Shared Sonniss/Adobe bundles were inspected but not vendored."
+        - "Count-up tweens are presentation-only while settlement remains immediate; chip tick is represented by a reward cue."
+        - "Pulse amplitudes are bounded (1.02 normal, 1.03 high floor, 1.06 complete), below the ideal 1.12; no manual device playtest was performed, so the final 'もう一度ROLL' question remains a qualitative visual judgment."
+      next_allowed_task: null

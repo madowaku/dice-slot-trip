@@ -1,0 +1,14 @@
+{
+  "scene_path": "res://scenes/casino/DiceTower.tscn",
+  "settle_frames": 4,
+  "steps": [
+    {"type": "set_property", "node_path": "TowerTutorial", "property": "visible", "expected": false},
+    {"type": "wait_frames", "frames": 3},
+    {"type": "ui_report", "label": "dice_tower_setup", "fail_on": ["any"]}
+  ],
+  "assertions": [
+    {"assertion": "node_exists", "node_path": "TowerSetupView/BetRow/Bet_20"},
+    {"assertion": "visible", "node_path": "TowerSetupView/StartButton", "expected": true},
+    {"assertion": "visible", "node_path": "TowerActiveView/TowerActions/CashOutButton", "expected": false}
+  ]
+}

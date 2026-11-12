@@ -4,17 +4,35 @@ extends Control
 signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
+const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
+const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
+const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const ModelScript = preload("res://scripts/game/dice_roulette_model.gd")
+const CasinoFeelFXScript = preload("res://scripts/ui/casino_feel_fx.gd")
 const WheelScript = preload("res://scripts/app/dice_roulette_wheel.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
+const DISPLAY_FONT: Font = preload("res://assets/fonts/cinzel/Cinzel-Variable.ttf")
+const CASINO_BACKGROUND: Texture2D = preload("res://assets/casino/dice_roulette/ui/casino-table-bg-v1.png")
+const DICE_ICON: Texture2D = preload("res://assets/art/ui/common/dice-ivory-brass.png")
+const BUTTON_ORNAMENTS: Texture2D = preload("res://assets/art/ui/common/roll-button-ornaments.png")
+const SPIN_RING: Texture2D = preload("res://assets/casino/dice_roulette/ui/spin-button-amber-v1.png")
+const SPARKLE_TEXTURES: Array[Texture2D] = [
+	preload("res://assets/casino/dice_roulette/ui/sparkle_frames/01.png"),
+	preload("res://assets/casino/dice_roulette/ui/sparkle_frames/02.png"),
+	preload("res://assets/casino/dice_roulette/ui/sparkle_frames/03.png"),
+	preload("res://assets/casino/dice_roulette/ui/sparkle_frames/04.png"),
+]
 
-const GOLD := Color("#f2c65d")
-const CREAM := Color("#fff1d1")
-const NAVY := Color("#17172b")
-const PANEL := Color("#25233d")
-const RED := Color("#df5a5a")
-const BLUE := Color("#5d91e5")
-const MUTED := Color("#cbbfd5")
+const GOLD := Color("#f7c94b")
+const BRIGHT_GOLD := Color("#ffe89a")
+const CREAM := Color("#fff4d5")
+const NAVY := Color("#07130f")
+const PANEL := Color("#10251d")
+const PANEL_DEEP := Color("#071713")
+const EMERALD := Color("#0b5137")
+const RED := Color("#d9413d")
+const BLUE := Color("#2f73d9")
+const MUTED := Color("#d4caa9")
 const MAX_TOTAL_BET := 50
 const FACILITY_ID := "dice_roulette"
 
@@ -28,6 +46,14 @@ const MAIN_LABELS := {
 	"EVEN": "EVEN",
 	"LUCKY_7": "LUCKY 7",
 	"JACKPOT": "JACKPOT",
+}
+const MAIN_TAGS := {
+	"LOW": "基本",
+	"HIGH": "おすすめ",
+	"ODD": "基本",
+	"EVEN": "基本",
+	"LUCKY_7": "チャンス",
+	"JACKPOT": "大穴",
 }
 const SIDE_LABELS := {
 	"RED_LEADS": "RED LEADS",
@@ -50,6 +76,7 @@ enum Phase {
 var phase: Phase = Phase.ENTER
 var rng := RandomNumberGenerator.new()
 var selected_bet_amount := 10
+var has_confirmed_amount := false
 var main_bets: Dictionary = {}
 var side_bet: Dictionary = {}
 var undo_stack: Array[Dictionary] = []
@@ -67,11 +94,16 @@ var session_total_return := 0
 var chip_label: Label
 var total_bet_label: Label
 var status_label: Label
+var guide_label: Label
 var red_result_label: Label
 var blue_result_label: Label
 var payout_label: Label
 var wheel: Control
+var wheel_stack: Control
+var betting_shell: PanelContainer
 var betting_panel: VBoxContainer
+var wager_surface: PanelContainer
+var action_dock: PanelContainer
 var round_actions: HBoxContainer
 var spin_button: Button
 var undo_button: Button
@@ -80,9 +112,20 @@ var rebet_button: Button
 var rebet_spin_button: Button
 var new_bet_button: Button
 var cashout_button: Button
+var back_button: Button
 var amount_buttons: Dictionary = {}
 var main_bet_buttons: Dictionary = {}
 var side_bet_buttons: Dictionary = {}
+var sparkle_overlay: TextureRect
+var feel_fx: CasinoFeelFX
+var presentation_events: Array[String] = []
+var reveal_tweens: Array[Tween] = []
+
+func _exit_tree() -> void:
+	for tween: Tween in reveal_tweens:
+		if tween != null and tween.is_valid():
+			tween.kill()
+	reveal_tweens.clear()
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -91,11 +134,16 @@ func _ready() -> void:
 	if not suppress_audio_for_tests:
 		var bgm := get_node_or_null("/root/BgmManager")
 		if bgm != null:
-			bgm.call("play_lasvegas_main")
+			bgm.call("play_dice_roulette")
 		var ui_sfx := get_node_or_null("/root/UiSfxManager")
 		if ui_sfx != null:
 			ui_sfx.call("set_stage", &"las_vegas")
 	_build_ui()
+	feel_fx = CasinoFeelFXScript.new()
+	feel_fx.audio_enabled = not suppress_audio_for_tests
+	add_child(feel_fx)
+	resized.connect(_apply_responsive_layout)
+	call_deferred("_apply_responsive_layout")
 	_resume_or_show_setup()
 
 func _resume_or_show_setup() -> void:
@@ -125,10 +173,19 @@ func _resume_pending_roll() -> void:
 	await _animate_and_finish_round()
 
 func _build_ui() -> void:
-	var bg := ColorRect.new()
-	bg.color = NAVY
+	var bg := TextureRect.new()
+	bg.texture = CASINO_BACKGROUND
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
+
+	var veil := ColorRect.new()
+	veil.color = Color(0.01, 0.035, 0.025, 0.48)
+	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(veil)
 
 	var scroll := ScrollContainer.new()
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -137,58 +194,129 @@ func _build_ui() -> void:
 
 	var margin := MarginContainer.new()
 	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	margin.add_theme_constant_override("margin_left", 22)
-	margin.add_theme_constant_override("margin_right", 22)
-	margin.add_theme_constant_override("margin_top", 18)
-	margin.add_theme_constant_override("margin_bottom", 24)
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 22)
 	scroll.add_child(margin)
 
 	var root_box := VBoxContainer.new()
 	root_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	root_box.add_theme_constant_override("separation", 10)
+	root_box.add_theme_constant_override("separation", 9)
 	margin.add_child(root_box)
 
-	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 10)
-	root_box.add_child(header)
-	var title := _label("DICE ROULETTE", 31, GOLD)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(title)
-	chip_label = _label("CASINO CHIP 0", 20, Color.WHITE)
+	var nav := HBoxContainer.new()
+	nav.add_theme_constant_override("separation", 12)
+	root_box.add_child(nav)
+	back_button = _button("カジノへ戻る", 20)
+	back_button.name = "CasinoBackButton"
+	back_button.custom_minimum_size = Vector2(142, 54)
+	back_button.pressed.connect(_cash_out)
+	_apply_button_style(back_button, Color("#09261e"), Color("#164f3b"), GOLD, CREAM, 18, 2)
+	CasinoBackButton.configure(back_button)
+	nav.add_child(back_button)
+	var nav_spacer := Control.new()
+	nav_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav.add_child(nav_spacer)
+	chip_label = _label("CASINO CHIP\n500", 18, Color.WHITE)
 	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	header.add_child(chip_label)
+	chip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	chip_label.custom_minimum_size = Vector2(180, 54)
+	chip_label.add_theme_stylebox_override("normal", _panel(Color("#071c16dd"), GOLD, 24, 2))
+	nav.add_child(chip_label)
 
-	var help := _label("赤と青、2つのダイスがルーレットを走る。\n止まった WHERE × 出目 BOOST で配当決定！", 15, MUTED)
-	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	root_box.add_child(help)
+	var title_row := HBoxContainer.new()
+	title_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	title_row.add_theme_constant_override("separation", 12)
+	root_box.add_child(title_row)
+	title_row.add_child(_dice_title_icon(Color("#f25a50")))
+	var title := _display_label("DICE ROULETTE", 40, GOLD)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_outline_color", Color("#271400"))
+	title.add_theme_constant_override("outline_size", 7)
+	title_row.add_child(title)
+	title_row.add_child(_dice_title_icon(Color("#4f8fff")))
+	var title_rule := _label("WHERE  ×  DICE BOOST", 18, BRIGHT_GOLD)
+	title_rule.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_rule.add_theme_color_override("font_outline_color", Color.BLACK)
+	title_rule.add_theme_constant_override("outline_size", 4)
+	root_box.add_child(title_rule)
+
+	guide_label = _label("① チップを選ぼう", 24, CREAM)
+	guide_label.name = "CurrentStepGuide"
+	guide_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	guide_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	guide_label.custom_minimum_size.y = 50
+	guide_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	guide_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	guide_label.add_theme_constant_override("outline_size", 4)
+	guide_label.add_theme_stylebox_override("normal", _panel(Color("#093122f2"), BRIGHT_GOLD, 18, 2))
+	root_box.add_child(guide_label)
+	CasinoHowTo3StepsScript.build(root_box, FACILITY_ID, _how_to_steps())
 
 	var wheel_panel := PanelContainer.new()
-	wheel_panel.add_theme_stylebox_override("panel", _panel(Color("#201d35"), Color("#65527a"), 20, 2))
+	wheel_panel.add_theme_stylebox_override("panel", _panel(Color("#071a14e8"), GOLD, 28, 3))
 	root_box.add_child(wheel_panel)
 	var wheel_center := CenterContainer.new()
 	wheel_panel.add_child(wheel_center)
+	wheel_stack = Control.new()
+	wheel_stack.custom_minimum_size = Vector2(450, 450)
+	wheel_center.add_child(wheel_stack)
 	wheel = WheelScript.new()
-	wheel_center.add_child(wheel)
+	wheel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	wheel_stack.add_child(wheel)
+	sparkle_overlay = TextureRect.new()
+	sparkle_overlay.texture = _make_sparkle_animation()
+	sparkle_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	sparkle_overlay.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	sparkle_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	sparkle_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Sparkle frames contain a broad light backing; keep the effect as a subtle
+	# accent so high-BOOST results never wash the full wheel opaque.
+	sparkle_overlay.modulate = Color(1, 1, 1, 0.16)
+	# Sparkle sheets include a flat gray matte. Key that matte out so only the
+	# bright sparkle pixels remain visible over the roulette wheel.
+	var sparkle_material := ShaderMaterial.new()
+	var sparkle_shader := Shader.new()
+	sparkle_shader.code = "shader_type canvas_item;\nvoid fragment() {\n    vec4 tex = texture(TEXTURE, UV);\n    float spread = max(max(tex.r, tex.g), tex.b) - min(min(tex.r, tex.g), tex.b);\n    if (tex.r > 0.35 && spread < 0.08 && tex.r < 0.92) { discard; }\n    COLOR = tex * COLOR;\n}"
+	sparkle_material.shader = sparkle_shader
+	sparkle_overlay.material = sparkle_material
+	sparkle_overlay.visible = false
+	wheel_stack.add_child(sparkle_overlay)
 
 	var result_row := HBoxContainer.new()
 	result_row.add_theme_constant_override("separation", 10)
 	root_box.add_child(result_row)
-	red_result_label = _result_box("RED  READY", RED)
-	blue_result_label = _result_box("BLUE  READY", BLUE)
+	red_result_label = _result_box("赤ダイス\n待機中", RED)
+	blue_result_label = _result_box("青ダイス\n待機中", BLUE)
 	result_row.add_child(red_result_label)
 	result_row.add_child(blue_result_label)
 
-	status_label = _label("BETエリアを選ぼう", 18, CREAM)
+	status_label = _label("BETエリアをタップして開始", 18, MUTED)
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status_label.custom_minimum_size.y = 30
+	status_label.add_theme_color_override("font_outline_color", Color("#03140e"))
+	status_label.add_theme_constant_override("outline_size", 3)
+	status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root_box.add_child(status_label)
 
+	betting_shell = PanelContainer.new()
+	betting_shell.name = "BettingTable"
+	betting_shell.add_theme_stylebox_override("panel", _ornate_betting_panel())
+	root_box.add_child(betting_shell)
+	var betting_margin := MarginContainer.new()
+	betting_margin.add_theme_constant_override("margin_left", 12)
+	betting_margin.add_theme_constant_override("margin_right", 12)
+	betting_margin.add_theme_constant_override("margin_top", 10)
+	betting_margin.add_theme_constant_override("margin_bottom", 12)
+	betting_shell.add_child(betting_margin)
 	betting_panel = VBoxContainer.new()
 	betting_panel.add_theme_constant_override("separation", 8)
-	root_box.add_child(betting_panel)
+	betting_margin.add_child(betting_panel)
 
-	var amount_title := _label("BET CHIP", 14, MUTED)
+	var amount_title := _section_label("① いくら賭ける？", "10・20・50 CHIP")
 	betting_panel.add_child(amount_title)
 	var amount_row := HBoxContainer.new()
 	amount_row.add_theme_constant_override("separation", 8)
@@ -196,93 +324,169 @@ func _build_ui() -> void:
 	for amount: int in ModelScript.BET_AMOUNTS:
 		var caption := "%d" % amount
 		if amount == 10:
-			caption += "  LONG PLAY"
+			caption += "  じっくり"
 		elif amount == 20:
-			caption += "  STANDARD"
+			caption += "  おすすめ"
 		else:
-			caption += "  HIGH ROLLER"
-		var button := _button(caption, 14)
+			caption += "  大勝負"
+		var button := _button(caption, 22)
 		button.toggle_mode = true
+		button.custom_minimum_size.y = 68
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(_select_amount.bind(amount))
+		_add_button_ornament(button)
 		amount_row.add_child(button)
 		amount_buttons[amount] = button
 
-	var main_title := _label("MAIN BET  最大3エリア", 14, MUTED)
-	betting_panel.add_child(main_title)
+	wager_surface = PanelContainer.new()
+	wager_surface.name = "WagerSurface"
+	wager_surface.add_theme_stylebox_override("panel", _wager_surface_panel())
+	betting_panel.add_child(wager_surface)
+	var wager_margin := MarginContainer.new()
+	wager_margin.add_theme_constant_override("margin_left", 10)
+	wager_margin.add_theme_constant_override("margin_right", 10)
+	wager_margin.add_theme_constant_override("margin_top", 8)
+	wager_margin.add_theme_constant_override("margin_bottom", 10)
+	wager_surface.add_child(wager_margin)
+	var wager_content := VBoxContainer.new()
+	wager_content.add_theme_constant_override("separation", 7)
+	wager_margin.add_child(wager_content)
+
+	var main_title := _section_label("② ベットテーブル", "最大3エリア")
+	wager_content.add_child(main_title)
 	var main_grid := GridContainer.new()
 	main_grid.columns = 3
 	main_grid.add_theme_constant_override("h_separation", 7)
 	main_grid.add_theme_constant_override("v_separation", 7)
-	betting_panel.add_child(main_grid)
+	wager_content.add_child(main_grid)
 	for area: String in ModelScript.MAIN_AREAS:
-		var button := _button("", 15)
-		button.custom_minimum_size.y = 58
+		var button := _button("", 22)
+		button.custom_minimum_size.y = 92
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(_place_main_bet.bind(area))
+		_add_chip_badge(button)
 		main_grid.add_child(button)
 		main_bet_buttons[area] = button
 
-	var side_title := _label("SIDE BET  どれか1つ", 14, MUTED)
-	betting_panel.add_child(side_title)
+	var side_title := _section_label("色勝負もする？", "任意・1つ")
+	wager_content.add_child(side_title)
 	var side_row := HBoxContainer.new()
 	side_row.add_theme_constant_override("separation", 7)
-	betting_panel.add_child(side_row)
+	wager_content.add_child(side_row)
 	for area: String in ModelScript.SIDE_AREAS:
-		var button := _button("", 13)
-		button.custom_minimum_size.y = 52
+		var button := _button("", 21)
+		button.custom_minimum_size.y = 82
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(_place_side_bet.bind(area))
+		_add_chip_badge(button)
+		_add_side_dice_icon(button, area)
 		side_row.add_child(button)
 		side_bet_buttons[area] = button
+	var dock_clearance := Control.new()
+	dock_clearance.custom_minimum_size.y = 210
+	dock_clearance.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	betting_panel.add_child(dock_clearance)
 
-	total_bet_label = _label("TOTAL BET 0 / 50", 18, GOLD)
+	action_dock = PanelContainer.new()
+	action_dock.name = "BetActionDock"
+	action_dock.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	action_dock.offset_left = 18.0
+	action_dock.offset_top = -210.0
+	action_dock.offset_right = -18.0
+	action_dock.offset_bottom = -14.0
+	action_dock.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	action_dock.add_theme_stylebox_override("panel", _panel(Color("#04150ff5"), BRIGHT_GOLD, 22, 3))
+	add_child(action_dock)
+	var dock_margin := MarginContainer.new()
+	dock_margin.add_theme_constant_override("margin_left", 10)
+	dock_margin.add_theme_constant_override("margin_right", 10)
+	dock_margin.add_theme_constant_override("margin_top", 8)
+	dock_margin.add_theme_constant_override("margin_bottom", 8)
+	action_dock.add_child(dock_margin)
+	var dock_body := VBoxContainer.new()
+	dock_body.add_theme_constant_override("separation", 7)
+	dock_margin.add_child(dock_body)
+
+	total_bet_label = _label("合計ベット  0 / 50 CHIP", 25, GOLD)
 	total_bet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	betting_panel.add_child(total_bet_label)
+	total_bet_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	total_bet_label.custom_minimum_size.y = 50
+	total_bet_label.add_theme_stylebox_override("normal", _panel(Color("#061813ee"), GOLD, 18, 2))
+	dock_body.add_child(total_bet_label)
 
 	var controls := HBoxContainer.new()
 	controls.add_theme_constant_override("separation", 7)
-	betting_panel.add_child(controls)
-	undo_button = _button("UNDO", 14)
-	clear_button = _button("CLEAR", 14)
-	rebet_button = _button("REBET", 14)
-	spin_button = _button("SPIN!", 18)
-	for button: Button in [undo_button, clear_button, rebet_button, spin_button]:
+	dock_body.add_child(controls)
+	var utility_grid := GridContainer.new()
+	utility_grid.columns = 3
+	utility_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	utility_grid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	utility_grid.add_theme_constant_override("h_separation", 7)
+	controls.add_child(utility_grid)
+	undo_button = _button("もどす", 20)
+	clear_button = _button("消す", 20)
+	rebet_button = _button("前回BET", 19)
+	spin_button = _display_button("", 32)
+	spin_button.name = "SpinButton"
+	for button: Button in [undo_button, clear_button, rebet_button]:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 54
-		controls.add_child(button)
+		button.custom_minimum_size.y = 64
+		_add_button_ornament(button, 2)
+		utility_grid.add_child(button)
+	spin_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	spin_button.custom_minimum_size = Vector2(192, 132)
+	controls.add_child(spin_button)
+	_add_spin_decoration(spin_button)
+	# Keep the primary CTA touch-safe at the 360px reference width while
+	# allowing the three utility actions to remain compact but readable.
+	undo_button.custom_minimum_size.x = 58
+	clear_button.custom_minimum_size.x = 58
+	rebet_button.custom_minimum_size.x = 58
+	# The project renders a 720px design canvas into the 360px reference
+	# viewport, so 192 design pixels provide the required 96px physical hitbox.
+	spin_button.custom_minimum_size.x = 192
 	undo_button.pressed.connect(_undo)
 	clear_button.pressed.connect(_clear_bets)
 	rebet_button.pressed.connect(_rebet)
 	spin_button.pressed.connect(_spin)
 
-	payout_label = _label("", 20, Color.WHITE)
+	payout_label = _label("", 23, Color.WHITE)
 	payout_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	payout_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	payout_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	payout_label.custom_minimum_size.y = 52
+	payout_label.add_theme_stylebox_override("normal", _panel(Color("#061813dd"), Color("#5f9d75"), 16, 2))
 	root_box.add_child(payout_label)
 
 	round_actions = HBoxContainer.new()
 	round_actions.add_theme_constant_override("separation", 8)
 	root_box.add_child(round_actions)
-	rebet_spin_button = _button("REBET & SPIN", 14)
-	new_bet_button = _button("NEW BET", 14)
-	cashout_button = _button("CASH OUT", 14)
+	rebet_spin_button = _button("同じベットでもう一度回す", 20)
+	new_bet_button = _button("ベットを変える", 20)
+	cashout_button = _button("カジノへ戻る", 20)
+	cashout_button.name = "ResultCasinoBackButton"
 	for button: Button in [rebet_spin_button, new_bet_button, cashout_button]:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 54
+		button.custom_minimum_size.y = 64
 		round_actions.add_child(button)
 	rebet_spin_button.pressed.connect(_rebet_and_spin)
 	new_bet_button.pressed.connect(_new_bet)
 	cashout_button.pressed.connect(_cash_out)
+	CasinoBackButton.configure(cashout_button)
 
-	var leave_button := _button("カジノホールへ戻る", 14)
-	leave_button.pressed.connect(_cash_out)
-	root_box.add_child(leave_button)
+func _how_to_steps() -> Array[Dictionary]:
+	return [
+		{"action": "ベットを決める", "copy": "好きなエリアとCHIPを選ぼう"},
+		{"action": "回す", "copy": "2つのダイスの目と場所を見る"},
+		{"action": "的中を確認する", "copy": "選んだエリアに当たれば配当"},
+	]
 
 func _select_amount(amount: int) -> void:
 	if phase != Phase.BETTING:
 		return
 	selected_bet_amount = amount
+	has_confirmed_amount = true
+	_set_status("%d CHIPを選択 • BETエリアをタップ" % amount)
 	_play_common(&"select")
 	_refresh_ui()
 
@@ -303,6 +507,7 @@ func _place_main_bet(area: String) -> void:
 		return
 	_push_undo()
 	main_bets[area] = int(main_bets.get(area, 0)) + selected_bet_amount
+	_set_status("ベット配置 • 合計 %d CHIP" % _current_total_bet())
 	_play_common(&"select")
 	_refresh_ui()
 
@@ -324,6 +529,7 @@ func _place_side_bet(area: String) -> void:
 		return
 	_push_undo()
 	side_bet = {"area": area, "amount": next_amount}
+	_set_status("色勝負を追加 • 合計 %d CHIP" % _current_total_bet())
 	_play_common(&"select")
 	_refresh_ui()
 
@@ -367,9 +573,12 @@ func _rebet() -> void:
 func _spin() -> void:
 	if phase != Phase.BETTING:
 		return
+	if feel_fx != null:
+		feel_fx.press_button(spin_button, true)
+	presentation_events.append("spin_press")
 	var wager := _current_total_bet()
 	if wager <= 0:
-		_set_status("BETしてからSPINしよう")
+		_set_status("BETしてから回そう")
 		return
 	if wager > CasinoBankScript.balance():
 		_set_status("CASINO CHIPが足りない")
@@ -408,33 +617,74 @@ func _animate_and_finish_round() -> void:
 	if not red.is_empty() and not blue.is_empty():
 		current_result = ModelScript.resolve_round(int(red.get("slot", 0)), int(red.get("face", 1)), int(blue.get("slot", 0)), int(blue.get("face", 1)), main_bets, side_bet)
 	undo_stack.clear()
+	betting_shell.visible = false
 	betting_panel.visible = false
+	action_dock.visible = false
 	round_actions.visible = false
+	status_label.visible = true
 	payout_label.text = ""
-	red_result_label.text = "RED  SPINNING..."
-	blue_result_label.text = "BLUE  SPINNING..."
-	status_label.text = "WHEREを決める！"
+	red_result_label.text = "赤ダイス\n回転中…"
+	blue_result_label.text = "青ダイス\n回転中…"
+	guide_label.text = "回転中  •  ダイスを見よう"
+	status_label.text = "回転中…"
+	_set_wheel_focus(true)
+	sparkle_overlay.visible = true
 	phase = Phase.SPINNING
 	_play_world(&"start")
+	if feel_fx != null:
+		feel_fx.play_dice_roll()
 	wheel.reset_markers()
 	await wheel.animate_results(int(current_result.red_slot), int(current_result.blue_slot), int(current_result.red_face), int(current_result.blue_face))
 
-	phase = Phase.AREA_RESULT
-	red_result_label.text = "RED  %s" % _display_area(str(current_result.red_area))
-	blue_result_label.text = "BLUE  %s" % _display_area(str(current_result.blue_area))
-	status_label.text = "WHERE確定！ 次は出目BOOST"
+	# The wheel has landed, but give the player one quiet beat to recognise both dice.
+	presentation_events.append("land")
 	_play_world(&"stop")
-	await get_tree().create_timer(0.38).timeout
+	if feel_fx != null:
+		feel_fx.play_dice_land(false)
+		feel_fx.vibrate_light()
+	await _presentation_wait(0.20)
+	if not is_inside_tree():
+		return
+
+	phase = Phase.AREA_RESULT
+	presentation_events.append("where")
+	red_result_label.text = "赤  %s" % _display_area(str(current_result.red_area))
+	blue_result_label.text = "青  %s" % _display_area(str(current_result.blue_area))
+	var special_where := str(current_result.red_area) == "LUCKY_7" or str(current_result.blue_area) == "LUCKY_7" or str(current_result.red_area) == "JACKPOT" or str(current_result.blue_area) == "JACKPOT"
+	status_label.text = "WHERE 確定%s" % ("  •  SPECIAL!" if special_where else "")
+	_animate_where_reveal(red_result_label)
+	_animate_where_reveal(blue_result_label)
+	_play_world(&"bonus" if special_where else &"progress-step")
+	if special_where and feel_fx != null:
+		feel_fx.vibrate_light()
+	await _presentation_wait(0.20)
+	if not is_inside_tree():
+		return
 
 	phase = Phase.DICE_RESULT
-	red_result_label.text = "RED  %s  🎲%d  ×%s" % [_display_area(str(current_result.red_area)), int(current_result.red_face), _fmt_multiplier(float(current_result.red_boost))]
-	blue_result_label.text = "BLUE  %s  🎲%d  ×%s" % [_display_area(str(current_result.blue_area)), int(current_result.blue_face), _fmt_multiplier(float(current_result.blue_boost))]
-	if int(current_result.red_face) == 6 or int(current_result.blue_face) == 6:
-		status_label.text = "MAX BOOST ×3!"
+	presentation_events.append("boost")
+	red_result_label.text = "WHERE: %s\nBOOST: %d  ×%s" % [_display_area(str(current_result.red_area)), int(current_result.red_face), _fmt_multiplier(float(current_result.red_boost))]
+	blue_result_label.text = "WHERE: %s\nBOOST: %d  ×%s" % [_display_area(str(current_result.blue_area)), int(current_result.blue_face), _fmt_multiplier(float(current_result.blue_boost))]
+	var high_boost := float(current_result.red_boost) >= 2.0 or float(current_result.blue_boost) >= 2.0
+	if high_boost:
+		status_label.text = "HIGH BOOST!  ×倍率アップ"
 		_play_world(&"bonus")
+		if feel_fx != null:
+			feel_fx.vibrate_light()
 	else:
-		status_label.text = "%s" % _display_side(str(current_result.side_result))
-	await get_tree().create_timer(0.42).timeout
+		status_label.text = "%s  •  BOOST確定" % _display_side(str(current_result.side_result))
+		_play_world(&"progress-step")
+	_animate_boost_reveal(red_result_label, high_boost or int(current_result.red_face) == 6)
+	_animate_boost_reveal(blue_result_label, high_boost or int(current_result.blue_face) == 6)
+	# Keep the two recognisable beats separate so first-time players can read them.
+	await _presentation_wait(0.30 if high_boost else 0.24)
+	if not is_inside_tree():
+		return
+	status_label.text = "WIN判定中…" if int(current_result.profit) > 0 else "LOSE判定中…"
+	await _presentation_wait(0.18)
+	if not is_inside_tree():
+		return
+	presentation_events.append("win" if int(current_result.profit) > 0 else "lose")
 
 	phase = Phase.PAYOUT
 	var settlement := CasinoBankScript.settle_game(FACILITY_ID, int(current_result.total_return), current_result, game_id)
@@ -447,7 +697,16 @@ func _animate_and_finish_round() -> void:
 	session_total_bet += wager
 	session_total_return += int(current_result.total_return)
 	_show_payout()
-	await get_tree().create_timer(0.25).timeout
+	if feel_fx != null:
+		feel_fx.animate_balance_change(chip_label, CasinoBankScript.balance() - int(current_result.total_return), CasinoBankScript.balance())
+		if int(current_result.profit) > 0:
+			feel_fx.play_win_feedback()
+		else:
+			feel_fx.play_lose_feedback()
+	presentation_events.append("chip_count")
+	await _presentation_wait(0.52 if high_boost else (0.40 if int(current_result.profit) > 0 else 0.28))
+	if not is_inside_tree():
+		return
 	phase = Phase.ROUND_END
 	pending_roll.clear()
 	game_id = ""
@@ -455,10 +714,35 @@ func _animate_and_finish_round() -> void:
 	round_actions.visible = true
 	_refresh_ui()
 
+func _presentation_wait(seconds: float) -> void:
+	if not is_inside_tree():
+		return
+	await get_tree().create_timer(seconds).timeout
+
+func _animate_where_reveal(label: Label) -> void:
+	_animate_reveal(label, Vector2(0.88, 0.88), Vector2(1.08, 1.08), 0.18)
+
+func _animate_boost_reveal(label: Label, emphasized: bool) -> void:
+	var peak := Vector2(1.14, 1.14) if emphasized else Vector2(1.08, 1.08)
+	_animate_reveal(label, Vector2.ONE, peak, 0.22)
+
+func _animate_reveal(label: Label, start: Vector2, peak: Vector2, duration: float) -> void:
+	if label == null or not is_instance_valid(label):
+		return
+	label.offset_transform_enabled = true
+	label.offset_transform_scale = start
+	var tween: Tween = create_tween()
+	reveal_tweens.append(tween)
+	tween.tween_property(label, "offset_transform_scale", peak, duration * 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "offset_transform_scale", Vector2.ONE, duration * 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
 func _show_payout() -> void:
 	var wager := int(current_result.total_bet)
 	var returned := int(current_result.total_return)
 	var profit := int(current_result.profit)
+	# Keep sparkle identity during the spin, but never cover the settled result
+	# panel with the sheet's broad matte; payout emphasis comes from the labels.
+	sparkle_overlay.visible = false
 	chip_label.text = "CASINO CHIP  %d" % CasinoBankScript.balance()
 	if bool(current_result.double_jackpot_max):
 		status_label.text = "DOUBLE JACKPOT  MAX BOOST!!"
@@ -476,11 +760,12 @@ func _show_payout() -> void:
 		status_label.text = "WIN!"
 		_play_world(&"success")
 	elif returned > 0:
-		status_label.text = "RETURN %d" % returned
+		status_label.text = "受け取り %d CHIP" % returned
 	else:
-		status_label.text = "NO HIT"
+		status_label.text = "今回はハズレ… 次こそ！"
 		_play_world(&"close")
-	payout_label.text = "BET %d   RETURN %d   PROFIT %s%d" % [wager, returned, "+" if profit >= 0 else "", profit]
+	guide_label.text = "結果  •  %s" % ("WIN!" if profit > 0 else "もう一度挑戦しよう")
+	payout_label.text = "BET %d   受け取り %d   収支 %s%d CHIP" % [wager, returned, "+" if profit >= 0 else "", profit]
 
 func _rebet_and_spin() -> void:
 	if phase != Phase.ROUND_END:
@@ -504,18 +789,22 @@ func _new_bet() -> void:
 	side_bet.clear()
 	undo_stack.clear()
 	payout_label.text = ""
-	red_result_label.text = "RED  READY"
-	blue_result_label.text = "BLUE  READY"
+	red_result_label.text = "赤ダイス\n待機中"
+	blue_result_label.text = "青ダイス\n待機中"
 	wheel.reset_markers()
+	_set_wheel_focus(false)
+	sparkle_overlay.visible = false
 	status_label.text = "次のBETを選ぼう"
 	_refresh_ui()
 
 func _cash_out() -> void:
+	if phase == Phase.CASH_OUT:
+		return
 	if phase in [Phase.BET_LOCK, Phase.SPINNING, Phase.AREA_RESULT, Phase.DICE_RESULT, Phase.PAYOUT]:
 		return
 	phase = Phase.CASH_OUT
 	var profit := session_total_return - session_total_bet
-	status_label.text = "CASH OUT  %d PLAY  PROFIT %s%d CHIP" % [session_rounds, "+" if profit >= 0 else "", profit]
+	status_label.text = "受け取り  %d回  利益 %s%d CHIP" % [session_rounds, "+" if profit >= 0 else "", profit]
 	_play_common(&"back")
 	back_requested.emit()
 
@@ -523,37 +812,99 @@ func _current_total_bet() -> int:
 	return ModelScript.total_bet(main_bets, side_bet)
 
 func _refresh_ui() -> void:
-	chip_label.text = "CASINO CHIP  %d" % CasinoBankScript.balance()
+	chip_label.text = "CASINO CHIP\n%s" % _format_chips(CasinoBankScript.balance())
 	var betting := phase == Phase.BETTING
+	status_label.visible = not betting
+	betting_shell.visible = betting
 	betting_panel.visible = betting
+	action_dock.visible = betting
 	round_actions.visible = phase == Phase.ROUND_END
+	back_button.visible = phase != Phase.ROUND_END
+	back_button.disabled = phase in [Phase.BET_LOCK, Phase.SPINNING, Phase.AREA_RESULT, Phase.DICE_RESULT, Phase.PAYOUT, Phase.CASH_OUT]
 	var total := _current_total_bet()
-	total_bet_label.text = "TOTAL BET  %d / %d" % [total, MAX_TOTAL_BET]
+	total_bet_label.text = "合計ベット  %d / %d CHIP" % [total, MAX_TOTAL_BET]
 	for amount: int in amount_buttons.keys():
 		var button := amount_buttons[amount] as Button
 		button.set_pressed_no_signal(amount == selected_bet_amount)
 		button.disabled = not betting
+		if amount == selected_bet_amount:
+			_apply_button_style(button, Color("#f3d179"), Color("#ffeeb2"), BRIGHT_GOLD, Color("#241400"), 20, 3)
+			_set_button_ornament(button, 3)
+		else:
+			_apply_button_style(button, Color("#0b2a20"), Color("#164b38"), Color("#9a7130"), CREAM, 20, 2)
+			_set_button_ornament(button, 0)
 	for area: String in main_bet_buttons.keys():
 		var button := main_bet_buttons[area] as Button
 		var amount := int(main_bets.get(area, 0))
 		var multiplier := float(ModelScript.MAIN_MULTIPLIERS.get(area, 0.0))
-		button.text = "%s  ×%s%s" % [MAIN_LABELS[area], _fmt_multiplier(multiplier), "\n%d CHIP" % amount if amount > 0 else ""]
+		button.text = "%s\n%s  ×%s" % [MAIN_LABELS[area], MAIN_TAGS[area], _fmt_multiplier(multiplier)]
 		button.disabled = not betting
+		_set_chip_badge(button, amount)
+		_style_bet_button(button, area, amount > 0)
 	for area: String in side_bet_buttons.keys():
 		var button := side_bet_buttons[area] as Button
 		var amount := int(side_bet.get("amount", 0)) if str(side_bet.get("area", "")) == area else 0
 		var multiplier := float(ModelScript.SIDE_MULTIPLIERS.get(area, 0.0))
-		button.text = "%s\n×%s%s" % [SIDE_LABELS[area], _fmt_multiplier(multiplier), "  %d CHIP" % amount if amount > 0 else ""]
+		var side_caption := "赤が勝つ" if area == "RED_LEADS" else ("青が勝つ" if area == "BLUE_LEADS" else "同じ出目")
+		button.text = "%s\n%s  ×%s" % ["RED" if area == "RED_LEADS" else ("BLUE" if area == "BLUE_LEADS" else "DRAW"), side_caption, _fmt_multiplier(multiplier)]
 		button.disabled = not betting
+		_set_chip_badge(button, amount)
+		_style_side_button(button, area, amount > 0)
 	undo_button.disabled = not betting or undo_stack.is_empty()
 	clear_button.disabled = not betting or total <= 0
 	var previous_total := ModelScript.total_bet(last_main_bets, last_side_bet)
 	rebet_button.disabled = not betting or previous_total <= 0 or previous_total > CasinoBankScript.balance()
 	spin_button.disabled = not betting or total <= 0 or total > CasinoBankScript.balance()
 	rebet_spin_button.disabled = phase != Phase.ROUND_END or previous_total <= 0 or previous_total > CasinoBankScript.balance()
+	_style_utility_button(undo_button)
+	_style_utility_button(clear_button)
+	_style_utility_button(rebet_button)
+	_style_spin_button(spin_button, not spin_button.disabled)
+	_refresh_guide(total)
+	_apply_button_style(rebet_spin_button, Color("#87510f"), Color("#b06c13"), GOLD, Color.WHITE, 18, 2)
+	_apply_button_style(new_bet_button, Color("#0b5137"), Color("#14714d"), GOLD, Color.WHITE, 18, 2)
+	_apply_button_style(cashout_button, Color("#321a18"), Color("#5b2923"), Color("#bd805a"), CREAM, 18, 2)
+	CasinoBackButton.configure(cashout_button)
 
 func _set_status(text: String) -> void:
 	status_label.text = text
+
+func _refresh_guide(total: int) -> void:
+	if phase != Phase.BETTING:
+		return
+	if total > 0:
+		guide_label.text = "③「回す」を押してスタート  •  BET %d CHIP" % total
+	elif has_confirmed_amount:
+		guide_label.text = "② BETエリアをタップ"
+	else:
+		guide_label.text = "① チップを選ぼう  •  10 CHIP"
+
+func _apply_responsive_layout() -> void:
+	if wheel_stack == null:
+		return
+	var compact := size.y > 0.0 and size.y < 1450.0
+	wheel_stack.custom_minimum_size = Vector2(390, 390) if compact else Vector2(450, 450)
+	for button: Button in amount_buttons.values():
+		button.custom_minimum_size.y = 62 if compact else 68
+	for button: Button in main_bet_buttons.values():
+		button.custom_minimum_size.y = 82 if compact else 92
+	for button: Button in side_bet_buttons.values():
+		button.custom_minimum_size.y = 74 if compact else 82
+	for button: Button in [undo_button, clear_button, rebet_button, spin_button]:
+		if button != null:
+			if button == spin_button:
+				button.custom_minimum_size.y = 124 if compact else 132
+			else:
+				button.custom_minimum_size.y = 58 if compact else 64
+
+func _set_wheel_focus(focused: bool) -> void:
+	if wheel_stack == null:
+		return
+	var compact := size.y > 0.0 and size.y < 1450.0
+	var wheel_size := 560 if compact else 620
+	if not focused:
+		wheel_size = 390 if compact else 450
+	wheel_stack.custom_minimum_size = Vector2(wheel_size, wheel_size)
 
 func _display_area(area: String) -> String:
 	return str(MAIN_LABELS.get(area, area.replace("_", " ")))
@@ -566,30 +917,272 @@ func _fmt_multiplier(value: float) -> String:
 		return "%d" % roundi(value)
 	return "%.2f" % value
 
-func _label(text: String, size: int, color: Color) -> Label:
+func _label(text: String, font_size: int, color: Color) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_override("font", FONT)
-	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", color)
 	return label
 
-func _result_box(text: String, color: Color) -> Label:
-	var label := _label(text, 15, Color.WHITE)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.custom_minimum_size.y = 54
-	label.add_theme_stylebox_override("normal", _panel(Color("#201f34"), color, 12, 2))
+func _display_label(text: String, font_size: int, color: Color) -> Label:
+	var label := _label(text, font_size, color)
+	label.add_theme_font_override("font", DISPLAY_FONT)
 	return label
 
-func _button(text: String, size: int) -> Button:
+func _dice_title_icon(tint: Color) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.texture = DICE_ICON
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.custom_minimum_size = Vector2(48, 48)
+	icon.modulate = tint
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return icon
+
+func _section_label(title: String, hint: String) -> Label:
+	var label := _label("◆  %s    %s" % [title, hint], 21, BRIGHT_GOLD)
+	label.add_theme_color_override("font_outline_color", Color.BLACK)
+	label.add_theme_constant_override("outline_size", 3)
+	return label
+
+func _add_chip_badge(button: Button) -> void:
+	var badge := _label("", 15, Color.WHITE)
+	badge.name = "BetChipBadge"
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	badge.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	badge.offset_left = -62.0
+	badge.offset_top = -33.0
+	badge.offset_right = -7.0
+	badge.offset_bottom = -7.0
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.visible = false
+	badge.add_theme_color_override("font_outline_color", Color.BLACK)
+	badge.add_theme_constant_override("outline_size", 3)
+	badge.add_theme_stylebox_override("normal", _panel(Color("#173d8f"), BRIGHT_GOLD, 13, 2))
+	button.add_child(badge)
+
+func _button_ornament_texture(frame: int) -> AtlasTexture:
+	var atlas := AtlasTexture.new()
+	atlas.atlas = BUTTON_ORNAMENTS
+	atlas.region = Rect2(0.0, float(clampi(frame, 0, 3) * 400), 960.0, 400.0)
+	return atlas
+
+func _add_button_ornament(button: Button, frame: int = 0) -> void:
+	var ornament := TextureRect.new()
+	ornament.name = "ButtonOrnament"
+	ornament.texture = _button_ornament_texture(frame)
+	ornament.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ornament.stretch_mode = TextureRect.STRETCH_SCALE
+	ornament.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ornament.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ornament.modulate = Color(1.0, 1.0, 1.0, 0.94)
+	button.add_child(ornament)
+	var caption_size := maxi(16, button.get_theme_font_size("font_size") - 4)
+	var caption := _label(button.text, caption_size, CREAM)
+	caption.name = "ButtonCaption"
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	caption.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	caption.offset_top = 16.0
+	caption.offset_bottom = -2.0
+	caption.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.86))
+	caption.add_theme_constant_override("outline_size", 3)
+	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(caption)
+	button.set_meta("ornament_caption", button.text)
+	button.text = ""
+
+func _set_button_ornament(button: Button, frame: int) -> void:
+	var ornament := button.get_node_or_null("ButtonOrnament") as TextureRect
+	if ornament != null:
+		ornament.texture = _button_ornament_texture(frame)
+	var caption := button.get_node_or_null("ButtonCaption") as Label
+	if caption != null and not button.text.is_empty():
+		caption.text = button.text
+		button.set_meta("ornament_caption", button.text)
+		button.text = ""
+
+func _add_side_dice_icon(button: Button, area: String) -> void:
+	var icon := TextureRect.new()
+	icon.name = "SideDiceIcon"
+	icon.texture = DICE_ICON
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	icon.offset_left = 9.0
+	icon.offset_top = -23.0
+	icon.offset_right = 55.0
+	icon.offset_bottom = 23.0
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.modulate = RED.lightened(0.12) if area == "RED_LEADS" else (BLUE.lightened(0.18) if area == "BLUE_LEADS" else Color("#d7c9a3"))
+	button.add_child(icon)
+	var caption := button.get_node_or_null("ButtonCaption") as Label
+	if caption != null:
+		caption.offset_left = 30.0
+
+func _add_spin_decoration(button: Button) -> void:
+	var ring := TextureRect.new()
+	ring.name = "SpinGoldRing"
+	ring.texture = SPIN_RING
+	ring.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ring.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	ring.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(ring)
+
+	var caption := _display_label("回す！", 35, Color.WHITE)
+	caption.name = "SpinCaption"
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	caption.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	caption.add_theme_color_override("font_outline_color", Color("#421c00"))
+	caption.add_theme_constant_override("outline_size", 6)
+	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(caption)
+
+func _set_chip_badge(button: Button, amount: int) -> void:
+	var badge := button.get_node_or_null("BetChipBadge") as Label
+	if badge == null:
+		return
+	badge.visible = amount > 0
+	badge.text = "%d CHIP" % amount
+
+func _result_box(text: String, color: Color) -> Label:
+	var label := _label(text, 21, Color.WHITE)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.custom_minimum_size.y = 64
+	label.add_theme_color_override("font_outline_color", Color.BLACK)
+	label.add_theme_constant_override("outline_size", 4)
+	label.add_theme_stylebox_override("normal", _panel(color.darkened(0.62), color.lightened(0.16), 16, 3))
+	return label
+
+func _button(text: String, font_size: int) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.add_theme_font_override("font", FONT)
-	button.add_theme_font_size_override("font_size", size)
+	button.add_theme_font_size_override("font_size", font_size)
 	button.custom_minimum_size = Vector2(92, 44)
+	button.focus_mode = Control.FOCUS_ALL
+	VisualFeedback.bind_button(button)
 	return button
+
+func _display_button(text: String, font_size: int) -> Button:
+	var button := _button(text, font_size)
+	button.add_theme_font_override("font", DISPLAY_FONT)
+	return button
+
+func _make_sparkle_animation() -> AnimatedTexture:
+	var texture := AnimatedTexture.new()
+	texture.frames = SPARKLE_TEXTURES.size()
+	texture.pause = false
+	texture.one_shot = false
+	texture.speed_scale = 1.15
+	for index: int in range(SPARKLE_TEXTURES.size()):
+		texture.set_frame_texture(index, SPARKLE_TEXTURES[index])
+		texture.set_frame_duration(index, 0.16 if index != 2 else 0.28)
+	return texture
+
+func _format_chips(value: int) -> String:
+	var text := str(value)
+	var output := ""
+	while text.length() > 3:
+		output = ",%s%s" % [text.right(3), output]
+		text = text.left(text.length() - 3)
+	return text + output
+
+func _style_bet_button(button: Button, area: String, selected: bool) -> void:
+	var accent := Color("#3c9a6d")
+	var fill := Color("#09271e")
+	if area == "HIGH":
+		accent = Color("#d85d4b")
+	elif area == "ODD":
+		accent = Color("#9b6bd1")
+	elif area == "EVEN":
+		accent = Color("#55a68d")
+	elif area == "LUCKY_7":
+		accent = Color("#ad68cf")
+		fill = Color("#30163f")
+	elif area == "JACKPOT":
+		accent = Color("#e7a629")
+		fill = Color("#4b1812")
+	if selected:
+		_apply_button_style(button, accent.darkened(0.32), accent.darkened(0.12), BRIGHT_GOLD, Color.WHITE, 18, 4)
+	else:
+		_apply_button_style(button, fill, fill.lightened(0.10), accent.darkened(0.12), CREAM, 18, 2)
+
+func _style_side_button(button: Button, area: String, selected: bool) -> void:
+	var accent := Color("#a3a3a3")
+	var fill := Color("#202522")
+	if area == "RED_LEADS":
+		accent = RED.lightened(0.08)
+		fill = Color("#461713")
+	elif area == "BLUE_LEADS":
+		accent = BLUE.lightened(0.10)
+		fill = Color("#112d5c")
+	if selected:
+		_apply_button_style(button, fill.lightened(0.12), fill.lightened(0.20), BRIGHT_GOLD, Color.WHITE, 18, 4)
+	else:
+		_apply_button_style(button, fill, fill.lightened(0.08), accent, CREAM, 18, 2)
+
+func _style_utility_button(button: Button) -> void:
+	_apply_button_style(button, Color("#081b15"), Color("#12372a"), Color("#80622f"), MUTED, 16, 1)
+
+func _style_spin_button(button: Button, enabled: bool) -> void:
+	var clear_style := _panel(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 30, 0)
+	button.add_theme_stylebox_override("normal", clear_style)
+	button.add_theme_stylebox_override("hover", clear_style)
+	button.add_theme_stylebox_override("focus", clear_style)
+	button.add_theme_stylebox_override("pressed", clear_style)
+	button.add_theme_stylebox_override("disabled", clear_style)
+	var ring := button.get_node_or_null("SpinGoldRing") as TextureRect
+	if ring != null:
+		ring.modulate = Color.WHITE if enabled else Color(0.62, 0.62, 0.58, 0.78)
+	var caption := button.get_node_or_null("SpinCaption") as Label
+	if caption != null:
+		caption.add_theme_color_override("font_color", Color.WHITE if enabled else Color("#b7ad98"))
+
+func _apply_button_style(button: Button, fill: Color, hover: Color, border: Color, font_color: Color, radius: int, border_width: int) -> void:
+	var normal := _panel(fill, border, radius, border_width)
+	var hover_style := _panel(hover, border.lightened(0.16), radius, border_width + 1)
+	var pressed := _panel(hover.lightened(0.08), BRIGHT_GOLD, radius, border_width + 1)
+	var disabled := _panel(fill.darkened(0.38), border.darkened(0.44), radius, max(1, border_width - 1))
+	if button.get_node_or_null("BetChipBadge") != null:
+		normal.content_margin_right = 18
+		normal.content_margin_bottom = 18
+		hover_style.content_margin_right = 18
+		hover_style.content_margin_bottom = 18
+		pressed.content_margin_right = 18
+		pressed.content_margin_bottom = 18
+		disabled.content_margin_right = 18
+		disabled.content_margin_bottom = 18
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover_style)
+	button.add_theme_stylebox_override("focus", hover_style)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("disabled", disabled)
+	var decorated_caption := button.get_node_or_null("ButtonCaption") as Label
+	if decorated_caption != null:
+		decorated_caption.add_theme_color_override("font_color", font_color)
+		button.add_theme_color_override("font_color", Color.TRANSPARENT)
+		button.add_theme_color_override("font_hover_color", Color.TRANSPARENT)
+		button.add_theme_color_override("font_pressed_color", Color.TRANSPARENT)
+		button.add_theme_color_override("font_focus_color", Color.TRANSPARENT)
+		button.add_theme_color_override("font_disabled_color", Color.TRANSPARENT)
+	else:
+		button.add_theme_color_override("font_color", font_color)
+		button.add_theme_color_override("font_hover_color", Color.WHITE)
+		button.add_theme_color_override("font_pressed_color", Color.WHITE)
+		button.add_theme_color_override("font_focus_color", Color.WHITE)
+		button.add_theme_color_override("font_disabled_color", Color("#8f897b"))
+	button.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.82))
+	button.add_theme_constant_override("outline_size", 3)
 
 func _panel(fill: Color, border: Color, radius: int, width: int) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
@@ -600,6 +1193,26 @@ func _panel(fill: Color, border: Color, radius: int, width: int) -> StyleBoxFlat
 	style.content_margin_left = 10
 	style.content_margin_right = 10
 	style.content_margin_top = 8
+	style.content_margin_bottom = 8
+	return style
+
+func _ornate_betting_panel() -> StyleBoxFlat:
+	var style := _panel(Color("#061d16f2"), Color("#d8a93d"), 22, 3)
+	style.shadow_color = Color("#f3c84b55")
+	style.shadow_size = 7
+	style.shadow_offset = Vector2(0.0, 2.0)
+	style.corner_detail = 12
+	return style
+
+func _wager_surface_panel() -> StyleBoxFlat:
+	var style := _panel(Color("#0a3425e8"), Color("#5f9d75"), 18, 2)
+	style.shadow_color = Color("#020f0a99")
+	style.shadow_size = 5
+	style.shadow_offset = Vector2(0.0, 2.0)
+	style.corner_detail = 10
+	style.content_margin_left = 8
+	style.content_margin_right = 8
+	style.content_margin_top = 7
 	style.content_margin_bottom = 8
 	return style
 

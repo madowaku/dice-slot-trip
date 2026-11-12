@@ -49,6 +49,10 @@ const RACER_LANE_SLOTS := {
 }
 const GOLD := Color("#f2bf4c")
 const FINAL_STRETCH_SPACE := 18
+const RACER_MOVE_MIN_SECONDS: float = 0.30
+const RACER_MOVE_MAX_SECONDS: float = 0.45
+const RACER_MOVE_STAGGER_SECONDS: float = 0.06
+const RACER_MOVE_STAGGER_MAX_SECONDS: float = 0.08
 
 var racer_nodes: Dictionary = {}
 var gimmick_markers: Dictionary = {}
@@ -83,6 +87,7 @@ var gimmick_tags: Dictionary = {}
 var _base_positions: Dictionary = {}
 var _goal_light_tween: Tween
 var _winner_racer: String = ""
+var _exiting: bool = false
 
 
 func _ready() -> void:
@@ -93,7 +98,22 @@ func _ready() -> void:
 	call_deferred("_layout_course")
 
 
+func _exit_tree() -> void:
+	_exiting = true
+	if _camera_tween != null:
+		_camera_tween.kill()
+		_camera_tween = null
+	if _motion_tween != null:
+		_motion_tween.kill()
+		_motion_tween = null
+	if _goal_light_tween != null:
+		_goal_light_tween.kill()
+		_goal_light_tween = null
+
+
 func _process(delta: float) -> void:
+	if _exiting:
+		return
 	_idle_time += delta
 	for index: int in RACERS.size():
 		var racer_id := RACERS[index]
@@ -103,6 +123,8 @@ func _process(delta: float) -> void:
 
 
 func set_race_state(positions: Dictionary, bet_racer: String, active: bool, animate: bool = false) -> void:
+	if _exiting or not is_inside_tree():
+		return
 	_previous_positions = race_positions.duplicate()
 	race_positions = positions.duplicate()
 	selected_racer = bet_racer
@@ -112,14 +134,21 @@ func set_race_state(positions: Dictionary, bet_racer: String, active: bool, anim
 	var next_section := _section_for_position(int(race_positions.get(bet_racer, 0)))
 	if next_section != camera_section:
 		camera_section = next_section
-		_tween_camera_to(SECTION_MINIMUMS[camera_section])
+		if animate:
+			# Keep racer movement readable; a camera tween would relayout every
+			# frame and snap the markers before their movement tween completes.
+			camera_min_position = SECTION_MINIMUMS[camera_section]
+			_layout_course(true)
+			visible_range_changed.emit(visible_range_for_test())
+		else:
+			_tween_camera_to(SECTION_MINIMUMS[camera_section])
 	else:
 		_layout_course(animate)
 	if animate:
 		if _motion_tween != null:
 			_motion_tween.kill()
 		_motion_tween = create_tween()
-		_motion_tween.tween_interval(0.56)
+		_motion_tween.tween_interval(_motion_hold_seconds())
 		_motion_tween.tween_callback(_complete_motion)
 	else:
 		_detect_rank_changes()
@@ -157,6 +186,8 @@ func set_spectator_focus(active: bool) -> void:
 
 
 func _complete_motion() -> void:
+	if _exiting or not is_inside_tree():
+		return
 	_motion_tween = null
 	_detect_rank_changes()
 	motion_finished.emit()
@@ -185,6 +216,8 @@ func _section_for_position(position: int) -> int:
 
 
 func _tween_camera_to(value: float) -> void:
+	if _exiting or not is_inside_tree():
+		return
 	if _camera_tween != null:
 		_camera_tween.kill()
 	_camera_tween = create_tween()
@@ -193,6 +226,8 @@ func _tween_camera_to(value: float) -> void:
 
 
 func _set_camera_minimum(value: float) -> void:
+	if _exiting or not is_inside_tree():
+		return
 	camera_min_position = value
 	_layout_course()
 	visible_range_changed.emit(visible_range_for_test())
@@ -445,6 +480,8 @@ func _layout_milestone(label: Label, position: int, center_x: float, lane_width:
 
 
 func _set_goal_light(active: bool) -> void:
+	if _exiting or not is_inside_tree():
+		return
 	if _final_stretch == null:
 		return
 	if _goal_light_tween != null:
@@ -453,6 +490,19 @@ func _set_goal_light(active: bool) -> void:
 	var target := Color.WHITE if active else Color(0.78, 0.74, 0.82, 0.72)
 	_goal_light_tween = create_tween()
 	_goal_light_tween.tween_property(_final_stretch, "modulate", target, 0.22)
+
+
+func _motion_hold_seconds() -> float:
+	var longest: float = RACER_MOVE_MIN_SECONDS
+	for index: int in RACERS.size():
+		var racer_id: String = RACERS[index]
+		var position: int = int(race_positions.get(racer_id, 0))
+		var previous_position: int = int(_previous_positions.get(racer_id, position))
+		var distance: int = absi(position - previous_position)
+		var move_seconds: float = clampf(RACER_MOVE_MIN_SECONDS + float(distance) * 0.035, RACER_MOVE_MIN_SECONDS, RACER_MOVE_MAX_SECONDS)
+		var stagger_seconds: float = minf(float(index) * RACER_MOVE_STAGGER_SECONDS, RACER_MOVE_STAGGER_MAX_SECONDS)
+		longest = maxf(longest, move_seconds + stagger_seconds)
+	return longest + 0.06
 
 
 func _make_race_gate(text: String, node_name: String, _color: Color) -> Control:
@@ -572,13 +622,16 @@ func _layout_racers(center_x: float, lane_width: float, animate_racers: bool) ->
 		if animate_racers and marker.position != target:
 			var movement := create_tween().set_parallel(true)
 			movement.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
-			movement.tween_property(marker, "position", target, clampf(0.26 + float(distance) * 0.045, 0.30, 0.52))
+			var move_seconds: float = clampf(RACER_MOVE_MIN_SECONDS + float(distance) * 0.035, RACER_MOVE_MIN_SECONDS, RACER_MOVE_MAX_SECONDS)
+			var stagger_seconds: float = minf(float(RACERS.find(racer_id)) * RACER_MOVE_STAGGER_SECONDS, RACER_MOVE_STAGGER_MAX_SECONDS)
+			movement.tween_property(marker, "position", target, move_seconds).set_delay(stagger_seconds)
 			if selected or racer_id == _winner_racer:
 				marker.z_index = 18 if racer_id == _winner_racer else 12
 			var visual := _visuals[racer_id] as Control
 			var base_scale := 1.20 if selected and _spectator_focus else (1.13 if selected else 1.0)
 			visual.scale = Vector2.ONE * base_scale
 			var bounce := create_tween()
+			bounce.tween_interval(stagger_seconds)
 			var squash := clampf(1.04 + float(distance) * 0.012, 1.05, 1.14)
 			bounce.tween_property(visual, "scale", Vector2(squash, 2.0 - squash) * base_scale, 0.18)
 			bounce.tween_property(visual, "scale", Vector2.ONE * base_scale, 0.20)

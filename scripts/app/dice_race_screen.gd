@@ -4,6 +4,10 @@ extends Control
 signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
+const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
+const CasinoFeelFXScript = preload("res://scripts/ui/casino_feel_fx.gd")
+const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
+const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const OrientationScript = preload("res://scripts/game/dice_race_orientation.gd")
 const RaceScript = preload("res://scripts/game/dice_race_model.gd")
 const TrackViewScript = preload("res://scripts/app/dice_race_track_view.gd")
@@ -39,6 +43,18 @@ const RACER_ART_PATHS := {
 }
 const BET_AMOUNTS := [10, 20, 50]
 const SPIN_STEP_SECONDS := 0.085
+const FACILITY_ID := "dice_race"
+const MAX_COAST_STEPS := 9
+const COAST_STEP_SECONDS := 0.04
+# Resolve the persisted roll early enough that a resumed game is never stuck
+# behind the visual dice sequence. TrackView owns the 300–450ms movement
+# presentation that follows this model update, so the complete turn still
+# lands in the intended ~1.2–1.5s window.
+const MIN_ROLL_PRESENTATION_SECONDS: float = 0.86
+const FINAL_ROLL_EXTRA_SECONDS: float = 0.14
+const PHOTO_FINISH_HOLD_SECONDS: float = 0.48
+const RESULT_CHIP_COUNT_SECONDS: float = 0.50
+const RESULT_STAGE_PAUSE_SECONDS: float = 0.16
 const DIRECTION_LABELS := {
 	"top": "上", "bottom": "下", "front": "手前",
 	"back": "奥", "left": "左", "right": "右",
@@ -48,6 +64,10 @@ const OPPOSITE_RACER_PAIRS := [
 	["duck", "dinosaur", "↔"],
 	["camel", "robot", "↔"],
 ]
+
+## Isolated deterministic harnesses set this before instantiation. Runtime
+## leaves it false so the Las Vegas BGM/SFX continue to play normally.
+static var suppress_audio_for_tests: bool = false
 
 const GOLD := Color("#f2bf4c")
 const GOLD_LIGHT := Color("#ffe6a0")
@@ -67,6 +87,11 @@ var orientation_index := 0
 var current_assignments: Dictionary = {}
 var wager_committed := false
 var result_recorded := false
+var game_id: String = ""
+var pending_roll: Dictionary = {}
+var settled: bool = false
+var queued_coast_steps: int = -1
+var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 var chip_label: Label
 var bet_label: Label
@@ -104,18 +129,68 @@ var racer_buttons := {}
 var amount_buttons := {}
 var bet_portrait: TextureRect
 var race_fx_layer: Control
+var result_view: VBoxContainer
+var result_panel: PanelContainer
+var result_rank_label: Label
+var result_outcome_label: Label
+var result_bet_value: Label
+var result_return_value: Label
+var result_net_value: Label
+var result_chip_delta_label: Label
+var result_detail_label: Label
+var again_button: Button
+var change_bet_button: Button
+var result_exit_button: Button
+var casino_back_button: Button
+var casino_feel_fx: CasinoFeelFX
 var final_stretch_shown := false
 var spectator_layout_tween: Tween
+var presentation_phase: String = "idle"
+var stage_trace: Array[String] = []
+var presentation_locked: bool = false
+var exiting: bool = false
+var result_balance_before: int = 0
+var result_balance_after: int = 0
+var result_presentation_started: bool = false
+var tracked_tweens: Array[Tween] = []
+var photo_overlay: PanelContainer
+
+func _set_phase(phase: String) -> void:
+	presentation_phase = phase
+	stage_trace.append(phase)
+	if stage_trace.size() > 24:
+		stage_trace.pop_front()
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	get_node("/root/BgmManager").call("play_dice_race")
-	var ui_sfx := get_node_or_null("/root/UiSfxManager")
-	if ui_sfx != null:
-		ui_sfx.call("set_stage", &"las_vegas")
+	if not suppress_audio_for_tests:
+		var bgm := get_node_or_null("/root/BgmManager")
+		if bgm != null:
+			bgm.call("play_dice_race")
+		var ui_sfx := get_node_or_null("/root/UiSfxManager")
+		if ui_sfx != null:
+			ui_sfx.call("set_stage", &"las_vegas")
 	orientations = OrientationScript.all_orientations()
+	rng.randomize()
 	_build_ui()
-	_show_bet_select()
+	_resume_or_show_setup()
+
+func _exit_tree() -> void:
+	exiting = true
+	presentation_locked = true
+	if spectator_layout_tween != null:
+		spectator_layout_tween.kill()
+		spectator_layout_tween = null
+	for tween: Tween in tracked_tweens:
+		if is_instance_valid(tween):
+			tween.kill()
+	tracked_tweens.clear()
+	for node: Node in get_children():
+		if node is CanvasItem:
+			(node as CanvasItem).visible = false
+	if casino_feel_fx != null and is_instance_valid(casino_feel_fx):
+		casino_feel_fx.queue_free()
+	casino_feel_fx = null
 
 func _process(delta: float) -> void:
 	if not spinning or orientations.is_empty():
@@ -170,6 +245,7 @@ func _build_ui() -> void:
 	setup_view.add_theme_constant_override("separation", 8)
 	root.add_child(setup_view)
 	_build_course_overview(setup_view)
+	CasinoHowTo3StepsScript.build(setup_view, FACILITY_ID, _how_to_steps())
 	_build_bet_panel(setup_view)
 
 	race_view = VBoxContainer.new()
@@ -182,7 +258,7 @@ func _build_ui() -> void:
 	_build_spectator_strip(race_view)
 	_build_dice_console(race_view)
 
-	roll_button = _button("ROLL", true)
+	roll_button = _button("サイコロを振る", true)
 	roll_button.name = "RollStopButton"
 	roll_button.custom_minimum_size.y = 92
 	roll_button.add_theme_font_size_override("font_size", 32)
@@ -196,11 +272,18 @@ func _build_ui() -> void:
 	effect_layer.z_index = 24
 	add_child(effect_layer)
 	race_fx_layer = effect_layer
+	casino_feel_fx = CasinoFeelFXScript.new()
+	casino_feel_fx.name = "CasinoFeelFX"
+	casino_feel_fx.audio_enabled = not suppress_audio_for_tests
+	add_child(casino_feel_fx)
+	_build_result_view(effect_layer)
 
 	var back := _button("カジノへ戻る")
 	back.name = "CasinoBackButton"
 	back.custom_minimum_size.y = 48
 	back.pressed.connect(_on_back_pressed)
+	CasinoBackButton.configure(back)
+	casino_back_button = back
 	root.add_child(back)
 
 
@@ -218,10 +301,11 @@ func _build_header(root: VBoxContainer) -> void:
 	title.add_theme_constant_override("outline_size", 5)
 	row.add_child(title)
 	var chip_panel := PanelContainer.new()
-	chip_panel.custom_minimum_size.x = 118
+	chip_panel.custom_minimum_size.x = 146
 	chip_panel.add_theme_stylebox_override("panel", _panel(Color("#211c19"), GOLD, 16, 2))
-	chip_label = _label("CHIP 0", 16, Color("#fff4cd"))
+	chip_label = _label("CASINO CHIP\n0", 14, Color("#fff4cd"))
 	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	chip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	chip_panel.add_child(chip_label)
 	row.add_child(chip_panel)
 
@@ -234,7 +318,7 @@ func _build_status_row(root: VBoxContainer) -> void:
 	bet_label = bet_box.label
 	bet_portrait = bet_box.portrait
 	row.add_child(bet_box.panel)
-	var roll_box := _hud_box("ROLL")
+	var roll_box := _hud_box("サイコロ")
 	roll_count_label = roll_box.label
 	row.add_child(roll_box.panel)
 	win_label = _label("", 1, Color.TRANSPARENT)
@@ -268,6 +352,13 @@ func _hud_box(caption: String, portrait_racer: String = "") -> Dictionary:
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	value_row.add_child(value)
 	return {"panel": panel, "label": value, "portrait": portrait}
+
+func _how_to_steps() -> Array[Dictionary]:
+	return [
+		{"action": "レーサーを選ぶ", "copy": "進ませたい動物とベットを選ぼう"},
+		{"action": "サイコロを振る", "copy": "出た目でレーサーが進む"},
+		{"action": "ゴールを見届ける", "copy": "選んだレーサーが上位なら配当"},
+	]
 
 func _build_course_overview(root: VBoxContainer) -> void:
 	var overview := PanelContainer.new()
@@ -310,11 +401,11 @@ func _build_course_overview(root: VBoxContainer) -> void:
 		portrait.custom_minimum_size = Vector2(100, 100)
 		portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		roster.add_child(portrait)
-	var route := _label("24 GOAL · 狐火 -2 · 急流 +3 · 丸太 STOP", 20, Color("#fff2d2"))
+	var route := _label("24 ゴール · 狐火 -2 · 急流 +3 · 丸太でストップ", 20, Color("#fff2d2"))
 	route.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	route.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(route)
-	var note := _label("推しを選んで、欲しい目を狙え", 19, Color("#f5cf78"))
+	var note := _label("推しを選んで、欲しい目を狙え\n「ここで止める」の後は惰性回転で確定", 19, Color("#f5cf78"))
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(note)
 
@@ -322,7 +413,11 @@ func _build_course_overview(root: VBoxContainer) -> void:
 func _build_track(root: VBoxContainer) -> void:
 	track_frame = PanelContainer.new()
 	track_frame.name = "VerticalRaceViewport"
-	track_frame.custom_minimum_size.y = 560
+	# The 720×1280 target has only a little more vertical room than the
+	# phone-safe 360×800 layout after logical scaling. Keep the course and die
+	# console compact enough that the roll and casino-return CTAs never fall
+	# below the fold; 360×800 still renders at the same logical 720-wide scale.
+	track_frame.custom_minimum_size.y = 540
 	track_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	track_frame.size_flags_stretch_ratio = 1.6
 	track_frame.add_theme_stylebox_override("panel", _panel(Color.TRANSPARENT, Color.TRANSPARENT, 0, 0))
@@ -400,7 +495,7 @@ func _build_ranking(root: VBoxContainer) -> void:
 func _build_dice_console(root: VBoxContainer) -> void:
 	dice_console = PanelContainer.new()
 	dice_console.name = "DiceDirectionConsole"
-	dice_console.custom_minimum_size.y = 330
+	dice_console.custom_minimum_size.y = 300
 	dice_console.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	dice_console.size_flags_stretch_ratio = 1.0
 	dice_console.add_theme_stylebox_override("panel", _panel(Color("#171221"), Color("#7a5a31"), 12, 1))
@@ -561,21 +656,203 @@ func _build_bet_panel(root: VBoxContainer) -> void:
 		button.pressed.connect(_select_bet.bind(amount))
 		amount_row.add_child(button)
 		amount_buttons[amount] = button
-	start_button = _button("RACE START", true)
+	start_button = _button("ゲーム開始", true)
 	start_button.name = "RaceStartButton"
 	start_button.custom_minimum_size.y = 64
-	start_button.add_theme_font_size_override("font_size", 22)
+	start_button.add_theme_font_size_override("font_size", 30)
 	start_button.pressed.connect(_start_race)
 	bet_panel.add_child(start_button)
 
+
+func _build_result_view(effect_layer: Control) -> void:
+	var center := CenterContainer.new()
+	center.name = "RaceResultCenter"
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Keep the staged result legible above the celebratory WinCard/confetti
+	# layer. The card remains a lightweight compatibility cue, while this
+	# panel is the authoritative result surface for the new flow.
+	center.z_index = 32
+	effect_layer.add_child(center)
+	result_panel = PanelContainer.new()
+	result_panel.name = "RaceResultPanel"
+	result_panel.custom_minimum_size = Vector2(324, 0)
+	result_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	result_panel.add_theme_stylebox_override("panel", _panel(Color("#241735f7"), GOLD, 18, 3))
+	result_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	result_panel.visible = false
+	center.add_child(result_panel)
+
+	result_view = VBoxContainer.new()
+	result_view.name = "RaceResultView"
+	result_view.add_theme_constant_override("separation", 6)
+	result_view.visible = false
+	result_panel.add_child(result_view)
+	var title := _label("レース結果", 30, GOLD_LIGHT)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_view.add_child(title)
+	result_rank_label = _label("最終順位  ?位", 36, Color.WHITE)
+	result_rank_label.name = "ResultRankLabel"
+	result_rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_view.add_child(result_rank_label)
+	result_outcome_label = _label("", 34, GOLD_LIGHT)
+	result_outcome_label.name = "ResultOutcomeLabel"
+	result_outcome_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_view.add_child(result_outcome_label)
+	result_detail_label = _label("", 18, Color("#e8d8c4"))
+	result_detail_label.name = "ResultDetailLabel"
+	result_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	result_view.add_child(result_detail_label)
+	var metrics := HBoxContainer.new()
+	metrics.name = "ResultMetrics"
+	metrics.add_theme_constant_override("separation", 4)
+	result_view.add_child(metrics)
+	var bet_stat := _result_stat_box("BET")
+	result_bet_value = bet_stat.get("label") as Label
+	metrics.add_child(bet_stat.get("panel") as PanelContainer)
+	var return_stat := _result_stat_box("RETURN")
+	result_return_value = return_stat.get("label") as Label
+	metrics.add_child(return_stat.get("panel") as PanelContainer)
+	var net_stat := _result_stat_box("NET")
+	result_net_value = net_stat.get("label") as Label
+	metrics.add_child(net_stat.get("panel") as PanelContainer)
+	result_chip_delta_label = _label("残高  0 CHIP", 18, GOLD_LIGHT)
+	result_chip_delta_label.name = "ResultChipDeltaLabel"
+	result_chip_delta_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_chip_delta_label.visible = false
+	result_view.add_child(result_chip_delta_label)
+
+	again_button = _button("もう一度遊ぶ", true)
+	again_button.name = "AgainButton"
+	again_button.custom_minimum_size.y = 96
+	again_button.add_theme_font_size_override("font_size", 30)
+	again_button.pressed.connect(_on_again_result)
+	result_view.add_child(again_button)
+	change_bet_button = _button("ベットを変える")
+	change_bet_button.name = "ChangeBetButton"
+	change_bet_button.custom_minimum_size.y = 88
+	change_bet_button.add_theme_font_size_override("font_size", 22)
+	change_bet_button.pressed.connect(_on_change_bet_result)
+	result_view.add_child(change_bet_button)
+	result_exit_button = _button("カジノへ戻る")
+	result_exit_button.name = "ResultExitButton"
+	result_exit_button.custom_minimum_size.y = 88
+	result_exit_button.add_theme_font_size_override("font_size", 22)
+	CasinoBackButton.configure(result_exit_button)
+	result_exit_button.pressed.connect(_on_result_exit)
+	result_view.add_child(result_exit_button)
+
+	_set_result_controls_enabled(false)
+
+
+func _result_stat_box(caption: String) -> Dictionary:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.custom_minimum_size.y = 58
+	panel.add_theme_stylebox_override("panel", _panel(Color("#30233e"), Color("#80643c"), 10, 1))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", -3)
+	panel.add_child(box)
+	var cap := _label(caption, 14, Color("#cbbba8"))
+	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(cap)
+	var value := _label("-", 20, GOLD_LIGHT)
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(value)
+	return {"panel": panel, "label": value}
+
+
+func _set_result_controls_enabled(enabled: bool) -> void:
+	if again_button != null:
+		again_button.disabled = not enabled
+	if change_bet_button != null:
+		change_bet_button.disabled = not enabled
+	if result_exit_button != null:
+		result_exit_button.disabled = not enabled
+
+func _resume_or_show_setup() -> void:
+	var active: Dictionary = CasinoBankScript.active_game(FACILITY_ID)
+	if active.is_empty():
+		_show_bet_select()
+		return
+	game_id = str(active.get("game_id", ""))
+	var session: Dictionary = active.get("session", {}) as Dictionary
+	race = _normalise_race(session, int(active.get("bet", selected_bet)))
+	selected_racer = str(race.get("bet_racer", selected_racer))
+	selected_bet = int(race.get("bet_amount", active.get("bet", selected_bet)))
+	wager_committed = true
+	settled = false
+	result_recorded = false
+	pending_roll = _extract_pending_roll(race)
+	if pending_roll.is_empty():
+		pending_roll = _extract_pending_roll(active)
+	setup_view.visible = false
+	race_view.visible = true
+	final_stretch_shown = false
+	track_view.reset_camera()
+	_set_spectator_focus(false, true)
+	roll_button.disabled = not pending_roll.is_empty()
+	status_label.text = "%sのレースを再開" % RACER_LABELS.get(selected_racer, selected_racer)
+	_refresh_all()
+	if bool(race.get("finished", false)):
+		call_deferred("_finish_race")
+	elif not pending_roll.is_empty():
+		call_deferred("_resume_pending_roll")
+
+func _normalise_race(source: Dictionary, fallback_bet: int) -> Dictionary:
+	var candidate: Dictionary = source.duplicate(true)
+	if candidate.has("race") and candidate["race"] is Dictionary:
+		candidate = (candidate["race"] as Dictionary).duplicate(true)
+	var racer_id: String = str(candidate.get("bet_racer", selected_racer))
+	var bet_amount: int = maxi(0, int(candidate.get("bet_amount", candidate.get("bet", fallback_bet))))
+	var fresh: Dictionary = RaceScript.new_race(racer_id, bet_amount)
+	for key: Variant in candidate.keys():
+		fresh[str(key)] = candidate[key]
+	return fresh
+
+func _extract_pending_roll(source: Dictionary) -> Dictionary:
+	var values: Variant = source.get("pending_rolls", [])
+	if values is Array and not (values as Array).is_empty() and (values as Array)[0] is Dictionary:
+		return ((values as Array)[0] as Dictionary).duplicate(true)
+	return {}
+
+func _resume_pending_roll() -> void:
+	if pending_roll.is_empty() or not is_inside_tree():
+		return
+	await _play_persisted_roll(pending_roll)
+
 func _show_bet_select() -> void:
+	if exiting:
+		return
+	_clear_race_effects()
+	if roll_button != null:
+		if roll_button.pressed.is_connected(_restart_after_result):
+			roll_button.pressed.disconnect(_restart_after_result)
+		if not roll_button.pressed.is_connected(_on_roll_stop):
+			roll_button.pressed.connect(_on_roll_stop)
+		roll_button.visible = true
+		roll_button.text = "サイコロを振る"
+		roll_button.disabled = false
+		_apply_roll_button_style(false)
 	race = RaceScript.new_race()
+	game_id = ""
+	pending_roll = {}
+	settled = false
 	spinning = false
+	presentation_locked = false
 	wager_committed = false
 	result_recorded = false
 	current_assignments.clear()
 	setup_view.visible = true
 	race_view.visible = false
+	if result_panel != null:
+		result_panel.visible = false
+	if result_view != null:
+		result_view.visible = false
+	_set_result_controls_enabled(false)
+	if casino_back_button != null:
+		casino_back_button.visible = true
 	final_stretch_shown = false
 	if minimap != null:
 		minimap.set_final_stretch(false)
@@ -583,13 +860,36 @@ func _show_bet_select() -> void:
 	_refresh_bet_buttons()
 	_refresh_all()
 
+
+func _clear_race_effects() -> void:
+	if spectator_layout_tween != null:
+		spectator_layout_tween.kill()
+		spectator_layout_tween = null
+	for tween: Tween in tracked_tweens:
+		if is_instance_valid(tween):
+			tween.kill()
+	tracked_tweens.clear()
+	if race_fx_layer == null or not is_instance_valid(race_fx_layer):
+		photo_overlay = null
+		return
+	var result_center := result_panel.get_parent() if result_panel != null else null
+	for child: Node in race_fx_layer.get_children():
+		if child == result_center:
+			continue
+		child.queue_free()
+	photo_overlay = null
+
 func _select_racer(racer_id: String) -> void:
+	if presentation_locked or exiting or wager_committed:
+		return
 	selected_racer = racer_id
 	_play_ui_sfx(&"select", false)
 	_refresh_bet_buttons()
 	_refresh_assignment_ui()
 
 func _select_bet(amount: int) -> void:
+	if presentation_locked or exiting or wager_committed:
+		return
 	selected_bet = amount
 	_play_ui_sfx(&"select", false)
 	_refresh_bet_buttons()
@@ -613,12 +913,29 @@ func _refresh_bet_buttons() -> void:
 		status_label.text = "CHIPが足りない。通常ステージでCOINを持ち帰ろう。"
 
 func _start_race() -> void:
-	if not CasinoBankScript.spend_chips(selected_bet):
+	if presentation_locked:
+		return
+	_set_phase("start")
+	presentation_locked = true
+	if casino_feel_fx != null:
+		casino_feel_fx.press_button(start_button, true)
+	var initial_race: Dictionary = RaceScript.new_race(selected_racer, selected_bet)
+	initial_race["pending_rolls"] = []
+	var receipt: Dictionary = CasinoBankScript.begin_game(FACILITY_ID, selected_bet, initial_race)
+	if not bool(receipt.get("ok", false)):
+		if bool(receipt.get("already_active", false)):
+			presentation_locked = false
+			_resume_or_show_setup()
+			return
 		_play_ui_sfx(&"blocked", false)
 		_refresh_bet_buttons()
+		presentation_locked = false
 		return
 	_play_ui_sfx(&"start", false)
-	race = RaceScript.new_race(selected_racer, selected_bet)
+	race = initial_race
+	game_id = str(receipt.get("game_id", ""))
+	pending_roll = {}
+	settled = false
 	wager_committed = true
 	result_recorded = false
 	final_stretch_shown = false
@@ -633,28 +950,103 @@ func _start_race() -> void:
 	orientation_index = int(floor(spin_elapsed / SPIN_STEP_SECONDS)) % maxi(orientations.size(), 1)
 	current_assignments = OrientationScript.values_for_racers(orientations[orientation_index])
 	_refresh_all()
+	# Keep the setup-to-race handoff responsive: lock through one frame so the
+	# first CTA feels deliberate without delaying automated/resume callers.
+	await get_tree().process_frame
+	if exiting or not is_inside_tree():
+		return
+	presentation_locked = false
+	_set_phase("ready")
 	_show_race_banner("YOUR BET  %s  %d CHIP" % [RACER_LABELS[selected_racer], selected_bet], GOLD_LIGHT, Color("#3f2408"), 0.72, "YourBetBanner")
 
 func _on_roll_stop() -> void:
+	if presentation_locked or exiting:
+		return
 	if not wager_committed or bool(race.get("finished", false)):
 		return
 	if not spinning:
 		_set_spectator_focus(false)
 		spinning = true
+		if casino_feel_fx != null:
+			casino_feel_fx.play_dice_roll()
 		_play_ui_sfx(&"start", false)
-		roll_button.text = "STOP!"
+		roll_button.text = "ここで止める"
 		_apply_roll_button_style(true)
 		status_label.text = "%s面  %dを狙え！" % [RACER_LABELS[selected_racer], int(current_assignments.get(selected_racer, 0))]
 		return
 	spinning = false
+	presentation_locked = true
+	if casino_feel_fx != null:
+		casino_feel_fx.play_dice_land(true)
 	_play_ui_sfx(&"stop", false)
-	roll_button.text = "ROLL"
+	roll_button.text = "サイコロを振る"
 	roll_button.disabled = true
 	_apply_roll_button_style(false)
-	current_assignments = OrientationScript.values_for_racers(orientations[orientation_index])
-	var stopped_assignments := current_assignments.duplicate()
+	var start_index: int = orientation_index
+	var coast_steps: int = queued_coast_steps if queued_coast_steps in range(0, MAX_COAST_STEPS + 1) else rng.randi_range(0, MAX_COAST_STEPS)
+	queued_coast_steps = -1
+	var final_index: int = (start_index + coast_steps) % orientations.size()
+	var final_assignments: Dictionary = OrientationScript.values_for_racers(orientations[final_index])
+	pending_roll = {
+		"kind": "orientation",
+		"start_index": start_index,
+		"coast_steps": coast_steps,
+		"orientation_index": final_index,
+		"assignments": final_assignments.duplicate(true),
+	}
+	race["pending_rolls"] = [pending_roll.duplicate(true)]
+	var update_receipt: Dictionary = CasinoBankScript.update_game(FACILITY_ID, race, game_id)
+	if not bool(update_receipt.get("ok", false)):
+		status_label.text = "保存できませんでした。もう一度「ここで止める」を押してください。"
+		roll_button.disabled = false
+		presentation_locked = false
+		return
+	await _play_persisted_roll(pending_roll)
+
+func _play_persisted_roll(pending: Dictionary) -> void:
+	if exiting:
+		return
+	presentation_locked = true
+	roll_button.disabled = true
+	_set_phase("roll")
+	if pending.is_empty() or orientations.is_empty():
+		return
+	var start_index: int = posmod(int(pending.get("start_index", orientation_index)), orientations.size())
+	var coast_steps: int = clampi(int(pending.get("coast_steps", 0)), 0, MAX_COAST_STEPS)
+	status_label.text = "ここで止める！ 惰性回転を見届けよう"
+	for step: int in range(1, coast_steps + 1):
+		status_label.text = "惰性回転  %d / %d" % [step, coast_steps]
+		orientation_index = (start_index + step) % orientations.size()
+		current_assignments = OrientationScript.values_for_racers(orientations[orientation_index])
+		_refresh_assignment_ui()
+		_refresh_physical_die(COAST_STEP_SECONDS)
+		await get_tree().create_timer(COAST_STEP_SECONDS).timeout
+		if not is_inside_tree():
+			return
+	# Keep a readable dice-stop pause before the track resolves. The persisted
+	# orientation is already chosen; this wait is presentation-only and resolves
+	# the model before the longer track movement cue begins.
+	var is_final_roll: bool = int(race.get("roll_count", 0)) >= 5
+	var target_seconds: float = MIN_ROLL_PRESENTATION_SECONDS + (FINAL_ROLL_EXTRA_SECONDS if is_final_roll else 0.0)
+	var coast_seconds: float = float(coast_steps) * COAST_STEP_SECONDS
+	await get_tree().create_timer(maxf(0.10, target_seconds - coast_seconds)).timeout
+	if exiting or not is_inside_tree():
+		return
+	_set_phase("movement")
+	orientation_index = posmod(int(pending.get("orientation_index", start_index)), orientations.size())
+	current_assignments = (pending.get("assignments", {}) as Dictionary).duplicate(true)
+	if current_assignments.is_empty():
+		current_assignments = OrientationScript.values_for_racers(orientations[orientation_index])
+	await _resolve_persisted_roll(current_assignments)
+
+func _resolve_persisted_roll(stopped_assignments: Dictionary) -> void:
+	if exiting:
+		return
 	var was_photo_finish := not (race.get("photo_finish_candidates", []) as Array).is_empty()
-	race = RaceScript.apply_roll(race, current_assignments)
+	race = RaceScript.apply_roll(race, stopped_assignments)
+	race["pending_rolls"] = []
+	pending_roll = {}
+	CasinoBankScript.update_game(FACILITY_ID, race, game_id)
 	_play_roll_result_sfx()
 	status_label.text = "PHOTO FINISH判定！" if was_photo_finish else "%s、行け！" % RACER_LABELS[selected_racer]
 	_set_spectator_focus(true)
@@ -665,19 +1057,22 @@ func _on_roll_stop() -> void:
 	if not is_inside_tree():
 		return
 	_refresh_ranking()
+	_set_phase("rank")
 	_refresh_race_intel()
 	_show_selected_movement_event()
 	_maybe_show_final_stretch()
 	if bool(race.get("finished", false)):
+		_set_phase("final")
 		_show_race_banner("GOAL!", GOLD_LIGHT, Color("#3f2408"), 0.22, "GoalMomentBanner")
 		await get_tree().create_timer(0.28).timeout
 		if is_inside_tree():
 			_finish_race()
 		return
-	_after_roll_resolution()
-	if not bool(race.get("finished", false)) and (race.get("photo_finish_candidates", []) as Array).is_empty():
+	await _after_roll_resolution()
+	if not bool(race.get("finished", false)):
 		_set_spectator_focus(false)
 		roll_button.disabled = false
+		presentation_locked = false
 
 func _after_roll_resolution() -> void:
 	if bool(race.get("finished", false)):
@@ -685,49 +1080,280 @@ func _after_roll_resolution() -> void:
 		return
 	var photo: Array = race.get("photo_finish_candidates", [])
 	if not photo.is_empty():
+		_set_phase("photo")
 		status_label.text = "PHOTO FINISH！ 同着レーサーの数字で決着。"
+		await _present_photo_finish(photo)
+		if exiting or not is_inside_tree():
+			return
+		# The model intentionally keeps this tie unresolved. The next ROLL
+		# compares the tied racers' next die values; never auto-resolve here.
+		_set_phase("photo_wait")
+		roll_button.text = "サイコロを振る"
+		status_label.text = "同着決着。サイコロを振って数字を比べよう。"
 		return
 	if bool(race.get("cashout_offered", false)):
 		race = RaceScript.ride_on(race)
 		status_label.text = "3投目　まだ届く！"
 		_refresh_all()
 
+
+func _present_photo_finish(candidates: Array) -> void:
+	if exiting or not is_inside_tree() or race_fx_layer == null:
+		return
+	if photo_overlay != null and is_instance_valid(photo_overlay):
+		photo_overlay.queue_free()
+	photo_overlay = PanelContainer.new()
+	photo_overlay.name = "PhotoFinishOverlay"
+	photo_overlay.custom_minimum_size = Vector2(300, 108)
+	photo_overlay.size = Vector2(300, 108)
+	photo_overlay.position = Vector2((race_fx_layer.size.x - 300.0) * 0.5, maxf(148.0, race_fx_layer.size.y * 0.26))
+	photo_overlay.pivot_offset = photo_overlay.size * 0.5
+	photo_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	photo_overlay.add_theme_stylebox_override("panel", _panel(Color("#4a2038f2"), GOLD_LIGHT, 16, 3))
+	var body := VBoxContainer.new()
+	body.alignment = BoxContainer.ALIGNMENT_CENTER
+	body.add_theme_constant_override("separation", 0)
+	photo_overlay.add_child(body)
+	var title := _label("PHOTO FINISH", 26, GOLD_LIGHT)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.add_child(title)
+	var names: Array[String] = []
+	for value: Variant in candidates:
+		var id := str(value)
+		if RACER_LABELS.has(id):
+			names.append(RACER_LABELS[id])
+	var copy := _label("同着：%s\n次のサイコロで決着" % "・".join(names), 16, Color("#fff1d6"))
+	copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.add_child(copy)
+	race_fx_layer.add_child(photo_overlay)
+	photo_overlay.scale = Vector2(0.76, 0.76)
+	photo_overlay.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	_play_ui_sfx(&"stop", false)
+	if casino_feel_fx != null:
+		casino_feel_fx.press_button(null, true)
+	var tween := create_tween()
+	tracked_tweens.append(tween)
+	tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(photo_overlay, "scale", Vector2.ONE, 0.18)
+	tween.parallel().tween_property(photo_overlay, "modulate", Color.WHITE, 0.12)
+	tween.tween_interval(PHOTO_FINISH_HOLD_SECONDS)
+	tween.tween_property(photo_overlay, "modulate:a", 0.0, 0.12)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(photo_overlay):
+			photo_overlay.queue_free()
+		photo_overlay = null
+	)
+	await tween.finished
+	if exiting or not is_inside_tree():
+		return
+
 func _finish_race() -> void:
+	if exiting:
+		return
+	if not bool(race.get("finished", false)):
+		return
+	if result_recorded:
+		# Deferred goal callbacks and duplicate taps must not settle twice.
+		if result_panel != null and not result_panel.visible:
+			_show_result_view()
+		return
+	presentation_locked = true
+	_set_phase("result")
 	spinning = false
 	roll_button.disabled = true
-	var winner := str(race.get("winner", ""))
-	var payout := RaceScript.winning_payout(race)
-	_play_ui_sfx(&"complete" if winner == selected_racer else &"error", true)
-	if payout > 0:
-		CasinoBankScript.add_chips(payout)
-		status_label.text = "%s WIN！ %d CHIP獲得！" % [RACER_LABELS.get(winner, winner), payout]
-		_play_win_fx(RACER_ART_PATHS.get(winner, ""), RACER_LABELS.get(winner, winner), payout)
-	elif bool(race.get("cashout_taken", false)):
-		status_label.text = "%s WIN。CASH OUT済み。" % RACER_LABELS.get(winner, winner)
-	else:
-		status_label.text = "%s WIN。次は当てよう！" % RACER_LABELS.get(winner, winner)
-	if not result_recorded:
-		CasinoBankScript.record_dice_race(winner == selected_racer and payout > 0, payout)
-		result_recorded = true
-	roll_button.text = "もう一度"
-	_apply_roll_button_style(false)
-	roll_button.disabled = false
+	var winner: String = str(race.get("winner", ""))
+	var final_rank: int = RaceScript.final_rank_for_racer(race, selected_racer)
+	var payout: int = RaceScript.final_payout(race)
+	var balance_before: int = CasinoBankScript.balance()
+	var receipt: Dictionary = CasinoBankScript.settle_game(FACILITY_ID, payout, {
+		"winner": winner,
+		"bet_racer": selected_racer,
+		"rank": final_rank,
+		"won": winner == selected_racer,
+		"payout": payout,
+	}, game_id)
+	if bool(receipt.get("already_settled", false)):
+		payout = int(receipt.get("payout", payout))
+	settled = bool(receipt.get("ok", false)) or bool(receipt.get("already_settled", false))
+	if not settled:
+		status_label.text = "精算を保存できませんでした。"
+		presentation_locked = false
+		return
+	result_balance_after = CasinoBankScript.balance()
+	wager_committed = false
+	result_recorded = true
+	# Keep the legacy RollStopButton route alive for saved callers and older
+	# harnesses that emit it to restart after a result. The visible result CTAs
+	# remain the primary controls; _show_bet_select restores _on_roll_stop.
 	if roll_button.pressed.is_connected(_on_roll_stop):
 		roll_button.pressed.disconnect(_on_roll_stop)
-	roll_button.pressed.connect(_restart_after_result, CONNECT_ONE_SHOT)
+	if not roll_button.pressed.is_connected(_restart_after_result):
+		roll_button.pressed.connect(_restart_after_result)
+	# Keep the legacy hidden RollStopButton route descriptive for saved callers
+	# and older harnesses; the visible result panel exposes the three explicit
+	# Japanese CTAs and hides this compatibility control.
+	roll_button.text = "次のレースを選ぶ"
+	_apply_roll_button_style(false)
+	roll_button.disabled = false
+	_play_ui_sfx(&"complete" if winner == selected_racer else &"error", true)
+	var net: int = payout - selected_bet
+	var outcome: String = _result_outcome_for_net(net)
+	status_label.text = "%s · 最終%d位 · 受け取り %d CHIP（BET込み） · 収支 %+d CHIP" % [outcome, final_rank, payout, net]
+	result_balance_before = balance_before
+	if winner == selected_racer:
+		_play_win_fx(RACER_ART_PATHS.get(winner, ""), RACER_LABELS.get(winner, winner), payout)
 	_refresh_all()
 	if is_instance_valid(track_view):
 		track_view.set_winner_presentation(winner)
+	_show_result_view()
+
+
+func _show_result_view() -> void:
+	if exiting or result_panel == null or not is_inside_tree():
+		return
+	if result_presentation_started:
+		return
+	result_presentation_started = true
+	presentation_locked = true
+	var winner := str(race.get("winner", ""))
+	var final_rank: int = RaceScript.final_rank_for_racer(race, selected_racer)
+	var payout: int = int(RaceScript.final_payout(race))
+	var net: int = payout - selected_bet
+	var outcome: String = _result_outcome_for_net(net)
+	result_rank_label.text = "最終順位  %d位" % final_rank
+	result_outcome_label.text = outcome
+	var outcome_color := GOLD_LIGHT if outcome == "WIN" else (Color("#f7d58b") if outcome == "EVEN" else Color("#ff9a8e"))
+	result_outcome_label.add_theme_color_override("font_color", outcome_color)
+	result_detail_label.text = "%s  ·  %sのゴールを確認" % [RACER_LABELS.get(selected_racer, selected_racer), RACER_LABELS.get(winner, winner)]
+	result_bet_value.text = "%d CHIP" % selected_bet
+	result_return_value.text = "%d CHIP" % payout
+	result_net_value.text = "%+d CHIP" % net
+	result_chip_delta_label.text = "残高  %d CHIP" % result_balance_before
+	result_rank_label.visible = false
+	result_outcome_label.visible = false
+	result_detail_label.visible = false
+	result_bet_value.visible = false
+	result_return_value.visible = false
+	result_net_value.visible = false
+	result_chip_delta_label.visible = false
+	result_panel.visible = true
+	result_view.visible = true
+	# The staged result panel is the single source of truth after GOAL. Keep
+	# the legacy WinCard node available for older callers, but hide its inline
+	# copy so it cannot compete with the readable BET/RETURN/NET summary.
+	var legacy_win_card := race_fx_layer.find_child("WinCard", true, false) as Control if race_fx_layer != null else null
+	if legacy_win_card != null:
+		legacy_win_card.visible = false
+	_set_result_controls_enabled(false)
+	roll_button.visible = false
+	if casino_back_button != null:
+		casino_back_button.visible = false
+	_set_phase("result_rank")
+	call_deferred("_present_result_stages")
+
+
+func _present_result_stages() -> void:
+	if exiting or not is_inside_tree() or result_panel == null:
+		return
+	result_rank_label.visible = true
+	status_label.text = "最終順位を確認中..."
+	if casino_feel_fx != null:
+		casino_feel_fx.press_button(null, true)
+	await get_tree().create_timer(0.22).timeout
+	if exiting or not is_inside_tree():
+		return
+	_set_phase("result_outcome")
+	result_outcome_label.visible = true
+	status_label.text = "勝敗を確認中..."
+	if casino_feel_fx != null:
+		if result_outcome_label.text == "WIN":
+			casino_feel_fx.play_win_feedback()
+		elif result_outcome_label.text == "LOSS":
+			casino_feel_fx.play_lose_feedback()
+		else:
+			casino_feel_fx.press_button(null, true)
+	await get_tree().create_timer(RESULT_STAGE_PAUSE_SECONDS).timeout
+	if exiting or not is_inside_tree():
+		return
+	_set_phase("result_metrics")
+	result_detail_label.visible = true
+	result_bet_value.visible = true
+	result_return_value.visible = true
+	result_net_value.visible = true
+	status_label.text = "BET / RETURN / NET"
+	await get_tree().create_timer(RESULT_STAGE_PAUSE_SECONDS).timeout
+	if exiting or not is_inside_tree():
+		return
+	_set_phase("result_chip")
+	result_chip_delta_label.visible = true
+	await _animate_result_chip_count(RESULT_CHIP_COUNT_SECONDS)
+	if exiting or not is_inside_tree():
+		return
+	_set_phase("result_cta")
+	status_label.text = "結果を確認しました。次の遊び方を選ぼう。"
+	_set_result_controls_enabled(true)
+	presentation_locked = false
+	_set_phase("idle")
+
+
+func _animate_result_chip_count(duration: float) -> void:
+	if chip_label == null:
+		return
+	if casino_feel_fx != null:
+		casino_feel_fx.animate_chip_change(chip_label)
+	var from_value: int = result_balance_before
+	var to_value: int = result_balance_after
+	var steps: int = 10
+	for index: int in range(1, steps + 1):
+		if exiting or not is_inside_tree():
+			return
+		var value: int = roundi(lerpf(float(from_value), float(to_value), float(index) / float(steps)))
+		chip_label.text = "CASINO CHIP\n%d" % value
+		result_chip_delta_label.text = "残高  %d CHIP" % value
+		await get_tree().create_timer(duration / float(steps)).timeout
+
+
+func _result_outcome_for_net(net: int) -> String:
+	# Preserve the existing Race semantics: a positive return is WIN, a
+	# break-even return is EVEN, and a negative return is LOSS. Feel polish must
+	# never reinterpret a payout as a different game result.
+	return "WIN" if net > 0 else ("EVEN" if net == 0 else "LOSS")
+
+
+func _on_again_result() -> void:
+	if exiting or presentation_locked or not result_recorded:
+		return
+	_play_ui_sfx(&"retry", false)
+	_show_bet_select()
+	result_presentation_started = false
+
+
+func _on_change_bet_result() -> void:
+	if exiting or presentation_locked or not result_recorded:
+		return
+	_play_ui_sfx(&"select", false)
+	_show_bet_select()
+	result_presentation_started = false
+
+
+func _on_result_exit() -> void:
+	if exiting or presentation_locked:
+		return
+	_play_ui_sfx(&"back", false)
+	back_requested.emit()
 
 func _restart_after_result() -> void:
+	if presentation_locked or exiting:
+		return
 	_play_ui_sfx(&"retry", false)
-	if not roll_button.pressed.is_connected(_on_roll_stop):
-		roll_button.pressed.connect(_on_roll_stop)
-	roll_button.text = "ROLL"
-	_apply_roll_button_style(false)
 	_show_bet_select()
+	result_presentation_started = false
 
 func _on_back_pressed() -> void:
+	if presentation_locked or exiting:
+		return
+	if wager_committed and not race.is_empty():
+		CasinoBankScript.update_game(FACILITY_ID, race, game_id)
 	_play_ui_sfx(&"back", false)
 	back_requested.emit()
 
@@ -739,7 +1365,7 @@ func _on_track_rank_changed(racer_id: String, previous_rank: int, next_rank: int
 
 
 func _set_spectator_focus(active: bool, immediate: bool = false) -> void:
-	if track_frame == null or dice_console == null or spectator_strip == null or roll_button == null:
+	if exiting or not is_inside_tree() or track_frame == null or dice_console == null or spectator_strip == null or roll_button == null:
 		return
 	if spectator_layout_tween != null:
 		spectator_layout_tween.kill()
@@ -755,11 +1381,18 @@ func _set_spectator_focus(active: bool, immediate: bool = false) -> void:
 		dice_console.visible = true
 		roll_button.visible = true
 		spectator_strip.visible = false
-	var target_height := 720.0 if active else 560.0
-	if immediate:
+	# At the 720×1280 target the full race stack must share the viewport with
+	# the die console, roll CTA, and 96px shared casino-return CTA. Use a
+	# compact track window there; the 360×800 phone target expands to the taller
+	# logical 720×1600 canvas and keeps the cinematic track height.
+	var compact_layout := size.y <= 1400.0
+	var target_height := (480.0 if compact_layout else 720.0) if active else (400.0 if compact_layout else 560.0)
+	if immediate or compact_layout:
 		track_frame.custom_minimum_size.y = target_height
+		spectator_layout_tween = null
 		return
 	spectator_layout_tween = create_tween()
+	tracked_tweens.append(spectator_layout_tween)
 	spectator_layout_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	spectator_layout_tween.tween_property(track_frame, "custom_minimum_size:y", target_height, 0.18)
 
@@ -781,7 +1414,7 @@ func _maybe_show_final_stretch():
 
 
 func _show_race_banner(text: String, color: Color, outline_color: Color, hold_seconds: float, node_name: String = "RaceBanner"):
-	if race_fx_layer == null:
+	if exiting or not is_inside_tree() or race_fx_layer == null:
 		return
 	var banner := _label(text, 30, color)
 	banner.name = node_name
@@ -800,6 +1433,7 @@ func _show_race_banner(text: String, color: Color, outline_color: Color, hold_se
 	banner.scale = Vector2(0.82, 0.82)
 	banner.modulate.a = 0.0
 	var intro := create_tween().set_parallel(true)
+	tracked_tweens.append(intro)
 	intro.tween_property(banner, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	intro.tween_property(banner, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.10)
 	intro.chain().tween_interval(hold_seconds)
@@ -825,13 +1459,15 @@ func _play_roll_result_sfx() -> void:
 		_play_ui_sfx(&"progress-step", true)
 
 func _play_ui_sfx(cue: StringName, world_specific: bool) -> void:
+	if suppress_audio_for_tests:
+		return
 	var ui_sfx := get_node_or_null("/root/UiSfxManager")
 	if ui_sfx != null:
 		ui_sfx.call("play_ui_sfx", cue, world_specific)
 
 
 func _spawn_spark() -> void:
-	if race_fx_layer == null:
+	if exiting or not is_inside_tree() or race_fx_layer == null:
 		return
 	var spark := Panel.new()
 	spark.name = "OvertakeSpark"
@@ -843,13 +1479,14 @@ func _spawn_spark() -> void:
 	spark.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	race_fx_layer.add_child(spark)
 	var flight := create_tween().set_parallel(true)
+	tracked_tweens.append(flight)
 	flight.tween_property(spark, "position:y", spark.position.y - randf_range(18.0, 38.0), 0.36)
 	flight.tween_property(spark, "modulate:a", 0.0, 0.24).set_delay(0.12)
 	flight.chain().tween_callback(spark.queue_free)
 
 
 func _play_win_fx(winner_art: Variant, winner_label: Variant, payout: int) -> void:
-	if race_fx_layer == null:
+	if exiting or not is_inside_tree() or race_fx_layer == null:
 		return
 	var card := PanelContainer.new()
 	card.name = "WinCard"
@@ -866,7 +1503,7 @@ func _play_win_fx(winner_art: Variant, winner_label: Variant, payout: int) -> vo
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	art.custom_minimum_size = Vector2(40, 40)
 	row.add_child(art)
-	row.add_child(_label("%s WIN!  +%d CHIP" % [str(winner_label), payout], 22, GOLD_LIGHT))
+	row.add_child(_label("%s 勝ち！  受け取り %d · 収支 %+d" % [str(winner_label), payout, payout - selected_bet], 20, GOLD_LIGHT))
 	card.reset_size()
 	card.position = Vector2(
 		(race_fx_layer.size.x - card.size.x) * 0.5,
@@ -874,6 +1511,7 @@ func _play_win_fx(winner_art: Variant, winner_label: Variant, payout: int) -> vo
 	card.pivot_offset = card.size * 0.5
 	card.scale = Vector2(0.84, 0.84)
 	var entrance := create_tween()
+	tracked_tweens.append(entrance)
 	entrance.tween_property(card, "scale", Vector2.ONE, 0.20).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	for index: int in 26:
 		var piece := ColorRect.new()
@@ -885,6 +1523,7 @@ func _play_win_fx(winner_art: Variant, winner_label: Variant, payout: int) -> vo
 		piece.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		race_fx_layer.add_child(piece)
 		var fall := create_tween().set_parallel(true)
+		tracked_tweens.append(fall)
 		fall.tween_property(piece, "position:y", race_fx_layer.size.y + 24.0, randf_range(1.05, 1.65))
 		fall.tween_property(piece, "rotation", piece.rotation + randf_range(-3.0, 3.0), 1.25)
 		fall.tween_property(piece, "modulate:a", 0.0, 0.32).set_delay(0.95)
@@ -901,7 +1540,7 @@ func _movement_summary() -> String:
 		"rapid": extra = "　急流 +3"
 		"log": extra = "　丸太 4+"
 	if bool(move.get("blocked_by_log", false)):
-		extra = "　丸太でSTOP"
+		extra = "　丸太でストップ"
 	return "%s：%d → %dマス%s" % [RACER_LABELS[selected_racer], rolled, effective, extra]
 
 
@@ -912,15 +1551,15 @@ func _show_selected_movement_event() -> void:
 	match gimmick:
 		"rapid": callout = "急流！ 一気に加速！"
 		"foxfire": callout = "狐火！ -2マス"
-		"log": callout = "丸太でSTOP！" if bool(move.get("blocked_by_log", false)) else "丸太突破！"
+		"log": callout = "丸太でストップ！" if bool(move.get("blocked_by_log", false)) else "丸太突破！"
 	if callout.is_empty():
 		return
 	status_label.text = callout
 	_show_race_banner(callout, GOLD_LIGHT, Color("#3f2408"), 0.38, "GimmickCallout")
 
 func _refresh_all(animate_track: bool = false) -> void:
-	chip_label.text = "CHIP  %d" % CasinoBankScript.balance()
-	bet_label.text = "%s  %d" % [RACER_LABELS.get(selected_racer, selected_racer), selected_bet] if wager_committed else "-"
+	chip_label.text = "CASINO CHIP\n%d" % CasinoBankScript.balance()
+	bet_label.text = "★ %s  %d" % [RACER_LABELS.get(selected_racer, selected_racer), selected_bet] if wager_committed else "-"
 	roll_count_label.text = "%d / 6" % int(race.get("roll_count", 0))
 	var payout := RaceScript.winning_payout(race)
 	win_label.text = "%d" % payout if payout > 0 else ("×4" if wager_committed else "-")
@@ -1021,7 +1660,7 @@ func _refresh_opposite_pairs() -> void:
 		opposite_pair_labels[index].add_theme_color_override("font_color", GOLD_LIGHT if selected_pair else Color("#c7bdcd"))
 
 func _refresh_physical_die(duration: float) -> void:
-	if not is_instance_valid(dice_presentation) or orientations.is_empty():
+	if exiting or not is_inside_tree() or not is_instance_valid(dice_presentation) or orientations.is_empty():
 		return
 	if dice_presentation.dice_roots.is_empty():
 		call_deferred("_refresh_physical_die", duration)
@@ -1031,6 +1670,8 @@ func _refresh_physical_die(duration: float) -> void:
 		OrientationScript.quaternion_for_orientation(orientation), duration)
 
 func _play_stop_assignment_feedback(assignments: Dictionary) -> void:
+	if exiting or not is_inside_tree():
+		return
 	last_stop_feedback_assignments = assignments.duplicate()
 	stop_feedback_count_for_test += 1
 	if not is_instance_valid(dice_console) or not is_instance_valid(die_panel):
@@ -1059,9 +1700,11 @@ func _play_stop_assignment_feedback(assignments: Dictionary) -> void:
 		flight.tween_property(flying, "scale", Vector2(1.25, 1.25), 0.20)
 		flight.tween_property(flying, "modulate:a", 0.0, 0.18).set_delay(0.12)
 		flight.chain().tween_callback(flying.queue_free)
+		tracked_tweens.append(flight)
 	var selected_panel := (direction_plates[selected_racer] as Dictionary).panel as Control
 	selected_panel.pivot_offset = selected_panel.size * 0.5
 	var pulse := create_tween().set_parallel(true)
+	tracked_tweens.append(pulse)
 	pulse.tween_property(selected_panel, "scale", Vector2(1.16, 1.16), 0.10)
 	pulse.tween_property(dice_presentation, "modulate", Color(1.45, 1.32, 0.95), 0.07)
 	pulse.chain().tween_interval(0.05)
@@ -1072,7 +1715,7 @@ func _play_stop_assignment_feedback(assignments: Dictionary) -> void:
 		_show_target_roll_burst(selected_value)
 
 func _show_target_roll_burst(value: int) -> void:
-	if race_fx_layer == null:
+	if exiting or not is_inside_tree() or race_fx_layer == null:
 		return
 	var burst := _label("%d!!" % value, 44, GOLD_LIGHT)
 	burst.name = "SelectedRollBurst"
@@ -1087,6 +1730,7 @@ func _show_target_roll_burst(value: int) -> void:
 	burst.scale = Vector2(0.62, 0.62)
 	race_fx_layer.add_child(burst)
 	var impact := create_tween().set_parallel(true)
+	tracked_tweens.append(impact)
 	impact.tween_property(burst, "scale", Vector2(1.20, 1.20), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	impact.tween_property(burst, "modulate", Color(1.35, 1.18, 0.78), 0.08)
 	impact.chain().tween_interval(0.18)
@@ -1112,7 +1756,7 @@ func _refresh_ranking() -> void:
 	ranking_label.text = " / ".join(plain_parts)
 
 func _refresh_track(animate_track: bool = false) -> void:
-	if not is_instance_valid(track_view):
+	if exiting or not is_inside_tree() or not is_instance_valid(track_view):
 		return
 	var positions := {}
 	for id: String in RaceScript.RACERS:
@@ -1149,6 +1793,7 @@ func _button(text: String, primary: bool = false) -> Button:
 	button.add_theme_stylebox_override("hover", _panel(GOLD_LIGHT if primary else Color("#51436a"), GOLD, 12, 2))
 	button.add_theme_stylebox_override("pressed", _panel(Color("#d99d2c") if primary else Color("#302641"), GOLD, 12, 2))
 	button.add_theme_stylebox_override("disabled", _panel(Color("#514c45"), Color("#766d5f"), 12, 1))
+	VisualFeedback.bind_button(button)
 	return button
 
 func _apply_button_state(button: Button, selected: bool) -> void:

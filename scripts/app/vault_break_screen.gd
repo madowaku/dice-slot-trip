@@ -4,13 +4,23 @@ extends Control
 signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
+const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
+const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
+const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const RepositoryScript = preload("res://scripts/game/vault_break/vault_break_template_repository.gd")
 const SelectorScript = preload("res://scripts/game/vault_break/vault_break_selector.gd")
 const ProgressScript = preload("res://scripts/game/vault_break/vault_break_progress.gd")
 const ModelScript = preload("res://scripts/game/vault_break/vault_break_model.gd")
 const LockViewScript = preload("res://scripts/app/vault_break_lock_view.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
+const CasinoFeelFXScript = preload("res://scripts/ui/casino_feel_fx.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
+const VAULT_DOOR_TEXTURE: Texture2D = preload("res://assets/casino/vault_break/ui/vault-door-brass-v1.png")
+const BET_CHIP_TEXTURES: Dictionary = {
+	10: preload("res://assets/casino/vault_break/ui/chip-10-black-v1.png"),
+	20: preload("res://assets/casino/vault_break/ui/chip-20-red-v1.png"),
+	50: preload("res://assets/casino/vault_break/ui/chip-50-gold-v1.png"),
+}
 
 const FACILITY_ID := "vault_break"
 const META_KEY := "vault_break"
@@ -24,9 +34,17 @@ const TIER_NAMES := {
 	"gold": "GOLD",
 	"black": "BLACK",
 }
+const TIER_NAMES_JA := {
+	"bronze": "ブロンズ金庫",
+	"silver": "シルバー金庫",
+	"gold": "ゴールド金庫",
+	"black": "ブラック金庫",
+}
 
-const ROLL_SECONDS := 0.30
-const SETTLE_SECONDS := 0.12
+const ROLL_SECONDS := 0.48
+const FINAL_ROLL_SECONDS := 0.60
+const SETTLE_SECONDS := 0.18
+const FINAL_SETTLE_SECONDS := 0.23
 const ACTION_SECONDS := 0.14
 const RESULT_HOLD_SECONDS := 0.22
 
@@ -42,6 +60,12 @@ const PARCHMENT_LIGHT := Color("#fff0cf")
 const INK := Color("#302116")
 const GREEN := Color("#3f7d58")
 const FAILURE_RED := Color("#b34a44")
+const VELVET_RED := Color("#761f1c")
+const VELVET_RED_LIGHT := Color("#a63b2d")
+const BRONZE_SURFACE := Color("#5c3422")
+const SILVER_SURFACE := Color("#343843")
+const GOLD_SURFACE := Color("#5b421d")
+const BLACK_SURFACE := Color("#20172b")
 
 enum State {
 	SETUP,
@@ -115,9 +139,14 @@ var status_label: Label
 var setup_view: VBoxContainer
 var active_view: VBoxContainer
 var result_view: VBoxContainer
+var content_scroll: ScrollContainer
 var bet_buttons: Dictionary = {}
+var bet_state_labels: Dictionary = {}
+var bet_value_labels: Dictionary = {}
+var bet_unit_labels: Dictionary = {}
 var tier_buttons: Dictionary = {}
 var start_button: Button
+var setup_reward_label: Label
 var back_button: Button
 var roll_button: Button
 var discard_button: Button
@@ -132,11 +161,22 @@ var die_face_label: Label
 var result_label: Label
 var result_payout_label: Label
 var result_detail_label: Label
+var result_vault_door_panel: PanelContainer
+var result_vault_door: TextureRect
 var lock_container: HBoxContainer
 var lock_views: Array[VaultBreakLockView] = []
 var dice_presentation: DicePresentation3D
 var vault_panel: PanelContainer
 var effect_layer: Control
+var setup_vault_door: TextureRect
+var active_vault_door: TextureRect
+var vault_handle_tween: Tween
+var chip_balance_tween: Tween
+var last_chip_balance: int = -1
+var feel_fx: CasinoFeelFX
+var last_feel_event: String = ""
+var last_roll_was_final: bool = false
+var lock_feedback_count: int = 0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -145,7 +185,7 @@ func _ready() -> void:
 	if not suppress_audio_for_tests:
 		var bgm := get_node_or_null("/root/BgmManager")
 		if bgm != null:
-			bgm.call("play_lasvegas_main")
+			bgm.call("play_vault_break")
 		var ui_sfx := get_node_or_null("/root/UiSfxManager")
 		if ui_sfx != null:
 			ui_sfx.call("set_stage", &"las_vegas")
@@ -163,6 +203,10 @@ func _ready() -> void:
 	_restore_preferences(meta)
 	_new_model()
 	_build_ui()
+	feel_fx = CasinoFeelFXScript.new() as CasinoFeelFX
+	feel_fx.name = "CasinoFeelFX"
+	feel_fx.audio_enabled = not suppress_audio_for_tests
+	add_child(feel_fx)
 	_resume_or_show_setup()
 
 func _new_model() -> void:
@@ -186,14 +230,25 @@ func _build_ui() -> void:
 	upper_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(upper_glow)
 
+	content_scroll = ScrollContainer.new()
+	content_scroll.name = "VaultBreakContentScroll"
+	content_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	content_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	content_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	add_child(content_scroll)
+
 	var margin := MarginContainer.new()
 	margin.name = "SafeMargins"
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_theme_constant_override("margin_left", 16)
 	margin.add_theme_constant_override("margin_right", 16)
 	margin.add_theme_constant_override("margin_top", 12)
 	margin.add_theme_constant_override("margin_bottom", 12)
-	add_child(margin)
+	content_scroll.add_child(margin)
 
 	var root_box := VBoxContainer.new()
 	root_box.name = "VaultBreakRoot"
@@ -203,7 +258,7 @@ func _build_ui() -> void:
 	margin.add_child(root_box)
 	_build_header(root_box)
 
-	status_label = _label("BETとTIERを選択", 19, Color.WHITE)
+	status_label = _label("ベットと金庫ランクを選ぼう", 19, Color.WHITE)
 	status_label.name = "StatusLabel"
 	status_label.custom_minimum_size.y = 42
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -236,6 +291,7 @@ func _build_ui() -> void:
 	back_button.name = "CasinoBackButton"
 	back_button.custom_minimum_size.y = 96
 	back_button.pressed.connect(_on_back_pressed)
+	CasinoBackButton.configure(back_button)
 	root_box.add_child(back_button)
 
 	effect_layer = Control.new()
@@ -264,7 +320,7 @@ func _build_header(root_box: VBoxContainer) -> void:
 	chip_panel.name = "ChipBalancePanel"
 	chip_panel.custom_minimum_size.x = 142
 	chip_panel.add_theme_stylebox_override("panel", _panel(Color("#211c20"), BRASS, 14, 2))
-	chip_label = _label("CHIP 0", 17, PARCHMENT_LIGHT)
+	chip_label = _label("CASINO CHIP\n0", 17, PARCHMENT_LIGHT)
 	chip_label.name = "ChipBalanceLabel"
 	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	chip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -273,27 +329,48 @@ func _build_header(root_box: VBoxContainer) -> void:
 
 func _build_setup(root_box: VBoxContainer) -> void:
 	var rules_panel := PanelContainer.new()
-	rules_panel.name = "VaultBreakRulesPreview"
+	rules_panel.name = "VaultBreakHero"
 	rules_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	rules_panel.add_theme_stylebox_override("panel", _panel(Color("#21162bea"), BRASS, 18, 3))
+	rules_panel.custom_minimum_size.y = 300
+	rules_panel.add_theme_stylebox_override("panel", _metal_panel(Color("#160f15f2"), BRASS, 20, 3))
 	root_box.add_child(rules_panel)
+	var hero_row := HBoxContainer.new()
+	hero_row.add_theme_constant_override("separation", 8)
+	rules_panel.add_child(hero_row)
 	var rules_box := VBoxContainer.new()
+	rules_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rules_box.size_flags_stretch_ratio = 0.92
 	rules_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	rules_box.add_theme_constant_override("separation", 5)
-	rules_panel.add_child(rules_box)
-	var rules_title := _label("ROLL · CHOOSE · UNLOCK", 25, BRASS_LIGHT)
-	rules_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rules_box.add_theme_constant_override("separation", 8)
+	hero_row.add_child(rules_box)
+	var rules_title := _label("出た目を置いて\n金庫を開けよう", 27, BRASS_LIGHT)
+	rules_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	rules_box.add_child(rules_title)
-	var rules_copy := _label("出た目を光るLOCKへ配置。\n全LOCKを埋めれば金庫がOPEN。置いたダイスは動かせません。", 17, PARCHMENT)
-	rules_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var rules_copy := _label("1  サイコロを振る\n2  光るロックを選ぶ\n3  すべて埋めると開錠", 15, PARCHMENT)
+	rules_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	rules_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rules_box.add_child(rules_copy)
-	var discard_copy := _label("複数のLOCKが光ったら使い道を選ぶ。不要な目はDISCARD可能。", 15, Color("#d7c5df"))
-	discard_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var strategy_copy := _label("同じ出目でも、置く場所で\n結果が変わる！", 14, BRASS_LIGHT)
+	strategy_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	strategy_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rules_box.add_child(strategy_copy)
+	var discard_copy := _label("不要な目は捨てられます", 12, Color("#d7c5df"))
+	discard_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	discard_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rules_box.add_child(discard_copy)
+	var vault_center := CenterContainer.new()
+	vault_center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vault_center.size_flags_stretch_ratio = 1.25
+	hero_row.add_child(vault_center)
+	setup_vault_door = _vault_door_texture("SetupVaultDoor")
+	setup_vault_door.custom_minimum_size = Vector2(380, 380)
+	setup_vault_door.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	setup_vault_door.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vault_center.add_child(setup_vault_door)
 
-	var bet_caption := _label("BET", 19, BRASS_LIGHT)
+	CasinoHowTo3StepsScript.build(root_box, FACILITY_ID, _how_to_steps())
+
+	var bet_caption := _label("STEP 1　ベットを選ぶ", 19, BRASS_LIGHT)
 	bet_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root_box.add_child(bet_caption)
 	var bet_row := HBoxContainer.new()
@@ -301,15 +378,16 @@ func _build_setup(root_box: VBoxContainer) -> void:
 	bet_row.add_theme_constant_override("separation", 7)
 	root_box.add_child(bet_row)
 	for amount: int in BET_AMOUNTS:
-		var button := _button("%d CHIP" % amount)
+		var button := _button("")
 		button.name = "Bet_%d" % amount
-		button.custom_minimum_size = Vector2(0, 96)
+		button.custom_minimum_size = Vector2(0, 104)
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(_select_bet.bind(amount))
 		bet_buttons[amount] = button
 		bet_row.add_child(button)
+		_configure_bet_button(button, amount)
 
-	var tier_caption := _label("VAULT TIER", 19, BRASS_LIGHT)
+	var tier_caption := _label("STEP 2　金庫ランクを選ぶ", 19, BRASS_LIGHT)
 	tier_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root_box.add_child(tier_caption)
 	var tier_grid := GridContainer.new()
@@ -321,19 +399,70 @@ func _build_setup(root_box: VBoxContainer) -> void:
 	for tier: String in TIERS:
 		var tier_button := _button(tier.to_upper())
 		tier_button.name = "%sTierButton" % tier.capitalize()
-		tier_button.custom_minimum_size = Vector2(0, 96)
+		tier_button.custom_minimum_size = Vector2(0, 112)
 		tier_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tier_button.add_theme_font_size_override("font_size", 15)
+		tier_button.add_theme_font_size_override("font_size", 17)
 		tier_button.pressed.connect(_select_tier.bind(tier))
 		tier_buttons[tier] = tier_button
 		tier_grid.add_child(tier_button)
 
-	start_button = _button("BREAK THE VAULT", true)
+	setup_reward_label = _label("成功報酬  34 チップ", 17, BRASS_LIGHT)
+	setup_reward_label.name = "SetupRewardLabel"
+	setup_reward_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root_box.add_child(setup_reward_label)
+
+	start_button = _button("金庫に挑戦！\nゲーム開始", true)
 	start_button.name = "StartButton"
-	start_button.custom_minimum_size.y = 104
-	start_button.add_theme_font_size_override("font_size", 24)
+	start_button.custom_minimum_size.y = 112
+	start_button.add_theme_font_size_override("font_size", 22)
+	_apply_cta_style(start_button)
 	start_button.pressed.connect(_start_game)
 	root_box.add_child(start_button)
+
+func _how_to_steps() -> Array[Dictionary]:
+	return [
+		{"action": "ベットと金庫を選ぶ", "copy": "挑戦するCHIPとランクを決めよう"},
+		{"action": "サイコロを振って置く", "copy": "出た目に合うロックを選ぼう"},
+		{"action": "6つのロックを埋める", "copy": "すべて埋まれば開錠成功"},
+	]
+
+func _configure_bet_button(button: Button, amount: int) -> void:
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_theme_constant_override("margin_left", 7)
+	margin.add_theme_constant_override("margin_right", 7)
+	margin.add_theme_constant_override("margin_top", 5)
+	margin.add_theme_constant_override("margin_bottom", 5)
+	button.add_child(margin)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 2)
+	margin.add_child(row)
+	var chip := TextureRect.new()
+	chip.texture = BET_CHIP_TEXTURES.get(amount) as Texture2D
+	chip.custom_minimum_size = Vector2(62, 62)
+	chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	chip.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(chip)
+	var copy := VBoxContainer.new()
+	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.alignment = BoxContainer.ALIGNMENT_CENTER
+	copy.add_theme_constant_override("separation", -3)
+	row.add_child(copy)
+	var state_copy := _label(" ", 11, BRASS_LIGHT)
+	state_copy.custom_minimum_size.y = 16
+	state_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	copy.add_child(state_copy)
+	var amount_copy := _label(str(amount), 27, PARCHMENT_LIGHT)
+	amount_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	copy.add_child(amount_copy)
+	var unit_copy := _label("チップ", 12, PARCHMENT)
+	unit_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	copy.add_child(unit_copy)
+	bet_state_labels[amount] = state_copy
+	bet_value_labels[amount] = amount_copy
+	bet_unit_labels[amount] = unit_copy
 
 func _build_active(root_box: VBoxContainer) -> void:
 	var stats := HBoxContainer.new()
@@ -358,21 +487,42 @@ func _build_active(root_box: VBoxContainer) -> void:
 	vault_panel.name = "VaultDoorPanel"
 	vault_panel.custom_minimum_size.y = 342
 	vault_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vault_panel.add_theme_stylebox_override("panel", _panel(Color("#201a2b"), BRASS, 22, 3))
+	vault_panel.add_theme_stylebox_override("panel", _metal_panel(Color("#160f15"), BRASS, 22, 3))
 	root_box.add_child(vault_panel)
+	var vault_canvas := Control.new()
+	vault_canvas.custom_minimum_size.y = 320
+	vault_panel.add_child(vault_canvas)
+	active_vault_door = _vault_door_texture("ActiveVaultDoor")
+	active_vault_door.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	active_vault_door.offset_left = 26.0
+	active_vault_door.offset_top = 26.0
+	active_vault_door.offset_right = -26.0
+	active_vault_door.offset_bottom = -26.0
+	active_vault_door.modulate = Color("#b9a688")
+	active_vault_door.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vault_canvas.add_child(active_vault_door)
+	var vault_margin := MarginContainer.new()
+	vault_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vault_margin.add_theme_constant_override("margin_left", 20)
+	vault_margin.add_theme_constant_override("margin_right", 20)
+	vault_margin.add_theme_constant_override("margin_top", 10)
+	vault_margin.add_theme_constant_override("margin_bottom", 10)
+	vault_canvas.add_child(vault_margin)
 	var vault_box := VBoxContainer.new()
 	vault_box.add_theme_constant_override("separation", 5)
-	vault_panel.add_child(vault_box)
+	vault_margin.add_child(vault_box)
 	template_label = _label("VAULT —", 17, BRASS_LIGHT)
 	template_label.name = "TemplateLabel"
 	template_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vault_box.add_child(template_label)
 	lock_container = HBoxContainer.new()
 	lock_container.name = "LockContainer"
-	lock_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lock_container.custom_minimum_size.y = 156
+	lock_container.size_flags_vertical = Control.SIZE_FILL
 	lock_container.add_theme_constant_override("separation", 7)
+	lock_container.modulate = Color("#fff5d4")
 	vault_box.add_child(lock_container)
-	instruction_label = _label("ROLLでダイスを出す", 18, PARCHMENT)
+	instruction_label = _label("「サイコロを振る」でダイスを出す", 18, PARCHMENT)
 	instruction_label.name = "InstructionLabel"
 	instruction_label.custom_minimum_size.y = 42
 	instruction_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -411,7 +561,7 @@ func _build_active(root_box: VBoxContainer) -> void:
 	die_face_label.name = "CurrentDieFaceLabel"
 	die_face_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	die_copy.add_child(die_face_label)
-	reward_label = _label("OPEN REWARD 0 CHIP", 15, PARCHMENT)
+	reward_label = _label("獲得チップ 0 CHIP", 15, PARCHMENT)
 	reward_label.name = "RewardLabel"
 	reward_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	reward_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -421,13 +571,13 @@ func _build_active(root_box: VBoxContainer) -> void:
 	actions.name = "VaultActions"
 	actions.add_theme_constant_override("separation", 8)
 	root_box.add_child(actions)
-	discard_button = _button("DISCARD\nこの目を捨てる", false)
+	discard_button = _button("捨てる\nこの目を捨てる", false)
 	discard_button.name = "DiscardButton"
 	discard_button.custom_minimum_size = Vector2(0, 104)
 	discard_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	discard_button.pressed.connect(_on_discard_pressed)
 	actions.add_child(discard_button)
-	roll_button = _button("ROLL\n1D6", true)
+	roll_button = _button("サイコロを振る\n1D6", true)
 	roll_button.name = "RollButton"
 	roll_button.custom_minimum_size = Vector2(0, 104)
 	roll_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -448,6 +598,17 @@ func _build_result(root_box: VBoxContainer) -> void:
 	var eyebrow := _label("VAULT BREAK RESULT", 17, Color("#cfc4dc"))
 	eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(eyebrow)
+	result_vault_door_panel = PanelContainer.new()
+	result_vault_door_panel.name = "ResultVaultDoorPanel"
+	result_vault_door_panel.custom_minimum_size = Vector2(0, 244)
+	result_vault_door_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	result_vault_door_panel.add_theme_stylebox_override("panel", _metal_panel(Color("#130e17d8"), BRASS, 16, 2))
+	box.add_child(result_vault_door_panel)
+	result_vault_door = _vault_door_texture("ResultVaultDoor")
+	result_vault_door.custom_minimum_size = Vector2(0, 234)
+	result_vault_door.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	result_vault_door.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	result_vault_door_panel.add_child(result_vault_door)
 	result_label = _label("RESULT", 37, BRASS_LIGHT)
 	result_label.name = "ResultLabel"
 	result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -461,7 +622,7 @@ func _build_result(root_box: VBoxContainer) -> void:
 	result_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	result_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(result_detail_label)
-	again_button = _button("TRY AGAIN", true)
+	again_button = _button("次の金庫を選ぶ", true)
 	again_button.name = "AgainButton"
 	again_button.custom_minimum_size.y = 104
 	again_button.add_theme_font_size_override("font_size", 23)
@@ -529,7 +690,7 @@ func _resume_or_show_setup() -> void:
 	match model_state:
 		ModelScript.State.READY:
 			_set_state(State.READY)
-			status_label.text = "ゲームを再開しました。ROLLしてください。"
+			status_label.text = "ゲームを再開しました。サイコロを振ってください。"
 		ModelScript.State.WAITING_FOR_PLACEMENT:
 			_set_state(State.WAITING_FOR_PLACEMENT)
 			displayed_face = int(model.get("current_face"))
@@ -558,6 +719,7 @@ func _show_resume_error(message: String) -> void:
 	status_label.text = message
 	_refresh_all()
 	start_button.disabled = true
+	_reset_content_scroll()
 
 func _show_setup() -> void:
 	if CasinoBankScript.has_active_game(FACILITY_ID):
@@ -578,13 +740,15 @@ func _show_setup() -> void:
 	_terminal_handling = false
 	_restore_valid_tier_selection()
 	_set_state(State.SETUP)
-	status_label.text = "BETとTIERを選択"
+	status_label.text = "ベットと金庫ランクを選ぼう"
 	_refresh_all()
+	_reset_content_scroll()
 
 func _show_active_views() -> void:
 	setup_view.visible = false
 	active_view.visible = true
 	result_view.visible = false
+	_reset_content_scroll()
 
 func _select_bet(amount: int) -> void:
 	if state != State.SETUP or amount not in BET_AMOUNTS:
@@ -679,7 +843,7 @@ func _start_game() -> void:
 	_rebuild_lock_views()
 	_show_active_views()
 	_set_state(State.READY)
-	status_label.text = "%s %s。ROLLで最初のダイスを出す。" % [str(TIER_NAMES.get(active_tier, active_tier.to_upper())), str(active_template.get("id", ""))]
+	status_label.text = "%s %s。「サイコロを振る」で最初のダイスを出す。" % [str(TIER_NAMES.get(active_tier, active_tier.to_upper())), str(active_template.get("id", ""))]
 	_play_ui_sfx(&"start", false)
 	_refresh_all()
 
@@ -692,6 +856,13 @@ func _on_roll_pressed() -> void:
 	var face := _next_roll_value()
 	if face not in range(1, 7):
 		return
+	last_roll_was_final = int(model.get("max_rolls")) - int(model.get("rolls_used")) == 1
+	last_feel_event = "last_roll" if last_roll_was_final else "roll"
+	if feel_fx != null:
+		feel_fx.press_button(roll_button, true)
+		feel_fx.play_dice_roll()
+	if last_roll_was_final:
+		_play_ui_sfx(&"warning", true)
 	var pre_roll_snapshot: Dictionary = model.call("snapshot_active_game") as Dictionary
 	pending_roll = {
 		"kind": "roll",
@@ -705,16 +876,15 @@ func _on_roll_pressed() -> void:
 	if not _persist_active_game(pre_roll_snapshot):
 		pending_rolls = []
 		pending_roll = {}
-		status_label.text = "ROLLを保存できません。もう一度お試しください。"
+		status_label.text = "サイコロを保存できません。もう一度お試しください。"
 		_refresh_all()
 		return
 	rolling = true
 	displayed_face = face
 	_set_state(State.ROLLING)
-	status_label.text = "ROLL %d / %d..." % [int(pending_roll.get("roll_index", 1)), int(model.get("max_rolls"))]
-	_play_ui_sfx(&"roll", false)
+	status_label.text = "サイコロ %d / %d..." % [int(pending_roll.get("roll_index", 1)), int(model.get("max_rolls"))]
 	_refresh_all()
-	await _animate_roll(face)
+	await _animate_roll(face, last_roll_was_final)
 	if not is_inside_tree():
 		return
 	await _resolve_pending_roll(pending_roll)
@@ -726,7 +896,9 @@ func _resume_pending_roll() -> void:
 	if pending_roll.is_empty() or not is_inside_tree():
 		return
 	var face := clampi(int(pending_roll.get("value", 1)), 1, 6)
-	await _animate_roll(face)
+	var resumed_final: bool = int(model.get("max_rolls")) - int(model.get("rolls_used")) == 1
+	last_roll_was_final = resumed_final
+	await _animate_roll(face, resumed_final)
 	if not is_inside_tree():
 		return
 	await _resolve_pending_roll(pending_roll)
@@ -739,7 +911,7 @@ func _resolve_pending_roll(pending: Dictionary) -> void:
 	if model_state == ModelScript.State.READY:
 		if int(model.call("begin_roll", face)) != face:
 			rolling = false
-			status_label.text = "ROLLを解決できません。"
+			status_label.text = "サイコロを解決できません。"
 			return
 	elif model_state == ModelScript.State.ROLLING:
 		if int(model.get("current_face")) != face:
@@ -757,7 +929,7 @@ func _resolve_pending_roll(pending: Dictionary) -> void:
 	displayed_face = face
 	if not valid_indices.is_empty():
 		_set_state(State.WAITING_FOR_PLACEMENT)
-		status_label.text = "FACE %d。光るLOCKを選ぶかDISCARD。" % face
+		status_label.text = "目 %d。光るLOCKを選ぶか捨てる。" % face
 		instruction_label.text = "%d個のLOCKが有効 · どこに使うか選択" % valid_indices.size()
 		_persist_active_game()
 		_play_ui_sfx(&"select", true)
@@ -767,7 +939,7 @@ func _resolve_pending_roll(pending: Dictionary) -> void:
 	# The pure model has already performed the authored automatic discard. Keep
 	# that outcome visible briefly, including on the final roll, before failure.
 	_set_state(State.RESOLVING_PLACEMENT)
-	status_label.text = "NO FIT · FACE %dをAUTO DISCARD" % face
+	status_label.text = "置けない目%dを自動で捨てました" % face
 	instruction_label.text = "入るLOCKがないため自動で捨てました"
 	_persist_active_game()
 	_play_ui_sfx(&"blocked", true)
@@ -790,6 +962,12 @@ func _on_lock_pressed(lock_index: int) -> void:
 	_persist_active_game()
 	_play_ui_sfx(&"progress-step", true)
 	_refresh_all()
+	if lock_index >= 0 and lock_index < lock_views.size():
+		(lock_views[lock_index] as VaultBreakLockView).play_lock_feedback()
+	lock_feedback_count += 1
+	last_feel_event = "lock"
+	if feel_fx != null:
+		feel_fx.vibrate_light()
 	await _finish_turn_feedback(true)
 
 func place_current_die(lock_index: int) -> void:
@@ -803,11 +981,15 @@ func _on_discard_pressed() -> void:
 		return
 	displayed_face = face
 	_set_state(State.RESOLVING_PLACEMENT)
-	status_label.text = "FACE %dをDISCARD。" % face
-	instruction_label.text = "DISCARDED · 次のROLLへ"
+	status_label.text = "目%dを捨てる。" % face
+	instruction_label.text = "捨てました · 次のサイコロへ"
 	_persist_active_game()
-	_play_ui_sfx(&"back", false)
+	_play_ui_sfx(&"drop", true)
 	_refresh_all()
+	_play_discard_feedback()
+	last_feel_event = "discard"
+	if feel_fx != null:
+		feel_fx.vibrate_light()
 	await _finish_turn_feedback(false)
 
 func discard() -> void:
@@ -824,9 +1006,10 @@ func _finish_turn_feedback(was_placement: bool) -> void:
 	if model_state != ModelScript.State.READY:
 		return
 	_set_state(State.READY)
-	status_label.text = "LOCKを埋めた。次のROLL。" if was_placement else "次のROLLへ。"
-	instruction_label.text = "ROLLで次のダイスを出す"
+	status_label.text = "LOCKを埋めた。次のサイコロ。" if was_placement else "次のサイコロへ。"
+	instruction_label.text = "「サイコロを振る」で次のダイスを出す"
 	_refresh_all()
+	_play_remaining_roll_feedback()
 
 func _complete_terminal_result() -> void:
 	if _terminal_handling or model == null:
@@ -840,8 +1023,8 @@ func _complete_terminal_result() -> void:
 	_terminal_handling = true
 	var won := model_state == ModelScript.State.SUCCESS
 	_set_state(State.SUCCESS if won else State.FAILURE)
-	status_label.text = "VAULT OPEN" if won else "ACCESS DENIED"
-	instruction_label.text = "ALL LOCKS SECURED" if won else "ROLL LIMIT REACHED"
+	status_label.text = "金庫を開錠！" if won else "開錠失敗"
+	instruction_label.text = "すべてのロックを解除" if won else "サイコロ回数終了"
 	_refresh_all()
 	# Persist the terminal model first, then atomically save progress/BLACK and a
 	# game-id receipt before any Result UI becomes visible.
@@ -873,12 +1056,7 @@ func _complete_terminal_result() -> void:
 	if bool(settlement_receipt.get("already_settled", false)):
 		payout = int(settlement_receipt.get("payout", payout))
 		result_data["reward"] = payout
-	if won:
-		_play_ui_sfx(&"complete", true)
-		_play_success_feedback()
-	else:
-		_play_ui_sfx(&"error", true)
-		_play_failure_feedback()
+	await _play_terminal_feedback(won)
 	await _wait_seconds(RESULT_HOLD_SECONDS)
 	if not is_inside_tree():
 		return
@@ -886,6 +1064,9 @@ func _complete_terminal_result() -> void:
 		model.call("advance_to_result")
 	_set_state(State.RESULT)
 	_show_result()
+	if won and feel_fx != null:
+		var balance_before: int = CasinoBankScript.balance() - payout
+		feel_fx.animate_balance_change(chip_label, balance_before, CasinoBankScript.balance())
 	_terminal_handling = false
 
 func _record_progress_before_result(won: bool) -> bool:
@@ -939,13 +1120,19 @@ func _show_result() -> void:
 	var bet := int(result_data.get("bet", selected_bet))
 	var tier := str(result_data.get("tier", active_tier))
 	var template_id := str(result_data.get("template_id", active_template.get("id", "")))
-	result_label.text = "VAULT BREAK!" if won else "ACCESS DENIED"
+	result_label.text = "金庫を開錠！" if won else "開錠失敗\nチップなし"
 	result_label.add_theme_color_override("font_color", BRASS_LIGHT if won else Color("#f0a39a"))
-	result_payout_label.text = "+%d CHIP" % reward if won else "-%d CHIP" % bet
-	result_detail_label.text = "%s %s · BET %d · %d/%d ROLLS" % [
+	if result_vault_door != null:
+		result_vault_door.modulate = Color("#f5d890") if won else Color("#75646b")
+		result_vault_door.modulate.a = 0.96 if won else 0.64
+	if result_vault_door_panel != null:
+		result_vault_door_panel.add_theme_stylebox_override("panel", _metal_panel(Color("#130e17d8"), BRASS if won else FAILURE_RED, 16, 2))
+	result_payout_label.text = "受け取り %d CHIP（BET込み）" % reward
+	result_detail_label.text = "収支 %+d CHIP · BET %d\n%s %s · %d/%d回" % [
+		reward - bet,
+		bet,
 		str(TIER_NAMES.get(tier, tier.to_upper())),
 		template_id,
-		bet,
 		int(result_data.get("rolls_used", 0)),
 		int(result_data.get("max_rolls", 0)),
 	]
@@ -954,6 +1141,23 @@ func _show_result() -> void:
 		result_detail_label.text += "\nBLACK VAULT %s APPEARED" % spawned
 	status_label.text = "進行とCHIPを保存しました。次の行動を選択。"
 	_refresh_all()
+	_reset_content_scroll()
+	call_deferred("_animate_result_reveal")
+
+func _reset_content_scroll() -> void:
+	if content_scroll == null:
+		return
+	content_scroll.scroll_vertical = 0
+	call_deferred("_apply_content_scroll_top")
+
+func _apply_content_scroll_top() -> void:
+	if content_scroll != null and is_instance_valid(content_scroll):
+		content_scroll.scroll_vertical = 0
+
+func _animate_result_reveal() -> void:
+	if result_view == null or not result_view.visible:
+		return
+	VisualFeedback.reveal(result_view, 0.28)
 
 func _show_saved_result(saved_result: Dictionary) -> void:
 	result_data = saved_result.duplicate(true)
@@ -1083,12 +1287,12 @@ func _is_tier_playable(tier: String) -> bool:
 func _tier_lock_reason(tier: String) -> String:
 	match tier:
 		"silver":
-			return "SILVER LOCKED · BRONZE VAULTを1回OPEN"
+			return "シルバー金庫は、ブロンズを1回成功すると解放されます。"
 		"gold":
-			return "GOLD LOCKED · SILVER VAULTを2回OPEN"
+			return "ゴールド金庫は、シルバーを2回成功すると解放されます。"
 		"black":
-			return "BLACK VAULTは出現していません。"
-	return "このTIERは選べません。"
+			return "ブラック金庫はまだ出現していません。"
+	return "この金庫ランクは選べません。"
 
 func _rebuild_lock_views() -> void:
 	if lock_container == null:
@@ -1129,17 +1333,25 @@ func _display_faces_for_lock(lock_data: Dictionary) -> Array[int]:
 
 func _refresh_all() -> void:
 	if chip_label != null:
-		chip_label.text = "CHIP  %d" % CasinoBankScript.balance()
+		var chip_balance: int = CasinoBankScript.balance()
+		chip_label.text = "CASINO CHIP\n%d" % chip_balance
+		if last_chip_balance >= 0 and chip_balance != last_chip_balance:
+			_pop_chip_balance()
+		last_chip_balance = chip_balance
 	setup_view.visible = state == State.SETUP
 	active_view.visible = state in [State.READY, State.ROLLING, State.WAITING_FOR_PLACEMENT, State.RESOLVING_PLACEMENT, State.SUCCESS, State.FAILURE]
 	result_view.visible = state == State.RESULT
 	_refresh_bet_buttons()
 	_refresh_tier_buttons()
+	if setup_reward_label != null and repository != null:
+		var setup_config: Dictionary = repository.call("get_tier_config", selected_tier) as Dictionary
+		var setup_reward := floori(float(selected_bet) * float(setup_config.get("payout_multiplier", 0.0)))
+		setup_reward_label.text = "成功報酬  %d チップ" % setup_reward
 	if start_button != null:
 		start_button.disabled = state != State.SETUP or resume_error or CasinoBankScript.balance() < selected_bet or not _is_tier_playable(selected_tier) or not _repository_loaded
 	if back_button != null:
 		back_button.disabled = state in [State.ROLLING, State.RESOLVING_PLACEMENT, State.SUCCESS, State.FAILURE, State.EXITING]
-		back_button.text = "カジノへ戻る" if state != State.RESULT else "RESULTを閉じてカジノへ戻る"
+		back_button.text = CasinoBackButton.LABEL
 	if model == null or active_template.is_empty():
 		return
 	var config: Dictionary = repository.call("get_tier_config", active_tier) as Dictionary
@@ -1150,7 +1362,7 @@ func _refresh_all() -> void:
 	if roll_counter != null:
 		roll_counter.text = "%d / %d" % [maxi(0, int(model.get("max_rolls")) - int(model.get("rolls_used"))), int(model.get("max_rolls"))]
 	if reward_label != null:
-		reward_label.text = "OPEN REWARD  %d CHIP" % floori(float(selected_bet) * float(config.get("payout_multiplier", 0.0)))
+		reward_label.text = "獲得チップ  %d CHIP" % floori(float(selected_bet) * float(config.get("payout_multiplier", 0.0)))
 	if template_label != null:
 		template_label.text = "%s VAULT · %s · %d LOCKS" % [str(TIER_NAMES.get(active_tier, active_tier.to_upper())), str(active_template.get("id", "")), lock_views.size()]
 	if die_face_label != null:
@@ -1170,7 +1382,20 @@ func _refresh_bet_buttons() -> void:
 			continue
 		var selected := amount == selected_bet
 		button.disabled = state != State.SETUP or chips < amount
-		button.text = ("SELECTED · " if selected else "") + "%d CHIP" % amount
+		button.text = ""
+		button.offset_transform_enabled = true
+		button.offset_transform_position = Vector2(0, -2 if selected else 0)
+		button.offset_transform_scale = Vector2(1.02, 1.02) if selected else Vector2.ONE
+		var state_copy := bet_state_labels.get(amount) as Label
+		var amount_copy := bet_value_labels.get(amount) as Label
+		var unit_copy := bet_unit_labels.get(amount) as Label
+		if state_copy != null:
+			state_copy.text = "選択中" if selected else " "
+			state_copy.modulate = Color.WHITE if chips >= amount else Color(1, 1, 1, 0.4)
+		if amount_copy != null:
+			amount_copy.modulate = Color.WHITE if chips >= amount else Color(1, 1, 1, 0.4)
+		if unit_copy != null:
+			unit_copy.modulate = Color.WHITE if chips >= amount else Color(1, 1, 1, 0.4)
 		_apply_button_state(button, selected, chips >= amount)
 
 func _refresh_tier_buttons() -> void:
@@ -1187,18 +1412,22 @@ func _refresh_tier_buttons() -> void:
 		var playable := _is_tier_playable(tier)
 		var selected := tier == selected_tier
 		var config: Dictionary = repository.call("get_tier_config", tier) as Dictionary
-		var heading := ("SELECTED · " if selected else "") + str(TIER_NAMES.get(tier, tier.to_upper())) + "  ×%.1f" % float(config.get("payout_multiplier", 0.0))
-		var detail := "AVAILABLE"
+		var heading := ("選択中  " if selected else "") + str(TIER_NAMES_JA.get(tier, tier))
+		var payout := "配当 ×%.1f" % float(config.get("payout_multiplier", 0.0))
+		var detail := "挑戦可能"
 		if tier == "black" and playable:
-			detail = "LIVE VAULT · %s" % active_black
+			detail = "特別金庫が出現中"
 		elif not playable:
 			match tier:
-				"silver": detail = "LOCKED · BRONZE OPEN 1"
-				"gold": detail = "LOCKED · SILVER OPEN 2"
-				"black": detail = "NOT ACTIVE"
-		button.text = "%s\n%s" % [heading, detail]
+				"silver": detail = "ブロンズ成功 1回で解放"
+				"gold": detail = "シルバー成功 2回で解放"
+				"black": detail = "未出現"
+		button.text = "%s\n%s\n%s" % [heading, payout, detail]
 		button.disabled = state != State.SETUP or not playable
-		_apply_button_state(button, selected, playable)
+		button.offset_transform_enabled = true
+		button.offset_transform_position = Vector2(0, -2 if selected else 0)
+		button.offset_transform_scale = Vector2(1.02, 1.02) if selected else Vector2.ONE
+		_apply_tier_state(button, tier, selected, playable)
 
 func _refresh_lock_views() -> void:
 	if model == null or active_template.is_empty():
@@ -1285,13 +1514,13 @@ func force_black_spawn() -> void:
 	queued_spawn_random_value = 0.0
 	queued_black_template_random_value = 0.0
 
-func _animate_roll(face: int) -> void:
+func _animate_roll(face: int, is_final_roll: bool = false) -> void:
 	var start_face := displayed_face
 	if start_face not in range(1, 7):
 		start_face = 1
 	if is_instance_valid(dice_presentation):
 		dice_presentation.present([start_face], true, 1)
-	await _wait_seconds(ROLL_SECONDS)
+	await _wait_seconds(FINAL_ROLL_SECONDS if is_final_roll else ROLL_SECONDS)
 	if not is_inside_tree():
 		return
 	if is_instance_valid(dice_presentation):
@@ -1299,7 +1528,72 @@ func _animate_roll(face: int) -> void:
 	displayed_face = face
 	if die_face_label != null:
 		die_face_label.text = str(face)
-	await _wait_seconds(SETTLE_SECONDS)
+	if feel_fx != null:
+		feel_fx.play_dice_land(false)
+	_play_die_land_feedback()
+	await _wait_seconds(FINAL_SETTLE_SECONDS if is_final_roll else SETTLE_SECONDS)
+
+func _play_die_land_feedback() -> void:
+	if die_face_label == null:
+		return
+	die_face_label.offset_transform_enabled = true
+	var tween: Tween = create_tween()
+	tween.tween_property(die_face_label, "offset_transform_scale", Vector2(1.04, 1.04), 0.05)
+	tween.tween_property(die_face_label, "offset_transform_scale", Vector2(0.98, 0.98), 0.04)
+	tween.tween_property(die_face_label, "offset_transform_scale", Vector2.ONE, 0.05)
+
+func _play_discard_feedback() -> void:
+	if die_face_label == null:
+		return
+	die_face_label.offset_transform_enabled = true
+	var tween: Tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(die_face_label, "offset_transform_scale", Vector2(0.88, 0.88), 0.08)
+	tween.tween_property(die_face_label, "offset_transform_position", Vector2(0.0, 7.0), 0.10)
+	tween.chain().tween_property(die_face_label, "offset_transform_scale", Vector2.ONE, 0.08)
+	tween.parallel().tween_property(die_face_label, "offset_transform_position", Vector2.ZERO, 0.08)
+
+func _play_remaining_roll_feedback() -> void:
+	if roll_counter == null or model == null:
+		return
+	var remaining: int = maxi(0, int(model.get("max_rolls")) - int(model.get("rolls_used")))
+	if remaining > 2:
+		return
+	roll_counter.offset_transform_enabled = true
+	var strength: float = 1.12 if remaining == 1 else 1.06
+	var tween: Tween = create_tween()
+	tween.tween_property(roll_counter, "offset_transform_scale", Vector2(strength, strength), 0.08)
+	tween.tween_property(roll_counter, "offset_transform_scale", Vector2.ONE, 0.12)
+	last_feel_event = "remaining_%d" % remaining
+	if remaining == 1:
+		_play_ui_sfx(&"warning", true)
+		if feel_fx != null:
+			feel_fx.vibrate_light()
+
+func _play_terminal_feedback(won: bool) -> void:
+	if won:
+		last_feel_event = "success_%s" % active_tier
+		_play_ui_sfx(&"progress-step", true)
+		await _wait_seconds(0.18 if active_tier != "black" else 0.30)
+		if not is_inside_tree():
+			return
+		_play_ui_sfx(&"complete", true)
+		_play_success_feedback()
+		await _wait_seconds(0.42)
+		if active_tier in ["gold", "black"]:
+			_play_ui_sfx(&"achievement", true)
+		if feel_fx != null:
+			feel_fx.vibrate_result()
+	else:
+		last_feel_event = "access_denied"
+		await _wait_seconds(0.22)
+		if not is_inside_tree():
+			return
+		_play_ui_sfx(&"error", true)
+		_play_failure_feedback()
+		if feel_fx != null:
+			feel_fx.vibrate_result()
+		await _wait_seconds(0.24)
 
 func _wait_seconds(base_seconds: float) -> void:
 	var seconds := maxf(0.0, base_seconds * maxf(0.0, animation_duration_scale))
@@ -1315,7 +1609,14 @@ func _play_success_feedback() -> void:
 	var pulse := create_tween()
 	pulse.tween_property(vault_panel, "modulate", Color("#fff3c4"), 0.10 * maxf(animation_duration_scale, 0.01))
 	pulse.tween_property(vault_panel, "modulate", Color.WHITE, 0.20 * maxf(animation_duration_scale, 0.01))
+	_spin_vault_handle()
 	_spawn_brass_sparks()
+	if active_vault_door != null:
+		active_vault_door.offset_transform_enabled = true
+		var door_tween: Tween = create_tween()
+		door_tween.tween_property(active_vault_door, "offset_transform_scale", Vector2(0.98, 1.02), 0.18 * maxf(animation_duration_scale, 0.01))
+		door_tween.tween_property(active_vault_door, "offset_transform_position", Vector2(18.0, -3.0), 0.34 * maxf(animation_duration_scale, 0.01)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		door_tween.parallel().tween_property(active_vault_door, "offset_transform_scale", Vector2(0.90, 1.04), 0.34 * maxf(animation_duration_scale, 0.01))
 
 func _play_failure_feedback() -> void:
 	if vault_panel == null:
@@ -1323,6 +1624,7 @@ func _play_failure_feedback() -> void:
 	var pulse := create_tween()
 	pulse.tween_property(vault_panel, "modulate", Color("#d77b72"), 0.09 * maxf(animation_duration_scale, 0.01))
 	pulse.tween_property(vault_panel, "modulate", Color.WHITE, 0.18 * maxf(animation_duration_scale, 0.01))
+	_shake_vault_door()
 
 func _spawn_brass_sparks() -> void:
 	if effect_layer == null:
@@ -1384,7 +1686,98 @@ func _button(copy: String, primary: bool = false) -> Button:
 	button.add_theme_stylebox_override("hover", _panel(BRASS_LIGHT if primary else Color("#51436a"), BRASS_LIGHT, 13, 3))
 	button.add_theme_stylebox_override("pressed", _panel(Color("#ae792a") if primary else Color("#302641"), BRASS_LIGHT, 13, 3))
 	button.add_theme_stylebox_override("disabled", _panel(Color("#3a3540"), Color("#67616b"), 13, 1))
+	button.add_theme_stylebox_override("focus", _focus_panel(BRASS_LIGHT, 13))
+	VisualFeedback.bind_button(button)
 	return button
+
+func _vault_door_texture(node_name: String) -> TextureRect:
+	var texture_rect: TextureRect = TextureRect.new()
+	texture_rect.name = node_name
+	texture_rect.texture = VAULT_DOOR_TEXTURE
+	texture_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	texture_rect.pivot_offset = texture_rect.size * 0.5
+	return texture_rect
+
+func _apply_cta_style(button: Button) -> void:
+	button.add_theme_color_override("font_color", PARCHMENT_LIGHT)
+	button.add_theme_color_override("font_hover_color", Color.WHITE)
+	button.add_theme_stylebox_override("normal", _metal_panel(VELVET_RED, BRASS_LIGHT, 18, 4))
+	button.add_theme_stylebox_override("hover", _metal_panel(VELVET_RED_LIGHT, Color("#ffe49a"), 18, 5))
+	button.add_theme_stylebox_override("pressed", _metal_panel(Color("#571512"), BRASS, 18, 4))
+	button.add_theme_stylebox_override("disabled", _metal_panel(Color("#322b30"), Color("#62585e"), 18, 2))
+	button.add_theme_stylebox_override("focus", _focus_panel(Color("#ffe49a"), 18))
+
+func _apply_tier_state(button: Button, tier: String, selected: bool, available: bool) -> void:
+	var fill: Color = BRONZE_SURFACE
+	var border: Color = Color("#b56f42")
+	match tier:
+		"silver":
+			fill = SILVER_SURFACE
+			border = Color("#aeb4c0")
+		"gold":
+			fill = GOLD_SURFACE
+			border = Color("#e6b84f")
+		"black":
+			fill = BLACK_SURFACE
+			border = Color("#a45dde")
+	if not available:
+		fill = fill.darkened(0.42)
+		border = border.darkened(0.35)
+	button.add_theme_stylebox_override("normal", _metal_panel(fill.lightened(0.10) if selected else fill, BRASS_LIGHT if selected else border, 14, 4 if selected else 2))
+	button.add_theme_stylebox_override("hover", _metal_panel(fill.lightened(0.18), BRASS_LIGHT, 14, 3))
+	button.add_theme_stylebox_override("pressed", _metal_panel(fill.darkened(0.12), BRASS_LIGHT, 14, 3))
+	button.add_theme_color_override("font_color", PARCHMENT_LIGHT if available else Color("#aaa4ad"))
+	button.add_theme_stylebox_override("focus", _focus_panel(BRASS_LIGHT if tier != "black" else Color("#c47aff"), 14))
+
+func _metal_panel(fill: Color, border: Color, radius: int, width: int) -> StyleBoxFlat:
+	var style: StyleBoxFlat = _panel(fill, border, radius, width)
+	style.shadow_color = Color("#00000088")
+	style.shadow_size = 8
+	style.shadow_offset = Vector2(0, 4)
+	return style
+
+func _focus_panel(border: Color, radius: int) -> StyleBoxFlat:
+	var style: StyleBoxFlat = StyleBoxFlat.new()
+	style.bg_color = Color.TRANSPARENT
+	style.draw_center = false
+	style.border_color = border
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(radius)
+	style.set_expand_margin_all(3)
+	return style
+
+func _pop_chip_balance() -> void:
+	if chip_label == null:
+		return
+	if chip_balance_tween != null:
+		chip_balance_tween.kill()
+	chip_label.offset_transform_enabled = true
+	chip_balance_tween = create_tween()
+	chip_balance_tween.tween_property(chip_label, "offset_transform_scale", Vector2(1.08, 1.08), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	chip_balance_tween.tween_property(chip_label, "offset_transform_scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+func _spin_vault_handle() -> void:
+	if active_vault_door == null:
+		return
+	if vault_handle_tween != null:
+		vault_handle_tween.kill()
+	active_vault_door.pivot_offset = active_vault_door.size * 0.5
+	vault_handle_tween = create_tween()
+	vault_handle_tween.tween_property(active_vault_door, "rotation", 0.32, 0.34 * maxf(animation_duration_scale, 0.01)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	vault_handle_tween.tween_property(active_vault_door, "rotation", 0.0, 0.20 * maxf(animation_duration_scale, 0.01))
+
+func _shake_vault_door() -> void:
+	if active_vault_door == null:
+		return
+	if vault_handle_tween != null:
+		vault_handle_tween.kill()
+	vault_handle_tween = create_tween()
+	active_vault_door.offset_transform_enabled = true
+	vault_handle_tween.tween_property(active_vault_door, "offset_transform_position", Vector2(3.0, 0.0), 0.06)
+	vault_handle_tween.tween_property(active_vault_door, "offset_transform_position", Vector2(-3.0, 0.0), 0.08)
+	vault_handle_tween.tween_property(active_vault_door, "offset_transform_position", Vector2.ZERO, 0.08)
 
 func _apply_button_state(button: Button, selected: bool, available: bool) -> void:
 	if not available:

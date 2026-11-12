@@ -1,0 +1,402 @@
+version: 2
+
+goal:
+  title: "Las Vegas Phase B — Economy And Six-Game UX"
+  slug: "las-vegas-phase-b"
+  kind: audit
+  tranche: "Fix TOWER economy, capture and audit six current flows, implement P1/small-P2 UX differentiation, re-simulate, regress, and report."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Map DICE TOWER's BET/strategy math, six-facility UX and CTA/result surfaces, VAULT template lifetime, current capture paths, tests, and unrelated dirty files."
+    inputs:
+      - "docs/audits/las-vegas-phase-a-casino-economy-fix-2026-08-30.md"
+      - "scripts/game"
+      - "scripts/app"
+      - "tools/audit_las_vegas_economy.py"
+      - "tests"
+    constraints:
+      - "Read-only."
+      - "Do not edit implementation or control files."
+      - "Prefer exact files, formulas, commands, and bounded candidate changes."
+    expected_output:
+      - "Tower cause and candidate payout fixes"
+      - "Six-facility UX/CTA/result evidence map"
+      - "VAULT lifetime and mastered-RTP evidence"
+      - "Capture and verification commands"
+      - "Ranked P1/small-P2 candidates"
+    receipt:
+      result: done
+      note: "notes/T001-scout-map.md"
+      summary: "Identified TOWER roundi exploit and a 97.84% all-BET 4F curve; mapped six UX/CTA/result gaps, VAULT mastered RTP, capture paths, tests, and dirty boundaries."
+      evidence:
+        - "scripts/game/dice_tower_model.gd"
+        - "tools/audit_las_vegas_economy.py"
+        - "scripts/app/*casino screens"
+        - "data/casino/vault_break_templates.json"
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Choose the bounded Phase B implementation set from Scout evidence."
+    inputs:
+      - "T001 receipt"
+      - "Current-run screenshots"
+    constraints:
+      - "Do not implement."
+      - "Prioritize economy, first-10-second comprehension, result clarity, and differentiation."
+      - "Reject large redesigns, new games, and meta rewards."
+    expected_output:
+      - "Decision"
+      - "Exact Worker objectives"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Deferred P2/P3 work"
+    receipt:
+      result: done
+      decision: "Run the 97.84% all-BET TOWER economy slice first, then a bounded existing-component UX slice. Keep VAULT economy unchanged; add Hub emotional subtitles; distinguish immediate replay from setup return."
+      next_allowed_task: T003
+      deferred:
+        - "VAULT payout/weight/template changes"
+        - "New art or large layout redesign"
+        - "ROULETTE/POKER rules"
+        - "Meta rotation rewards"
+
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Apply the 4F temptation TOWER curve and add reproducible BET/strategy, beginner bankroll, mixed/random rotation, and mastered VAULT economy outputs without changing rules or transactions."
+    allowed_files:
+      - "scripts/game/dice_tower_model.gd"
+      - "tools/audit_las_vegas_economy.py"
+      - "tests/run_casino_tests.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "artifacts/audit/las-vegas-phase-b-casino-economy-2026-08-30.json"
+    verify:
+      - "Godot --headless --path . --script tests/run_casino_tests.gd"
+      - "Godot --headless --path . --script tests/run_casino_ui_tests.gd"
+      - "python tools/audit_las_vegas_economy.py"
+      - "git diff --check"
+      - "git status --short"
+    stop_if:
+      - "Any BET optimal RTP is outside 94–98% or BET spread exceeds 0.25 points."
+      - "Rules, CasinoBank, transaction, or save format must change."
+      - "A beginner policy would need an invented fixed success rate."
+      - "Need files outside allowed_files."
+      - "Verification fails twice for the same cause."
+    receipt:
+      result: blocked_then_pm_recovery
+      summary: "Implementation and verification passed; final JSON rewrite was blocked by a repeatable Windows lock on the generated artifact. PM owns exact-file recovery in T003R."
+      changed_files:
+        - "scripts/game/dice_tower_model.gd"
+        - "tools/audit_las_vegas_economy.py"
+        - "tests/run_casino_tests.gd"
+        - "tests/run_casino_ui_tests.gd"
+        - "artifacts/audit/las-vegas-phase-b-casino-economy-2026-08-30.json"
+      verification:
+        - "Casino model: 248 assertions / 0 failures"
+        - "Casino UI: 160 assertions / 0 failures"
+        - "TOWER BET 10/20/50 optimal RTP: 97.839506%; spread 0 points"
+      commands:
+        - "python -m py_compile tools/audit_las_vegas_economy.py"
+        - "Godot --headless --path . --script tests/run_casino_tests.gd"
+        - "Godot --headless --path . --script tests/run_casino_ui_tests.gd"
+        - "python tools/audit_las_vegas_economy.py"
+        - "git diff --check"
+
+  - id: T006
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "Recover only the locked generated Phase B economy artifact, rerun the audit, and confirm the corrected cashout-floor labels and T003 gates."
+    allowed_files:
+      - "artifacts/audit/las-vegas-phase-b-casino-economy-2026-08-30.json"
+    verify:
+      - "python tools/audit_las_vegas_economy.py"
+      - "Parse JSON and confirm bust locations are excluded from cashout_floors"
+      - "Confirm BET 10/20/50 RTP gate and beginner bankroll sections"
+    stop_if:
+      - "Exact artifact cannot be safely moved/replaced."
+      - "Economy values differ from the T003 receipt."
+    receipt:
+      result: done
+      summary: "Moved the stale locked JSON aside, regenerated outside the restrictive sandbox boundary, validated corrected labels and TOWER gates, then removed the temporary backup."
+      verification:
+        - "BET 10/20/50 optimal RTP: 0.97839506 each"
+        - "Optimal cashout_floors contains only payout floors 4 and 5; bust locations are excluded"
+        - "Beginner facility, uniform rotation, and independent random facility sections include 10/30/50/100 metrics"
+
+  - id: T007
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "Capture and inspect actual-rendered 360x800 baseline states before any Phase B UX source edits, and decide whether the beginner policy model is representative enough for reporting."
+    allowed_files:
+      - "tests/record_las_vegas_phase_b_baseline.gd"
+      - "artifacts/audit/las-vegas-phase-b-before"
+      - "artifacts/playtest/dice-tower-v1"
+      - "docs/goals/las-vegas-phase-b/notes/T003B-baseline.md"
+    verify:
+      - "Non-headless Godot recorder reports actual_rendering=true and 360x800"
+      - "Open and inspect Hub plus target result/setup states"
+      - "Compare beginner policies against visible game affordances and existing Phase A audit"
+    stop_if:
+      - "Actual rendering is unavailable."
+      - "Baseline recorder would need application source changes."
+    receipt:
+      result: done
+      note: "notes/T003B-baseline.md"
+      summary: "Accepted actual-rendered 360x800 baseline and bounded UX set; identified first-roll-only Poker as a lower bound rather than a representative beginner policy."
+      verification:
+        - "Expansion recorder: 53 assertions / 0 failures / actual_rendering=true"
+        - "DICE RACE recorder: 360x800 / layout_fits=true"
+        - "DICE TOWER recorder: setup, active, BUST / 0 failures"
+
+  - id: T008
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Review the accepted baseline, T003 economy artifact, and beginner-policy caveat; authorize or narrow T004 and specify any audit-model correction required before UX implementation."
+    inputs:
+      - "T003 and T006 receipts"
+      - "notes/T003B-baseline.md"
+      - "artifacts/audit/las-vegas-phase-b-casino-economy-2026-08-30.json"
+    constraints:
+      - "Do not implement."
+      - "Keep Phase B bounded to P1 and small P2."
+      - "Do not accept a beginner model that contradicts visible required actions."
+    expected_output:
+      - "T004 go/no-go and exact scope"
+      - "Beginner simulation policy decision"
+      - "Any required task ordering change"
+    receipt:
+      result: done
+      decision: "T004 GO with the bounded existing-component scope. T009 must correct the Poker beginner aggregate after T004 and before T005."
+      next_allowed_task: T004
+      evidence:
+        - "Accepted TOWER 97.839506% at BET 10/20/50 with zero spread"
+        - "Accepted actual-rendered 360x800 baseline"
+        - "Rejected Poker first-roll-only as representative beginner behavior"
+
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "After accepted 360×800 baseline capture, implement bounded emotional Hub subtitles, current payout copy, RETURN/NET result clarity, existing-overlay TOWER success, VAULT choice hint, and replay/setup CTA semantics."
+    allowed_files:
+      - "scripts/app/casino_hub_screen.gd"
+      - "scripts/app/dice_race_screen.gd"
+      - "scripts/app/dice_tower_screen.gd"
+      - "scripts/app/treasure_21_screen.gd"
+      - "scripts/app/vault_break_screen.gd"
+      - "tests/run_casino_foundation_tests.gd"
+      - "tests/run_casino_ui_tests.gd"
+      - "tests/run_treasure_21_tests.gd"
+      - "tests/run_vault_break_ui_tests.gd"
+      - "tests/record_las_vegas_casino_expansion.gd"
+      - "tests/record_dice_race.gd"
+      - "tests/record_dice_tower.gd"
+    verify:
+      - "Godot casino foundation/UI/Treasure/Vault suites"
+      - "Non-headless recorders at actual_rendering=true and 360×800"
+      - "git diff --check"
+    stop_if:
+      - "No accepted actual-rendered 360×800 baseline exists."
+      - "Text overlaps, CTA is offscreen, or primary play area shrinks."
+      - "CasinoBank/model/data/scene/asset change is required."
+      - "Replay causes double debit, active overwrite, or double settlement."
+      - "Change expands into long copy, large redesign, or a new asset system."
+      - "Verification fails twice for the same cause."
+    receipt:
+      result: done
+      summary: "Implemented bounded Hub roles, RETURN/NET result clarity, shared TOWER result overlay, current TREASURE payout copy, and replay/setup CTA semantics without rules, Bank, scenes, data, or assets."
+      changed_files:
+        - "scripts/app/casino_hub_screen.gd"
+        - "scripts/app/dice_race_screen.gd"
+        - "scripts/app/dice_tower_screen.gd"
+        - "scripts/app/treasure_21_screen.gd"
+        - "scripts/app/vault_break_screen.gd"
+        - "tests/run_casino_ui_tests.gd"
+        - "tests/run_treasure_21_tests.gd"
+        - "tests/run_vault_break_ui_tests.gd"
+        - "tests/record_dice_race.gd"
+        - "tests/record_dice_tower.gd"
+      commands:
+        - "Godot run_casino_ui_tests.gd: 172 / 0"
+        - "Godot run_casino_foundation_tests.gd: 36 / 0"
+        - "Godot run_treasure_21_tests.gd: 45 / 0"
+        - "Godot run_vault_break_ui_tests.gd: 59 / 0"
+        - "Actual-rendered recorders: expansion 53 / 0; Race fits; Tower 0 failures"
+        - "git diff --check"
+
+  - id: T009
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Replace Poker first-roll-only as the beginner aggregate with a deterministic visible KEEP plus two-REROLL heuristic, retain it as a lower bound, and regenerate all 10/30/50/100 economy outputs."
+    allowed_files:
+      - "tools/audit_las_vegas_economy.py"
+      - "artifacts/audit/las-vegas-phase-b-casino-economy-2026-08-30.json"
+    verify:
+      - "python tools/audit_las_vegas_economy.py"
+      - "Heuristic RTP is above 0.376003 and at or below optimal 0.947077"
+      - "Beginner facility/uniform/random aggregates reference the heuristic"
+      - "First-roll-only remains lower_bound only"
+      - "All 10/30/50/100 outputs retain seven metrics"
+      - "git diff --check"
+    stop_if:
+      - "Heuristic cannot be reproduced using visible KEEP/REROLL actions."
+      - "Application Poker rules or payouts must change."
+      - "Need files outside allowed_files."
+      - "Verification fails twice for the same cause."
+    receipt:
+      result: done
+      summary: "Beginner Poker now uses a deterministic visible KEEP plus two-REROLL heuristic; first-roll-only remains an excluded lower bound; all economy outputs regenerated."
+      changed_files:
+        - "tools/audit_las_vegas_economy.py"
+        - "artifacts/audit/las-vegas-phase-b-casino-economy-2026-08-30.json"
+      commands:
+        - "Poker heuristic RTP 93.137169%; lower bound 37.6003%; optimal ceiling 94.7077%"
+        - "python -m py_compile with temporary pycache: pass"
+        - "python tools/audit_las_vegas_economy.py: pass"
+        - "JSON structural and RTP gates: pass"
+        - "git diff --check"
+
+  - id: T005
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "Capture accepted 360×800 before/after evidence, run all simulations and regressions, and write the Phase B audit report."
+    inputs:
+      - "T003 receipt"
+      - "T004 receipt"
+      - "T009 receipt"
+      - "Regenerated Phase B economy JSON"
+    constraints:
+      - "Control/report/artifact/test-output files only unless the board explicitly expands scope."
+    expected_output:
+      - "Accepted current-run screenshots"
+      - "300 CHIP metrics"
+      - "Six-role and differentiation matrix"
+      - "Regression totals"
+      - "Phase B report"
+    receipt:
+      result: done
+      summary: "Accepted before/after actual-rendered evidence, regenerated final 300 CHIP metrics, ran the complete Phase A regression set, and wrote the Phase B audit report."
+      outputs:
+        - "docs/audits/las-vegas-phase-b-economy-ux-improvement-2026-08-30.md"
+        - "artifacts/audit/las-vegas-phase-b-casino-economy-2026-08-30.json"
+        - "artifacts/audit/las-vegas-phase-b-before"
+        - "artifacts/audit/las-vegas-phase-b-after"
+      verification:
+        - "Phase A numeric suites: 1,265 assertions / 0 failures"
+        - "run_tests.gd: failures=0"
+        - "Expansion actual-rendered: 53 / 0 at 360x800"
+        - "Race layout_fits=true; Tower 0 failures; Treasure/Vault results actual_rendering=true"
+        - "Python compile and scoped git diff --check: pass"
+        - "Unrelated user dirty files remain excluded"
+
+  - id: T010
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: low
+    objective: "Remove the duplicate visible Casino-back CTA on the TREASURE result state found in the accepted actual-rendered 360x800 after capture, retaining PLAY AGAIN, CHANGE BET, and one Casino-back action."
+    allowed_files:
+      - "scripts/app/treasure_21_screen.gd"
+      - "tests/run_treasure_21_tests.gd"
+    verify:
+      - "Godot --headless --path . --script tests/run_treasure_21_tests.gd"
+      - "Actual-rendered TREASURE result at 360x800 shows exactly one Casino-back action"
+      - "git diff --check"
+    stop_if:
+      - "Change affects gameplay, economy, Bank, scenes, data, or assets."
+      - "Any result action becomes unreachable."
+      - "Need files outside allowed_files."
+    receipt:
+      result: done
+      summary: "Removed only TREASURE's redundant result-local Casino-back button; PLAY AGAIN, CHANGE BET, and one global Casino-back remain reachable."
+      changed_files:
+        - "scripts/app/treasure_21_screen.gd"
+        - "tests/run_treasure_21_tests.gd"
+      commands:
+        - "Treasure suite: 47 assertions / 0 failures"
+        - "Actual-rendered result: 360x800 / 0 failures"
+        - "git diff --check"
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit Phase B completion against the user's requested outcomes and current dirty diff."
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "Reject completion if required Worker work remains queued or active."
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence"
+      - "score and top remaining issues"
+      - "next task if not complete"
+    receipt:
+      result: complete
+      decision: complete
+      summary: "Phase B tranche approved complete at 91/100; no missing evidence."
+      evidence:
+        - "TOWER BET 10/20/50 optimal RTP 97.839506% with zero spread"
+        - "Poker beginner heuristic 93.1372%; final bankroll outputs accepted"
+        - "1,265 assertions / 0 failures plus run_tests failures=0"
+        - "Accepted 360x800 actual-rendered before/after evidence"
+        - "All Worker and PM tasks done; unrelated user dirty files excluded"
+      residual:
+        - "RACE/TREASURE/VAULT beginner-only 100-game bankruptcy remains high"
+        - "VAULT mastered RTP remains low relative to decision time"
+        - "Hub subtitle real-device readability"
+
+checks:
+  dirty_fingerprint: "HEAD 1c01a24; exclude user APK/import/audio/export/art_source/uid changes and Scout-generated tools/__pycache__."
+  last_verification:
+    result: pass
+    task: T005
+    commands:
+      - "Phase A numeric suites: 1,265 assertions / 0 failures"
+      - "run_tests.gd: failures=0"
+      - "Python compile: pass"
+      - "Scoped git diff --check: pass"
+      - "Actual-rendered 360x800: expansion 53/0, Race fits, Tower/results 0 failures"
