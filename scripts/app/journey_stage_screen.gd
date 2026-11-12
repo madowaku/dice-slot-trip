@@ -249,11 +249,9 @@ func _process(delta: float) -> void:
 	var dice_changed := false
 	if map_roll_active:
 		map_roll_elapsed += delta
-		map_roll_face = DICE_PRESENTATION.rolling_face_for_elapsed(map_roll_elapsed)
+		map_roll_face = _map_roll_face_for_elapsed(map_roll_elapsed)
 		dice_changed = true
-		if is_instance_valid(map_dice):
-			map_dice.present([map_roll_face], true, 0)
-			map_dice.sync_rolling_elapsed(map_roll_elapsed)
+		_present_rolling_map_die()
 	elif amazon_boss_roll_active:
 		amazon_boss_roll_elapsed += delta
 		amazon_boss_roll_face = DICE_PRESENTATION.rolling_face_for_elapsed(amazon_boss_roll_elapsed)
@@ -1941,6 +1939,18 @@ func _roll_map() -> void:
 	if map_movement_active or roll_animation_active or not journey.can_roll():
 		return
 	_begin_map_roll()
+
+
+## The face under the player's tap at this point of the spin. Stage layers
+## may swap in another die (Kyoto's trip dice); roll(face) is unchanged.
+func _map_roll_face_for_elapsed(elapsed: float) -> int:
+	return DICE_PRESENTATION.rolling_face_for_elapsed(elapsed)
+
+
+func _present_rolling_map_die() -> void:
+	if is_instance_valid(map_dice):
+		map_dice.present([map_roll_face], true, 0)
+		map_dice.sync_rolling_elapsed(map_roll_elapsed)
 
 
 func _begin_map_roll() -> void:
