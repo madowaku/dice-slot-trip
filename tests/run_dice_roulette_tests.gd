@@ -252,14 +252,12 @@ func _test_ui_contract() -> void:
 	var hub := HUB_SCENE.instantiate()
 	root.add_child(hub)
 	await process_frame
-	_expect(hub is CasinoHubScreen and hub.roulette_host != null, "Casino Hub creates a Dice Roulette host")
+	# DICE ROULETTE left the hub in the casino renewal (phase 3). The scene and
+	# its rules stay; the hub simply has no way to open it.
+	_expect(hub is CasinoHubScreen and hub.roulette_host != null, "Casino Hub keeps a Dice Roulette host for a later return")
 	hub.call("_open_dice_roulette")
 	await process_frame
-	_expect(hub.roulette_host.visible and hub.roulette_host.get_child_count() == 1, "Casino Hub opens Dice Roulette")
-	var opened: Node = hub.roulette_host.get_child(0)
-	_expect(opened.get_script() == ScreenScript, "Casino Hub routes to Dice Roulette instead of HIGH/LOW")
-	hub.call("_close_dice_roulette")
-	await process_frame
-	_expect(hub.hub_root.visible and not hub.roulette_host.visible, "returning from Dice Roulette restores Casino Hub")
+	_expect(not hub.roulette_host.visible and hub.roulette_host.get_child_count() == 0 and hub.hub_root.visible, "Casino Hub no longer opens the retired Dice Roulette")
+	_expect(not hub.facility_definitions.any(func(definition: Dictionary) -> bool: return str(definition.get("id", "")) == "high_low"), "HIGH/LOW stays out of the hub registry")
 	hub.queue_free()
 	await process_frame

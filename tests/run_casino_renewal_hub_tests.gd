@@ -51,11 +51,12 @@ func _remove_save() -> void:
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(test_save_path + suffix))
 
 
-func _fresh_bank(chips: int, owned: Array = []) -> void:
+func _fresh_bank(chips: int, owned: Array = [], owned_dice: Array = []) -> void:
 	_remove_save()
 	var data := Bank.default_data()
 	data["chips"] = chips
 	data["owned_cards"] = owned
+	data[Bank.OWNED_TRIP_DICE_KEY] = owned_dice
 	_expect(Bank.save_data(data), "fixture bank saves with %d chips" % chips)
 
 
@@ -71,9 +72,10 @@ func _test_prize_shelf() -> void:
 	_fresh_bank(38)
 	var hub := await _open_hub()
 	_expect(hub.prize_shelf != null and hub.prize_kicker_label.text == "ねらっている景品", "the shelf names what the player is saving for")
-	_expect("ウサギ" in hub.prize_name_label.text and hub.prize_remaining_label.text == "あと 12 チップ", "with 38 chips the first 50-chip prize needs 12 more")
-	_expect(is_equal_approx(hub.prize_progress.value, 38.0) and is_equal_approx(hub.prize_progress.max_value, 50.0), "the progress bar shows 38 of 50")
-	_expect(hub.prize_picture.texture != null, "the target prize has a picture")
+	# Trip dice are what the casino is for, so the first one is the default aim.
+	_expect("刻み" in hub.prize_name_label.text and hub.prize_remaining_label.text == "あと 42 チップ", "with 38 chips the first 80-chip trip die needs 42 more")
+	_expect(is_equal_approx(hub.prize_progress.value, 38.0) and is_equal_approx(hub.prize_progress.max_value, 80.0), "the progress bar shows 38 of 80")
+	_expect(hub.find_child("PrizeGlyph", true, false) != null, "the target prize has a picture")
 	var shelf_bottom := hub.prize_shelf.get_global_rect().end.y
 	var games_below := true
 	for id: Variant in hub.facility_buttons.keys():
@@ -82,7 +84,7 @@ func _test_prize_shelf() -> void:
 	hub.queue_free()
 	await process_frame
 
-	_fresh_bank(50)
+	_fresh_bank(80)
 	hub = await _open_hub()
 	_expect(hub.prize_remaining_label.text == "交換できます！" and "交換" in hub.prize_counter_button.text, "an affordable target invites the trade")
 	hub.queue_free()
@@ -91,7 +93,10 @@ func _test_prize_shelf() -> void:
 	var all_ids: Array = []
 	for card: Dictionary in (JSON.parse_string(FileAccess.get_file_as_string("res://data/casino/prize_cards.json")) as Dictionary).get("cards", []):
 		all_ids.append(str(card.get("id", "")))
-	_fresh_bank(10, all_ids)
+	var all_dice: Array = []
+	for die: Dictionary in (JSON.parse_string(FileAccess.get_file_as_string("res://data/casino/trip_dice.json")) as Dictionary).get("dice", []):
+		all_dice.append(str(die.get("id", "")))
+	_fresh_bank(10, all_ids, all_dice)
 	hub = await _open_hub()
 	_expect(hub.target_prize().is_empty() and hub.prize_name_label.text == "すべて交換済み", "with every prize owned the shelf says so")
 	hub.queue_free()
@@ -104,7 +109,10 @@ func _test_prize_counter() -> void:
 	_expect(not hub.is_prize_counter_open(), "the prize counter starts closed")
 	hub.prize_counter_button.pressed.emit()
 	await process_frame
-	_expect(hub.is_prize_counter_open() and hub.find_children("PrizeRow_*", "PanelContainer", true, false).size() == 6, "the counter lists all six prizes")
+	_expect(hub.is_prize_counter_open() and hub.find_children("PrizeRow_*", "PanelContainer", true, false).size() == 4, "the counter opens on the four trip dice")
+	(hub.find_child("PrizeTab_racer", true, false) as Button).pressed.emit()
+	await process_frame
+	_expect(hub.find_children("PrizeRow_*", "PanelContainer", true, false).size() == 6, "the racer tab lists all six racers")
 	_expect(hub.find_children("*", "ScrollContainer", true, false).is_empty(), "the counter needs no scrolling")
 	var aim_duck := hub.find_child("AimButton_dice_racer_duck", true, false) as Button
 	_expect(aim_duck != null and not aim_duck.disabled, "another prize can be chosen as the target")
@@ -117,7 +125,7 @@ func _test_prize_counter() -> void:
 	await process_frame
 	_expect(Bank.balance() == 20 and "dice_racer_duck" in Bank.owned_cards(), "trading spends the chips and adds the prize")
 	_expect(hub.find_child("BuyButton_dice_racer_duck", true, false) == null, "an owned prize cannot be bought twice")
-	_expect(Bank.target_prize_id() == "" and "ウサギ" in hub.prize_name_label.text and hub.prize_remaining_label.text == "あと 30 チップ", "after the trade the shelf moves to the next prize")
+	_expect(Bank.target_prize_id() == "" and "刻み" in hub.prize_name_label.text and hub.prize_remaining_label.text == "あと 60 チップ", "after the trade the shelf moves back to the first trip die")
 	var buy_rabbit := hub.find_child("BuyButton_dice_racer_rabbit", true, false) as Button
 	_expect(buy_rabbit != null and buy_rabbit.disabled, "a prize the player cannot afford is not purchasable")
 	(hub.find_child("PrizeCounterCloseButton", true, false) as Button).pressed.emit()

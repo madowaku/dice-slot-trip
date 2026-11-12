@@ -15,6 +15,11 @@ const PIP_LAYOUT := {
 	6: [Vector2(0.28, 0.24), Vector2(0.72, 0.24), Vector2(0.28, 0.5), Vector2(0.72, 0.5), Vector2(0.28, 0.76), Vector2(0.72, 0.76)],
 }
 
+## Body colour; trip dice use their own tint so each reads as a different die.
+var body_color := IVORY:
+	set(value):
+		body_color = value
+		queue_redraw()
 ## Face values, left to right.
 var faces: Array[int] = [3, 4]:
 	set(value):
@@ -54,7 +59,7 @@ func _draw() -> void:
 		draw_set_transform(center, angle, Vector2.ONE)
 		var rect := Rect2(Vector2(-side, -side) * 0.5, Vector2(side, side))
 		var body := StyleBoxFlat.new()
-		body.bg_color = IVORY
+		body.bg_color = body_color
 		body.border_color = EDGE
 		body.set_border_width_all(maxi(2, roundi(side * 0.045)))
 		body.set_corner_radius_all(roundi(side * 0.2))

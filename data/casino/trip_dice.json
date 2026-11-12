@@ -1,0 +1,41 @@
+{
+  "uses_per_lap": 3,
+  "dice": [
+    {
+      "id": "trip_die_steady",
+      "name": "刻みダイス",
+      "faces": [1, 1, 2, 2, 3, 3],
+      "gain": "狙ったマスに止まりやすい",
+      "cost_text": "遠くまで進めない",
+      "price": 80,
+      "color": "#9fd3c7"
+    },
+    {
+      "id": "trip_die_even",
+      "name": "偶数ダイス",
+      "faces": [2, 2, 4, 4, 6, 6],
+      "gain": "偶数マス先の目標を狙える",
+      "cost_text": "奇数マスには止まれない",
+      "price": 120,
+      "color": "#a9c4f5"
+    },
+    {
+      "id": "trip_die_gamble",
+      "name": "一か八かダイス",
+      "faces": [1, 1, 1, 6, 6, 6],
+      "gain": "大きく進むか、ほぼ進まないか",
+      "cost_text": "中くらいの目が出ない",
+      "price": 100,
+      "color": "#f2a08f"
+    },
+    {
+      "id": "trip_die_detour",
+      "name": "寄り道ダイス",
+      "faces": [3, 3, 3, 4, 4, 4],
+      "gain": "安定して中くらい進む",
+      "cost_text": "大きく進めない。ほぼ同じ目しか出ない",
+      "price": 80,
+      "color": "#f3d27a"
+    }
+  ]
+}

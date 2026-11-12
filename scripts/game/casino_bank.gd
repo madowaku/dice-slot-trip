@@ -13,6 +13,8 @@ const ACTIVE_GAMES_KEY := "active_games"
 const SETTLEMENTS_KEY := "casino_settlements"
 const GUIDES_SEEN_KEY := "guides_seen"
 const TARGET_PRIZE_KEY := "target_prize_id"
+const OWNED_TRIP_DICE_KEY := "owned_trip_dice"
+const EQUIPPED_TRIP_DIE_KEY := "equipped_trip_die"
 const LEGACY_CARD_ALIASES := {
 	"dice_racer_crocodile": "dice_racer_rabbit",
 }
@@ -41,6 +43,9 @@ static func default_data() -> Dictionary:
 		# player is saving up for on the hub shelf ("" = automatic).
 		GUIDES_SEEN_KEY: [],
 		TARGET_PRIZE_KEY: "",
+		# v3: trip dice won at the prize counter, and the one taken on journeys.
+		OWNED_TRIP_DICE_KEY: [],
+		EQUIPPED_TRIP_DIE_KEY: "",
 	}
 
 static func set_test_save_path(path: String) -> void:
@@ -188,6 +193,42 @@ static func target_prize_id() -> String:
 static func set_target_prize_id(prize_id: String) -> bool:
 	var data := load_data()
 	data[TARGET_PRIZE_KEY] = _normalize_card_id(prize_id)
+	return save_data(data)
+
+static func owned_trip_dice() -> Array:
+	return (load_data().get(OWNED_TRIP_DICE_KEY, []) as Array).duplicate()
+
+static func equipped_trip_die() -> String:
+	return str(load_data().get(EQUIPPED_TRIP_DIE_KEY, ""))
+
+## Trade chips for a trip die. The first die bought is equipped at once so it
+## is ready for the next journey. Spending and owning happen in one save.
+static func buy_trip_die(die_id: String, cost: int) -> bool:
+	var id := die_id.strip_edges()
+	if id.is_empty():
+		return false
+	var data := load_data()
+	var owned: Array = data.get(OWNED_TRIP_DICE_KEY, []) as Array
+	if id in owned:
+		return false
+	var price := maxi(0, cost)
+	var chips := int(data.get("chips", 0))
+	if chips < price:
+		return false
+	data["chips"] = chips - price
+	owned.append(id)
+	data[OWNED_TRIP_DICE_KEY] = owned
+	if str(data.get(EQUIPPED_TRIP_DIE_KEY, "")).is_empty():
+		data[EQUIPPED_TRIP_DIE_KEY] = id
+	return save_data(data)
+
+## Equip an owned trip die, or pass "" to travel with the normal die only.
+static func equip_trip_die(die_id: String) -> bool:
+	var id := die_id.strip_edges()
+	var data := load_data()
+	if not id.is_empty() and id not in (data.get(OWNED_TRIP_DICE_KEY, []) as Array):
+		return false
+	data[EQUIPPED_TRIP_DIE_KEY] = id
 	return save_data(data)
 
 static func record_dice_race(won: bool, payout: int) -> void:
@@ -456,6 +497,16 @@ static func _normalize(source: Dictionary) -> Dictionary:
 			seen.append(facility)
 	data[GUIDES_SEEN_KEY] = seen
 	data[TARGET_PRIZE_KEY] = _normalize_card_id(str(source.get(TARGET_PRIZE_KEY, ""))) if source.get(TARGET_PRIZE_KEY, "") is String else ""
+	var dice_source: Array = source.get(OWNED_TRIP_DICE_KEY, []) as Array if source.get(OWNED_TRIP_DICE_KEY, []) is Array else []
+	var dice: Array[String] = []
+	for value: Variant in dice_source:
+		var die_id := str(value).strip_edges()
+		if not die_id.is_empty() and die_id not in dice:
+			dice.append(die_id)
+	data[OWNED_TRIP_DICE_KEY] = dice
+	# An equipped die must be one the player owns.
+	var equipped := str(source.get(EQUIPPED_TRIP_DIE_KEY, "")).strip_edges() if source.get(EQUIPPED_TRIP_DIE_KEY, "") is String else ""
+	data[EQUIPPED_TRIP_DIE_KEY] = equipped if equipped in dice else ""
 	return data
 
 static func _facility_key(facility_id: String) -> String:

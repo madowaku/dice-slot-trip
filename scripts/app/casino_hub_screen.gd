@@ -15,6 +15,9 @@ const VisualFeedback = preload("res://scripts/ui/casino_visual_feedback.gd")
 const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 const ShellScript = preload("res://scripts/ui/casino_table_shell.gd")
 const DiceGlyphScript = preload("res://scripts/ui/casino_dice_glyph.gd")
+const TripDiceScript = preload("res://scripts/game/trip_dice.gd")
+const PRIZE_KIND_TRIP_DIE := "trip_die"
+const PRIZE_KIND_RACER := "racer"
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
 const CARD_DATA_PATH := "res://data/casino/prize_cards.json"
 const LAS_VEGAS_MAP_PATH := "res://assets/casino/las_vegas/las-vegas-ring-map-v1.png"
@@ -118,6 +121,8 @@ var prize_progress: ProgressBar
 var prize_remaining_label: Label
 var prize_counter_button: Button
 var prize_counter: Control
+var prize_counter_tab := PRIZE_KIND_TRIP_DIE
+var prize_glyph: Control
 
 
 func _ready() -> void:
@@ -295,20 +300,41 @@ func _owned_cards() -> Array:
 	return CasinoBankScript.owned_cards()
 
 
+## Every prize, trip dice first (they are what the casino is for), each with a
+## shared "cost" field. Racers keep their "dice_racer_*" ids.
+func prize_catalog() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for die: Dictionary in TripDiceScript.catalog():
+		var entry := die.duplicate(true)
+		entry["kind"] = PRIZE_KIND_TRIP_DIE
+		entry["cost"] = int(die.get("price", 0))
+		result.append(entry)
+	for card: Dictionary in card_data:
+		var entry := card.duplicate(true)
+		entry["kind"] = PRIZE_KIND_RACER
+		result.append(entry)
+	return result
+
+
+func is_prize_owned(entry: Dictionary) -> bool:
+	var id := str(entry.get("id", ""))
+	if str(entry.get("kind", "")) == PRIZE_KIND_TRIP_DIE:
+		return id in CasinoBankScript.owned_trip_dice()
+	return id in _owned_cards()
+
+
 ## The prize shown on the shelf: the player's pick while it is still unowned,
 ## otherwise the first prize they do not have yet. Empty when all are owned.
 func target_prize() -> Dictionary:
-	var owned := _owned_cards()
 	var wanted := CasinoBankScript.target_prize_id()
 	var fallback: Dictionary = {}
-	for card: Dictionary in card_data:
-		var id := str(card.get("id", ""))
-		if id in owned:
+	for entry: Dictionary in prize_catalog():
+		if is_prize_owned(entry):
 			continue
-		if id == wanted:
-			return card
+		if str(entry.get("id", "")) == wanted:
+			return entry
 		if fallback.is_empty():
-			fallback = card
+			fallback = entry
 	return fallback
 
 
@@ -324,14 +350,29 @@ func _prize_texture(card: Dictionary) -> Texture2D:
 	return load(path) as Texture2D if ResourceLoader.exists(path) else null
 
 
+func _trip_die_glyph(entry: Dictionary, glyph_size: Vector2) -> Control:
+	var glyph: Control = DiceGlyphScript.new()
+	var faces: Array[int] = TripDiceScript.normalize_faces(entry.get("faces", []))
+	glyph.faces = TripDiceScript.distinct_values(faces)
+	glyph.body_color = Color(str(entry.get("color", "#fff6e4")))
+	glyph.custom_minimum_size = glyph_size
+	return glyph
+
+
 func _prize_title(card: Dictionary) -> String:
+	if str(card.get("kind", "")) == PRIZE_KIND_TRIP_DIE:
+		return "旅ダイス「%s」" % str(card.get("name", "")).trim_suffix("ダイス")
 	return "レーサー「%s」" % str(card.get("name", ""))
 
 
 func _refresh_prize_shelf() -> void:
 	var card := target_prize()
+	if is_instance_valid(prize_glyph):
+		prize_glyph.queue_free()
+		prize_glyph = null
 	if card.is_empty():
 		prize_picture.texture = null
+		prize_picture.visible = true
 		prize_kicker_label.text = "景品"
 		prize_name_label.text = "すべて交換済み"
 		prize_progress.max_value = 1
@@ -341,7 +382,17 @@ func _refresh_prize_shelf() -> void:
 		return
 	var cost := maxi(1, int(card.get("cost", 0)))
 	var missing := chips_missing_for(card)
-	prize_picture.texture = _prize_texture(card)
+	if str(card.get("kind", "")) == PRIZE_KIND_TRIP_DIE:
+		prize_picture.texture = null
+		prize_picture.visible = false
+		prize_glyph = _trip_die_glyph(card, prize_picture.custom_minimum_size)
+		prize_glyph.name = "PrizeGlyph"
+		prize_glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		prize_picture.get_parent().add_child(prize_glyph)
+		prize_picture.get_parent().move_child(prize_glyph, prize_picture.get_index())
+	else:
+		prize_picture.texture = _prize_texture(card)
+		prize_picture.visible = true
 	prize_kicker_label.text = "ねらっている景品"
 	prize_name_label.text = _prize_title(card)
 	prize_progress.max_value = cost
@@ -367,6 +418,9 @@ func is_prize_counter_open() -> bool:
 func open_prize_counter() -> void:
 	if is_prize_counter_open():
 		return
+	# Open on the tab of the prize the player is aiming at.
+	var target := target_prize()
+	prize_counter_tab = str(target.get("kind", PRIZE_KIND_TRIP_DIE)) if not target.is_empty() else PRIZE_KIND_TRIP_DIE
 	prize_counter = Control.new()
 	prize_counter.name = "PrizeCounter"
 	prize_counter.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -382,12 +436,18 @@ func close_prize_counter() -> void:
 	_refresh()
 
 
+func show_prize_tab(kind: String) -> void:
+	prize_counter_tab = kind
+	if is_prize_counter_open():
+		_rebuild_prize_counter()
+
+
 func _rebuild_prize_counter() -> void:
 	for child: Node in prize_counter.get_children():
 		prize_counter.remove_child(child)
 		child.queue_free()
 	var dim := ColorRect.new()
-	dim.color = Color(0.03, 0.02, 0.06, 0.9)
+	dim.color = Color(0.03, 0.02, 0.06, 0.92)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	prize_counter.add_child(dim)
@@ -410,53 +470,37 @@ func _rebuild_prize_counter() -> void:
 	chips.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(chips)
 
-	var owned := _owned_cards()
+	var tabs := HBoxContainer.new()
+	tabs.name = "PrizeTabs"
+	tabs.add_theme_constant_override("separation", 12)
+	box.add_child(tabs)
+	for tab: Array in [[PRIZE_KIND_TRIP_DIE, "旅ダイス"], [PRIZE_KIND_RACER, "レーサー"]]:
+		var tab_button := _button(str(tab[1]))
+		tab_button.name = "PrizeTab_%s" % str(tab[0])
+		tab_button.toggle_mode = true
+		tab_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tab_button.add_theme_font_size_override("font_size", UiTokensScript.FONT_CAPTION)
+		ShellScript._style_toggle(tab_button)
+		tab_button.set_pressed_no_signal(prize_counter_tab == str(tab[0]))
+		tab_button.pressed.connect(show_prize_tab.bind(str(tab[0])))
+		tabs.add_child(tab_button)
+
+	if prize_counter_tab == PRIZE_KIND_TRIP_DIE:
+		var note := _label("装備した旅ダイスは、京都で1周に%d回まで使える" % TripDiceScript.uses_per_lap(), 22, MUTED)
+		note.name = "TripDieNote"
+		note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(note)
+
 	var target_id := str(target_prize().get("id", ""))
-	for card: Dictionary in card_data:
-		var card_id := str(card.get("id", ""))
-		var cost := int(card.get("cost", 0))
-		var is_owned := card_id in owned
-		var is_target := card_id == target_id
-		var row_panel := PanelContainer.new()
-		row_panel.name = "PrizeRow_%s" % card_id
-		row_panel.add_theme_stylebox_override("panel", _panel(CARD_FILL, GOLD if is_target else Color("#4f4160"), 18, 3 if is_target else 1))
-		box.add_child(row_panel)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 12)
-		row_panel.add_child(row)
-		var picture := TextureRect.new()
-		picture.texture = _prize_texture(card)
-		picture.custom_minimum_size = Vector2(76, 76)
-		picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(picture)
-		var copy := VBoxContainer.new()
-		copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		copy.alignment = BoxContainer.ALIGNMENT_CENTER
-		row.add_child(copy)
-		copy.add_child(_label(str(card.get("name", "")), UiTokensScript.FONT_CAPTION, CREAM))
-		var note := _label("交換済み" if is_owned else ("ねらい中" if is_target else "DICE RACE の応援レーサー"), 20, GOLD_BRIGHT if is_target and not is_owned else MUTED)
-		note.clip_text = true
-		copy.add_child(note)
-		if not is_owned:
-			var aim := _button("ねらう")
-			aim.name = "AimButton_%s" % card_id
-			aim.custom_minimum_size = Vector2(124, UiTokensScript.TOUCH_MIN)
-			aim.add_theme_font_size_override("font_size", 24)
-			ShellScript._style_button(aim, Color("#352746"), CARD_EDGE, CREAM, 18)
-			aim.disabled = is_target
-			aim.pressed.connect(_aim_for_card.bind(card_id))
-			row.add_child(aim)
-			var buy := _button("%d チップ" % cost)
-			buy.name = "BuyButton_%s" % card_id
-			buy.custom_minimum_size = Vector2(156, UiTokensScript.TOUCH_MIN)
-			buy.add_theme_font_size_override("font_size", 26)
-			ShellScript._style_primary(buy)
-			buy.disabled = balance < cost
-			buy.tooltip_text = "交換する" if balance >= cost else "あと %d チップ" % (cost - balance)
-			buy.pressed.connect(_buy_card.bind(card_id, cost))
-			row.add_child(buy)
+	var equipped := CasinoBankScript.equipped_trip_die()
+	for entry: Dictionary in prize_catalog():
+		if str(entry.get("kind", "")) != prize_counter_tab:
+			continue
+		if prize_counter_tab == PRIZE_KIND_TRIP_DIE:
+			box.add_child(_trip_die_row(entry, balance, target_id, equipped))
+		else:
+			box.add_child(_racer_row(entry, balance, target_id))
 
 	var close := _button("とじる")
 	close.name = "PrizeCounterCloseButton"
@@ -466,6 +510,109 @@ func _rebuild_prize_counter() -> void:
 	box.add_child(close)
 
 
+func _prize_row_panel(entry: Dictionary, highlighted: bool) -> PanelContainer:
+	var row_panel := PanelContainer.new()
+	row_panel.name = "PrizeRow_%s" % str(entry.get("id", ""))
+	row_panel.add_theme_stylebox_override("panel", _panel(CARD_FILL, GOLD if highlighted else Color("#4f4160"), 18, 3 if highlighted else 1))
+	return row_panel
+
+
+func _prize_buttons(row: HBoxContainer, entry: Dictionary, balance: int, is_target: bool) -> void:
+	var prize_id := str(entry.get("id", ""))
+	var cost := int(entry.get("cost", 0))
+	var aim := _button("ねらう")
+	aim.name = "AimButton_%s" % prize_id
+	aim.custom_minimum_size = Vector2(112, UiTokensScript.TOUCH_MIN)
+	aim.add_theme_font_size_override("font_size", 24)
+	ShellScript._style_button(aim, Color("#352746"), CARD_EDGE, CREAM, 18)
+	aim.disabled = is_target
+	aim.pressed.connect(_aim_for_card.bind(prize_id))
+	row.add_child(aim)
+	var buy := _button("%d チップ" % cost)
+	buy.name = "BuyButton_%s" % prize_id
+	buy.custom_minimum_size = Vector2(150, UiTokensScript.TOUCH_MIN)
+	buy.add_theme_font_size_override("font_size", 26)
+	ShellScript._style_primary(buy)
+	buy.disabled = balance < cost
+	buy.tooltip_text = "交換する" if balance >= cost else "あと %d チップ" % (cost - balance)
+	buy.pressed.connect(_buy_prize.bind(entry))
+	row.add_child(buy)
+
+
+func _trip_die_row(entry: Dictionary, balance: int, target_id: String, equipped: String) -> PanelContainer:
+	var die_id := str(entry.get("id", ""))
+	var owned := is_prize_owned(entry)
+	var is_target := die_id == target_id
+	var row_panel := _prize_row_panel(entry, is_target or die_id == equipped)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row_panel.add_child(row)
+	row.add_child(_trip_die_glyph(entry, Vector2(84, 84)))
+	var copy := VBoxContainer.new()
+	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.alignment = BoxContainer.ALIGNMENT_CENTER
+	copy.add_theme_constant_override("separation", 0)
+	row.add_child(copy)
+	copy.add_child(_label(str(entry.get("name", "")), UiTokensScript.FONT_CAPTION, CREAM))
+	var faces: Array[int] = TripDiceScript.normalize_faces(entry.get("faces", []))
+	var faces_text: Array[String] = []
+	for value: int in faces:
+		faces_text.append(str(value))
+	for line: Array in [["出る目 " + "・".join(faces_text), MUTED], ["◎ " + str(entry.get("gain", "")), Color("#bfe6c8")], ["△ " + str(entry.get("cost_text", entry.get("cost_note", ""))), Color("#f2b8ae")]]:
+		var text := str(line[0])
+		if text == "△ ":
+			continue
+		var detail := _label(text, 20, line[1] as Color)
+		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		copy.add_child(detail)
+	if owned:
+		var equip := _button("装備中" if die_id == equipped else "装備する")
+		equip.name = "EquipButton_%s" % die_id
+		equip.custom_minimum_size = Vector2(150, UiTokensScript.TOUCH_MIN)
+		equip.add_theme_font_size_override("font_size", 24)
+		if die_id == equipped:
+			ShellScript._style_toggle(equip)
+			equip.toggle_mode = true
+			equip.set_pressed_no_signal(true)
+			equip.tooltip_text = "もう一度押すと外す"
+			equip.pressed.connect(_equip_trip_die.bind(""))
+		else:
+			ShellScript._style_primary(equip)
+			equip.pressed.connect(_equip_trip_die.bind(die_id))
+		row.add_child(equip)
+	else:
+		_prize_buttons(row, entry, balance, is_target)
+	return row_panel
+
+
+func _racer_row(entry: Dictionary, balance: int, target_id: String) -> PanelContainer:
+	var card_id := str(entry.get("id", ""))
+	var is_owned := is_prize_owned(entry)
+	var is_target := card_id == target_id
+	var row_panel := _prize_row_panel(entry, is_target)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row_panel.add_child(row)
+	var picture := TextureRect.new()
+	picture.texture = _prize_texture(entry)
+	picture.custom_minimum_size = Vector2(76, 76)
+	picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(picture)
+	var copy := VBoxContainer.new()
+	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(copy)
+	copy.add_child(_label(str(entry.get("name", "")), UiTokensScript.FONT_CAPTION, CREAM))
+	var note := _label("交換済み" if is_owned else ("ねらい中" if is_target else "DICE RACE の応援レーサー"), 20, GOLD_BRIGHT if is_target and not is_owned else MUTED)
+	note.clip_text = true
+	copy.add_child(note)
+	if not is_owned:
+		_prize_buttons(row, entry, balance, is_target)
+	return row_panel
+
+
 func _aim_for_card(card_id: String) -> void:
 	CasinoBankScript.set_target_prize_id(card_id)
 	_refresh()
@@ -473,14 +620,29 @@ func _aim_for_card(card_id: String) -> void:
 		_rebuild_prize_counter()
 
 
-func _buy_card(card_id: String, cost: int) -> void:
-	if not CasinoBankScript.own_card(card_id, cost):
+func _buy_prize(entry: Dictionary) -> void:
+	var prize_id := str(entry.get("id", ""))
+	var cost := int(entry.get("cost", 0))
+	var bought := CasinoBankScript.buy_trip_die(prize_id, cost) if str(entry.get("kind", "")) == PRIZE_KIND_TRIP_DIE else CasinoBankScript.own_card(prize_id, cost)
+	if not bought:
 		return
-	if CasinoBankScript.target_prize_id() == card_id:
+	if CasinoBankScript.target_prize_id() == prize_id:
 		CasinoBankScript.set_target_prize_id("")
 	_refresh()
 	if is_prize_counter_open():
 		_rebuild_prize_counter()
+
+
+## Kept for older callers that buy racers directly.
+func _buy_card(card_id: String, cost: int) -> void:
+	_buy_prize({"id": card_id, "cost": cost, "kind": PRIZE_KIND_RACER})
+
+
+func _equip_trip_die(die_id: String) -> void:
+	if CasinoBankScript.equip_trip_die(die_id):
+		_refresh()
+		if is_prize_counter_open():
+			_rebuild_prize_counter()
 
 
 # --------------------------------------------------------------- facilities
