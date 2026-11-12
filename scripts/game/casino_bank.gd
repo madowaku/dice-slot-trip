@@ -2,11 +2,19 @@ extends RefCounted
 class_name CasinoBank
 
 const SAVE_PATH := "user://dice_slot_trip_casino.json"
-const SAVE_VERSION := 2
+const SAVE_VERSION := 3
+## A first visit can afford three minimum bets but not the cheapest prize (50),
+## so the casino is playable at once and chips are still worth collecting.
+const STARTING_CHIPS: int = 30
+const SafeJsonStore = preload("res://scripts/game/safe_json_store.gd")
 const COIN_TO_CHIP_RATE := 2
 const CLEAR_CHIP_BONUS := 5
 const ACTIVE_GAMES_KEY := "active_games"
 const SETTLEMENTS_KEY := "casino_settlements"
+const GUIDES_SEEN_KEY := "guides_seen"
+const TARGET_PRIZE_KEY := "target_prize_id"
+const OWNED_TRIP_DICE_KEY := "owned_trip_dice"
+const EQUIPPED_TRIP_DIE_KEY := "equipped_trip_die"
 const LEGACY_CARD_ALIASES := {
 	"dice_racer_crocodile": "dice_racer_rabbit",
 }
@@ -19,7 +27,7 @@ static var _transaction_nonce := 0
 static func default_data() -> Dictionary:
 	return {
 		"version": SAVE_VERSION,
-		"chips": 0,
+		"chips": STARTING_CHIPS,
 		"owned_cards": [],
 		"conversion_keys": [],
 		"dice_race_play_count": 0,
@@ -31,6 +39,13 @@ static func default_data() -> Dictionary:
 		ACTIVE_GAMES_KEY: {},
 		SETTLEMENTS_KEY: {},
 		"casino_settlement_order": [],
+		# v3: per-facility first-play guides already shown, and the prize the
+		# player is saving up for on the hub shelf ("" = automatic).
+		GUIDES_SEEN_KEY: [],
+		TARGET_PRIZE_KEY: "",
+		# v3: trip dice won at the prize counter, and the one taken on journeys.
+		OWNED_TRIP_DICE_KEY: [],
+		EQUIPPED_TRIP_DIE_KEY: "",
 	}
 
 static func set_test_save_path(path: String) -> void:
@@ -53,25 +68,14 @@ static func _effective_save_path() -> String:
 	return _test_save_path if not _test_save_path.is_empty() else SAVE_PATH
 
 static func load_data() -> Dictionary:
-	var path := _effective_save_path()
-	if not FileAccess.file_exists(path):
-		return default_data()
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		return default_data()
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	if not parsed is Dictionary:
-		return default_data()
-	return _normalize(parsed as Dictionary)
+	var data: Dictionary = SafeJsonStore.load_data(_effective_save_path(), _valid_save)
+	return _normalize(data) if not data.is_empty() else default_data()
+
+static func _valid_save(data: Dictionary) -> bool:
+	return data.has("chips") and (data.chips is int or data.chips is float) and data.get("owned_cards", []) is Array
 
 static func save_data(data: Dictionary) -> bool:
-	var normalized := _normalize(data)
-	var file := FileAccess.open(_effective_save_path(), FileAccess.WRITE)
-	if file == null:
-		push_warning("CasinoBank could not open its save file.")
-		return false
-	file.store_string(JSON.stringify(normalized, "  "))
-	return true
+	return SafeJsonStore.save_data(_effective_save_path(), _normalize(data), _valid_save)
 
 static func balance() -> int:
 	return int(load_data().get("chips", 0))
@@ -79,7 +83,8 @@ static func balance() -> int:
 static func add_chips(amount: int) -> int:
 	var data := load_data()
 	data["chips"] = maxi(0, int(data.get("chips", 0)) + maxi(0, amount))
-	save_data(data)
+	if not save_data(data):
+		return balance()
 	return int(data["chips"])
 
 static func spend_chips(amount: int) -> bool:
@@ -138,11 +143,11 @@ static func _conversion_receipt(remaining_trip_coin: int, cleared_boss: bool, pe
 	if persist:
 		after = add_chips(gained)
 	return {
-		"ok": true,
+		"ok": not persist or after == before + gained,
 		"remaining_trip_coin": remainder,
 		"converted_chip": converted,
 		"clear_bonus": clear_bonus,
-		"gained_chip": gained,
+		"gained_chip": gained if not persist or after == before + gained else 0,
 		"balance_before": before,
 		"balance_after": after,
 	}
@@ -162,6 +167,68 @@ static func own_card(card_id: String, cost: int) -> bool:
 	data["chips"] = chips - price
 	owned.append(id)
 	data["owned_cards"] = owned
+	return save_data(data)
+
+static func owned_cards() -> Array:
+	return (load_data().get("owned_cards", []) as Array).duplicate()
+
+static func has_seen_guide(facility_id: String) -> bool:
+	return _facility_key(facility_id) in (load_data().get(GUIDES_SEEN_KEY, []) as Array)
+
+static func mark_guide_seen(facility_id: String) -> bool:
+	var key := _facility_key(facility_id)
+	if key.is_empty():
+		return false
+	var data := load_data()
+	var seen: Array = data.get(GUIDES_SEEN_KEY, []) as Array
+	if key in seen:
+		return true
+	seen.append(key)
+	data[GUIDES_SEEN_KEY] = seen
+	return save_data(data)
+
+static func target_prize_id() -> String:
+	return str(load_data().get(TARGET_PRIZE_KEY, ""))
+
+static func set_target_prize_id(prize_id: String) -> bool:
+	var data := load_data()
+	data[TARGET_PRIZE_KEY] = _normalize_card_id(prize_id)
+	return save_data(data)
+
+static func owned_trip_dice() -> Array:
+	return (load_data().get(OWNED_TRIP_DICE_KEY, []) as Array).duplicate()
+
+static func equipped_trip_die() -> String:
+	return str(load_data().get(EQUIPPED_TRIP_DIE_KEY, ""))
+
+## Trade chips for a trip die. The first die bought is equipped at once so it
+## is ready for the next journey. Spending and owning happen in one save.
+static func buy_trip_die(die_id: String, cost: int) -> bool:
+	var id := die_id.strip_edges()
+	if id.is_empty():
+		return false
+	var data := load_data()
+	var owned: Array = data.get(OWNED_TRIP_DICE_KEY, []) as Array
+	if id in owned:
+		return false
+	var price := maxi(0, cost)
+	var chips := int(data.get("chips", 0))
+	if chips < price:
+		return false
+	data["chips"] = chips - price
+	owned.append(id)
+	data[OWNED_TRIP_DICE_KEY] = owned
+	if str(data.get(EQUIPPED_TRIP_DIE_KEY, "")).is_empty():
+		data[EQUIPPED_TRIP_DIE_KEY] = id
+	return save_data(data)
+
+## Equip an owned trip die, or pass "" to travel with the normal die only.
+static func equip_trip_die(die_id: String) -> bool:
+	var id := die_id.strip_edges()
+	var data := load_data()
+	if not id.is_empty() and id not in (data.get(OWNED_TRIP_DICE_KEY, []) as Array):
+		return false
+	data[EQUIPPED_TRIP_DIE_KEY] = id
 	return save_data(data)
 
 static func record_dice_race(won: bool, payout: int) -> void:
@@ -420,6 +487,26 @@ static func _normalize(source: Dictionary) -> Dictionary:
 	data[ACTIVE_GAMES_KEY] = _normalize_active_games(source.get(ACTIVE_GAMES_KEY, {}))
 	data[SETTLEMENTS_KEY] = source.get(SETTLEMENTS_KEY, {}) as Dictionary if source.get(SETTLEMENTS_KEY, {}) is Dictionary else {}
 	data["casino_settlement_order"] = source.get("casino_settlement_order", []) as Array if source.get("casino_settlement_order", []) is Array else []
+	# v2 saves have neither field; both start empty so every guide shows once
+	# and the hub picks the first unowned prize as the target.
+	var seen_source: Array = source.get(GUIDES_SEEN_KEY, []) as Array if source.get(GUIDES_SEEN_KEY, []) is Array else []
+	var seen: Array[String] = []
+	for value: Variant in seen_source:
+		var facility := _facility_key(str(value))
+		if not facility.is_empty() and facility not in seen:
+			seen.append(facility)
+	data[GUIDES_SEEN_KEY] = seen
+	data[TARGET_PRIZE_KEY] = _normalize_card_id(str(source.get(TARGET_PRIZE_KEY, ""))) if source.get(TARGET_PRIZE_KEY, "") is String else ""
+	var dice_source: Array = source.get(OWNED_TRIP_DICE_KEY, []) as Array if source.get(OWNED_TRIP_DICE_KEY, []) is Array else []
+	var dice: Array[String] = []
+	for value: Variant in dice_source:
+		var die_id := str(value).strip_edges()
+		if not die_id.is_empty() and die_id not in dice:
+			dice.append(die_id)
+	data[OWNED_TRIP_DICE_KEY] = dice
+	# An equipped die must be one the player owns.
+	var equipped := str(source.get(EQUIPPED_TRIP_DIE_KEY, "")).strip_edges() if source.get(EQUIPPED_TRIP_DIE_KEY, "") is String else ""
+	data[EQUIPPED_TRIP_DIE_KEY] = equipped if equipped in dice else ""
 	return data
 
 static func _facility_key(facility_id: String) -> String:

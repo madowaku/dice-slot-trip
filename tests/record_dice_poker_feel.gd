@@ -18,6 +18,13 @@ func _init() -> void:
 	call_deferred("_record")
 
 func _record() -> void:
+	# Retired with the casino renewal: this recorder drove the staged result
+	# presentation of the pre-renewal DICE POKER screen, which no longer
+	# exists. DICE POKER is now recorded by record_las_vegas_casino_renewal.gd.
+	print("DICE_POKER_FEEL_CAPTURE retired: use tests/record_las_vegas_casino_renewal.gd")
+	quit(0)
+	return
+	@warning_ignore("unreachable_code")
 	output_dir = OS.get_environment("DICEPOKER_QA_OUTPUT_DIR")
 	if output_dir.is_empty(): output_dir = ProjectSettings.globalize_path("res://artifacts/qa/dice-poker-feel")
 	var vp: String = OS.get_environment("DICEPOKER_QA_VIEWPORT")

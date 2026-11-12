@@ -8,12 +8,25 @@ var failures := 0
 
 
 func _init() -> void:
+	_test_progress_copy_bounds()
 	_test_progress_and_latches()
 	_test_active_cairo_hooks()
 	_test_risk6_survival_boundary_and_restore()
 	_test_damage_victory_and_reset()
 	_test_optional_save_and_legacy_migration()
 	call_deferred("_test_ui")
+
+
+func _test_progress_copy_bounds() -> void:
+	var presenter: Script = load("res://scripts/app/v06_play_screen.gd")
+	_expect(presenter._mission_progress_dots(999999, 1000000) == "●●●●●○", "large missions stay bounded and cannot appear complete early")
+	_expect(presenter._mission_progress_dots(1000000, 1000000) == "●●●●●●", "completed large missions fill the meter")
+	_expect(presenter._mission_progress_dots(-1, 4) == "○○○○", "negative progress is clamped")
+	_expect(presenter._mission_progress_dots(0, 0) == "○", "invalid zero target remains safe")
+	var previous_locale: String = TranslationServer.get_locale()
+	TranslationServer.set_locale("en")
+	_expect(presenter.mission_progress_copy(3, 4).contains("3/4 · 1 left"), "English progress names the remaining count")
+	TranslationServer.set_locale(previous_locale)
 
 
 func _test_progress_and_latches() -> void:
@@ -213,6 +226,7 @@ func _test_optional_save_and_legacy_migration() -> void:
 
 
 func _test_ui() -> void:
+	OS.set_environment("DICE_QA_V06_SCENARIO", "mission_quality")
 	var host := Control.new()
 	host.size = Vector2(720, 1280)
 	root.add_child(host)
@@ -250,7 +264,7 @@ func _test_ui() -> void:
 	_expect(face_caption.text.contains("1・2・3を各4回出す") and not face_caption.text.contains("DICE 4を12回出す") and not bool((session.mission_state().get("active_mission", {}) as Dictionary).get("target_face_enabled", true)), "small-face mission card keeps its three-face rule instead of displaying the internal default target face")
 	session.call("_set_active_mission_for_test", "cairo_coin15")
 	screen.call("_refresh_ui")
-	_expect(band.visible and header.text == "MISSION" and face_caption.text.contains("COIN × 12") and no_damage_label.text.contains("進捗 0/12") and no_damage_label.text.contains("○".repeat(12)) and not no_damage_label.text.contains("COIN") and cells[0].visible and not cells[1].visible and not cells[2].visible and not toast.visible, "single featured mission card puts the COIN reward on the upper line and target-sized dots on the progress line")
+	_expect(band.visible and header.text == "MISSION" and face_caption.text.contains("COIN × 12") and no_damage_label.text.contains("進捗 0/12") and no_damage_label.text.contains("○".repeat(6)) and not no_damage_label.text.contains("COIN") and cells[0].visible and not cells[1].visible and not cells[2].visible and not toast.visible, "single featured mission card puts the COIN reward on the upper line and bounded dots and remaining count on the progress line")
 	session.call("_set_active_mission_for_test", "cairo_pair4")
 	screen.call("_refresh_ui")
 	_expect(face_caption.text.contains("COIN × 8") and no_damage_label.text.contains("進捗 0/4") and no_damage_label.text.contains("○○○○") and not no_damage_label.text.contains("○○○○○"), "mission progress dots match the required count and the upper line names the COIN reward")
@@ -264,9 +278,21 @@ func _test_ui() -> void:
 	session.call("_advance_coin_mission", 1)
 	screen.call("_refresh_ui")
 	_expect(not toast.visible and message.visible and message.text.contains("コインを12枚集める") and message.text.contains("1/12"), "operation band reports featured mission progress")
-	session.call("_advance_coin_mission", 11)
+	session.call("_advance_coin_mission", 10)
+	screen.call("_refresh_ui")
+	_expect(no_damage_label.text.contains("あと1") and message.text.contains("あと1で") and message.text.contains("COIN +12"), "near completion names the remaining step and earned reward without opening a modal")
+	await process_frame
+	if not raster_path.is_empty():
+		await process_frame
+		root.get_texture().get_image().save_png(raster_path.get_basename() + "-near.png")
+	session.call("_advance_coin_mission", 1)
 	screen.call("_refresh_ui")
 	_expect(face_caption.text.contains("COIN × 12") and no_damage_label.text.contains("CLEAR") and no_damage_label.text.contains("COIN +12") and message.text.contains("MISSION CLEAR"), "completion keeps the upper-line COIN reward and adds explicit clear copy")
+	_expect(message.text.contains("次の周"), "completion explains when the next mission starts")
+	if not raster_path.is_empty():
+		await process_frame
+		await process_frame
+		root.get_texture().get_image().save_png(raster_path.get_basename() + "-clear.png")
 	session.call("_set_active_mission_for_test", "cairo_no_damage")
 	session.call("_fail_no_damage_mission")
 	screen.call("_refresh_ui")
@@ -281,6 +307,13 @@ func _test_ui() -> void:
 	_expect(message.autowrap_mode == TextServer.AUTOWRAP_OFF and message.get_minimum_size().x <= message.size.x, "visible movement announcement does not wrap or truncate at 360 scale")
 	host.queue_free()
 	await process_frame
+	for manager_name: String in ["BgmManager", "UiSfxManager"]:
+		var manager: Node = root.get_node_or_null(manager_name)
+		if manager != null and manager.has_method("stop"):
+			manager.call("stop")
+		elif manager != null and manager.has_method("stop_all"):
+			manager.call("stop_all")
+	await create_timer(0.15).timeout
 	print("V06_MISSION_TESTS failures=%d" % failures)
 	quit(1 if failures > 0 else 0)
 

@@ -96,7 +96,7 @@ func _record() -> void:
 	var hub := HUB_SCENE.instantiate()
 	capture_root.add_child(hub)
 	await _settle_frames(10)
-	_expect(hub.facility_definitions.size() == 6, "hub exposes six facilities")
+	_expect(hub.facility_definitions.size() == 7, "hub exposes the six original facilities plus 丁半")
 	_expect(not hub.facility_definitions.any(func(d: Dictionary) -> bool: return str(d.get("id", "")) == "high_low"), "HIGH LOW is absent")
 	_expect(hub.find_child("RingMapBackground", true, false) != null, "ring map artwork is visible")
 	await _capture(hub, "hub")
@@ -219,19 +219,21 @@ func _capture_poker(_hub: Node) -> void:
 	await _settle_frames(8)
 	_expect(screen.view_state == "setup", "poker setup state")
 	await _capture(screen, "poker-setup")
-	screen.call("_toggle_help")
-	await _settle_frames(3)
-	var help_overlay: Control = screen.find_child("HelpOverlay", true, false) as Control
-	_expect(help_overlay != null and help_overlay.visible, "poker help opens from setup")
+	# The renewed table shows its guide on the first visit; later it lives
+	# behind the 「？」 button.
+	if not screen.shell.is_guide_open():
+		screen.call("_toggle_help")
+		await _settle_frames(3)
+	_expect(screen.shell.is_guide_open(), "poker guide is open on setup")
 	await _capture(screen, "poker-help")
 	screen.call("_toggle_help")
 	await _settle_frames(2)
-	_expect(help_overlay != null and not help_overlay.visible, "poker help closes before play")
+	_expect(not screen.shell.is_guide_open(), "poker guide closes before play")
 	screen.call("_select_bet", 20)
 	# Match the retained-result design reference with a break-even FULL HOUSE.
 	screen.queued_roll_batch = [[3, 3, 3, 5, 5]]
 	screen.call("_start_game")
-	await _settle_frames(30)
+	await create_timer(1.5).timeout
 	await _capture(screen, "poker")
 	_expect(screen.view_state != "setup", "poker leaves setup and enters its round")
 	if screen.view_state == "active":

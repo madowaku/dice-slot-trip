@@ -1,132 +1,84 @@
 class_name DicePokerScreen
 extends Control
 
+## DICE POKER on the shared casino table.
+##
+## Five large dice sit on the felt. Tap a die to keep it, re-roll the rest up
+## to twice, then take the hand. The screen never shows the whole pay table
+## during play: one line says which hand you hold now and what it returns.
+##
+## Rules live in DicePokerModel and chips in CasinoBank. Every roll is saved
+## with its already-decided faces before any animation, so an interrupted
+## round resumes on the same dice.
+
 signal back_requested
 
 const CasinoBankScript = preload("res://scripts/game/casino_bank.gd")
-const CasinoBackButton = preload("res://scripts/ui/casino_back_button.gd")
-const CasinoHowTo3StepsScript = preload("res://scripts/ui/casino_how_to_3_steps.gd")
 const DicePokerScript = preload("res://scripts/game/dice_poker_model.gd")
+const ShellScript = preload("res://scripts/ui/casino_table_shell.gd")
 const DicePresentationScript = preload("res://scripts/game/dice_presentation_3d.gd")
 const CasinoFeelFXScript = preload("res://scripts/ui/casino_feel_fx.gd")
+const UiTokensScript = preload("res://scripts/ui/ui_tokens.gd")
 const FONT: Font = preload("res://assets/fonts/noto_sans_jp/NotoSansJP-Regular.ttf")
-const DISPLAY_FONT: Font = preload("res://assets/fonts/cinzel/Cinzel-Variable.ttf")
-const CASINO_BACKGROUND: Texture2D = preload("res://assets/casino/dice_roulette/ui/casino-table-bg-v1.png")
-const DICE_ICON: Texture2D = preload("res://assets/art/ui/common/dice-ivory-brass.png")
-const BUTTON_ORNAMENTS: Texture2D = preload("res://assets/art/ui/common/roll-button-ornaments.png")
-const SELECTION_SPARKLE: Texture2D = preload("res://assets/art/ui/common/slot-snap-sparkle.png")
-const CHIP_TEXTURES: Dictionary = {
-	10: preload("res://assets/casino/vault_break/ui/chip-10-black-v1.png"),
-	20: preload("res://assets/casino/vault_break/ui/chip-20-red-v1.png"),
-	50: preload("res://assets/casino/vault_break/ui/chip-50-gold-v1.png"),
-}
 
 const FACILITY_ID: String = "dice_poker"
+const TITLE: String = "DICE POKER"
 const BET_AMOUNTS: Array[int] = [10, 20, 50]
-const ROLL_SECONDS: float = 0.85
-const SETTLE_SECONDS: float = 0.35
+const ROLL_SECONDS: float = 0.8
+const SETTLE_SECONDS: float = 0.3
+const KEEP_LIFT: float = 0.45
+const GOLD: Color = Color("#f2bf4c")
+const GOLD_BRIGHT: Color = Color("#ffe6a0")
+const CREAM: Color = Color("#fff4d6")
+const RANK_NAMES: Dictionary = {
+	DicePokerScript.RANK_FIVE: "ファイブ",
+	DicePokerScript.RANK_FOUR: "フォー",
+	DicePokerScript.RANK_FULL_HOUSE: "フルハウス",
+	DicePokerScript.RANK_STRAIGHT: "ストレート",
+	DicePokerScript.RANK_THREE: "スリー",
+	DicePokerScript.RANK_TWO_PAIR: "ツーペア",
+	DicePokerScript.RANK_ONE_PAIR: "ワンペア",
+	DicePokerScript.RANK_NO_HAND: "役なし",
+}
 
-const GOLD: Color = Color("#e7b84b")
-const GOLD_LIGHT: Color = Color("#ffe7a3")
-const BRIGHT_GOLD: Color = Color("#ffd75b")
-const INK: Color = Color("#28170a")
-const CREAM: Color = Color("#fff1d1")
-const NAVY: Color = Color("#071322")
-const DEEP_GREEN: Color = Color("#041c16")
-const FELT: Color = Color("#0a3a2a")
-const PLUM: Color = Color("#2c173e")
-const OXBLOOD: Color = Color("#7a181f")
-const BRASS: Color = Color("#9b6b2f")
-const MUTED: Color = Color("#c5b996")
-const PAYTABLE: Array[Dictionary] = [
-	{"symbol": "◆◆", "name": "ONE PAIR", "multiplier": 0.2},
-	{"symbol": "◆◆  ◆◆", "name": "TWO PAIR", "multiplier": 0.4},
-	{"symbol": "◆◆◆", "name": "THREE", "multiplier": 0.6},
-	{"symbol": "1·2·3·4·5", "name": "STRAIGHT", "multiplier": 0.8},
-	{"symbol": "◆◆◆  ◆◆", "name": "FULL HOUSE", "multiplier": 1.0},
-	{"symbol": "◆◆◆◆", "name": "FOUR", "multiplier": 1.7},
-	{"symbol": "◆◆◆◆◆", "name": "FIVE", "multiplier": 2.8},
-]
-const PIP_PATTERNS: Array = [
-	[],
-	[4],
-	[0, 8],
-	[0, 4, 8],
-	[0, 2, 6, 8],
-	[0, 2, 4, 6, 8],
-	[0, 2, 3, 5, 6, 8],
-]
-
-## Isolated deterministic test harnesses set this before instantiation.  The
-## runtime leaves it false so Las Vegas BGM/SFX continue to work.
 static var suppress_audio_for_tests: bool = false
+## Tests skip every roll timer so a round resolves without waiting.
+static var instant_for_tests: bool = false
 
 var game: Dictionary = {}
 var game_id: String = ""
 var selected_bet: int = 20
 var rolling: bool = false
-## Presentation-only lock. Model resolution always happens before this is cleared.
 var presentation_locked: bool = false
 var exiting: bool = false
-var tracked_tweens: Array[Tween] = []
-var presentation_phase: String = "idle"
-var stage_trace: Array[String] = []
 var settled: bool = false
 var rng_seed: int = 0
-## A batch is either a flat face queue, an Array of batches, or dictionaries
-## containing `values`/`full_values`.  These hooks make tests deterministic
-## without changing the pure model.
 var queued_roll_batch: Array = []
 var queued_roll_values: Array = []
 var queued_reroll_values: Array = []
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var pending_roll: Dictionary = {}
+## "setup" | "rolling" | "active" | "result"
 var view_state: String = "setup"
 
-var chip_label: Label
-var status_label: Label
-var bet_label: Label
-var rerolls_label: Label
-var rank_label: Label
-var hand_label: Label
-var result_label: Label
-var result_outcome_label: Label
-var result_payout_label: Label
-var result_net_label: Label
-var result_detail_label: Label
-var result_bet_value: Label
-var result_return_value: Label
-var result_chip_delta_label: Label
-var deal_button: Button
-var start_button: Button
-var reroll_button: Button
-var lock_button: Button
-var action_button: Button
-var again_button: Button
-var change_bet_button: Button
-var exit_button: Button
-var back_button: Button
-var setup_view: VBoxContainer
-var active_view: VBoxContainer
-var result_view: VBoxContainer
-var keep_buttons: Dictionary = {}
-var dice_buttons: Dictionary = {}
-var bet_buttons: Dictionary = {}
+var shell: Control
 var dice_presentation: DicePresentation3D
-var result_dice_presentation: DicePresentation3D
-var active_die_faces: Dictionary = {}
-var result_die_faces: Dictionary = {}
-var effect_layer: Control
-var help_overlay: Control
-var result_card: PanelContainer
-var result_sparkle: TextureRect
-var button_tweens: Dictionary = {}
-var result_intro_tween: Tween
+var hint_label: Label
+var keep_buttons: Dictionary = {}
+var keep_tags: Dictionary = {}
+var lock_button: Button
 var casino_feel_fx: CasinoFeelFX
-var result_balance_before: int = 0
-var result_balance_after: int = 0
-var result_balance_captured: bool = false
-var result_hand_tier: int = 0
+
+# Aliases onto the shell so the cross-facility QA tours can drive this table
+# the same way they drive the others.
+var deal_button: Button
+var reroll_button: Button
+var back_button: Button
+var result_view: Control
+var bet_buttons: Dictionary:
+	get:
+		return shell.bet_buttons if shell != null else {}
+
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -138,711 +90,158 @@ func _ready() -> void:
 		if ui_sfx != null:
 			ui_sfx.call("set_stage", &"las_vegas")
 	rng.randomize()
-	_build_ui()
 	casino_feel_fx = CasinoFeelFXScript.new()
 	casino_feel_fx.name = "DicePokerFeelFX"
 	casino_feel_fx.audio_enabled = not suppress_audio_for_tests
 	add_child(casino_feel_fx)
+	_build()
 	_resume_or_show_setup()
+	if view_state == "setup":
+		shell.show_guide_if_first_time()
+
 
 func _exit_tree() -> void:
 	exiting = true
-	for tween: Tween in tracked_tweens:
-		if tween != null and tween.is_valid():
-			tween.kill()
-	tracked_tweens.clear()
-	button_tweens.clear()
-	if casino_feel_fx != null and is_instance_valid(casino_feel_fx):
-		casino_feel_fx.queue_free()
-	casino_feel_fx = null
 
-func _build_ui() -> void:
-	var background: TextureRect = TextureRect.new()
-	background.name = "CasinoTableBackdrop"
-	background.texture = CASINO_BACKGROUND
-	background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(background)
 
-	var veil: ColorRect = ColorRect.new()
-	veil.name = "EmeraldVeil"
-	veil.color = Color(0.005, 0.035, 0.027, 0.52)
-	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(veil)
+# ------------------------------------------------------------------ build
 
-	var crown_glow: ColorRect = ColorRect.new()
-	crown_glow.name = "CrownGlow"
-	crown_glow.color = Color(0.035, 0.025, 0.13, 0.46)
-	crown_glow.anchor_right = 1.0
-	crown_glow.anchor_bottom = 0.24
-	crown_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(crown_glow)
-
-	var scroll: ScrollContainer = ScrollContainer.new()
-	scroll.name = "PokerScroll"
-	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.follow_focus = true
-	add_child(scroll)
-
-	var margins: MarginContainer = MarginContainer.new()
-	margins.name = "SafeMargins"
-	margins.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	margins.add_theme_constant_override("margin_left", 18)
-	margins.add_theme_constant_override("margin_right", 18)
-	margins.add_theme_constant_override("margin_top", 16)
-	margins.add_theme_constant_override("margin_bottom", 22)
-	scroll.add_child(margins)
-
-	var root: VBoxContainer = VBoxContainer.new()
-	root.name = "DicePokerRoot"
-	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	root.add_theme_constant_override("separation", 9)
-	margins.add_child(root)
-	_build_header(root)
-	_build_status(root)
-
-	setup_view = VBoxContainer.new()
-	setup_view.name = "DicePokerSetupView"
-	setup_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	setup_view.add_theme_constant_override("separation", 9)
-	root.add_child(setup_view)
-	_build_setup(setup_view)
-
-	active_view = VBoxContainer.new()
-	active_view.name = "DicePokerActiveView"
-	active_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	active_view.add_theme_constant_override("separation", 8)
-	root.add_child(active_view)
-	_build_active(active_view)
-
-	result_view = VBoxContainer.new()
-	result_view.name = "DicePokerResultView"
-	result_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	result_view.add_theme_constant_override("separation", 9)
-	root.add_child(result_view)
-	_build_result(result_view)
-
-	effect_layer = Control.new()
-	effect_layer.name = "DicePokerEffectLayer"
-	effect_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	effect_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	effect_layer.z_index = 30
-	add_child(effect_layer)
-	_build_help_overlay()
-
-func _build_header(root: VBoxContainer) -> void:
-	var header: PanelContainer = PanelContainer.new()
-	header.name = "DicePokerHeader"
-	header.add_theme_stylebox_override("panel", _ornate_panel(Color("#07152ae8"), GOLD, 24, 3, Color("#f7c64d44")))
-	root.add_child(header)
-	var stack: VBoxContainer = VBoxContainer.new()
-	stack.add_theme_constant_override("separation", 2)
-	header.add_child(stack)
-	var nav: HBoxContainer = HBoxContainer.new()
-	nav.add_theme_constant_override("separation", 10)
-	stack.add_child(nav)
-	back_button = _button("カジノへ戻る", false)
-	back_button.name = "CasinoBackButton"
-	back_button.custom_minimum_size = Vector2(168, 96)
-	_apply_utility_button_style(back_button)
-	CasinoBackButton.configure(back_button)
-	back_button.pressed.connect(_on_back_pressed)
-	nav.add_child(back_button)
-	var title_stack: VBoxContainer = VBoxContainer.new()
-	title_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title_stack.alignment = BoxContainer.ALIGNMENT_CENTER
-	title_stack.add_theme_constant_override("separation", 0)
-	nav.add_child(title_stack)
-	var title: Label = _display_label("DICE POKER", 46, GOLD_LIGHT)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_color_override("font_outline_color", Color("#3a1700"))
-	title.add_theme_constant_override("outline_size", 7)
-	title_stack.add_child(title)
-	var subtitle: Label = _label("5つのダイス  ·  振り直し2回", 14, BRIGHT_GOLD)
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subtitle.add_theme_color_override("font_outline_color", Color.BLACK)
-	subtitle.add_theme_constant_override("outline_size", 3)
-	title_stack.add_child(subtitle)
-	var help_holder: CenterContainer = CenterContainer.new()
-	help_holder.custom_minimum_size.x = 126
-	nav.add_child(help_holder)
-	var help_button: Button = _button("?", false)
-	help_button.name = "HelpButton"
-	help_button.custom_minimum_size = Vector2(96, 96)
-	help_button.add_theme_font_override("font", DISPLAY_FONT)
-	help_button.add_theme_font_size_override("font_size", 34)
-	_apply_round_button_style(help_button)
-	help_button.tooltip_text = "遊び方と配当表"
-	help_button.pressed.connect(_toggle_help)
-	help_holder.add_child(help_button)
-
-	var chip_panel: PanelContainer = PanelContainer.new()
-	chip_panel.name = "ChipBalancePanel"
-	chip_panel.custom_minimum_size.y = 92
-	chip_panel.add_theme_stylebox_override("panel", _panel(Color("#061b18eb"), GOLD, 20, 2, 16))
-	stack.add_child(chip_panel)
-	var chip_row: HBoxContainer = HBoxContainer.new()
-	chip_row.add_theme_constant_override("separation", 12)
-	chip_panel.add_child(chip_row)
-	var chip_icon: TextureRect = TextureRect.new()
-	chip_icon.texture = DICE_ICON
-	chip_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	chip_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	chip_icon.custom_minimum_size = Vector2(72, 72)
-	chip_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	chip_row.add_child(chip_icon)
-	var balance_copy: VBoxContainer = VBoxContainer.new()
-	balance_copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	balance_copy.alignment = BoxContainer.ALIGNMENT_CENTER
-	balance_copy.add_theme_constant_override("separation", -3)
-	chip_row.add_child(balance_copy)
-	var balance_caption: Label = _label("CASINO CHIP", 16, GOLD_LIGHT)
-	balance_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	balance_copy.add_child(balance_caption)
-	chip_label = _display_label("0", 36, CREAM)
-	chip_label.name = "ChipBalanceLabel"
-	chip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	chip_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	chip_label.add_theme_constant_override("outline_size", 4)
-	balance_copy.add_child(chip_label)
-	var live_badge: Label = _label("ROYAL BANK", 13, MUTED)
-	live_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	live_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	live_badge.custom_minimum_size = Vector2(112, 44)
-	live_badge.add_theme_stylebox_override("normal", _panel(Color("#29123ddd"), Color("#8c63a7"), 18, 1, 8))
-	chip_row.add_child(live_badge)
-
-func _build_status(root: VBoxContainer) -> void:
-	status_label = _label("ベットを選んで、ゲーム開始", 19, Color.WHITE)
-	status_label.name = "StatusLabel"
-	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	status_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	status_label.custom_minimum_size.y = 52
-	status_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	status_label.add_theme_constant_override("outline_size", 3)
-	status_label.add_theme_stylebox_override("normal", _panel(Color("#073326e8"), Color("#c79735"), 18, 2, 10))
-	status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(status_label)
-
-func _build_setup(root: VBoxContainer) -> void:
-	CasinoHowTo3StepsScript.build(root, FACILITY_ID, _how_to_steps())
-
-	var caption: Label = _display_label("1  ·  SELECT YOUR BET", 24, GOLD_LIGHT)
-	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	root.add_child(caption)
-	var bet_row: HBoxContainer = HBoxContainer.new()
-	bet_row.name = "BetRow"
-	bet_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	bet_row.add_theme_constant_override("separation", 10)
-	root.add_child(bet_row)
-	for amount: int in BET_AMOUNTS:
-		var button: Button = _create_bet_button(amount)
-		button.name = "Bet_%d" % amount
-		button.custom_minimum_size = Vector2(0, 174)
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.pressed.connect(_select_bet.bind(amount))
-		bet_buttons[amount] = button
-		bet_row.add_child(button)
-
-	_build_paytable(root, false, "PAY TABLE")
-
-	deal_button = _button("ゲーム開始", true)
-	deal_button.name = "DealButton"
-	deal_button.custom_minimum_size.y = 128
-	deal_button.add_theme_font_override("font", DISPLAY_FONT)
-	deal_button.add_theme_font_size_override("font_size", 36)
-	deal_button.icon = DICE_ICON
-	deal_button.expand_icon = true
-	deal_button.add_theme_constant_override("icon_max_width", 76)
-	_apply_primary_button_style(deal_button, PLUM, Color("#4b2168"))
-	_add_button_ornament(deal_button, 3)
-	deal_button.pressed.connect(_start_game)
-	start_button = deal_button
-	root.add_child(deal_button)
-
-	var hint: Label = _label("5つのダイスで役を作ろう  ·  好きなダイスを残して2回まで振り直せます", 16, CREAM)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.custom_minimum_size.y = 48
-	hint.add_theme_color_override("font_outline_color", Color.BLACK)
-	hint.add_theme_constant_override("outline_size", 3)
-	root.add_child(hint)
-
-func _how_to_steps() -> Array[Dictionary]:
-	return [
-		{"action": "ベットを決める", "copy": "挑戦するCHIPを選ぼう"},
-		{"action": "キープして振り直す", "copy": "残したいダイスを選ぼう"},
-		{"action": "役を作る", "copy": "役が強いほど配当アップ"},
+func _build() -> void:
+	shell = ShellScript.new()
+	add_child(shell)
+	shell.configure(FACILITY_ID, TITLE)
+	var steps: Array[String] = [
+		"賭け金を選んで、5つのダイスを配る",
+		"残したいダイスをタップしてキープ。残りは2回まで振り直せる",
+		"そろえた役のぶんだけチップが戻る",
 	]
+	shell.set_guide("DICE POKER の遊び方", steps)
+	shell.set_guide_reference(_reference_text(selected_bet))
+	shell.back_requested.connect(_on_back_pressed)
+	shell.primary_pressed.connect(_on_primary_pressed)
+	shell.bet_selected.connect(_select_bet)
+	deal_button = shell.primary_button
+	reroll_button = shell.primary_button
+	back_button = shell.back_button
+	result_view = shell.result_panel
 
-func _build_active(root: VBoxContainer) -> void:
-	var stats: HBoxContainer = HBoxContainer.new()
-	stats.name = "DicePokerStats"
-	stats.add_theme_constant_override("separation", 8)
-	root.add_child(stats)
-	var bet_stat: Dictionary = _stat_box("BET")
-	bet_label = bet_stat["label"] as Label
-	bet_label.name = "BetLabel"
-	stats.add_child(bet_stat["panel"] as PanelContainer)
-	var reroll_stat: Dictionary = _stat_box("振り直し")
-	rerolls_label = reroll_stat["label"] as Label
-	rerolls_label.name = "RerollsLabel"
-	stats.add_child(reroll_stat["panel"] as PanelContainer)
-	var rank_stat: Dictionary = _stat_box("CURRENT HAND")
-	rank_label = rank_stat["label"] as Label
-	rank_label.name = "RankLabel"
-	stats.add_child(rank_stat["panel"] as PanelContainer)
-	hand_label = rank_label
-
-	var dice_panel: PanelContainer = PanelContainer.new()
-	dice_panel.name = "DicePresentationPanel"
-	dice_panel.custom_minimum_size.y = 350
-	dice_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	dice_panel.add_theme_stylebox_override("panel", _ornate_panel(Color("#051b16f0"), GOLD, 24, 3, Color("#e9bb4a44")))
-	root.add_child(dice_panel)
-	var dice_box: VBoxContainer = VBoxContainer.new()
-	dice_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	dice_box.add_theme_constant_override("separation", 4)
-	dice_panel.add_child(dice_box)
-	var dice_caption: Label = _display_label("5つのダイス  ·  カードをタップしてキープ", 18, GOLD_LIGHT)
-	dice_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	dice_box.add_child(dice_caption)
-	var die_center: CenterContainer = CenterContainer.new()
-	die_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	dice_box.add_child(die_center)
-	dice_presentation = DicePresentationScript.new()
-	dice_presentation.name = "DicePokerPresentation3D"
-	dice_presentation.overlay_compact = false
-	dice_presentation.compact_single = false
-	dice_presentation.tray_surface_visible = true
-	dice_presentation.high_contrast_pips = true
-	dice_presentation.custom_minimum_size = Vector2(0, 170)
-	die_center.add_child(dice_presentation)
-	var active_faces: HBoxContainer = _create_die_face_row("ActiveDiceFaces", active_die_faces)
-	dice_box.add_child(active_faces)
-
-	var keep_grid: GridContainer = GridContainer.new()
-	keep_grid.name = "KeepButtons"
-	keep_grid.columns = DicePokerScript.DIE_COUNT
-	keep_grid.add_theme_constant_override("h_separation", 7)
-	keep_grid.add_theme_constant_override("v_separation", 7)
-	root.add_child(keep_grid)
-	for index: int in range(DicePokerScript.DIE_COUNT):
-		var keep_button: Button = _button("ダイス%d\n選択可" % (index + 1))
-		keep_button.name = "KeepDie_%d" % (index + 1)
-		keep_button.custom_minimum_size = Vector2(0, 106)
-		keep_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		keep_button.add_theme_font_size_override("font_size", 16)
-		keep_button.pressed.connect(_on_keep_pressed.bind(index))
-		keep_buttons[index] = keep_button
-		keep_grid.add_child(keep_button)
-	dice_buttons = keep_buttons
-
-	var action_row: HBoxContainer = HBoxContainer.new()
-	action_row.name = "ActionRow"
-	action_row.add_theme_constant_override("separation", 9)
-	root.add_child(action_row)
-	reroll_button = _button("振り直す", true)
-	reroll_button.name = "RerollButton"
-	reroll_button.custom_minimum_size.y = 116
-	reroll_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	reroll_button.add_theme_font_override("font", DISPLAY_FONT)
-	reroll_button.add_theme_font_size_override("font_size", 28)
-	_apply_primary_button_style(reroll_button, Color("#123f2d"), Color("#176344"))
-	_add_button_ornament(reroll_button, 3)
-	reroll_button.pressed.connect(_on_reroll_pressed)
-	action_row.add_child(reroll_button)
-	lock_button = _button("この役で決定", true)
-	lock_button.name = "LockHandButton"
-	lock_button.custom_minimum_size.y = 116
-	lock_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lock_button.add_theme_font_override("font", DISPLAY_FONT)
-	lock_button.add_theme_font_size_override("font_size", 28)
-	_apply_primary_button_style(lock_button, PLUM, Color("#542271"))
-	_add_button_ornament(lock_button, 3)
+	lock_button = shell.add_action("lock", "この役で受け取る")
 	lock_button.pressed.connect(_on_lock_pressed)
-	action_row.add_child(lock_button)
-	action_button = reroll_button
+	lock_button.visible = false
+	shell.choice_row.visible = false
 
-	var compact_paytable: PanelContainer = _build_paytable(root, true, "PAY TABLE")
-	compact_paytable.name = "CompactPaytable"
+	dice_presentation = DicePresentationScript.new()
+	dice_presentation.name = "PokerDice3D"
+	dice_presentation.overlay_compact = true
+	dice_presentation.tray_surface_visible = false
+	dice_presentation.high_contrast_pips = true
+	shell.table_root.add_child(dice_presentation)
+	# Straight down, so each die shows exactly one number: the one that counts.
+	dice_presentation.camera.fov = 30.0
+	dice_presentation.camera.look_at_from_position(Vector3(0, 10.8, 1.6), Vector3(0, 0.7, 0.1))
 
-func _build_result(root: VBoxContainer) -> void:
-	var banner: PanelContainer = PanelContainer.new()
-	banner.name = "ResultBanner"
-	banner.custom_minimum_size.y = 78
-	banner.add_theme_stylebox_override("panel", _ornate_panel(Color("#72161df5"), GOLD_LIGHT, 24, 3, Color("#ffc94f66")))
-	root.add_child(banner)
-	var banner_label: Label = _display_label("RESULT", 38, GOLD_LIGHT)
-	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	banner_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	banner_label.add_theme_color_override("font_outline_color", Color("#260500"))
-	banner_label.add_theme_constant_override("outline_size", 6)
-	banner.add_child(banner_label)
-
-	result_card = PanelContainer.new()
-	result_card.name = "ResultCard"
-	result_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	result_card.custom_minimum_size.y = 430
-	result_card.add_theme_stylebox_override("panel", _ornate_panel(Color("#04251cef"), GOLD, 24, 3, Color("#ffd55a55")))
-	root.add_child(result_card)
-	var box: VBoxContainer = VBoxContainer.new()
-	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 8)
-	result_card.add_child(box)
-	result_label = _display_label("RESULT", 52, GOLD_LIGHT)
-	result_label.name = "ResultRankLabel"
-	result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	result_label.add_theme_color_override("font_outline_color", Color("#3b1800"))
-	result_label.add_theme_constant_override("outline_size", 7)
-	box.add_child(result_label)
-	result_outcome_label = _display_label("WIN", 34, BRIGHT_GOLD)
-	result_outcome_label.name = "ResultOutcomeLabel"
-	result_outcome_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	result_outcome_label.add_theme_color_override("font_outline_color", Color("#3b1800"))
-	result_outcome_label.add_theme_constant_override("outline_size", 5)
-	result_outcome_label.visible = false
-	box.add_child(result_outcome_label)
-	var dice_center: CenterContainer = CenterContainer.new()
-	dice_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(dice_center)
-	var result_dice_stack: VBoxContainer = VBoxContainer.new()
-	result_dice_stack.alignment = BoxContainer.ALIGNMENT_CENTER
-	result_dice_stack.add_theme_constant_override("separation", -6)
-	dice_center.add_child(result_dice_stack)
-	result_dice_presentation = DicePresentationScript.new()
-	result_dice_presentation.name = "ResultDicePresentation3D"
-	result_dice_presentation.overlay_compact = false
-	result_dice_presentation.compact_single = false
-	result_dice_presentation.tray_surface_visible = false
-	result_dice_presentation.high_contrast_pips = true
-	result_dice_presentation.custom_minimum_size = Vector2.ZERO
-	result_dice_presentation.visible = false
-	result_dice_stack.add_child(result_dice_presentation)
-	var result_faces: HBoxContainer = _create_die_face_row("ResultDiceFaces", result_die_faces)
-	result_dice_stack.add_child(result_faces)
-	var summary: HBoxContainer = HBoxContainer.new()
-	summary.add_theme_constant_override("separation", 10)
-	box.add_child(summary)
-	var bet_summary: Dictionary = _result_stat_box("BET")
-	result_bet_value = bet_summary["label"] as Label
-	summary.add_child(bet_summary["panel"] as PanelContainer)
-	var return_summary: Dictionary = _result_stat_box("受け取り")
-	result_return_value = return_summary["label"] as Label
-	# Preserve the public payout label contract while presenting net profit separately.
-	result_payout_label = result_return_value
-	result_payout_label.name = "ResultPayoutLabel"
-	summary.add_child(return_summary["panel"] as PanelContainer)
-	var divider: HSeparator = HSeparator.new()
-	divider.add_theme_stylebox_override("separator", _separator_style(GOLD))
-	box.add_child(divider)
-	var net_caption: Label = _display_label("収支", 18, MUTED)
-	net_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(net_caption)
-	result_net_label = _display_label("±0 CHIP", 48, CREAM)
-	result_net_label.name = "ResultNetLabel"
-	result_net_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(result_net_label)
-	result_chip_delta_label = _label("CHIP ±0", 18, GOLD_LIGHT)
-	result_chip_delta_label.name = "ResultChipDeltaLabel"
-	result_chip_delta_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	result_chip_delta_label.visible = false
-	box.add_child(result_chip_delta_label)
-	result_detail_label = _label("", 17, CREAM)
-	result_detail_label.name = "ResultDetailLabel"
-	result_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	result_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(result_detail_label)
-
-	again_button = _button("もう一度遊ぶ", true)
-	again_button.name = "AgainButton"
-	again_button.custom_minimum_size.y = 112
-	again_button.add_theme_font_override("font", DISPLAY_FONT)
-	again_button.add_theme_font_size_override("font_size", 34)
-	again_button.icon = DICE_ICON
-	again_button.expand_icon = true
-	again_button.add_theme_constant_override("icon_max_width", 70)
-	_apply_primary_button_style(again_button, Color("#0a4b32"), Color("#117148"))
-	_add_button_ornament(again_button, 3)
-	again_button.pressed.connect(_on_again_pressed)
-	root.add_child(again_button)
-	change_bet_button = _button("ベットを変える", false)
-	change_bet_button.name = "ChangeBetButton"
-	change_bet_button.custom_minimum_size.y = 88
-	change_bet_button.add_theme_font_override("font", DISPLAY_FONT)
-	change_bet_button.add_theme_font_size_override("font_size", 22)
-	_apply_secondary_button_style(change_bet_button, PLUM)
-	change_bet_button.pressed.connect(_on_change_bet_pressed)
-	root.add_child(change_bet_button)
-	exit_button = _button("カジノへ戻る", false)
-	exit_button.name = "ResultExitButton"
-	exit_button.custom_minimum_size.y = 88
-	exit_button.add_theme_font_override("font", DISPLAY_FONT)
-	exit_button.add_theme_font_size_override("font_size", 21)
-	_apply_utility_button_style(exit_button)
-	CasinoBackButton.configure(exit_button)
-	exit_button.pressed.connect(_on_back_pressed)
-	root.add_child(exit_button)
-
-	result_sparkle = TextureRect.new()
-	result_sparkle.name = "ResultSparkle"
-	result_sparkle.texture = SELECTION_SPARKLE
-	result_sparkle.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	result_sparkle.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	result_sparkle.custom_minimum_size = Vector2(620, 132)
-	result_sparkle.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	result_sparkle.modulate = Color(1, 1, 1, 0.0)
-	dice_center.add_child(result_sparkle)
-
-func _build_paytable(parent: Container, compact: bool, title_copy: String) -> PanelContainer:
-	var panel: PanelContainer = PanelContainer.new()
-	panel.name = "Paytable"
-	panel.custom_minimum_size.y = 76 if compact else 340
-	panel.add_theme_stylebox_override("panel", _ornate_panel(Color("#061b18ed"), Color("#b78332"), 20, 2, Color("#d8a74233")))
-	parent.add_child(panel)
-	var stack: VBoxContainer = VBoxContainer.new()
-	stack.add_theme_constant_override("separation", 3)
-	panel.add_child(stack)
-	var title: Label = _display_label(title_copy, 27 if not compact else 18, GOLD_LIGHT)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stack.add_child(title)
-	if compact:
-		var compact_copy: Label = _label("FIVE ×2.8  ·  FOUR ×1.7  ·  FULL HOUSE ×1.0  ·  STRAIGHT ×0.8\nTHREE ×0.6  ·  TWO PAIR ×0.4  ·  ONE PAIR ×0.2", 14, CREAM)
-		compact_copy.name = "PaytableLabel"
-		compact_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		compact_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		stack.add_child(compact_copy)
-		return panel
-	for row_index: int in range(PAYTABLE.size()):
-		var entry: Dictionary = PAYTABLE[row_index]
-		var row: HBoxContainer = HBoxContainer.new()
-		row.custom_minimum_size.y = 36
-		row.add_theme_constant_override("separation", 9)
-		stack.add_child(row)
-		var symbol: Label = _label(str(entry.get("symbol", "◆")), 13, GOLD)
-		symbol.custom_minimum_size.x = 112
-		symbol.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		row.add_child(symbol)
-		var hand_name: Label = _display_label(str(entry.get("name", "")), 18, CREAM)
-		hand_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		hand_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		row.add_child(hand_name)
-		var multiplier: Label = _display_label("×%.1f" % float(entry.get("multiplier", 0.0)), 20, GOLD_LIGHT)
-		multiplier.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		multiplier.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		multiplier.custom_minimum_size.x = 82
-		row.add_child(multiplier)
-		if row_index < PAYTABLE.size() - 1:
-			var separator: HSeparator = HSeparator.new()
-			separator.add_theme_stylebox_override("separator", _separator_style(Color("#9c7435")))
-			stack.add_child(separator)
-	return panel
-
-func _create_bet_button(amount: int) -> Button:
-	var button: Button = _button("", false)
-	button.toggle_mode = true
-	button.tooltip_text = "%d CHIPを賭ける" % amount
-	button.set_meta("bet_amount", amount)
-	var sparkle: TextureRect = TextureRect.new()
-	sparkle.name = "SelectionSparkle"
-	sparkle.texture = SELECTION_SPARKLE
-	sparkle.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	sparkle.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	sparkle.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	sparkle.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	sparkle.visible = false
-	button.add_child(sparkle)
-	var chip: TextureRect = TextureRect.new()
-	chip.name = "ChipArt"
-	var texture_value: Variant = CHIP_TEXTURES.get(amount, null)
-	chip.texture = texture_value as Texture2D
-	chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	chip.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	chip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	chip.offset_left = 12.0
-	chip.offset_top = 6.0
-	chip.offset_right = -12.0
-	chip.offset_bottom = -6.0
-	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	button.add_child(chip)
-	var amount_label: Label = _display_label(str(amount), 34, GOLD_LIGHT)
-	amount_label.name = "AmountLabel"
-	amount_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	amount_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	amount_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	amount_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	amount_label.add_theme_constant_override("outline_size", 6)
-	amount_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	button.add_child(amount_label)
-	var selected_badge: Label = _label("SELECTED", 12, INK)
-	selected_badge.name = "SelectedBadge"
-	selected_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	selected_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	selected_badge.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	selected_badge.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	selected_badge.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	selected_badge.offset_left = -52.0
-	selected_badge.offset_top = -32.0
-	selected_badge.offset_right = 52.0
-	selected_badge.offset_bottom = -6.0
-	selected_badge.add_theme_stylebox_override("normal", _panel(GOLD_LIGHT, GOLD, 14, 2, 5))
-	selected_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	selected_badge.visible = false
-	button.add_child(selected_badge)
-	return button
-
-func _create_die_face_row(node_name: String, store: Dictionary) -> HBoxContainer:
-	var row: HBoxContainer = HBoxContainer.new()
-	row.name = node_name
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 9)
 	for index: int in range(DicePokerScript.DIE_COUNT):
-		var panel: PanelContainer = PanelContainer.new()
-		panel.name = "DieFace_%d" % (index + 1)
-		panel.custom_minimum_size = Vector2(102, 102)
-		panel.mouse_filter = Control.MOUSE_FILTER_STOP if node_name == "ActiveDiceFaces" else Control.MOUSE_FILTER_IGNORE
-		panel.add_theme_stylebox_override("panel", _die_face_style(false))
-		row.add_child(panel)
-		var grid_center: CenterContainer = CenterContainer.new()
-		panel.add_child(grid_center)
-		var grid: GridContainer = GridContainer.new()
-		grid.columns = 3
-		grid.custom_minimum_size = Vector2(70, 70)
-		grid.add_theme_constant_override("h_separation", 4)
-		grid.add_theme_constant_override("v_separation", 0)
-		grid_center.add_child(grid)
-		var pips: Array[Label] = []
-		for pip_index: int in range(9):
-			var pip: Label = _label("●", 18, Color("#17100a"))
-			pip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			pip.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			pip.custom_minimum_size = Vector2(20, 20)
-			pip.modulate.a = 0.0
-			pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			grid.add_child(pip)
-			pips.append(pip)
-		var question: Label = _display_label("?", 34, BRASS)
-		question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		question.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		question.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		panel.add_child(question)
-		if node_name == "ActiveDiceFaces":
-			var tap: Button = Button.new()
-			tap.name = "DieTap_%d" % (index + 1)
-			tap.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-			tap.flat = true
-			tap.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-			tap.add_theme_color_override("font_color", Color(0, 0, 0, 0))
-			tap.add_theme_color_override("font_hover_color", Color(0, 0, 0, 0))
-			tap.add_theme_color_override("font_pressed_color", Color(0, 0, 0, 0))
-			tap.pressed.connect(_on_keep_pressed.bind(index))
-			panel.add_child(tap)
-		store[index] = {"panel": panel, "pips": pips, "question": question}
-	return row
+		var button := Button.new()
+		button.name = "KeepButton_%d" % index
+		button.toggle_mode = true
+		button.custom_minimum_size = Vector2(UiTokensScript.TOUCH_MIN, UiTokensScript.TOUCH_MIN)
+		button.tooltip_text = "ダイス%dをキープ" % (index + 1)
+		_style_keep_button(button)
+		button.pressed.connect(_on_keep_pressed.bind(index))
+		shell.table_root.add_child(button)
+		keep_buttons[index] = button
+		var tag := Label.new()
+		tag.text = "キープ"
+		tag.add_theme_font_override("font", FONT)
+		tag.add_theme_font_size_override("font_size", 24)
+		tag.add_theme_color_override("font_color", Color("#2a1a0c"))
+		tag.add_theme_stylebox_override("normal", ShellScript._box(GOLD, GOLD_BRIGHT, 12, 0, 4))
+		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tag.visible = false
+		shell.table_root.add_child(tag)
+		keep_tags[index] = tag
 
-func _update_die_face_set(store: Dictionary, faces: Array[int], kept: Array[bool]) -> void:
-	for index: int in range(DicePokerScript.DIE_COUNT):
-		var entry_value: Variant = store.get(index, {})
-		if not entry_value is Dictionary:
-			continue
-		var entry: Dictionary = entry_value as Dictionary
-		var panel: PanelContainer = entry.get("panel", null) as PanelContainer
-		var question: Label = entry.get("question", null) as Label
-		var pips_value: Variant = entry.get("pips", [])
-		var pips: Array = pips_value as Array if pips_value is Array else []
-		var face: int = faces[index] if index < faces.size() else 0
-		var is_kept: bool = index < kept.size() and kept[index]
-		if panel != null:
-			panel.add_theme_stylebox_override("panel", _die_face_style(is_kept))
-			var tap: Button = panel.get_node_or_null("DieTap_%d" % (index + 1)) as Button
-			if tap != null:
-				tap.disabled = rolling or presentation_locked or not bool(game.get("active", false)) or bool(game.get("finished", false)) or face <= 0
-		if question != null:
-			question.visible = face < 1 or face > 6
-		var pattern: Array = PIP_PATTERNS[face] as Array if face >= 1 and face <= 6 else []
-		for pip_index: int in range(pips.size()):
-			var pip: Label = pips[pip_index] as Label
-			if pip != null:
-				pip.modulate = Color("#17100a") if pip_index in pattern else Color(0, 0, 0, 0)
+	hint_label = Label.new()
+	hint_label.name = "TableHint"
+	hint_label.add_theme_font_override("font", FONT)
+	hint_label.add_theme_font_size_override("font_size", UiTokensScript.FONT_CAPTION)
+	hint_label.add_theme_color_override("font_color", CREAM)
+	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shell.table_root.add_child(hint_label)
 
-func _die_face_style(kept: bool) -> StyleBoxFlat:
-	var style: StyleBoxFlat = _panel(Color("#fff0c7"), BRIGHT_GOLD if kept else Color("#a67836"), 20, 4 if kept else 2, 8)
-	style.shadow_color = Color("#ffdb6377") if kept else Color("#00000066")
-	style.shadow_size = 7 if kept else 4
-	style.shadow_offset = Vector2(0, 2)
-	return style
+	shell.table_root.move_child(shell.result_panel, -1)
+	shell.table_root.resized.connect(_layout_table)
+	_layout_table()
 
-func _result_stat_box(caption: String) -> Dictionary:
-	var panel: PanelContainer = PanelContainer.new()
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.custom_minimum_size.y = 78
-	panel.add_theme_stylebox_override("panel", _panel(Color("#071a19e8"), Color("#8e6a35"), 16, 2, 10))
-	var box: VBoxContainer = VBoxContainer.new()
-	box.add_theme_constant_override("separation", -2)
-	panel.add_child(box)
-	var cap: Label = _display_label(caption, 14, MUTED)
-	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(cap)
-	var value: Label = _display_label("0", 26, GOLD_LIGHT)
-	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(value)
-	return {"panel": panel, "label": value}
 
-func _build_help_overlay() -> void:
-	help_overlay = Control.new()
-	help_overlay.name = "HelpOverlay"
-	help_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	help_overlay.z_index = 50
-	help_overlay.visible = false
-	add_child(help_overlay)
-	var dim: ColorRect = ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.82)
-	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	help_overlay.add_child(dim)
-	var center: CenterContainer = CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	help_overlay.add_child(center)
-	var dialog: PanelContainer = PanelContainer.new()
-	dialog.custom_minimum_size = Vector2(640, 0)
-	dialog.add_theme_stylebox_override("panel", _ornate_panel(Color("#061b18fa"), GOLD_LIGHT, 26, 3, Color("#ffd65a55")))
-	center.add_child(dialog)
-	var body: VBoxContainer = VBoxContainer.new()
-	body.add_theme_constant_override("separation", 9)
-	dialog.add_child(body)
-	var title: Label = _display_label("遊び方", 38, GOLD_LIGHT)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	body.add_child(title)
-	var copy: Label = _label("ゲーム開始で5個のダイスを振り、残したいダイスをキープ。\n最大2回振り直せます。5個すべてキープすると、この役で決定できます。", 18, CREAM)
-	copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.add_child(copy)
-	_build_paytable(body, false, "PAYOUTS")
-	var close_button: Button = _button("閉じる", true)
-	close_button.name = "HelpCloseButton"
-	close_button.custom_minimum_size.y = 90
-	close_button.add_theme_font_override("font", DISPLAY_FONT)
-	close_button.add_theme_font_size_override("font_size", 23)
-	_apply_primary_button_style(close_button, PLUM, Color("#51206e"))
-	close_button.pressed.connect(_toggle_help)
-	body.add_child(close_button)
+func _style_keep_button(button: Button) -> void:
+	var clear := StyleBoxEmpty.new()
+	var kept := ShellScript._box(Color(1.0, 0.84, 0.36, 0.10), GOLD, 26, 6, 0)
+	button.add_theme_stylebox_override("normal", clear)
+	button.add_theme_stylebox_override("hover", ShellScript._box(Color(1, 1, 1, 0.05), Color(1, 1, 1, 0.35), 26, 2, 0))
+	button.add_theme_stylebox_override("pressed", kept)
+	button.add_theme_stylebox_override("hover_pressed", kept)
+	button.add_theme_stylebox_override("disabled", clear)
+	button.add_theme_stylebox_override("focus", ShellScript._box(Color.TRANSPARENT, GOLD_BRIGHT, 26, 2, 0))
 
-func _toggle_help() -> void:
-	if help_overlay == null:
+
+func _dice_box() -> Rect2:
+	var area: Vector2 = shell.table_root.size
+	var width := clampf(area.x - 16.0, 120.0, 660.0)
+	var height := minf(width * 0.68, maxf(120.0, area.y - 150.0))
+	return Rect2(Vector2((area.x - width) * 0.5, area.y * 0.52 - height * 0.5), Vector2(width, height))
+
+
+func _layout_table() -> void:
+	var area: Vector2 = shell.table_root.size
+	if area.x < 8.0 or area.y < 8.0:
 		return
-	help_overlay.visible = not help_overlay.visible
-	_play_ui_sfx(&"select" if help_overlay.visible else &"back", false)
-	if help_overlay.visible:
-		var close_button: Button = help_overlay.find_child("HelpCloseButton", true, false) as Button
-		if close_button != null:
-			close_button.grab_focus()
-	elif back_button != null:
-		back_button.grab_focus()
+	var box := _dice_box()
+	dice_presentation.position = box.position
+	dice_presentation.size = box.size
+	hint_label.position = Vector2(0, minf(area.y - 56.0, box.end.y + 6.0))
+	hint_label.size = Vector2(area.x, 44)
+	_place_keep_buttons()
+
+
+## Put each tap target over its die. Projection goes through the dice camera
+## so the buttons stay aligned at every screen size.
+func _place_keep_buttons() -> void:
+	var box := _dice_box()
+	var layout := DicePresentationScript.layout_for_count(DicePokerScript.DIE_COUNT)
+	var viewport_size := Vector2(dice_presentation.viewport.size) if dice_presentation.viewport != null else box.size
+	var side := maxf(float(UiTokensScript.TOUCH_MIN), box.size.x * 0.235)
+	var kept: Array[bool] = _state_kept(game)
+	for index: int in range(DicePokerScript.DIE_COUNT):
+		var lifted := kept[index] and view_state == "active"
+		var center := Vector2(box.size.x * (0.5 + layout[index].x / 7.2), box.size.y * (0.5 + layout[index].z / 4.9))
+		if dice_presentation.is_inside_tree() and viewport_size.x > 8.0 and viewport_size.y > 8.0:
+			var projected := dice_presentation.camera.unproject_position(Vector3(layout[index].x, 1.7 + (KEEP_LIFT if lifted else 0.0), layout[index].z))
+			center = projected / viewport_size * box.size
+		var button := keep_buttons[index] as Button
+		button.position = box.position + center - Vector2(side, side) * 0.5
+		button.size = Vector2(side, side)
+		var tag := keep_tags[index] as Label
+		tag.size = Vector2(112, 38)
+		tag.position = button.position + Vector2((side - 112.0) * 0.5, -22.0)
+
+
+func _reference_text(bet: int) -> String:
+	var parts: Array[String] = []
+	for rank_name: String in DicePokerScript.RANKS_HIGH_TO_LOW:
+		if rank_name == DicePokerScript.RANK_NO_HAND:
+			continue
+		parts.append("%s +%d" % [RANK_NAMES[rank_name], DicePokerScript.payout_for(bet, rank_name)])
+	return "賭け金 %d のとき戻るチップ\n%s" % [bet, " ・ ".join(parts)]
+
+
+func rank_name_ja(rank_name: String) -> String:
+	return str(RANK_NAMES.get(rank_name, rank_name))
+
+
+# ------------------------------------------------------------------ resume
 
 func _resume_or_show_setup() -> void:
 	var active: Dictionary = CasinoBankScript.active_game(FACILITY_ID)
@@ -861,19 +260,15 @@ func _resume_or_show_setup() -> void:
 	if not pending_roll.is_empty():
 		view_state = "rolling"
 		rolling = true
-		setup_view.visible = false
-		active_view.visible = true
-		result_view.visible = false
+		_refresh_all()
 		call_deferred("_resume_pending_roll")
 	elif bool(game.get("finished", false)):
 		_settle_finished_game()
 	else:
 		view_state = "active"
 		rolling = false
-		setup_view.visible = false
-		active_view.visible = true
-		result_view.visible = false
 		_refresh_all()
+
 
 func _normalise_game(source: Dictionary) -> Dictionary:
 	var candidate: Dictionary = source.duplicate(true)
@@ -892,6 +287,7 @@ func _normalise_game(source: Dictionary) -> Dictionary:
 		fresh["values"] = (fresh.get("dice", []) as Array).duplicate(true)
 	return fresh
 
+
 func _extract_pending(source: Dictionary) -> Dictionary:
 	var value: Variant = source.get("pending_rolls", [])
 	if value is Array and not (value as Array).is_empty():
@@ -899,6 +295,7 @@ func _extract_pending(source: Dictionary) -> Dictionary:
 		if first is Dictionary:
 			return (first as Dictionary).duplicate(true)
 	return {}
+
 
 func _resume_pending_roll() -> void:
 	if pending_roll.is_empty() or exiting or not is_inside_tree():
@@ -910,20 +307,54 @@ func _resume_pending_roll() -> void:
 		return
 	_resolve_pending_roll(pending_roll)
 
+
+# ------------------------------------------------------------------ inputs
+
 func _select_bet(amount: int) -> void:
-	if amount not in BET_AMOUNTS or rolling:
+	if amount not in BET_AMOUNTS or rolling or presentation_locked:
+		return
+	if view_state == "active":
 		return
 	selected_bet = amount
-	_play_ui_sfx(&"select", false)
-	_refresh_bet_buttons()
+	if view_state == "result":
+		_show_setup(true)
+	else:
+		_refresh_all()
+
+
+func _on_primary_pressed() -> void:
+	match view_state:
+		"setup":
+			_start_game()
+		"active":
+			_on_reroll_pressed()
+		"result":
+			_on_again_pressed()
+
+
+func _on_back_pressed() -> void:
+	if exiting:
+		return
+	if rolling or presentation_locked:
+		shell.set_status("ダイスが止まるまで少し待とう")
+		return
+	# A round in progress is saved and resumes on the same dice next time.
+	back_requested.emit()
+
+
+func _toggle_help() -> void:
+	if shell.is_guide_open():
+		shell.close_guide()
+	else:
+		shell.open_guide()
+
 
 func _start_game() -> void:
-	if rolling or presentation_locked or selected_bet not in BET_AMOUNTS:
+	if rolling or presentation_locked or shell.is_guide_open() or selected_bet not in BET_AMOUNTS:
 		return
 	if CasinoBankScript.balance() < selected_bet:
-		status_label.text = "CHIPが足りない。"
-		_play_ui_sfx(&"blocked", false)
-		_refresh_bet_buttons()
+		shell.set_status("チップが足りない。賭け金を選び直そう")
+		_refresh_all()
 		return
 	var indices: Array[int] = [0, 1, 2, 3, 4]
 	var initial: Array[int] = _next_roll_batch(indices)
@@ -941,8 +372,8 @@ func _start_game() -> void:
 		if bool(receipt.get("already_active", false)):
 			_resume_or_show_setup()
 		else:
-			status_label.text = "開始できません。CHIP残高を確認して。"
-			_refresh_bet_buttons()
+			shell.set_status("いまは始められない。チップを確認しよう")
+			_refresh_all()
 		return
 	game_id = str(receipt.get("game_id", ""))
 	game = initial_game.duplicate(true)
@@ -951,52 +382,29 @@ func _start_game() -> void:
 	rolling = true
 	presentation_locked = true
 	view_state = "rolling"
-	setup_view.visible = false
-	active_view.visible = true
-	result_view.visible = false
-	status_label.text = "配り中..."
-	_play_ui_sfx(&"start", false)
+	casino_feel_fx.press_button(shell.primary_button, true)
 	_refresh_all()
 	await _animate_roll(initial, indices)
 	if not is_inside_tree():
 		return
 	_resolve_pending_roll(pending_roll)
 
+
 func _on_keep_pressed(die_index: int) -> void:
 	if rolling or presentation_locked or game.is_empty() or not bool(game.get("active", false)) or bool(game.get("finished", false)):
+		_refresh_dice()
 		return
 	game = DicePokerScript.toggle_keep(game, die_index)
 	CasinoBankScript.update_game(FACILITY_ID, game, game_id)
-	status_label.text = "キープを選択。%d個キープ中。" % DicePokerScript.kept_count(game)
-	if casino_feel_fx != null:
-		casino_feel_fx.press_button(null, true)
-	_play_ui_sfx(&"select", false)
-	var entry_value: Variant = active_die_faces.get(die_index, {})
-	if entry_value is Dictionary:
-		var panel: PanelContainer = (entry_value as Dictionary).get("panel", null) as PanelContainer
-		if panel != null:
-			var panel_key: int = panel.get_instance_id()
-			var previous: Variant = button_tweens.get(panel_key, null)
-			if previous is Tween:
-				(previous as Tween).kill()
-			panel.offset_transform_enabled = true
-			var kept_now: bool = bool(_state_kept(game)[die_index])
-			var target_pos: Vector2 = Vector2(0, -5) if kept_now else Vector2.ZERO
-			var target_scale: Vector2 = Vector2(1.03, 1.03) if kept_now else Vector2.ONE
-			var tween: Tween = create_tween()
-			tracked_tweens.append(tween)
-			button_tweens[panel_key] = tween
-			tween.set_parallel(true)
-			tween.tween_property(panel, "offset_transform_position", target_pos, 0.13).set_trans(Tween.TRANS_SINE)
-			tween.tween_property(panel, "offset_transform_scale", target_scale, 0.13).set_trans(Tween.TRANS_SINE)
+	casino_feel_fx.press_button(null, true)
 	_refresh_all()
 
+
 func _on_reroll_pressed() -> void:
-	if DicePokerScript.all_kept(game):
-		_on_lock_pressed()
+	if rolling or presentation_locked or game.is_empty():
 		return
-	if rolling or presentation_locked or not DicePokerScript.can_reroll(game):
-		_play_ui_sfx(&"blocked", false)
+	if DicePokerScript.all_kept(game) or not DicePokerScript.can_reroll(game):
+		_on_lock_pressed()
 		return
 	var indices: Array[int] = DicePokerScript.reroll_indices(game)
 	var values: Array[int] = _next_roll_batch(indices)
@@ -1018,20 +426,28 @@ func _on_reroll_pressed() -> void:
 	rolling = true
 	presentation_locked = true
 	view_state = "rolling"
-	status_label.text = "振り直し中..."
-	_play_ui_sfx(&"roll", false)
+	casino_feel_fx.press_button(shell.primary_button, true)
 	_refresh_all()
 	await _animate_roll(full_values, indices)
 	if not is_inside_tree():
 		return
 	_resolve_pending_roll(pending_roll)
 
+
 func _on_lock_pressed() -> void:
-	if rolling or presentation_locked or game.is_empty() or not DicePokerScript.can_lock_hand(game):
-		_play_ui_sfx(&"blocked", false)
+	# Taking the hand as it stands is the same as keeping every die.
+	if rolling or presentation_locked or game.is_empty() or not DicePokerScript.can_finalize(game) or not bool(game.get("active", false)):
 		return
 	game = DicePokerScript.finalize(game)
 	_settle_finished_game()
+
+
+func _on_again_pressed() -> void:
+	if exiting or rolling or presentation_locked or view_state != "result":
+		return
+	_show_setup(true)
+	_start_game()
+
 
 func _resolve_pending_roll(pending: Dictionary) -> void:
 	if exiting or not is_inside_tree() or pending.is_empty() or game.is_empty():
@@ -1040,19 +456,8 @@ func _resolve_pending_roll(pending: Dictionary) -> void:
 	var full_values: Array[int] = _pending_full_values(pending)
 	if kind == "initial":
 		game = DicePokerScript.apply_initial(game, full_values)
-		game["pending_rolls"] = []
-		pending_roll = {}
-		rolling = false
-		presentation_locked = false
-		view_state = "active"
-		status_label.text = "ダイスをキープして、振り直すか、この役で決定。"
-		CasinoBankScript.update_game(FACILITY_ID, game, game_id)
-		game.erase("pending_rolls")
-		_refresh_all()
-		return
-	var indices: Array[int] = _pending_indices(pending)
-	var values: Array[int] = _pending_values(pending)
-	game = DicePokerScript.apply_reroll(game, values, indices)
+	else:
+		game = DicePokerScript.apply_reroll(game, _pending_values(pending), _pending_indices(pending))
 	game["pending_rolls"] = []
 	pending_roll = {}
 	rolling = false
@@ -1062,224 +467,38 @@ func _resolve_pending_roll(pending: Dictionary) -> void:
 		_settle_finished_game()
 		return
 	view_state = "active"
-	status_label.text = "振り直し完了。さらにキープするダイスを選ぶ。"
 	CasinoBankScript.update_game(FACILITY_ID, game, game_id)
 	game.erase("pending_rolls")
 	_refresh_all()
-	_animate_intermediate_hand()
 
-func _animate_intermediate_hand() -> void:
-	if rank_label == null or exiting or not is_inside_tree():
-		return
-	var tier: int = _hand_tier_for_rank(str(game.get("rank", DicePokerScript.RANK_NO_HAND)))
-	presentation_phase = "intermediate_hand"
-	stage_trace.append("intermediate_hand_%d" % tier)
-	rank_label.offset_transform_enabled = true
-	rank_label.offset_transform_scale = Vector2.ONE
-	var peak: float = 1.025 + 0.012 * float(tier)
-	var tween: Tween = create_tween()
-	tracked_tweens.append(tween)
-	tween.tween_property(rank_label, "offset_transform_scale", Vector2(peak, peak), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(rank_label, "offset_transform_scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.finished.connect(func() -> void:
-		if not exiting and is_inside_tree() and presentation_phase == "intermediate_hand":
-			presentation_phase = "active_ready"
-	)
-
-func _on_again_pressed() -> void:
-	if exiting or rolling or presentation_locked or view_state != "result":
-		return
-	_show_setup(false)
-	_start_game()
-
-func _on_change_bet_pressed() -> void:
-	if exiting or rolling or presentation_locked or view_state != "result":
-		return
-	_show_setup(true)
 
 func _settle_finished_game() -> void:
-	if settled:
-		_show_result()
-		return
 	var payout_value: int = maxi(0, int(game.get("payout", 0)))
-	var balance_before: int = CasinoBankScript.balance()
-	var receipt: Dictionary = CasinoBankScript.settle_game(FACILITY_ID, payout_value, {
-		"result": str(game.get("result", game.get("rank", DicePokerScript.RANK_NO_HAND))),
-		"rank": str(game.get("rank", DicePokerScript.RANK_NO_HAND)),
-		"dice": _state_dice(game),
-		"bet": int(game.get("bet", selected_bet)),
-	}, game_id)
-	if bool(receipt.get("already_settled", false)):
-		payout_value = int(receipt.get("payout", payout_value))
-		game["payout"] = payout_value
-	settled = bool(receipt.get("ok", false)) or bool(receipt.get("already_settled", false))
-	result_balance_before = balance_before
-	result_balance_after = CasinoBankScript.balance()
-	result_balance_captured = true
+	if not settled:
+		var receipt: Dictionary = CasinoBankScript.settle_game(FACILITY_ID, payout_value, {
+			"result": str(game.get("result", game.get("rank", DicePokerScript.RANK_NO_HAND))),
+			"rank": str(game.get("rank", DicePokerScript.RANK_NO_HAND)),
+			"dice": _state_dice(game),
+			"bet": int(game.get("bet", selected_bet)),
+		}, game_id)
+		if bool(receipt.get("already_settled", false)):
+			payout_value = int(receipt.get("payout", payout_value))
+			game["payout"] = payout_value
+		settled = bool(receipt.get("ok", false)) or bool(receipt.get("already_settled", false))
 	rolling = false
-	view_state = "result"
-	if payout_value > 0:
-		_play_ui_sfx(&"complete", true)
-	else:
-		_play_ui_sfx(&"error", true)
-	_show_result()
-
-func _show_result() -> void:
-	presentation_locked = true
-	presentation_phase = "result_dice"
-	stage_trace.clear()
-	view_state = "result"
-	setup_view.visible = false
-	active_view.visible = false
-	result_view.visible = true
-	back_button.visible = false
-	var rank_name: String = str(game.get("rank", game.get("result", DicePokerScript.RANK_NO_HAND)))
-	var bet_amount: int = int(game.get("bet", selected_bet))
-	var payout_amount: int = int(game.get("payout", 0))
-	var profit_amount: int = int(game.get("profit", payout_amount - bet_amount))
-	result_hand_tier = _hand_tier_for_rank(rank_name)
-	if not result_balance_captured:
-		result_balance_before = CasinoBankScript.balance()
-		result_balance_after = result_balance_before
-	result_label.text = rank_name
-	result_outcome_label.text = "WIN" if payout_amount > 0 else "LOSE"
-	result_outcome_label.add_theme_color_override("font_color", BRIGHT_GOLD if payout_amount > 0 else Color("#ff9a8e"))
-	result_bet_value.text = "%d CHIP" % bet_amount
-	result_payout_label.text = "%d CHIP" % payout_amount
-	result_net_label.text = _signed_chip_text(profit_amount)
-	result_net_label.add_theme_color_override("font_color", BRIGHT_GOLD if profit_amount > 0 else (CREAM if profit_amount == 0 else Color("#ff9a8e")))
-	result_detail_label.text = "%s  ·  ×%.1f 受け取り倍率" % [rank_name, float(game.get("multiplier", DicePokerScript.multiplier_for(rank_name)))]
-	result_chip_delta_label.text = _signed_chip_text(result_balance_after - result_balance_before)
-	status_label.text = "結果を確認中..."
-	result_label.visible = false
-	result_outcome_label.visible = false
-	result_detail_label.visible = false
-	result_bet_value.visible = false
-	result_payout_label.visible = false
-	result_net_label.visible = false
-	result_chip_delta_label.visible = false
-	if chip_label != null:
-		chip_label.text = _format_chips(result_balance_before)
-	var final_faces: Array[int] = _state_dice(game)
-	if result_dice_presentation != null and result_dice_presentation.is_node_ready() and final_faces.size() == DicePokerScript.DIE_COUNT and 0 not in final_faces:
-		result_dice_presentation.present(final_faces, false, 0)
-	_update_die_face_set(result_die_faces, final_faces, [false, false, false, false, false])
-	back_button.disabled = true
-	again_button.disabled = true
-	change_bet_button.disabled = true
-	exit_button.disabled = true
-	_refresh_bet_buttons()
-	call_deferred("_animate_result_intro")
-	call_deferred("_present_result_stages")
-
-func _present_result_stages() -> void:
-	if exiting or not is_inside_tree():
-		return
-	stage_trace.append("dice")
-	await get_tree().create_timer(0.24).timeout
-	if exiting or not is_inside_tree(): return
-	presentation_phase = "result_hand"
-	result_label.visible = true
-	stage_trace.append("hand")
-	_apply_result_tier_style()
-	_animate_result_rank()
-	await get_tree().create_timer(0.18).timeout
-	if exiting or not is_inside_tree(): return
-	presentation_phase = "result_multiplier"
-	result_detail_label.visible = true
-	stage_trace.append("multiplier")
-	await get_tree().create_timer(0.16).timeout
-	if exiting or not is_inside_tree(): return
-	presentation_phase = "result_outcome"
-	result_outcome_label.visible = true
-	if casino_feel_fx != null:
-		if int(game.get("payout", 0)) > 0:
-			casino_feel_fx.play_win_feedback()
-		else:
-			casino_feel_fx.play_lose_feedback()
-	_animate_result_outcome()
-	stage_trace.append("outcome")
-	await get_tree().create_timer(0.16).timeout
-	if exiting or not is_inside_tree(): return
-	presentation_phase = "result_metrics"
-	result_bet_value.visible = true
-	result_payout_label.visible = true
-	result_net_label.visible = true
-	stage_trace.append("metrics")
-	await get_tree().create_timer(0.18).timeout
-	if exiting or not is_inside_tree(): return
-	presentation_phase = "result_chip"
-	result_chip_delta_label.visible = true
-	stage_trace.append("chip_count")
-	await _animate_chip_count(0.50)
-	if exiting or not is_inside_tree(): return
-	presentation_phase = "result_cta"
-	status_label.text = "結果  ·  もう一度遊ぶと同じBETを続けられます"
-	again_button.disabled = false
-	change_bet_button.disabled = false
-	exit_button.disabled = false
-	back_button.disabled = false
 	presentation_locked = false
-	presentation_phase = "idle"
-	stage_trace.append("cta")
+	view_state = "result"
+	var bet: int = int(game.get("bet", selected_bet))
+	var rank_name: String = str(game.get("rank", DicePokerScript.RANK_NO_HAND))
+	var headline := rank_name_ja(rank_name) if payout_value <= 0 else "%s  +%d" % [rank_name_ja(rank_name), payout_value]
+	shell.show_result(payout_value > bet, headline, "賭け金 %d ・ 受け取り %d" % [bet, payout_value])
+	if payout_value > bet:
+		casino_feel_fx.play_win_feedback()
+	elif payout_value < bet:
+		casino_feel_fx.play_lose_feedback()
+	_refresh_all()
+	shell.set_balance(CasinoBankScript.balance(), not instant_for_tests)
 
-func _hand_tier_for_rank(rank_name: String) -> int:
-	match rank_name:
-		DicePokerScript.RANK_FIVE, DicePokerScript.RANK_FOUR:
-			return 5
-		DicePokerScript.RANK_FULL_HOUSE:
-			return 4
-		DicePokerScript.RANK_STRAIGHT:
-			return 3
-		DicePokerScript.RANK_THREE, DicePokerScript.RANK_TWO_PAIR:
-			return 2
-		DicePokerScript.RANK_ONE_PAIR:
-			return 1
-		_:
-			return 0
-
-func _apply_result_tier_style() -> void:
-	if result_label == null:
-		return
-	var colors: Array[Color] = [MUTED, CREAM, GOLD_LIGHT, BRIGHT_GOLD, Color("#ffe38a"), Color("#fff3bd")]
-	result_label.add_theme_color_override("font_color", colors[clampi(result_hand_tier, 0, 5)])
-	result_label.add_theme_constant_override("outline_size", 3 + result_hand_tier)
-	result_label.modulate = Color(0.82, 0.82, 0.82, 1.0) if result_hand_tier == 0 else Color.WHITE
-
-func _animate_chip_count(duration: float) -> void:
-	if chip_label == null:
-		return
-	if casino_feel_fx != null:
-		casino_feel_fx.animate_chip_change(chip_label)
-	var steps: int = 10
-	for step: int in range(1, steps + 1):
-		if exiting or not is_inside_tree():
-			return
-		var value: int = roundi(lerpf(float(result_balance_before), float(result_balance_after), float(step) / float(steps)))
-		chip_label.text = _format_chips(value)
-		await get_tree().create_timer(duration / float(steps)).timeout
-
-func _animate_result_rank() -> void:
-	if result_label == null or exiting or not is_inside_tree():
-		return
-	result_label.offset_transform_enabled = true
-	result_label.offset_transform_scale = Vector2(0.94, 0.94)
-	var peak: float = 1.015 + 0.015 * float(result_hand_tier)
-	var rise_seconds: float = 0.07 + 0.012 * float(result_hand_tier)
-	var tween: Tween = create_tween()
-	tracked_tweens.append(tween)
-	tween.tween_property(result_label, "offset_transform_scale", Vector2(peak, peak), rise_seconds).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(result_label, "offset_transform_scale", Vector2.ONE, rise_seconds).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-
-func _animate_result_outcome() -> void:
-	if result_outcome_label == null or exiting or not is_inside_tree():
-		return
-	result_outcome_label.offset_transform_enabled = true
-	result_outcome_label.offset_transform_scale = Vector2(0.96, 0.96)
-	var tween: Tween = create_tween()
-	tracked_tweens.append(tween)
-	tween.tween_property(result_outcome_label, "offset_transform_scale", Vector2(1.04, 1.04), 0.10).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(result_outcome_label, "offset_transform_scale", Vector2.ONE, 0.10).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 func _show_setup(reset_game: bool = true) -> void:
 	if reset_game:
@@ -1288,42 +507,130 @@ func _show_setup(reset_game: bool = true) -> void:
 		pending_roll = {}
 		rolling = false
 		presentation_locked = false
-		presentation_phase = "idle"
-		result_balance_captured = false
 		settled = false
 	view_state = "setup"
-	setup_view.visible = true
-	active_view.visible = false
-	result_view.visible = false
-	back_button.visible = true
-	if help_overlay != null:
-		help_overlay.visible = false
-	status_label.text = "1  BETを選ぶ   →   2  ゲーム開始   →   3  キープ＆振り直す"
-	back_button.disabled = false
-	exit_button.disabled = false
+	shell.clear_result()
 	_refresh_all()
 
-func _on_back_pressed() -> void:
-	if exiting:
+
+# ----------------------------------------------------------------- refresh
+
+func _refresh_all() -> void:
+	var balance := CasinoBankScript.balance()
+	if view_state != "result":
+		shell.set_balance(balance)
+	var locked := rolling or presentation_locked
+	shell.back_button.disabled = locked
+	shell.help_button.disabled = locked
+	_refresh_dice()
+	match view_state:
+		"setup":
+			if selected_bet > balance:
+				for amount: int in [50, 20, 10]:
+					if amount <= balance:
+						selected_bet = amount
+						break
+			var amounts: Array[int] = BET_AMOUNTS.duplicate()
+			shell.set_bets(amounts, selected_bet, balance)
+			shell.set_guide_reference(_reference_text(selected_bet if selected_bet in BET_AMOUNTS else 20))
+			lock_button.visible = false
+			shell.choice_row.visible = false
+			var can_afford := balance >= selected_bet and selected_bet in BET_AMOUNTS
+			shell.set_status("5つのダイスで役をつくる。賭け金を選ぼう" if can_afford else "チップが足りない。旅でチップを集めよう")
+			shell.set_primary("ダイスを配る", can_afford)
+			hint_label.text = ""
+		"rolling":
+			shell.bet_row.visible = false
+			lock_button.visible = false
+			shell.choice_row.visible = false
+			shell.set_status("ダイスを振っている…")
+			shell.set_primary("…", false)
+			hint_label.text = ""
+		"active":
+			shell.bet_row.visible = false
+			var rank_name: String = str(game.get("rank", DicePokerScript.RANK_NO_HAND))
+			var payout_now: int = DicePokerScript.payout_for(int(game.get("bet", selected_bet)), rank_name)
+			shell.set_status("いまの役：%s　受け取り +%d" % [rank_name_ja(rank_name), payout_now])
+			var remaining: int = DicePokerScript.remaining_rerolls(game)
+			var must_take := DicePokerScript.all_kept(game) or not DicePokerScript.can_reroll(game)
+			if must_take:
+				lock_button.visible = false
+				shell.choice_row.visible = false
+				shell.set_primary("この役で受け取る", true)
+				hint_label.text = "全部キープ中。外すならダイスをタップ" if remaining > 0 else ""
+			else:
+				lock_button.visible = true
+				shell.choice_row.visible = true
+				shell.set_primary("振り直す（あと%d回）" % remaining, true)
+				hint_label.text = "残したいダイスをタップ"
+		"result":
+			lock_button.visible = false
+			shell.choice_row.visible = false
+			var amounts: Array[int] = BET_AMOUNTS.duplicate()
+			shell.set_bets(amounts, selected_bet, balance)
+			shell.set_status("賭け金を変えるなら、下から選び直せる")
+			shell.set_primary("もう一度（賭け金 %d）" % selected_bet, balance >= selected_bet)
+			hint_label.text = ""
+
+
+func _refresh_dice() -> void:
+	var faces: Array[int] = _state_dice(game)
+	var has_hand: bool = faces.size() == DicePokerScript.DIE_COUNT and int(faces.min()) >= 1
+	var kept: Array[bool] = _state_kept(game)
+	var can_keep := view_state == "active" and not rolling and not presentation_locked
+	dice_presentation.visible = has_hand or view_state == "rolling"
+	if has_hand and not rolling:
+		dice_presentation.present(faces, false, DicePokerScript.DIE_COUNT)
+		# Kept dice rise off the felt toward the camera.
+		for index: int in range(DicePokerScript.DIE_COUNT):
+			if kept[index] and view_state == "active":
+				dice_presentation.base_positions[index].y += KEEP_LIFT
+	for index: int in range(DicePokerScript.DIE_COUNT):
+		var button := keep_buttons[index] as Button
+		var is_kept: bool = has_hand and kept[index] and view_state in ["active", "rolling"]
+		button.set_pressed_no_signal(is_kept)
+		button.visible = has_hand and view_state in ["active", "rolling"]
+		button.mouse_filter = Control.MOUSE_FILTER_STOP if can_keep else Control.MOUSE_FILTER_IGNORE
+		(keep_tags[index] as Label).visible = is_kept
+	_place_keep_buttons()
+
+
+# -------------------------------------------------------------- animation
+
+func _animate_roll(full_values: Array[int], indices: Array[int]) -> void:
+	if exiting or not is_inside_tree():
 		return
-	if help_overlay != null and help_overlay.visible:
-		_toggle_help()
+	var start_values: Array[int] = _state_dice(game)
+	while start_values.size() < DicePokerScript.DIE_COUNT:
+		start_values.append(1)
+	for index: int in range(DicePokerScript.DIE_COUNT):
+		if start_values[index] < 1 or start_values[index] > 6:
+			start_values[index] = 1
+	dice_presentation.visible = true
+	if instant_for_tests:
+		dice_presentation.present(full_values, false, DicePokerScript.DIE_COUNT)
 		return
-	if presentation_locked or rolling or (not game.is_empty() and bool(game.get("active", false)) and not bool(game.get("finished", false))):
-		if presentation_locked and not rolling:
-			status_label.text = "結果を確認中。少し待ってからカジノへ戻る。"
-		else:
-			status_label.text = "役を「この役で決定」または「振り直す」で確定してからカジノへ戻る。"
-		_play_ui_sfx(&"blocked", false)
+	casino_feel_fx.play_dice_roll()
+	# Roll only the dice that were not kept; the others hold their face.
+	dice_presentation.present(start_values, true, 0)
+	for index: int in range(DicePokerScript.DIE_COUNT):
+		if index not in indices:
+			dice_presentation.die_states[index] = DicePresentationScript.DieState.LOCKED
+			dice_presentation.face_values[index] = start_values[index]
+	await get_tree().create_timer(ROLL_SECONDS).timeout
+	if exiting or not is_inside_tree():
 		return
-	_play_ui_sfx(&"back", false)
-	back_requested.emit()
+	dice_presentation.present(full_values, false, DicePokerScript.DIE_COUNT)
+	casino_feel_fx.play_dice_land()
+	await get_tree().create_timer(SETTLE_SECONDS).timeout
+
+
+# ------------------------------------------------------------ roll source
 
 func _next_roll_batch(indices: Array[int]) -> Array[int]:
 	var result: Array[int] = []
-	var count: int = indices.size()
 	var queued: Array[int] = _consume_queued_batch()
-	for offset: int in range(count):
+	for offset: int in range(indices.size()):
 		var face: int = 0
 		if not queued.is_empty():
 			var source_index: int = indices[offset] if queued.size() >= DicePokerScript.DIE_COUNT else offset
@@ -1336,6 +643,7 @@ func _next_roll_batch(indices: Array[int]) -> Array[int]:
 			face = rng.randi_range(1, 6)
 		result.append(clampi(face, 1, 6))
 	return result
+
 
 func _consume_queued_batch() -> Array[int]:
 	var source: Variant = null
@@ -1366,159 +674,6 @@ func _consume_queued_batch() -> Array[int]:
 			result.append(face)
 	return result
 
-func _animate_roll(full_values: Array[int], indices: Array[int]) -> void:
-	if exiting or not is_inside_tree():
-		return
-	var target_count: int = indices.size()
-	var initial_roll: bool = target_count >= DicePokerScript.DIE_COUNT
-	var final_reroll: bool = not initial_roll and int(game.get("rerolls_used", 0)) >= DicePokerScript.MAX_REROLLS - 1
-	var roll_seconds: float = ROLL_SECONDS if initial_roll else (0.38 if final_reroll else 0.82)
-	var settle_seconds: float = SETTLE_SECONDS if initial_roll else (0.18 if final_reroll else 0.28)
-	var suspense_seconds: float = 0.12 if final_reroll else 0.0
-	presentation_phase = "initial_roll" if initial_roll else ("final_reroll" if final_reroll else "reroll")
-	stage_trace.append("roll_start" if initial_roll else "reroll_start")
-	if casino_feel_fx != null:
-		casino_feel_fx.play_dice_roll()
-		casino_feel_fx.vibrate_light()
-	if dice_presentation == null or not dice_presentation.is_node_ready() or dice_presentation.dice_roots.size() < DicePokerScript.DIE_COUNT:
-		await get_tree().create_timer(roll_seconds + suspense_seconds + settle_seconds).timeout
-		return
-	var start_values: Array[int] = _state_dice(game)
-	while start_values.size() < DicePokerScript.DIE_COUNT:
-		start_values.append(1)
-	for index: int in range(DicePokerScript.DIE_COUNT):
-		if start_values[index] < 1 or start_values[index] > 6:
-			start_values[index] = 1
-	# Start the throw as one presentation clock. Held indices are immediately
-	# locked, while target cards receive a staggered response tween below.
-	dice_presentation.present(start_values, true, 0)
-	for index: int in range(DicePokerScript.DIE_COUNT):
-		if index not in indices:
-			dice_presentation.die_states[index] = DicePresentationScript.DieState.LOCKED
-			dice_presentation.face_values[index] = start_values[index]
-	var stagger: float = 0.07
-	for target_offset: int in range(indices.size()):
-		var target_index: int = indices[target_offset]
-		if exiting or not is_inside_tree(): return
-		var entry_value: Variant = active_die_faces.get(target_index, {})
-		if entry_value is Dictionary:
-			var panel: PanelContainer = (entry_value as Dictionary).get("panel", null) as PanelContainer
-			if panel != null:
-				panel.offset_transform_enabled = true
-				var tween: Tween = create_tween()
-				tracked_tweens.append(tween)
-				tween.tween_property(panel, "offset_transform_scale", Vector2(1.04, 1.04), 0.08).set_delay(stagger * float(target_offset)).set_trans(Tween.TRANS_SINE)
-	var land_window: float = minf(0.28, stagger * float(maxi(0, target_count - 1)))
-	var first_land_at: float = maxf(0.0, roll_seconds - land_window)
-	var land_times: Array[float] = []
-	for target_offset: int in range(target_count):
-		var land_at: float = first_land_at + stagger * float(target_offset)
-		if final_reroll and target_offset == target_count - 1:
-			land_at += suspense_seconds
-		land_times.append(land_at)
-	if suspense_seconds > 0.0:
-		presentation_phase = "reroll_suspense"
-		stage_trace.append("suspense")
-	var last_land_at: float = 0.0
-	for target_offset: int in range(land_times.size()):
-		var wait_seconds: float = maxf(0.0, float(land_times[target_offset]) - last_land_at)
-		if wait_seconds > 0.0:
-			await get_tree().create_timer(wait_seconds).timeout
-		if exiting or not is_inside_tree():
-			return
-		_land_poker_die(indices[target_offset], full_values, target_offset == target_count - 1)
-		last_land_at = float(land_times[target_offset])
-	var total_seconds: float = roll_seconds + suspense_seconds + settle_seconds
-	var remaining_seconds: float = maxf(0.0, total_seconds - last_land_at)
-	if remaining_seconds > 0.0:
-		await get_tree().create_timer(remaining_seconds).timeout
-	if exiting or not is_inside_tree():
-		return
-	dice_presentation.present(full_values, false, 0)
-	if exiting or not is_inside_tree():
-		return
-	presentation_phase = "active_ready"
-	stage_trace.append("roll_ready")
-
-func _land_poker_die(target_index: int, full_values: Array[int], with_haptic: bool) -> void:
-	if exiting or not is_inside_tree() or dice_presentation == null:
-		return
-	if target_index < 0 or target_index >= dice_presentation.dice_roots.size():
-		return
-	var die: Node3D = dice_presentation.dice_roots[target_index]
-	var face: int = full_values[target_index] if target_index < full_values.size() else 1
-	dice_presentation.face_values[target_index] = clampi(face, 1, 6)
-	dice_presentation.explicit_orientation_enabled[target_index] = false
-	dice_presentation.settle_elapsed[target_index] = 0.0
-	dice_presentation.settle_start_positions[target_index] = die.position
-	dice_presentation.settle_start_orientations[target_index] = die.quaternion
-	dice_presentation.die_states[target_index] = DicePresentationScript.DieState.SETTLING
-	if casino_feel_fx != null:
-		casino_feel_fx.play_dice_land(with_haptic)
-	stage_trace.append("land_%d" % (target_index + 1))
-	var entry_value: Variant = active_die_faces.get(target_index, {})
-	if entry_value is Dictionary:
-		var panel: PanelContainer = (entry_value as Dictionary).get("panel", null) as PanelContainer
-		if panel != null:
-			var settle_tween: Tween = create_tween()
-			tracked_tweens.append(settle_tween)
-			settle_tween.tween_property(panel, "offset_transform_scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK)
-
-func _refresh_all() -> void:
-	if chip_label != null:
-		chip_label.text = _format_chips(CasinoBankScript.balance())
-	_refresh_bet_buttons()
-	if game.is_empty():
-		return
-	bet_label.text = "%d" % int(game.get("bet", selected_bet))
-	rerolls_label.text = "%d / %d" % [int(game.get("rerolls_remaining", DicePokerScript.remaining_rerolls(game))), DicePokerScript.MAX_REROLLS]
-	rank_label.text = str(game.get("rank", DicePokerScript.RANK_NO_HAND))
-	_refresh_dice_and_keep()
-	_refresh_actions()
-	back_button.disabled = bool(game.get("active", false)) and not bool(game.get("finished", false))
-
-func _refresh_dice_and_keep() -> void:
-	var faces: Array[int] = _state_dice(game)
-	var kept: Array[bool] = _state_kept(game)
-	for index: int in range(DicePokerScript.DIE_COUNT):
-		var face: int = faces[index] if index < faces.size() else 0
-		var button: Button = keep_buttons.get(index) as Button
-		if button == null:
-			continue
-		var keep_text: String = "◆ キープ中" if (index < kept.size() and kept[index]) else "選択可"
-		button.text = "ダイス%d  ·  %s\n%s" % [index + 1, str(face) if face > 0 else "?", keep_text]
-		button.disabled = rolling or not bool(game.get("active", false)) or bool(game.get("finished", false)) or face <= 0
-		_apply_keep_style(button, index < kept.size() and kept[index])
-	_update_die_face_set(active_die_faces, faces, kept)
-	if not rolling and not presentation_locked and dice_presentation != null and dice_presentation.is_node_ready() and dice_presentation.dice_roots.size() >= DicePokerScript.DIE_COUNT and faces.size() == DicePokerScript.DIE_COUNT and 0 not in faces:
-		dice_presentation.present(faces, false, 0)
-
-func _refresh_actions() -> void:
-	if reroll_button == null or lock_button == null:
-		return
-	var playable: bool = bool(game.get("active", false)) and not bool(game.get("finished", false)) and not rolling
-	var all_locked: bool = DicePokerScript.all_kept(game)
-	reroll_button.visible = not all_locked
-	lock_button.visible = all_locked
-	reroll_button.disabled = not playable or not DicePokerScript.can_reroll(game)
-	lock_button.disabled = not playable or not DicePokerScript.can_lock_hand(game)
-	reroll_button.text = "振り直す  ·  残り%d回" % DicePokerScript.remaining_rerolls(game)
-	lock_button.text = "この役で決定  ·  確定"
-	action_button = lock_button if all_locked else reroll_button
-
-func _refresh_bet_buttons() -> void:
-	if chip_label == null:
-		return
-	var chips: int = CasinoBankScript.balance()
-	for amount: int in BET_AMOUNTS:
-		var button: Button = bet_buttons.get(amount) as Button
-		if button == null:
-			continue
-		button.disabled = chips < amount or rolling
-		button.button_pressed = amount == selected_bet
-		_apply_bet_style(button, amount == selected_bet)
-	if deal_button != null:
-		deal_button.disabled = chips < selected_bet or rolling
 
 func _pending_full_values(pending: Dictionary) -> Array[int]:
 	var source: Variant = pending.get("full_values", pending.get("dice", pending.get("values", [])))
@@ -1538,6 +693,7 @@ func _pending_full_values(pending: Dictionary) -> Array[int]:
 			current[indices[offset]] = values[offset]
 	return current
 
+
 func _pending_indices(pending: Dictionary) -> Array[int]:
 	var source: Variant = pending.get("indices", [])
 	var result: Array[int] = []
@@ -1547,6 +703,7 @@ func _pending_indices(pending: Dictionary) -> Array[int]:
 			if index >= 0 and index < DicePokerScript.DIE_COUNT and index not in result:
 				result.append(index)
 	return result
+
 
 func _pending_values(pending: Dictionary) -> Array[int]:
 	var source: Variant = pending.get("values", [])
@@ -1558,6 +715,7 @@ func _pending_values(pending: Dictionary) -> Array[int]:
 				result.append(face)
 	return result
 
+
 func _state_dice(state: Dictionary) -> Array[int]:
 	var source: Variant = state.get("dice", state.get("values", []))
 	var result: Array[int] = []
@@ -1565,6 +723,7 @@ func _state_dice(state: Dictionary) -> Array[int]:
 		for value: Variant in source as Array:
 			result.append(int(value))
 	return result
+
 
 func _state_kept(state: Dictionary) -> Array[bool]:
 	var source: Variant = state.get("kept", state.get("keep_mask", []))
@@ -1577,268 +736,3 @@ func _state_kept(state: Dictionary) -> Array[bool]:
 	if result.size() > DicePokerScript.DIE_COUNT:
 		result.resize(DicePokerScript.DIE_COUNT)
 	return result
-
-func _apply_keep_style(button: Button, selected: bool) -> void:
-	var fill: Color = Color("#f7df9a") if selected else Color("#09281f")
-	var border: Color = BRIGHT_GOLD if selected else Color("#6e5940")
-	var hover_fill: Color = Color("#fff0b7") if selected else Color("#10412f")
-	var normal: StyleBoxFlat = _panel(fill, border, 14, 3 if selected else 2, 8)
-	if selected:
-		normal.shadow_color = Color("#ffd85a77")
-		normal.shadow_size = 6
-	var hover: StyleBoxFlat = _panel(hover_fill, GOLD_LIGHT, 14, 3, 8)
-	var pressed: StyleBoxFlat = _panel(fill.darkened(0.12), BRIGHT_GOLD, 14, 3, 8)
-	var disabled: StyleBoxFlat = _panel(Color("#18231f"), Color("#4b493f"), 14, 1, 8)
-	button.add_theme_stylebox_override("normal", normal)
-	button.add_theme_stylebox_override("hover", hover)
-	button.add_theme_stylebox_override("pressed", pressed)
-	button.add_theme_stylebox_override("focus", _focus_style(14))
-	button.add_theme_stylebox_override("disabled", disabled)
-	var font_color: Color = INK if selected else CREAM
-	button.add_theme_color_override("font_color", font_color)
-	button.add_theme_color_override("font_hover_color", INK if selected else Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", font_color)
-	button.add_theme_color_override("font_focus_color", font_color)
-	button.add_theme_color_override("font_disabled_color", Color("#8f8a7b"))
-
-func _apply_button_state(button: Button, selected: bool) -> void:
-	_apply_bet_style(button, selected)
-
-func _apply_bet_style(button: Button, selected: bool) -> void:
-	var normal: StyleBoxFlat = _panel(Color("#061713dd") if not selected else Color("#1b1408ee"), Color("#74572d") if not selected else BRIGHT_GOLD, 24, 2 if not selected else 4, 6)
-	if selected:
-		normal.shadow_color = Color("#ffd75b88")
-		normal.shadow_size = 9
-		normal.shadow_offset = Vector2.ZERO
-	var hover: StyleBoxFlat = _panel(Color("#0d3024e8"), GOLD_LIGHT, 24, 3, 6)
-	var pressed: StyleBoxFlat = _panel(Color("#211b0ee8"), BRIGHT_GOLD, 24, 4, 6)
-	var disabled: StyleBoxFlat = _panel(Color("#131917cc"), Color("#49453c"), 24, 1, 6)
-	button.add_theme_stylebox_override("normal", normal)
-	button.add_theme_stylebox_override("hover", hover)
-	button.add_theme_stylebox_override("pressed", pressed)
-	button.add_theme_stylebox_override("focus", _focus_style(24))
-	button.add_theme_stylebox_override("disabled", disabled)
-	var sparkle: TextureRect = button.get_node_or_null("SelectionSparkle") as TextureRect
-	if sparkle != null:
-		sparkle.visible = selected and not button.disabled
-	var chip: TextureRect = button.get_node_or_null("ChipArt") as TextureRect
-	if chip != null:
-		chip.modulate = Color.WHITE if not button.disabled else Color(0.45, 0.45, 0.42, 0.78)
-	var badge: Label = button.get_node_or_null("SelectedBadge") as Label
-	if badge != null:
-		badge.visible = selected and not button.disabled
-	var amount_label: Label = button.get_node_or_null("AmountLabel") as Label
-	if amount_label != null:
-		amount_label.add_theme_color_override("font_color", Color.WHITE if selected else GOLD_LIGHT)
-
-func _animate_result_intro() -> void:
-	if result_card == null or not result_card.visible:
-		return
-	if result_intro_tween != null:
-		result_intro_tween.kill()
-	result_card.offset_transform_enabled = true
-	result_card.offset_transform_scale = Vector2(0.965, 0.965)
-	result_card.modulate.a = 0.0
-	if result_sparkle != null:
-		result_sparkle.modulate = Color(1, 1, 1, 0.0)
-	result_intro_tween = create_tween()
-	tracked_tweens.append(result_intro_tween)
-	result_intro_tween.set_parallel(true)
-	result_intro_tween.tween_property(result_card, "offset_transform_scale", Vector2.ONE, 0.34).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	result_intro_tween.tween_property(result_card, "modulate:a", 1.0, 0.20).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	if result_sparkle != null:
-		result_intro_tween.tween_property(result_sparkle, "modulate:a", 0.42, 0.32).set_delay(0.08)
-
-func _wire_button_motion(button: Button) -> void:
-	button.offset_transform_enabled = true
-	button.mouse_entered.connect(_animate_button.bind(button, Vector2(1.025, 1.025), 0.10))
-	button.mouse_exited.connect(_animate_button.bind(button, Vector2.ONE, 0.13))
-	button.focus_entered.connect(_animate_button.bind(button, Vector2(1.025, 1.025), 0.10))
-	button.focus_exited.connect(_animate_button.bind(button, Vector2.ONE, 0.13))
-	button.button_down.connect(_animate_button.bind(button, Vector2(0.975, 0.975), 0.06))
-	button.button_up.connect(_animate_button.bind(button, Vector2.ONE, 0.12))
-
-func _animate_button(button: Button, target: Vector2, duration: float) -> void:
-	if button == null or not is_instance_valid(button) or button.disabled:
-		return
-	var key: int = button.get_instance_id()
-	var previous: Variant = button_tweens.get(key, null)
-	if previous is Tween:
-		(previous as Tween).kill()
-	var tween: Tween = create_tween()
-	button_tweens[key] = tween
-	tween.tween_property(button, "offset_transform_scale", target, duration).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-
-func _play_ui_sfx(cue: StringName, world_specific: bool) -> void:
-	if suppress_audio_for_tests:
-		return
-	var ui_sfx: Node = get_node_or_null("/root/UiSfxManager")
-	if ui_sfx != null:
-		ui_sfx.call("play_ui_sfx", cue, world_specific)
-
-func _stat_box(caption: String) -> Dictionary:
-	var panel: PanelContainer = PanelContainer.new()
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.custom_minimum_size.y = 78
-	panel.add_theme_stylebox_override("panel", _panel(Color("#f2d78f"), Color("#a96b2e"), 16, 2, 8))
-	var box: VBoxContainer = VBoxContainer.new()
-	box.add_theme_constant_override("separation", -2)
-	panel.add_child(box)
-	var cap: Label = _display_label(caption, 12, Color("#70451d"))
-	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(cap)
-	var value: Label = _display_label("-", 20, INK)
-	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(value)
-	return {"panel": panel, "label": value}
-
-func _label(text: String, font_size: int, color: Color) -> Label:
-	var label: Label = Label.new()
-	label.text = text
-	label.add_theme_font_override("font", FONT)
-	label.add_theme_font_size_override("font_size", font_size)
-	label.add_theme_color_override("font_color", color)
-	return label
-
-func _display_label(text: String, font_size: int, color: Color) -> Label:
-	var label: Label = _label(text, font_size, color)
-	label.add_theme_font_override("font", DISPLAY_FONT)
-	return label
-
-func _button(text: String, primary: bool = false) -> Button:
-	var button: Button = Button.new()
-	button.text = text
-	button.add_theme_font_override("font", FONT)
-	button.add_theme_font_size_override("font_size", 18)
-	button.custom_minimum_size = Vector2(90, 96)
-	button.focus_mode = Control.FOCUS_ALL
-	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	button.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.86))
-	button.add_theme_constant_override("outline_size", 3)
-	if primary:
-		_apply_primary_button_style(button, Color("#8b5b1b"), GOLD)
-	else:
-		_apply_secondary_button_style(button, Color("#2d213f"))
-	_wire_button_motion(button)
-	return button
-
-func _apply_primary_button_style(button: Button, fill: Color, hover_fill: Color) -> void:
-	var normal: StyleBoxFlat = _panel(fill, GOLD, 24, 3, 12)
-	normal.shadow_color = Color("#ffc84f55")
-	normal.shadow_size = 7
-	normal.shadow_offset = Vector2(0, 2)
-	button.add_theme_stylebox_override("normal", normal)
-	button.add_theme_stylebox_override("hover", _panel(hover_fill, GOLD_LIGHT, 24, 4, 12))
-	button.add_theme_stylebox_override("pressed", _panel(fill.darkened(0.18), BRIGHT_GOLD, 24, 4, 12))
-	button.add_theme_stylebox_override("focus", _focus_style(24))
-	button.add_theme_stylebox_override("disabled", _panel(Color("#282a26"), Color("#5e594c"), 24, 1, 12))
-	button.add_theme_color_override("font_color", GOLD_LIGHT)
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", Color.WHITE)
-	button.add_theme_color_override("font_focus_color", Color.WHITE)
-	button.add_theme_color_override("font_disabled_color", Color("#918a79"))
-
-func _apply_secondary_button_style(button: Button, fill: Color) -> void:
-	button.add_theme_stylebox_override("normal", _panel(fill, Color("#77548f"), 20, 2, 10))
-	button.add_theme_stylebox_override("hover", _panel(fill.lightened(0.12), GOLD, 20, 3, 10))
-	button.add_theme_stylebox_override("pressed", _panel(fill.darkened(0.15), BRIGHT_GOLD, 20, 3, 10))
-	button.add_theme_stylebox_override("focus", _focus_style(20))
-	button.add_theme_stylebox_override("disabled", _panel(Color("#252229"), Color("#4e4952"), 20, 1, 10))
-	button.add_theme_color_override("font_color", CREAM)
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", GOLD_LIGHT)
-	button.add_theme_color_override("font_focus_color", Color.WHITE)
-	button.add_theme_color_override("font_disabled_color", Color("#8d8791"))
-
-func _apply_utility_button_style(button: Button) -> void:
-	button.add_theme_stylebox_override("normal", _panel(Color("#051d18e8"), Color("#7d6338"), 20, 2, 9))
-	button.add_theme_stylebox_override("hover", _panel(Color("#0b3829ee"), GOLD, 20, 3, 9))
-	button.add_theme_stylebox_override("pressed", _panel(Color("#03130f"), BRIGHT_GOLD, 20, 3, 9))
-	button.add_theme_stylebox_override("focus", _focus_style(20))
-	button.add_theme_stylebox_override("disabled", _panel(Color("#1d211f"), Color("#47483f"), 20, 1, 9))
-	button.add_theme_color_override("font_color", CREAM)
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", GOLD_LIGHT)
-	button.add_theme_color_override("font_focus_color", Color.WHITE)
-	button.add_theme_color_override("font_disabled_color", Color("#827d73"))
-
-func _apply_round_button_style(button: Button) -> void:
-	button.add_theme_stylebox_override("normal", _panel(Color("#071629ee"), GOLD, 35, 3, 8))
-	button.add_theme_stylebox_override("hover", _panel(Color("#15264a"), GOLD_LIGHT, 35, 4, 8))
-	button.add_theme_stylebox_override("pressed", _panel(Color("#040d1d"), BRIGHT_GOLD, 35, 4, 8))
-	button.add_theme_stylebox_override("focus", _focus_style(35))
-	button.add_theme_stylebox_override("disabled", _panel(Color("#1d222a"), Color("#4d4c48"), 35, 1, 8))
-	button.add_theme_color_override("font_color", GOLD_LIGHT)
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", Color.WHITE)
-	button.add_theme_color_override("font_focus_color", Color.WHITE)
-	button.add_theme_color_override("font_disabled_color", Color("#89857c"))
-
-func _button_ornament_texture(frame: int) -> AtlasTexture:
-	var atlas: AtlasTexture = AtlasTexture.new()
-	atlas.atlas = BUTTON_ORNAMENTS
-	atlas.region = Rect2(0.0, float(clampi(frame, 0, 3) * 400), 960.0, 400.0)
-	return atlas
-
-func _add_button_ornament(button: Button, frame: int) -> void:
-	var ornament: TextureRect = TextureRect.new()
-	ornament.name = "ButtonOrnament"
-	ornament.texture = _button_ornament_texture(frame)
-	ornament.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	ornament.stretch_mode = TextureRect.STRETCH_SCALE
-	ornament.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	ornament.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# Keep the filigree luxurious without letting it compete with the CTA copy.
-	ornament.modulate = Color(1, 1, 1, 0.78)
-	button.add_child(ornament)
-
-func _focus_style(radius: int) -> StyleBoxFlat:
-	var style: StyleBoxFlat = _panel(Color.TRANSPARENT, BRIGHT_GOLD, radius, 3, 0)
-	style.draw_center = false
-	style.expand_margin_left = 3.0
-	style.expand_margin_right = 3.0
-	style.expand_margin_top = 3.0
-	style.expand_margin_bottom = 3.0
-	return style
-
-func _separator_style(color: Color) -> StyleBoxFlat:
-	var style: StyleBoxFlat = StyleBoxFlat.new()
-	style.bg_color = color
-	style.content_margin_top = 1.0
-	style.content_margin_bottom = 1.0
-	return style
-
-func _ornate_panel(fill: Color, border: Color, radius: int, width: int, shadow: Color) -> StyleBoxFlat:
-	var style: StyleBoxFlat = _panel(fill, border, radius, width, 12)
-	style.shadow_color = shadow
-	style.shadow_size = 7
-	style.shadow_offset = Vector2(0, 2)
-	style.corner_detail = 12
-	return style
-
-func _panel(fill: Color, border: Color, radius: int, width: int, content_margin: int = 8) -> StyleBoxFlat:
-	var style: StyleBoxFlat = StyleBoxFlat.new()
-	style.bg_color = fill
-	style.border_color = border
-	style.set_border_width_all(width)
-	style.set_corner_radius_all(radius)
-	style.content_margin_left = content_margin
-	style.content_margin_right = content_margin
-	style.content_margin_top = content_margin
-	style.content_margin_bottom = content_margin
-	return style
-
-func _format_chips(value: int) -> String:
-	var text: String = str(value)
-	var output: String = ""
-	while text.length() > 3:
-		output = ",%s%s" % [text.right(3), output]
-		text = text.left(text.length() - 3)
-	return text + output
-
-func _signed_chip_text(value: int) -> String:
-	if value == 0:
-		return "±0 CHIP"
-	if value > 0:
-		return "+%d CHIP" % value
-	return "%d CHIP" % value

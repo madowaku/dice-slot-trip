@@ -89,31 +89,28 @@ func _test_hub_ring_and_lazy_load() -> void:
 	root.add_child(hub)
 	await process_frame
 	_expect(hub is CasinoHubScreen, "Casino Hub foundation scene instantiates")
-	_expect(hub.facility_definitions.size() == 6, "hub registers exactly six facilities")
-	var expected_ids := ["dice_race", "dice_tower", "dice_roulette", "treasure_21", "dice_poker", "vault_break"]
+	_expect(hub.facility_definitions.size() == 7, "hub registers the six original facilities plus 丁半")
+	var expected_ids := ["dice_race", "dice_tower", "dice_roulette", "treasure_21", "dice_poker", "vault_break", "chohan"]
 	var actual_ids: Array[String] = []
 	for definition: Dictionary in hub.facility_definitions:
 		actual_ids.append(str(definition.get("id", "")))
-	_expect(actual_ids == expected_ids, "hub facility order is stable around the ring")
-	_expect(hub.find_child("CasinoRingMap", true, false) != null, "hub exposes the circular map shell")
-	for id: String in expected_ids:
+	_expect(actual_ids == expected_ids, "hub facility registry order is stable")
+	_expect(hub.find_child("PrizeShelf", true, false) != null, "hub is built around the prize shelf")
+	for id: String in hub.HUB_FACILITY_IDS:
 		var button := hub.facility_nodes.get(id) as Button
-		_expect(button != null and button.custom_minimum_size.x >= 96.0 and button.custom_minimum_size.y >= 96.0, "%s keeps the 96 design-unit touch target" % id)
+		_expect(button != null and button.size.x >= 96.0 and button.custom_minimum_size.y >= 96.0, "%s keeps the 96 design-unit touch target" % id)
 	_expect(bool(hub.facility_availability.get("dice_race", false)) and bool(hub.facility_availability.get("dice_tower", false)), "existing DICE RACE and DICE TOWER stay available")
-	for id: String in ["dice_roulette", "treasure_21", "dice_poker", "vault_break"]:
-		_expect(bool(hub.facility_availability.get(id, false)) and (hub.facility_nodes.get(id) as Button).visible, "%s remains available and visible in the ring" % id)
-	hub.call("_open_dice_roulette")
-	await process_frame
-	_expect(not hub.hub_root.visible and hub.roulette_host.visible and hub.roulette_host.get_child_count() == 1, "DICE ROULETTE lazy-loads into its host")
-	hub.call("_close_dice_roulette")
-	await process_frame
-	_expect(hub.hub_root.visible and not hub.roulette_host.visible, "DICE ROULETTE close flow restores the ring hub")
+	_expect(hub.HUB_FACILITY_IDS == ["chohan", "dice_race", "dice_poker", "dice_tower"], "the hub offers exactly 丁半, DICE RACE, DICE POKER and DICE TOWER")
+	for id: String in ["dice_roulette", "treasure_21", "vault_break"]:
+		_expect(not bool(hub.facility_availability.get(id, false)) and not hub.facility_nodes.has(id), "%s is kept in the registry but not shown in the hub" % id)
+		_expect(ResourceLoader.exists(str(hub.call("_facility_definition", id).get("scene_path", ""))), "%s keeps its scene for a later return" % id)
+	_expect(not bool(hub.call("_open_facility", "dice_roulette")) and hub.hub_root.visible and not hub.roulette_host.visible, "the hub cannot open a retired facility")
 	hub.call("_open_dice_race")
 	await process_frame
 	_expect(not hub.hub_root.visible and hub.race_host.visible and hub.race_host.get_child_count() == 1, "DICE RACE still lazy-loads into its tested host")
 	hub.call("_close_dice_race")
 	await process_frame
-	_expect(hub.hub_root.visible and not hub.race_host.visible, "DICE RACE close flow restores the ring hub")
+	_expect(hub.hub_root.visible and not hub.race_host.visible, "DICE RACE close flow restores the hub")
 	hub.call("_open_dice_tower")
 	await process_frame
 	_expect(not hub.hub_root.visible and hub.tower_host.visible and hub.tower_host.get_child_count() == 1, "DICE TOWER still lazy-loads into its tested host")

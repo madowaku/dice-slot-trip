@@ -2,6 +2,7 @@ class_name V06SessionSaveManager
 extends RefCounted
 
 const V06SessionSaveDataScript = preload("res://scripts/game/v06_session_save_data.gd")
+const SafeJsonStore = preload("res://scripts/game/safe_json_store.gd")
 
 const DEFAULT_SAVE_PATH := "user://v06_session_v1.json"
 const OLD_SAVE_PATH := "user://dice_slot_trip_save.json"
@@ -76,8 +77,12 @@ func save_session(session: RefCounted) -> Dictionary:
 		return write_result
 	var primary_before := _read_candidate(save_path)
 	if bool(primary_before.get("exists", false)) and not bool(primary_before.get("valid", false)):
-		_cleanup_temp()
-		return {"ok": false, "status": STATUS_WRITE_FAILED, "error": "existing primary is invalid; left it untouched"}
+		var recovery: Dictionary = _read_candidate(backup_path)
+		if str(primary_before.get("status", "")) == STATUS_INCOMPATIBLE_VERSION or not bool(recovery.get("valid", false)) or not SafeJsonStore.quarantine(save_path):
+			_cleanup_temp()
+			return {"ok": false, "status": STATUS_WRITE_FAILED, "error": "existing primary is invalid; left it untouched"}
+		# The verified backup remains in place until the new primary is installed.
+		primary_before = {"exists": false, "valid": false}
 	var had_primary := bool(primary_before.get("exists", false))
 	var moved_primary := false
 	var moved_old_backup := false

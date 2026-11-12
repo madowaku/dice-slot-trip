@@ -955,7 +955,7 @@ func _check_aquafall_rules_modal(screen: JourneyStageScreen) -> void:
 			first_copy += label.text + "\n"
 	var first_title := modal.find_child("AquafallRulesTitle", true, false) as Label
 	var goal_art := modal.find_child("RulesGoalArt", true, false) as TextureRect
-	_expect(first_copy.contains("頂上まで登れば勝ち") and first_copy.contains("高さ24") and first_copy.contains("3回ぶつかる"),
+	_expect(first_copy.contains("頂上まで登れば勝ち") and first_copy.contains("高さ24") and first_copy.contains("HPが0") and first_copy.contains("ガード") and not first_copy.contains("3回ぶつかる"),
 		"amazon rules first slide establishes victory and defeat before movement details")
 	_expect(first_title != null and first_title.get_theme_font_size("font_size") >= 21 and goal_art != null,
 		"amazon rules first slide uses a large title and generated goal illustration")

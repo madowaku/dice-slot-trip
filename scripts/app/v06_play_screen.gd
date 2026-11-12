@@ -23,6 +23,9 @@ const WING_GATE_PICTOGRAM: Texture2D = preload("res://assets/art/v10/boss/wing-g
 const QUICKSAND_PICTOGRAM: Texture2D = preload("res://assets/art/v10/boss/quicksand.png")
 const DICE_UI_ART: Texture2D = preload("res://assets/art/ui/common/dice-ivory-brass.png")
 const SLOT_TRAY_ART: Texture2D = preload("res://assets/art/ui/common/slot-tray-luxury-v1.png")
+const OnboardingSlotExample = preload("res://scripts/ui/onboarding_slot_example.gd")
+const TravelRulesView = preload("res://scripts/ui/travel_rules_view.gd")
+const JOURNEY_INTRO_ART: Texture2D = preload("res://assets/art/postcards/cairo/cairo-journey-postcard.png")
 const ROLL_BUTTON_ORNAMENTS: Texture2D = preload("res://assets/art/ui/common/roll-button-ornaments.png")
 const ROLL_BUTTON_ROUND_ART: Texture2D = preload("res://assets/art/ui/common/roll-button-round-v1.png")
 const SLOT_SNAP_SPARKLE: Texture2D = preload("res://assets/art/ui/common/slot-snap-sparkle.png")
@@ -306,6 +309,10 @@ var _tile_help_pending_kind := ""
 var _three_roll_onboarding_open := false
 var _three_roll_onboarding_clock_paused := false
 var _onboarding_kind := ""
+var _onboarding_slot_example: Control
+var _travel_rules_view: Control
+var _travel_rules_button: Button
+var _travel_menu_illustration: TextureRect
 var _skill_ready_discovery_open := false
 var _skill_ready_button_pulse_tween: Tween
 var _event_card_open := false
@@ -730,6 +737,8 @@ func _cancel_motion(route_position := {}) -> void:
 	travel_menu_overlay.hide()
 	if is_instance_valid(travel_encyclopedia_overlay):
 		travel_encyclopedia_overlay.call("hide_view")
+	if is_instance_valid(_travel_rules_view):
+		_travel_rules_view.hide()
 	boss_sequence_art.hide()
 	postcard_art.hide()
 	if _landing_art_tween != null:
@@ -817,6 +826,7 @@ func _wire_controls() -> void:
 	for index: int in range(pinpoint_face_buttons.size()):
 		pinpoint_face_buttons[index].pressed.connect(_on_pinpoint_face_selected.bind(index + 1))
 	travel_menu_encyclopedia_button.pressed.connect(_on_travel_encyclopedia_pressed)
+	_build_travel_rules()
 	travel_menu_continue_button.pressed.connect(_on_travel_menu_continue)
 	travel_menu_exit_button.pressed.connect(_leave_stage_requested)
 	travel_encyclopedia_overlay.connect("close_requested", Callable(self, "_on_travel_encyclopedia_closed"))
@@ -1719,6 +1729,8 @@ func _on_travel_menu_pressed() -> void:
 	_play_ui_sfx(&"open")
 	_session.pause_clock(Time.get_ticks_msec())
 	_save_stable_checkpoint()
+	if _travel_menu_illustration.texture == null:
+		_travel_menu_illustration.texture = load(TravelRulesView.TOPIC_ART_PATHS[0]) as Texture2D
 	travel_menu_overlay.show()
 	travel_menu_continue_button.grab_focus()
 	_refresh_ui()
@@ -1731,6 +1743,48 @@ func _on_travel_encyclopedia_pressed() -> void:
 	_play_ui_sfx(&"open")
 	travel_menu_overlay.hide()
 	travel_encyclopedia_overlay.call("open", _global_travel_card_ids(), "設定へ戻る")
+
+
+func _build_travel_rules() -> void:
+	_travel_rules_button = Button.new()
+	_travel_rules_button.name = "TravelRulesButton"
+	_travel_rules_button.text = V06LocalizationScript.text(&"RULES_TITLE")
+	_travel_rules_button.custom_minimum_size.y = UiTokensScript.TOUCH_MIN
+	_travel_rules_button.add_theme_font_size_override("font_size", 28)
+	_travel_rules_button.theme_type_variation = UiThemeNamesScript.SECONDARY_BUTTON
+	var menu_content: Node = travel_menu_encyclopedia_button.get_parent()
+	var menu_art: TextureRect = TextureRect.new()
+	_travel_menu_illustration = menu_art
+	menu_art.name = "TravelMenuIllustration"
+	menu_art.custom_minimum_size.y = 150
+	menu_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	menu_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	menu_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu_content.add_child(menu_art)
+	menu_content.move_child(menu_art, travel_menu_detail.get_index() + 1)
+	menu_content.add_child(_travel_rules_button)
+	menu_content.move_child(_travel_rules_button, travel_menu_encyclopedia_button.get_index())
+	_travel_rules_view = TravelRulesView.new()
+	_travel_rules_view.name = "TravelRulesView"
+	add_child(_travel_rules_view)
+	_travel_rules_button.pressed.connect(_on_travel_rules_pressed)
+	_travel_rules_view.connect("close_requested", _on_travel_rules_closed)
+
+
+func _on_travel_rules_pressed() -> void:
+	if not _travel_menu_open or _travel_encyclopedia_open:
+		return
+	_play_ui_sfx(&"open")
+	travel_menu_overlay.hide()
+	_travel_rules_view.call("open")
+
+
+func _on_travel_rules_closed() -> void:
+	_travel_rules_view.hide()
+	if _travel_menu_open:
+		travel_menu_overlay.show()
+		_travel_rules_button.grab_focus()
+	_play_ui_sfx(&"close")
 
 
 func _on_travel_encyclopedia_closed() -> void:
@@ -1746,6 +1800,9 @@ func _on_travel_encyclopedia_closed() -> void:
 
 func _on_travel_menu_continue() -> void:
 	if not _travel_menu_open or _session == null:
+		return
+	if is_instance_valid(_travel_rules_view) and _travel_rules_view.visible:
+		_on_travel_rules_closed()
 		return
 	if _travel_encyclopedia_open:
 		_on_travel_encyclopedia_closed()
@@ -2377,7 +2434,7 @@ func _refresh_mission_band() -> void:
 			mission_no_damage_label.text = "失敗　今周は終了"
 			mission_no_damage_label.add_theme_color_override("font_color", failed)
 		else:
-			mission_no_damage_label.text = "進捗 %d/%d　%s%s" % [progress, target, _mission_progress_dots(progress, target), "　旧仕様" if legacy else ""]
+			mission_no_damage_label.text = mission_progress_copy(progress, target) + ("　旧仕様" if legacy else "")
 			mission_no_damage_label.add_theme_color_override("font_color", active)
 		var serial := int(missions.get("event_serial", 0))
 		if serial > _mission_seen_event_serial:
@@ -2402,9 +2459,17 @@ func _refresh_mission_band() -> void:
 		_show_mission_toast(missions.get("last_event", {}) as Dictionary)
 
 
-func _mission_progress_dots(progress: int, target: int) -> String:
-	var total := maxi(target, 1)
-	var filled := clampi(progress, 0, total)
+static func mission_progress_copy(progress: int, target: int) -> String:
+	var total: int = maxi(target, 1)
+	var current: int = clampi(progress, 0, total)
+	return V06LocalizationScript.text(&"MISSION_PROGRESS_REMAINING") % [current, total, total - current] + "　" + _mission_progress_dots(current, total)
+
+
+static func _mission_progress_dots(progress: int, target: int) -> String:
+	# A fixed upper bound keeps large objectives readable without allocating
+	# a string proportional to a mission's target on every HUD refresh.
+	var total: int = mini(maxi(target, 1), 6)
+	var filled: int = floori(float(clampi(progress, 0, maxi(target, 1))) / float(maxi(target, 1)) * total)
 	return "●".repeat(filled) + "○".repeat(total - filled)
 
 
@@ -2429,11 +2494,13 @@ func _show_mission_toast(event: Dictionary) -> void:
 	var target := maxi(int(active_mission.get("target", 1)), 1)
 	var reward := int(active_mission.get("reward_coins", 0))
 	if completed:
-		mission_toast_label.text = "MISSION CLEAR!　%s\nCOIN +%d" % [short_text, reward]
+		mission_toast_label.text = "MISSION CLEAR!　COIN +%d\n%s" % [reward, V06LocalizationScript.text(&"MISSION_NEXT_LAP_HINT")]
 	elif kind == "no_damage":
 		mission_toast_label.text = "MISSION FAILED　%s" % short_text
 	else:
 		mission_toast_label.text = "MISSION　%s　%d/%d" % [short_text, progress, target]
+		if progress == target - 1:
+			mission_toast_label.text = V06LocalizationScript.text(&"MISSION_ONE_MORE") % reward
 	mission_toast.hide()
 	_show_operation_message(mission_toast_label.text, 1.2, 25)
 	_flash_mission_cell(target_cell, completed)
@@ -3056,12 +3123,20 @@ func _show_operation_message(text: String, duration := 0.0, font_size := 26) -> 
 
 
 func _refresh_default_operation_message(phase: StringName) -> void:
+	var first_set: bool = _session.lap() == 1 and _session.roll_count() < 3 and _session.has_seen_survival_onboarding() and _session.has_seen_three_roll_onboarding()
 	if _rolling:
+		if first_set:
+			_show_operation_message(V06LocalizationScript.text(&"FIRST_ROLL_STOP"), 0.0, 28)
+			return
 		_show_operation_message("STOPで決定　／　下の道具で準備に戻る", 0.0, 24)
 		return
 	match phase:
 		V06PlaySessionScript.PHASE_READY:
-			_show_operation_message("サイコロを振ろう")
+			if first_set:
+				var keys: Array[StringName] = [&"FIRST_ROLL_START", &"FIRST_ROLL_SECOND", &"FIRST_ROLL_THIRD"]
+				_show_operation_message(V06LocalizationScript.text(keys[_session.roll_count()]), 0.0, 28)
+			else:
+				_show_operation_message("サイコロを振ろう")
 		V06PlaySessionScript.PHASE_MOVING:
 			_show_operation_message("プレイヤーが移動中…")
 		V06PlaySessionScript.PHASE_CHOICE_REQUIRED:
@@ -3846,9 +3921,15 @@ func _open_three_roll_onboarding_if_eligible() -> bool:
 	_three_roll_onboarding_open = true
 	_onboarding_kind = "slot"
 	landing_art.texture = SLOT_TRAY_ART
-	landing_art_panel.custom_minimum_size.y = 800.0
-	landing_art_caption.custom_minimum_size.y = 260.0
-	landing_art_caption.add_theme_font_size_override("font_size", 22)
+	if not is_instance_valid(_onboarding_slot_example):
+		_onboarding_slot_example = OnboardingSlotExample.new()
+		_onboarding_slot_example.name = "OnboardingSlotExample"
+		landing_art.add_child(_onboarding_slot_example)
+	_onboarding_slot_example.show()
+	landing_art_panel.custom_minimum_size.y = 740.0
+	landing_art_caption.custom_minimum_size.y = 200.0
+	landing_art_caption.add_theme_font_size_override("font_size", 28)
+	landing_art_prompt.add_theme_font_size_override("font_size", 28)
 	landing_art_title.text = V06LocalizationScript.text(&"THREE_ROLL_ONBOARDING_TITLE")
 	landing_art_caption.text = V06LocalizationScript.text(&"THREE_ROLL_ONBOARDING_BODY")
 	landing_art_prompt.text = V06LocalizationScript.text(&"THREE_ROLL_ONBOARDING_CTA")
@@ -3876,13 +3957,14 @@ func _open_survival_onboarding_if_eligible() -> bool:
 	_three_roll_onboarding_clock_paused = _session.pause_clock(Time.get_ticks_msec())
 	_three_roll_onboarding_open = true
 	_onboarding_kind = "survival"
-	landing_art.texture = DISCOVERY_ARTS[4]
-	landing_art_panel.custom_minimum_size.y = 650.0
-	landing_art_caption.custom_minimum_size.y = 130.0
-	landing_art_caption.add_theme_font_size_override("font_size", 24)
-	landing_art_title.text = "1マス = 1ポイント"
-	landing_art_caption.text = "進んだマスが、そのままスコア！\n⚠ RISK：HP −1　　♥ REST：HP +1\nHPが0になると復活を1回使ってHP FULL。\n復活0でHPが尽きると旅は終了。\n\nボス勝利後はHP回復CHANCE！"
-	landing_art_prompt.text = "わかった　スロットの説明へ"
+	landing_art.texture = JOURNEY_INTRO_ART
+	landing_art_panel.custom_minimum_size.y = 740.0
+	landing_art_caption.custom_minimum_size.y = 200.0
+	landing_art_caption.add_theme_font_size_override("font_size", 28)
+	landing_art_prompt.add_theme_font_size_override("font_size", 28)
+	landing_art_title.text = V06LocalizationScript.text(&"JOURNEY_INTRO_TITLE")
+	landing_art_caption.text = V06LocalizationScript.text(&"JOURNEY_INTRO_BODY")
+	landing_art_prompt.text = V06LocalizationScript.text(&"JOURNEY_INTRO_CTA")
 	landing_paid_action_button.hide()
 	landing_discovery_thumb.hide()
 	landing_art_panel.modulate = Color.WHITE
@@ -4085,6 +4167,8 @@ func _dismiss_three_roll_onboarding() -> void:
 	if not _three_roll_onboarding_open or _session == null:
 		return
 	var dismissed_kind := _onboarding_kind
+	if is_instance_valid(_onboarding_slot_example):
+		_onboarding_slot_example.hide()
 	if dismissed_kind == "survival":
 		_session.mark_survival_onboarding_seen()
 	else:
@@ -4205,11 +4289,11 @@ func _boss_finish_summary(result: Dictionary) -> String:
 	var turn_count := int(result.get("turn_count", 0))
 	var player_wings := int(result.get("player_wing_count", 0))
 	var player_sands := int(result.get("player_sand_count", 0))
-	var pre_final_gap := absi(int(result.get("player_position_before", 0)) - int(result.get("boss_position_before", 0)))
+	var final_gap: int = absi(int(result.get("player_position_after", 0)) - int(result.get("boss_position_after", 0)))
 	var role_counts: Dictionary = result.get("role_counts", {})
 	return "全%dターン　最後の差 %dマス\n翼%d / 流砂%d　ペア%d・ストレート%d・トリプル%d" % [
 		turn_count,
-		pre_final_gap,
+		final_gap,
 		player_wings,
 		player_sands,
 		int(role_counts.get("PAIR", 0)),

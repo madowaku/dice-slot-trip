@@ -42,14 +42,110 @@ msgstr "別ルートへ移動する入口。円環では出口へ向かう道を
 msgid "TILE_HELP_TAP_TO_CLOSE"
 msgstr "画面をタップして旅を続ける"
 
+msgid "RULES_TITLE"
+msgstr "遊び方"
+
+msgid "RULES_MOVE"
+msgstr "操作"
+
+msgid "RULES_SLOT"
+msgstr "役とコイン"
+
+msgid "RULES_HP"
+msgstr "HP・道具"
+
+msgid "RULES_CLOSE"
+msgstr "メニューへ戻る"
+
+msgid "RULES_MOVE_0_TITLE"
+msgstr "① 振って、もう一度で止める"
+
+msgid "RULES_MOVE_0_BODY"
+msgstr "「振る」をタップし、もう一度タップすると出目が決まります。"
+
+msgid "RULES_MOVE_1_TITLE"
+msgstr "② 出た目の数だけ進む"
+
+msgid "RULES_MOVE_1_BODY"
+msgstr "進んだ1マスが1ポイント。止まったマスでコインやアイテムを見つけます。"
+
+msgid "RULES_MOVE_2_TITLE"
+msgstr "③ 3投でスロットが完成"
+
+msgid "RULES_MOVE_2_BODY"
+msgstr "1投ずつ数字が並び、3つそろうと役が決まります。旅の先ではスフィンクスと勝負！"
+
+msgid "RULES_SLOT_0_TITLE"
+msgstr "2・2・5　ペア"
+
+msgid "RULES_SLOT_0_BODY"
+msgstr "同じ数字が2つ → コイン +1"
+
+msgid "RULES_SLOT_1_TITLE"
+msgstr "1・2・3　ストレート"
+
+msgid "RULES_SLOT_1_BODY"
+msgstr "出た順に数字が1ずつ増減 → コイン +3"
+
+msgid "RULES_SLOT_2_TITLE"
+msgstr "3・3・3　トリプル"
+
+msgid "RULES_SLOT_2_BODY"
+msgstr "同じ数字が3つ → コイン +5"
+
+msgid "RULES_SLOT_3_TITLE"
+msgstr "コインの使い方"
+
+msgid "RULES_SLOT_3_BODY"
+msgstr "役なしは報酬なし。コインは画面下の「コイン」から使えます。ここに載せた報酬は通常の旅のものです。"
+
+msgid "RULES_HP_0_TITLE"
+msgstr "危険で減り、休憩で回復"
+
+msgid "RULES_HP_0_BODY"
+msgstr "危険マスでHP −1、休憩マスでHP +1。HP満タンで休憩すると、スキルが1増えます。"
+
+msgid "RULES_HP_1_TITLE"
+msgstr "HPが0になったら"
+
+msgid "RULES_HP_1_BODY"
+msgstr "復活が残っていれば1回使い、HP満タンで再出発。残っていなければ旅は終了です。"
+
+msgid "RULES_HP_2_TITLE"
+msgstr "アイテムとスキル"
+
+msgid "RULES_HP_2_BODY"
+msgstr "拾った道具は「アイテム」から。スキルが満タンになると、次の出目を選べます。"
+
 msgid "THREE_ROLL_ONBOARDING_TITLE"
-msgstr "振って止めて、3投で役をつくる"
+msgstr "振る → 止める → 進む"
 
 msgid "THREE_ROLL_ONBOARDING_BODY"
-msgstr "回転中にもう一度タップ。見えている出目で止まる。\nその数だけ進み、1マス = 1ポイント！\n\nPAIR：同じ数字が2つ → TRIP COIN +1\nSTRAIGHT：連続した3つ → TRIP COIN +3\nTRIPLE：同じ数字が3つ → TRIP COIN +5\nMIX：そのほか → 報酬なし\n満タンREST：SKILL +1\n\nボス戦では、盾・加速・必殺になる。"
+msgstr "「振る」をタップ。もう一度で止めよう。\n出た目の数だけ、猫が進みます。\n3投分の数字で、スロットの役が決定！\n\n例：2・2・5 → ペアでコイン +1"
 
 msgid "THREE_ROLL_ONBOARDING_CTA"
-msgstr "わかった！ 旅を始める"
+msgstr "さっそく振ってみよう"
+
+msgid "JOURNEY_INTRO_TITLE"
+msgstr "スフィンクスを目指そう"
+
+msgid "JOURNEY_INTRO_BODY"
+msgstr "カイロをめぐり、旅の先でボスと勝負！\n進んだ1マスが、1ポイントになります。\n\n危険マスでHP −1、休憩マスでHP +1。\nHP0でも、復活が残っていれば再出発！"
+
+msgid "JOURNEY_INTRO_CTA"
+msgstr "次へ　サイコロの遊び方"
+
+msgid "FIRST_ROLL_START"
+msgstr "「振る」をタップしてスタート"
+
+msgid "FIRST_ROLL_STOP"
+msgstr "もう一度タップして、出目を決めよう"
+
+msgid "FIRST_ROLL_SECOND"
+msgstr "あと2投で、スロットの役が決まる"
+
+msgid "FIRST_ROLL_THIRD"
+msgstr "次の1投で、スロットの役が決まる"
 
 msgid "TRAVEL_MENU_BUTTON"
 msgstr "メニュー"
@@ -127,3 +223,12 @@ msgid "EVENT_DISCOVERY_SCORE"
 msgstr "初めて発見！"
 msgid "EVENT_CONTINUE_CTA"
 msgstr "旅を続ける"
+
+msgid "MISSION_PROGRESS_REMAINING"
+msgstr "進捗 %d/%d　あと%d"
+
+msgid "MISSION_NEXT_LAP_HINT"
+msgstr "次の周で、新しいミッションへ"
+
+msgid "MISSION_ONE_MORE"
+msgstr "あと1でミッション達成！ COIN +%d"

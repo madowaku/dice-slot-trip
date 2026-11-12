@@ -183,6 +183,9 @@ func _run() -> void:
 	_expect(bool(battle.get("_resolving_turn")) and view.message_label.text.contains("進んでいます"), "UI gives immediate feedback after pressing the confirm button")
 	_expect(view.board_input_layer.get_global_rect().grow(90.0).intersects(view.cat_sprite.get_global_rect()), "UI keeps the moving player sprite on the visible board")
 	await create_timer(2.2).timeout
+	if view.rule_guide_visible:
+		view.rule_guide_button.pressed.emit()
+		await process_frame
 	_expect(not bool(battle.get("_resolving_turn")) and controller.state.phase == ControllerScript.BattlePhase.ROLL_SLOT, "UI returns control after cat movement and fox resolution")
 	_expect(view.roll_button.visible and not view.roll_button.disabled, "UI makes the next roll immediately actionable instead of appearing frozen")
 	root.size = Vector2i(720, 1600)

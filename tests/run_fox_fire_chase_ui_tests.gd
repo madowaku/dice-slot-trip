@@ -130,6 +130,10 @@ func _run() -> void:
 
 	# Terminal state stays visible until the explicit result action, and the
 	# journey host receives the result exactly once.
+	view.show_result({"victory": false, "defeat_reason": "FOX_LAPPED_PLAYER"})
+	_expect(view.result_body.text.contains("役を揃えて") and view.result_button.text == "ステージの最初へ", "chase defeat pairs an actionable hint with the actual restart destination")
+	view.show_result({"victory": false, "defeat_reason": "BLOCKED"})
+	_expect(view.result_body.text.contains("狐火を越える"), "blocked route defeat gives a different hint")
 	var finish_receipts: Array = []
 	battle.battle_finished.connect(func(result: Variant) -> void: finish_receipts.append(result))
 	battle.call("_on_controller_battle_finished", {"battle_id": "fox_fire_chase", "victory": true})
@@ -140,6 +144,14 @@ func _run() -> void:
 
 	print("FOX_FIRE_CHASE_UI_TESTS failures=%d" % failures)
 	battle.free()
+	await process_frame
+	var bgm: Node = root.get_node_or_null("BgmManager")
+	if bgm != null:
+		bgm.call("stop")
+	var sfx: Node = root.get_node_or_null("UiSfxManager")
+	if sfx != null:
+		sfx.call("stop_all")
+	await create_timer(0.15).timeout
 	quit(1 if failures > 0 else 0)
 
 

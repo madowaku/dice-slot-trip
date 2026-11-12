@@ -366,7 +366,7 @@ func _test_primary_backup_combinations_and_stale_temp() -> void:
 	_write(manager.backup_path, valid_text)
 	var corrupt_primary_save: Dictionary = manager.save_session(Session.new(&"cairo_hourglass", &"gambler"))
 	var corrupt_primary_after: Dictionary = manager.load_result()
-	_expect(not corrupt_primary_save.ok and corrupt_primary_after.status == SaveManager.STATUS_RECOVERED_BACKUP and corrupt_primary_after.data.character_id == "relaxed" and _read_text(manager.save_path) == corrupt_text, "saving with a corrupt primary never overwrites the valid backup")
+	_expect(corrupt_primary_save.ok and corrupt_primary_after.status == SaveManager.STATUS_VALID_PRIMARY and corrupt_primary_after.data.character_id == "gambler" and _read_text(manager.backup_path) == valid_text, "saving with a corrupt primary installs progress while preserving the valid backup")
 
 	_cleanup()
 	_write(manager.save_path, valid_text)

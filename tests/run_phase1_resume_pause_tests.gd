@@ -52,9 +52,13 @@ func _run() -> void:
 
 
 func _cleanup_save() -> void:
-	const SAVE_PATH := "user://journey_stage_v1.json"
-	if FileAccess.file_exists(SAVE_PATH):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
+	var paths: Array[String] = [JourneySaveManagerScript.SAVE_PATH]
+	for stage_id: StringName in JourneySaveManagerScript.RESUMABLE_STAGE_IDS:
+		paths.append(JourneySaveManagerScript.stage_save_path(stage_id))
+	for path: String in paths:
+		for suffix: String in ["", ".bak", ".tmp"]:
+			if FileAccess.file_exists(path + suffix):
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
 
 
 func _expect(condition: bool, label: String) -> void:

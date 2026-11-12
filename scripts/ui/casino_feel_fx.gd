@@ -1,8 +1,33 @@
 class_name CasinoFeelFX
 extends Node
 
-const ROLL_STREAMS: Array[AudioStream] = [preload("res://assets/audio/dice/roll_01.wav"), preload("res://assets/audio/dice/roll_02.wav"), preload("res://assets/audio/dice/roll_03.wav"), preload("res://assets/audio/dice/roll_04.wav")]
+# Casino minigames trigger this once per roll, so the longer Kenney throw clips
+# fit better here than the short repeated ticks used by the main travel dice.
+const DICE_THROW_STREAMS: Array[AudioStream] = [
+	preload("res://assets/audio/kenney/casino/dice-throw-1.ogg"),
+	preload("res://assets/audio/kenney/casino/dice-throw-2.ogg"),
+	preload("res://assets/audio/kenney/casino/dice-throw-3.ogg"),
+]
 const LAND_STREAMS: Array[AudioStream] = [preload("res://assets/audio/dice/land_01.wav"), preload("res://assets/audio/dice/land_02.wav"), preload("res://assets/audio/dice/land_03.wav"), preload("res://assets/audio/dice/land_04.wav")]
+const CHIP_LAY_STREAMS: Array[AudioStream] = [
+	preload("res://assets/audio/kenney/casino/chip-lay-1.ogg"),
+	preload("res://assets/audio/kenney/casino/chip-lay-2.ogg"),
+	preload("res://assets/audio/kenney/casino/chip-lay-3.ogg"),
+]
+const CHIP_COLLIDE_STREAMS: Array[AudioStream] = [
+	preload("res://assets/audio/kenney/casino/chips-collide-1.ogg"),
+	preload("res://assets/audio/kenney/casino/chips-collide-2.ogg"),
+	preload("res://assets/audio/kenney/casino/chips-collide-3.ogg"),
+	preload("res://assets/audio/kenney/casino/chips-collide-4.ogg"),
+]
+const CHIP_STACK_STREAMS: Array[AudioStream] = [
+	preload("res://assets/audio/kenney/casino/chips-stack-1.ogg"),
+	preload("res://assets/audio/kenney/casino/chips-stack-2.ogg"),
+	preload("res://assets/audio/kenney/casino/chips-stack-3.ogg"),
+	preload("res://assets/audio/kenney/casino/chips-stack-4.ogg"),
+	preload("res://assets/audio/kenney/casino/chips-stack-5.ogg"),
+	preload("res://assets/audio/kenney/casino/chips-stack-6.ogg"),
+]
 var _players: Array[AudioStreamPlayer] = []
 var _cursor: int = 0
 var audio_enabled: bool = true
@@ -41,7 +66,7 @@ func press_button(button: Control = null, with_light_haptic: bool = false) -> vo
 	if with_light_haptic:
 		vibrate_light()
 
-func play_dice_roll() -> void: _play_stream(ROLL_STREAMS[randi() % ROLL_STREAMS.size()], -5.0)
+func play_dice_roll() -> void: _play_stream(DICE_THROW_STREAMS[randi() % DICE_THROW_STREAMS.size()], -7.0)
 func play_dice_land(with_haptic: bool = true) -> void:
 	_play_stream(LAND_STREAMS[randi() % LAND_STREAMS.size()], -2.0)
 	if with_haptic:
@@ -49,6 +74,7 @@ func play_dice_land(with_haptic: bool = true) -> void:
 
 func animate_chip_change(label: Control = null) -> void:
 	_sfx(&"reward", false)
+	_play_stream(CHIP_LAY_STREAMS[randi() % CHIP_LAY_STREAMS.size()], -9.0)
 	if label == null: return
 	label.offset_transform_enabled = true
 	label.pivot_offset = label.size * 0.5
@@ -64,11 +90,11 @@ func animate_payout_change(label: Label, from_value: int, to_value: int) -> void
 	tween.tween_method(func(value: float) -> void:
 		label.text = "%d CHIP" % roundi(value)
 	, float(from_value), float(to_value), 0.52)
-	tween.parallel().tween_callback(func() -> void: _sfx(&"reward", false))
 	animate_chip_change(label)
 
 func play_win_feedback() -> void:
 	_sfx(&"bonus", true)
+	_play_stream(CHIP_COLLIDE_STREAMS[randi() % CHIP_COLLIDE_STREAMS.size()], -8.0)
 	vibrate_result()
 func play_lose_feedback() -> void:
 	_sfx(&"error", true)
@@ -89,6 +115,7 @@ func play_tower_tension() -> void:
 
 func play_tower_complete() -> void:
 	_sfx(&"achievement", true)
+	_play_stream(CHIP_STACK_STREAMS[randi() % CHIP_STACK_STREAMS.size()], -8.0)
 	vibrate_result()
 
 func play_tower_bust() -> void:
@@ -106,6 +133,7 @@ func animate_balance_change(label: Label, from_value: int, to_value: int) -> voi
 
 func play_cashout_feedback(label: Control = null) -> void:
 	_sfx(&"complete", true)
+	_play_stream(CHIP_STACK_STREAMS[randi() % CHIP_STACK_STREAMS.size()], -8.0)
 	animate_chip_change(label)
 	vibrate_result()
 func vibrate_light() -> void:

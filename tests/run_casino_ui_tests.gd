@@ -54,6 +54,9 @@ func _run() -> void:
 	CasinoBankScript.set_test_save_path(test_save_path)
 	if FileAccess.file_exists(test_save_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(test_save_path))
+	var fixture: Dictionary = CasinoBankScript.default_data()
+	fixture["chips"] = 0
+	CasinoBankScript.save_data(fixture)
 	CasinoBankScript.add_chips(100)
 
 	var hub := HUB_SCENE.instantiate()
@@ -62,19 +65,24 @@ func _run() -> void:
 	_expect(hub is CasinoHubScreen, "Casino Hub scene instantiates its screen script")
 	_expect(bgm.current_track() == &"lasvegas_main", "Casino Hub starts the Las Vegas main-map BGM")
 	_expect(hub.chip_label != null and "100" in hub.chip_label.text, "Casino Hub shows persistent chip balance")
-	_expect(hub.card_data.size() == 6, "dormant prize-card data still loads for a future dedicated counter")
-	_expect(hub.prize_list == null and hub.find_children("*", "ScrollContainer", true, false).is_empty(), "Casino Hub omits the Prize Counter and all scrolling UI")
-	_expect(hub.find_children("*", "Button", true, false).all(func(button: Button) -> bool: return "CHIP" not in button.text or button == hub.chip_label), "Casino Hub does not expose dormant prize purchase rows")
+	_expect(hub.card_data.size() == 6, "prize-card data loads for the prize shelf")
+	_expect(hub.prize_shelf != null and hub.find_children("*", "ScrollContainer", true, false).is_empty(), "Casino Hub shows the prize shelf without scrolling UI")
+	_expect(hub.find_children("*", "Button", true, false).all(func(button: Button) -> bool: return "CHIP" not in button.text), "Casino Hub keeps prize purchase rows inside the prize counter")
 	var hub_subtitles: Dictionary = {}
-	for definition: Dictionary in hub.facility_definitions:
-		var facility_id := str(definition.get("id", ""))
+	for facility_id: String in hub.HUB_FACILITY_IDS:
+		var definition: Dictionary = hub.call("_facility_definition", facility_id)
 		var facility_button := hub.facility_buttons.get(facility_id) as Button
 		var subtitle := str(definition.get("subtitle", ""))
 		var button_label := str(definition.get("button_label", ""))
 		hub_subtitles[subtitle] = true
-		_expect(facility_button != null and button_label in facility_button.text and "遊ぶ" in facility_button.text and subtitle in facility_button.tooltip_text, "%s exposes a concise Japanese identity, play action, and detailed role" % facility_id)
-		_expect(facility_button != null and facility_button.get_theme_font_size("font_size") == UiTokensScript.FONT_CAPTION and facility_button.custom_minimum_size.y >= UiTokensScript.BUTTON_HEIGHT, "%s uses the shared facility CTA type and height tokens" % facility_id)
-	_expect(hub_subtitles.size() == 6, "all six Hub emotional roles are distinct")
+		var card_title := hub.facility_title_labels.get(facility_id) as Label
+		var shown_label := card_title.text if card_title != null else (facility_button.text if facility_button != null else "")
+		_expect(facility_button != null and button_label in shown_label and subtitle in facility_button.tooltip_text, "%s exposes a concise Japanese identity and detailed role" % facility_id)
+		var type_size := card_title.get_theme_font_size("font_size") if card_title != null else (facility_button.get_theme_font_size("font_size") if facility_button != null else 0)
+		_expect(facility_button != null and type_size >= UiTokensScript.FONT_CAPTION and facility_button.custom_minimum_size.y >= UiTokensScript.BUTTON_HEIGHT, "%s uses the shared readable type and CTA height tokens" % facility_id)
+	_expect(hub_subtitles.size() == 4, "all four Hub roles are distinct")
+	for retired_id: String in hub.RETIRED_FACILITY_IDS:
+		_expect(not hub.facility_buttons.has(retired_id) and not bool(hub.call("_open_facility", retired_id)), "%s is no longer reachable from the Casino Hub" % retired_id)
 	var prize_names: Array[String] = []
 	for card: Dictionary in hub.card_data:
 		prize_names.append(str(card.get("name", "")))
@@ -96,16 +104,15 @@ func _run() -> void:
 	hub.call("_close_dice_tower")
 	await process_frame
 	_expect(hub.hub_root.visible and not hub.tower_host.visible, "returning from DICE TOWER restores the Casino Hub list")
-	hub.call("_open_dice_roulette")
+	# DICE ROULETTE left the hub in the casino renewal; its scene still works.
+	var roulette := (load("res://scenes/casino/DiceRoulette.tscn") as PackedScene).instantiate() as DiceRouletteScreen
+	root.add_child(roulette)
 	await process_frame
-	_expect(hub.roulette_host.visible and hub.roulette_host.get_child_count() == 1, "opening DICE ROULETTE shows its dedicated host")
-	var roulette := hub.roulette_host.get_child(0) as DiceRouletteScreen
 	_expect(roulette != null and "CASINO CHIP" in roulette.chip_label.text, "DICE ROULETTE uses the shared CASINO CHIP balance heading")
 	_expect(roulette != null and roulette.new_bet_button.text == "ベットを変える" and roulette.back_button.text == "カジノへ戻る" and roulette.cashout_button.text == "カジノへ戻る", "DICE ROULETTE uses localized action labels")
-	_expect(bgm.current_track() == &"dice_roulette", "opening DICE ROULETTE switches to the roulette BGM")
-	hub.call("_close_dice_roulette")
+	_expect(bgm.current_track() == &"dice_roulette", "DICE ROULETTE switches to the roulette BGM")
+	roulette.queue_free()
 	await process_frame
-	_expect(bgm.current_track() == &"lasvegas_main", "returning from DICE ROULETTE restores the Casino Hub BGM")
 	hub.queue_free()
 	await process_frame
 
@@ -181,7 +188,8 @@ func _run() -> void:
 	var fox_caption := (race.direction_plates.get("fox", {}) as Dictionary).caption as Label
 	_expect(fox_caption.text == "上" and "キツネ" not in fox_caption.text, "direction plates let racer art replace duplicate small names")
 	_expect(race.setup_view.visible and not race.race_view.visible, "Dice Race opens in the pre-race betting view")
-	_assert_how_to(race, "dice_race", ["レーサーを選ぶ", "サイコロを振る", "ゴールを見届ける"])
+	# DICE RACE keeps its how-to in the shared guide (first visit, then 「？」).
+	_expect(race.find_child("CasinoHowTo3Steps", true, false) == null and race.guide_step_count() >= 1 and race.guide_step_count() <= 3 and race.find_child("HelpButton", true, false) != null, "dice_race keeps a how-to of three steps or fewer behind the shared help button")
 	var race_start_balance: int = CasinoBankScript.balance()
 	race.call("_start_race")
 	await process_frame
@@ -280,10 +288,10 @@ func _run() -> void:
 	var race_result_ready: bool = await _wait_for_race_result_ctas(race)
 	_expect(race_result_ready, "Race result unlocks all three CTAs after its bounded staged reveal")
 	_expect(race.result_panel.visible and race.result_rank_label.visible and race.result_rank_label.text == "最終順位  1位", "Race result presents the final rank first")
-	_expect(race.result_outcome_label.visible and race.result_outcome_label.text == "WIN", "Race result presents the authored WIN outcome")
+	_expect(race.result_outcome_label.visible and str(race.result_outcome_label.get_meta("outcome", "")) == "WIN" and race.result_outcome_label.text == "勝ち！  +36", "Race result presents the authored WIN outcome with the chips returned")
 	_expect(race.result_bet_value.visible and race.result_bet_value.text == "20 CHIP" and race.result_return_value.text == "36 CHIP" and race.result_net_value.text == "+16 CHIP", "Race result presents BET, RETURN, and NET as separate readable metrics")
 	_expect(race.result_chip_delta_label.visible and "CHIP" in race.result_chip_delta_label.text, "Race result completes with readable CHIP balance feedback")
-	_expect(race.again_button.text == "もう一度遊ぶ" and race.change_bet_button.text == "ベットを変える" and race.result_exit_button.text == "カジノへ戻る", "Race result exposes the three Japanese next-action CTAs")
+	_expect(race.again_button.text == "もう一度遊ぶ" and race.change_bet_button.text == "賭け金を変える" and race.result_exit_button.text == "カジノへ戻る", "Race result exposes the three Japanese next-action CTAs")
 	_expect(str(race.call("_result_outcome_for_net", 0)) == "EVEN", "Race result preserves the authored EVEN outcome for zero net")
 	_expect(race.race_fx_layer.find_child("ConfettiPiece", true, false) != null, "victory adds restrained gold confetti")
 	_expect(bet_marker.z_index == 18, "the GOAL racer moves to the course foreground")
@@ -307,7 +315,7 @@ func _run() -> void:
 	race.race["bet_active"] = true
 	race.call("_finish_race")
 	var race_loss_ready: bool = await _wait_for_race_result_ctas(race)
-	_expect(race_loss_ready and race.result_outcome_label.text == "LOSS" and race.result_return_value.text == "16 CHIP" and race.result_net_value.text == "-4 CHIP", "Race loss presents rank, LOSS, RETURN, and NET before enabling replay")
+	_expect(race_loss_ready and str(race.result_outcome_label.get_meta("outcome", "")) == "LOSS" and race.result_outcome_label.text == "負け  +16" and race.result_return_value.text == "16 CHIP" and race.result_net_value.text == "-4 CHIP", "Race loss presents rank, LOSS, RETURN, and NET before enabling replay")
 	_expect(not CasinoBankScript.has_active_game("dice_race") and CasinoBankScript.balance() == race_balance_before_loss - 4, "Race third-place loss settles once with the authored 16 CHIP partial return")
 	var race_stats: Dictionary = CasinoBankScript.load_data()
 	_expect(int(race_stats.get("dice_race_play_count", 0)) == 2 and int(race_stats.get("dice_race_win_count", 0)) == 1, "Race settlement records one win and one loss atomically")
@@ -333,96 +341,13 @@ func _run() -> void:
 	race.queue_free()
 	await process_frame
 
-	var tower := TOWER_SCENE.instantiate()
+	# DICE TOWER is covered in depth by tests/run_dice_tower_tests.gd; this
+	# checks only that it keeps the shared casino frame.
+	var tower := TOWER_SCENE.instantiate() as DiceTowerScreen
 	root.add_child(tower)
 	await process_frame
-	_expect(tower is DiceTowerScreen and tower.back_button.text == "カジノへ戻る", "Dice Tower scene instantiates with the shared casino-return label")
-	_expect(tower.back_button.get_theme_font_size("font_size") >= UiTokensScript.FONT_CAPTION and tower.back_button.custom_minimum_size.y >= UiTokensScript.TOUCH_MIN and tower.back_button.has_theme_stylebox_override("focus"), "Dice Tower uses the large shared casino-return action")
-	_expect("CASINO CHIP" in tower.chip_label.text, "DICE TOWER uses the shared CASINO CHIP balance heading")
-	_expect(tower.tutorial_overlay.visible, "Dice Tower opens with its three-step tutorial")
-	tower.call("_close_tutorial")
-	_expect(tower.setup_view.visible and not tower.active_view.visible, "tutorial dismissal reveals BET selection")
-	_assert_how_to(tower, "dice_tower", ["ベットを決める", "サイコロを振る", "引き際を決める"])
-	_expect(tower.bet_buttons.size() == 3, "Dice Tower offers the three authored bets")
-	_expect(not tower.start_button.disabled and tower.selected_bet == 20, "twenty CHIP is the default affordable bet")
-	_expect(tower.cashout_button.get_index() < tower.roll_button.get_index(), "CASH OUT stays on the left of ROLL")
-	var tower_rows: Array[Node] = tower.tower_stack.find_children("Floor_*", "PanelContainer", false, false)
-	_expect(tower_rows.size() == 10, "active view builds all ten tower floors")
-	var tower_start_balance: int = CasinoBankScript.balance()
-	tower.rng_seed = 20260826
-	tower.call("_start_game")
-	await process_frame
-	tower.queued_roll_value = 4
-	_expect(CasinoBankScript.balance() == tower_start_balance - 20 and tower.active_view.visible, "GAME START immediately commits the wager")
-	_expect(tower.cashout_button.disabled and not tower.roll_button.disabled, "START disables CASH OUT and arms ROLL")
-	tower.call("_on_roll_pressed")
-	var pending_tower_record: Dictionary = CasinoBankScript.active_game("dice_tower")
-	var pending_tower_rolls: Array = pending_tower_record.get("pending_rolls", []) as Array
-	_expect(not pending_tower_rolls.is_empty() and int((pending_tower_rolls[0] as Dictionary).get("value", 0)) == 4, "Tower persists the next face before animation")
-	tower.call("_on_back_pressed")
-	_expect(CasinoBankScript.has_active_game("dice_tower") and CasinoBankScript.balance() == tower_start_balance - 20, "Tower BACK preserves one debited active transaction")
-	tower.queue_free()
-	await process_frame
-	tower = TOWER_SCENE.instantiate()
-	root.add_child(tower)
-	await process_frame
-	await create_timer(1.18).timeout
-	_expect(int(tower.game.floor) == 1 and int(tower.game.last_roll) == 4 and not tower.cashout_button.disabled, "Tower restart resolves the exact pending face and reaches floor one")
-	_expect(CasinoBankScript.balance() == tower_start_balance - 20 and CasinoBankScript.has_active_game("dice_tower"), "Tower resume neither debits again nor settles early")
-	_expect("22" in tower.cashout_button.text, "floor-one CASH OUT shows its chip amount directly")
-	var cash_center_x: float = tower.cashout_button.global_position.x + tower.cashout_button.size.x * 0.5
-	var roll_center_x: float = tower.roll_button.global_position.x + tower.roll_button.size.x * 0.5
-	_expect(cash_center_x < roll_center_x and absf(tower.cashout_button.size.x - tower.roll_button.size.x) <= 8.0, "fixed twin actions remain balanced across the console")
-	tower.queued_roll_value = 1
-	var busted_tower_game_id: String = tower.game_id
-	tower.call("_on_roll_pressed")
-	await create_timer(1.18).timeout
-	_expect(bool(tower.game.busted) and int(tower.game.payout) == 0 and CasinoBankScript.balance() == tower_start_balance - 20, "rolled one loses only the committed wager")
-	_expect(tower.roll_button.text == "ベットを変える" and tower.cashout_button.disabled, "BUST setup-return action changes bet and closes CASH OUT")
-	var tower_retry := tower.result_overlay.find_child("RetryButton", true, false) as Button
-	_expect(tower_retry != null and "もう一度遊ぶ" in tower_retry.text and "受け取り 0" in tower.result_reward_label.text and "収支  -20" in tower.result_bet_label.text, "BUST overlay distinguishes immediate replay, return, and net loss")
-	var tower_result_dim := tower.result_overlay.find_child("ResultDim", true, false) as ColorRect
-	_expect(tower_result_dim != null and tower_result_dim.mouse_filter == Control.MOUSE_FILTER_STOP and tower_result_dim.color.a >= 0.64, "TOWER result overlay isolates the result card from the active controls")
-	var tower_balance_after_bust: int = CasinoBankScript.balance()
-	var duplicate_tower_settlement: Dictionary = CasinoBankScript.settle_game("dice_tower", 0, {"busted": true}, busted_tower_game_id)
-	_expect(bool(duplicate_tower_settlement.get("already_settled", false)) and CasinoBankScript.balance() == tower_balance_after_bust, "Tower result replay cannot settle its wager twice")
-	tower.roll_button.pressed.emit()
-	await process_frame
-	_expect(tower.setup_view.visible and not tower.active_view.visible, "retry returns the player to BET selection")
-	tower.call("_start_game")
-	await process_frame
-	tower.queued_roll_value = 4
-	tower.call("_on_roll_pressed")
-	await create_timer(1.18).timeout
-	tower.call("_on_cashout_pressed")
-	await process_frame
-	_expect(bool(tower.game.cashed_out) and int(tower.game.payout) == 22 and CasinoBankScript.balance() == tower_start_balance - 18, "successful CASH OUT pays twenty-two chips after the earlier lost run")
-	var tower_result_back := tower.result_overlay.find_child("ResultCasinoBackButton", true, false) as Button
-	_expect(tower.result_overlay.visible and not tower.back_button.visible and tower_result_back != null and tower_result_back.text == "カジノへ戻る" and "受け取り完了" in tower.result_title_label.text and "FLOOR 1" in tower.result_floor_label.text and "受け取り" in tower.result_reward_label.text and "収支  +2" in tower.result_bet_label.text, "successful cash out uses one shared casino-return action with floor, return, net, and reason")
-	var balance_before_play_again: int = CasinoBankScript.balance()
-	tower_retry = tower.result_overlay.find_child("RetryButton", true, false) as Button
-	tower_retry.pressed.emit()
-	await process_frame
-	_expect(tower.active_view.visible and CasinoBankScript.has_active_game("dice_tower") and CasinoBankScript.balance() == balance_before_play_again - 20, "Tower PLAY AGAIN immediately begins exactly one same-BET transaction")
-	tower.queued_roll_value = 1
-	tower.call("_on_roll_pressed")
-	await create_timer(1.18).timeout
-	tower.roll_button.pressed.emit()
-	await process_frame
-	var tower_balance_before_terminal_resume: int = CasinoBankScript.balance()
-	tower.call("_start_game")
-	tower.game["floor"] = 9
-	tower.game["highest_floor"] = 9
-	tower.game["pending_rolls"] = [{"kind": "roll", "value": 6, "from_floor": 9, "roll_index": 1}]
-	CasinoBankScript.update_game("dice_tower", tower.game, tower.game_id)
-	tower.queue_free()
-	await process_frame
-	tower = TOWER_SCENE.instantiate()
-	root.add_child(tower)
-	await process_frame
-	await create_timer(1.18).timeout
-	_expect(bool(tower.game.completed) and int(tower.game.last_roll) == 6 and int(tower.game.payout) == 84, "Tower restart resolves the exact pending completion face")
-	_expect(not CasinoBankScript.has_active_game("dice_tower") and CasinoBankScript.balance() == tower_balance_before_terminal_resume + 64, "Tower terminal resume credits completion once without a second debit")
+	_expect(tower != null and tower.back_button.text == "カジノへ戻る" and tower.back_button.custom_minimum_size.y >= UiTokensScript.TOUCH_MIN, "Dice Tower uses the shared casino-return action")
+	_expect("CASINO CHIP" in tower.chip_label.text and tower.find_child("CasinoTableShell", true, false) != null, "Dice Tower sits on the shared casino table")
 	tower.queue_free()
 	await process_frame
 
